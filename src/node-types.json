@@ -1683,6 +1683,16 @@
             "named": true
           }
         ]
+      },
+      "title": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "link_title",
+            "named": true
+          }
+        ]
       }
     }
   },
@@ -1859,6 +1869,11 @@
         }
       ]
     }
+  },
+  {
+    "type": "link_title",
+    "named": true,
+    "fields": {}
   },
   {
     "type": "list",
@@ -3344,6 +3359,10 @@
   },
   {
     "type": "%",
+    "named": false
+  },
+  {
+    "type": "'",
     "named": false
   },
   {

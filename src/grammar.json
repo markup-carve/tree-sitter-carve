@@ -2312,11 +2312,15 @@
             "type": "ALIAS",
             "content": {
               "type": "STRING",
-              "value": "="
+              "value": "raw"
             },
             "named": true,
             "value": "language_marker"
           }
+        },
+        {
+          "type": "SYMBOL",
+          "name": "_whitespace1"
         },
         {
           "type": "FIELD",
@@ -2602,6 +2606,31 @@
                     "type": "SYMBOL",
                     "name": "link_destination"
                   }
+                },
+                {
+                  "type": "CHOICE",
+                  "members": [
+                    {
+                      "type": "SEQ",
+                      "members": [
+                        {
+                          "type": "SYMBOL",
+                          "name": "_whitespace1"
+                        },
+                        {
+                          "type": "FIELD",
+                          "name": "title",
+                          "content": {
+                            "type": "SYMBOL",
+                            "name": "link_title"
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "type": "BLANK"
+                    }
+                  ]
                 }
               ]
             },
@@ -2619,6 +2648,45 @@
     "link_destination": {
       "type": "PATTERN",
       "value": "\\S+"
+    },
+    "link_title": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "STRING",
+              "value": "\""
+            },
+            {
+              "type": "PATTERN",
+              "value": "[^\"\\n]*"
+            },
+            {
+              "type": "STRING",
+              "value": "\""
+            }
+          ]
+        },
+        {
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "STRING",
+              "value": "'"
+            },
+            {
+              "type": "PATTERN",
+              "value": "[^'\\n]*"
+            },
+            {
+              "type": "STRING",
+              "value": "'"
+            }
+          ]
+        }
+      ]
     },
     "caption": {
       "type": "SEQ",

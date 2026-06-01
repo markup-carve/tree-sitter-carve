@@ -117,6 +117,55 @@ Official corpus: lists and tables
       content: (content))))
 
 ===============================================================================
+Official corpus: table alignment and escaped cell content
+===============================================================================
+|= Name |=> Age |=~ City |
+| Alice  | 28     | NYC     |
+| Bob    | 34     | London  |
+
+|= A |= B |
+| x \| y | z |
+
+|= A |= B |
+| `a|b` | z |
+
+-------------------------------------------------------------------------------
+
+(document
+  (table
+    (table_row
+      (table_cell)
+      (table_cell)
+      (table_cell))
+    (table_row
+      (table_cell)
+      (table_cell)
+      (table_cell))
+    (table_row
+      (table_cell)
+      (table_cell)
+      (table_cell)))
+  (table
+    (table_row
+      (table_cell)
+      (table_cell))
+    (table_row
+      (table_cell
+        (backslash_escape))
+      (table_cell)))
+  (table
+    (table_row
+      (table_cell)
+      (table_cell))
+    (table_row
+      (table_cell
+        (verbatim
+          begin_marker: (verbatim_marker_begin)
+          content: (content)
+          end_marker: (verbatim_marker_end)))
+      (table_cell))))
+
+===============================================================================
 Inline extension, mention, tag, and emoji
 ===============================================================================
 Press :kbd[Ctrl] and ask @alice about #release-1 :rocket:.
@@ -129,6 +178,77 @@ Press :kbd[Ctrl] and ask @alice about #release-1 :rocket:.
     (mention)
     (tag)
     (symbol)))
+
+===============================================================================
+Official corpus: frontmatter
+===============================================================================
+---
+title: My Document
+author: Jane Doe
+date: 2026-03-15
+---
+
+Content begins here.
+
+-------------------------------------------------------------------------------
+
+(document
+  (frontmatter
+    (frontmatter_marker)
+    content: (frontmatter_content)
+    (frontmatter_marker))
+  (paragraph))
+
+===============================================================================
+Official corpus: reference links
+===============================================================================
+Read the [introduction][intro] first.
+
+[intro]: https://example.com/intro "Introduction"
+
+See [Other Page][] for details.
+
+[Other Page]: /other-page
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (full_reference_link
+      text: (link_text)
+      label: (link_label)))
+  (link_reference_definition
+    label: (link_label)
+    destination: (link_destination)
+    title: (link_title))
+  (paragraph
+    (collapsed_reference_link
+      text: (link_text)))
+  (link_reference_definition
+    label: (link_label)
+    destination: (link_destination)))
+
+===============================================================================
+Official corpus: footnotes
+===============================================================================
+Carve has footnotes.[^fn]
+
+[^fn]: Defined anywhere; resolved by label.
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (footnote_reference
+      (footnote_marker_begin)
+      (reference_label)
+      (footnote_marker_end)))
+  (footnote
+    (footnote_marker_begin)
+    label: (reference_label)
+    (footnote_marker_end)
+    content: (footnote_content
+      (paragraph))))
 
 ===============================================================================
 Math
@@ -149,6 +269,39 @@ Inline $`E = mc^2` and display $$`\int_0^1 x\,dx`.
       begin_marker: (math_marker_begin)
       content: (content)
       end_marker: (math_marker_end))))
+
+===============================================================================
+Official corpus: raw blocks and raw inline
+===============================================================================
+```raw html
+<custom-el>Verbatim HTML</custom-el>
+```
+
+Use `<br>`{=html} to break, and `\foo`{=latex} is dropped.
+
+-------------------------------------------------------------------------------
+
+(document
+  (raw_block
+    (raw_block_marker_begin)
+    info: (raw_block_info
+      marker: (language_marker)
+      language: (language))
+    content: (content)
+    (raw_block_marker_end))
+  (paragraph
+    (raw_inline
+      begin_marker: (raw_inline_marker_begin)
+      content: (content)
+      end_marker: (raw_inline_marker_end)
+      attribute: (raw_inline_attribute
+        language: (language)))
+    (raw_inline
+      begin_marker: (raw_inline_marker_begin)
+      content: (content)
+      end_marker: (raw_inline_marker_end)
+      attribute: (raw_inline_attribute
+        language: (language)))))
 
 ===============================================================================
 Comments

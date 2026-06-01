@@ -494,7 +494,8 @@ module.exports = grammar({
       ),
     raw_block_info: ($) =>
       seq(
-        field("marker", alias("=", $.language_marker)),
+        field("marker", alias("raw", $.language_marker)),
+        $._whitespace1,
         field("language", $.language),
       ),
 
@@ -541,10 +542,18 @@ module.exports = grammar({
         $._link_ref_def_label_end,
         "]",
         ":",
-        optional(seq($._whitespace1, field("destination", $.link_destination))),
+        optional(
+          seq(
+            $._whitespace1,
+            field("destination", $.link_destination),
+            optional(seq($._whitespace1, field("title", $.link_title))),
+          ),
+        ),
         $._newline,
       ),
     link_destination: (_) => /\S+/,
+    link_title: (_) =>
+      choice(seq('"', /[^"\n]*/, '"'), seq("'", /[^'\n]*/, "'")),
 
     // carve-php caption block: `^ caption text` on its own line.
     //
