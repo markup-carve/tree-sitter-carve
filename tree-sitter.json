@@ -1,0 +1,29 @@
+{
+  "grammars": [
+    {
+      "name": "carve",
+      "camelcase": "Carve",
+      "scope": "text.carve",
+      "path": ".",
+      "file-types": ["crv", "carve"],
+      "highlights": ["queries/highlights.scm"],
+      "injection-regex": "carve"
+    }
+  ],
+  "metadata": {
+    "version": "0.1.0",
+    "license": "MIT",
+    "description": "Carve grammar for tree-sitter",
+    "links": {
+      "repository": "https://github.com/markup-carve/tree-sitter-carve"
+    }
+  },
+  "bindings": {
+    "c": true,
+    "go": true,
+    "node": true,
+    "python": true,
+    "rust": true,
+    "swift": true
+  }
+}

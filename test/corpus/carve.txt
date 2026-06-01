@@ -1,0 +1,156 @@
+===============================================================================
+Paragraph
+===============================================================================
+Plain text.
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph))
+
+===============================================================================
+Headings
+===============================================================================
+# One
+
+## Two
+
+-------------------------------------------------------------------------------
+
+(document
+  (section
+    (heading
+      (marker)
+      (content))
+    (section_content
+      (section
+        (heading
+          (marker)
+          (content))))))
+
+===============================================================================
+Carve emphasis
+===============================================================================
+/italic/ *bold* /*bold italic*/
+
+^super^ ,,sub,, ==mark==
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (emphasis
+      begin_marker: (emphasis_begin)
+      content: (content)
+      end_marker: (emphasis_end))
+    (strong
+      begin_marker: (strong_begin)
+      content: (content)
+      end_marker: (strong_end))
+    (bold_italic
+      begin_marker: (bold_italic_begin)
+      content: (content)
+      end_marker: (bold_italic_end)))
+  (paragraph
+    (superscript
+      begin_marker: (superscript_begin)
+      content: (content)
+      end_marker: (superscript_end))
+    (subscript
+      begin_marker: (subscript_begin)
+      content: (content)
+      end_marker: (subscript_end))
+    (highlighted
+      begin_marker: (highlighted_begin)
+      content: (content)
+      end_marker: (highlighted_end))))
+
+===============================================================================
+Inline extension, mention, tag, and emoji
+===============================================================================
+Press :kbd[Ctrl] and ask @alice about #release-1 :rocket:.
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (extension_inline)
+    (mention)
+    (tag)
+    (symbol)))
+
+===============================================================================
+Math
+===============================================================================
+Inline $`E = mc^2` and display $$`\int_0^1 x\,dx`.
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (math
+      math_marker: (math_marker)
+      begin_marker: (math_marker_begin)
+      content: (content)
+      end_marker: (math_marker_end))
+    (math
+      math_marker: (math_marker)
+      begin_marker: (math_marker_begin)
+      content: (content)
+      end_marker: (math_marker_end))))
+
+===============================================================================
+Comments
+===============================================================================
+%% line comment
+
+%%%%
+block comment
+%%%%
+
+Visible text.
+
+-------------------------------------------------------------------------------
+
+(document
+  (comment_line)
+  (fenced_comment_block)
+  (paragraph))
+
+===============================================================================
+Links and spans
+===============================================================================
+[link](https://example.com) [span]{.class #id key=value}
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (inline_link
+      text: (link_text)
+      destination: (inline_link_destination))
+    (span
+      content: (content)
+      attribute: (inline_attribute
+        (args
+          (class)
+          (identifier)
+          (key_value
+            key: (key)
+            value: (value)))))))
+
+===============================================================================
+Fenced code
+===============================================================================
+``` rust
+/not italic/
+```
+
+-------------------------------------------------------------------------------
+
+(document
+  (code_block
+    (code_block_marker_begin)
+    language: (language)
+    code: (code)
+    (code_block_marker_end)))
