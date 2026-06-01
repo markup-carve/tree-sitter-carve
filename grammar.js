@@ -8,6 +8,8 @@ module.exports = grammar({
   conflicts: ($) => [
     [$.emphasis_begin, $._symbol_fallback],
     [$.strong_begin, $._symbol_fallback],
+    [$.underline_begin, $._symbol_fallback],
+    [$.strikethrough_begin, $._symbol_fallback],
     [$.superscript_begin, $._symbol_fallback],
     [$.insert_begin, $._symbol_fallback],
     [$.delete_begin, $._symbol_fallback],
@@ -766,11 +768,15 @@ module.exports = grammar({
               prec.dynamic(2 * ELEMENT_PRECEDENCE, $.bold_italic),
               prec.dynamic(ELEMENT_PRECEDENCE, $.emphasis),
               prec.dynamic(ELEMENT_PRECEDENCE, $.strong),
+              prec.dynamic(ELEMENT_PRECEDENCE, $.underline),
+              prec.dynamic(ELEMENT_PRECEDENCE, $.strikethrough),
               prec.dynamic(ELEMENT_PRECEDENCE, $.highlighted),
               prec.dynamic(ELEMENT_PRECEDENCE, $.superscript),
               prec.dynamic(ELEMENT_PRECEDENCE, $.subscript),
               prec.dynamic(ELEMENT_PRECEDENCE, $.insert),
               prec.dynamic(ELEMENT_PRECEDENCE, $.delete),
+              $.substitution,
+              $.editorial_comment,
               prec.dynamic(ELEMENT_PRECEDENCE, $.footnote_reference),
               prec.dynamic(ELEMENT_PRECEDENCE, $._image),
               prec.dynamic(ELEMENT_PRECEDENCE, $._link),
@@ -865,6 +871,24 @@ module.exports = grammar({
       ),
     strong_begin: ($) => choice("{*", seq("*", $._non_whitespace_check)),
 
+    underline: ($) =>
+      seq(
+        field("begin_marker", $.underline_begin),
+        $._underline_mark_begin,
+        field("content", alias($._inline_without_trailing_space, $.content)),
+        field("end_marker", $.underline_end),
+      ),
+    underline_begin: ($) => seq("_", $._non_whitespace_check),
+
+    strikethrough: ($) =>
+      seq(
+        field("begin_marker", $.strikethrough_begin),
+        $._strikethrough_mark_begin,
+        field("content", alias($._inline_without_trailing_space, $.content)),
+        field("end_marker", $.strikethrough_end),
+      ),
+    strikethrough_begin: ($) => seq("~", $._non_whitespace_check),
+
     // The syntax description isn't clear about if non-bracket can contain surrounding spaces.
     // The live playground suggests that yes they can, although it's a bit inconsistent.
     superscript: ($) =>
@@ -909,6 +933,10 @@ module.exports = grammar({
         field("end_marker", $.delete_end),
       ),
     delete_begin: (_) => "{-",
+
+    substitution: (_) => token(seq("{~", /[^~\r\n]+/, "~>", /[^~\r\n]+/, "~}")),
+
+    editorial_comment: (_) => token(seq("{#", /[^#\r\n]*/, "#}")),
 
     footnote_reference: ($) =>
       seq(
@@ -1104,6 +1132,8 @@ module.exports = grammar({
         // Standalone emphasis and strong markers are required for backtracking
         "/",
         "*",
+        "_",
+        "~",
         // Whitespace sensitive
         seq(
           seq("/", $._non_whitespace_check),
@@ -1112,6 +1142,14 @@ module.exports = grammar({
         seq(
           choice("{*", seq("*", $._non_whitespace_check)),
           choice($._strong_mark_begin, $._in_fallback),
+        ),
+        seq(
+          seq("_", $._non_whitespace_check),
+          choice($._underline_mark_begin, $._in_fallback),
+        ),
+        seq(
+          seq("~", $._non_whitespace_check),
+          choice($._strikethrough_mark_begin, $._in_fallback),
         ),
         // Not sensitive to whitespace
         seq(
@@ -1311,6 +1349,10 @@ module.exports = grammar({
     $.emphasis_end,
     $._strong_mark_begin,
     $.strong_end,
+    $._underline_mark_begin,
+    $.underline_end,
+    $._strikethrough_mark_begin,
+    $.strikethrough_end,
     $._superscript_mark_begin,
     $.superscript_end,
     $._subscript_mark_begin,

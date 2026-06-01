@@ -32,6 +32,7 @@ Headings
 Carve emphasis
 ===============================================================================
 /italic/ *bold* /*bold italic*/
+_underline_ ~strike~
 
 ^super^ ,,sub,, ==mark==
 
@@ -50,7 +51,15 @@ Carve emphasis
     (bold_italic
       begin_marker: (bold_italic_begin)
       content: (content)
-      end_marker: (bold_italic_end)))
+      end_marker: (bold_italic_end))
+    (underline
+      begin_marker: (underline_begin)
+      content: (content)
+      end_marker: (underline_end))
+    (strikethrough
+      begin_marker: (strikethrough_begin)
+      content: (content)
+      end_marker: (strikethrough_end)))
   (paragraph
     (superscript
       begin_marker: (superscript_begin)
@@ -64,6 +73,48 @@ Carve emphasis
       begin_marker: (highlighted_begin)
       content: (content)
       end_marker: (highlighted_end))))
+
+===============================================================================
+Official corpus: lists and tables
+===============================================================================
+- apples
+- oranges
+- pears
+
+|= Fruit |= Price |
+| Apple  | $1     |
+| Pear   | $2     |
+^ Fruit prices
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)))
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)))
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph))))
+  (table
+    (table_row
+      (table_cell)
+      (table_cell))
+    (table_row
+      (table_cell)
+      (table_cell))
+    (table_row
+      (table_cell)
+      (table_cell))
+    (table_caption
+      marker: (marker)
+      content: (content))))
 
 ===============================================================================
 Inline extension, mention, tag, and emoji
@@ -116,6 +167,26 @@ Visible text.
   (comment_line)
   (fenced_comment_block)
   (paragraph))
+
+===============================================================================
+Official corpus: editorial markup
+===============================================================================
+a {+ins+} {-del-} {~old~>new~} b{# note #}
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (insert
+      begin_marker: (insert_begin)
+      content: (content)
+      end_marker: (insert_end))
+    (delete
+      begin_marker: (delete_begin)
+      content: (content)
+      end_marker: (delete_end))
+    (substitution)
+    (editorial_comment)))
 
 ===============================================================================
 Links and spans

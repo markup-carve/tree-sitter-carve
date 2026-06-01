@@ -70,6 +70,12 @@
 (bold_italic
   (content) @attribute.inner) @attribute.outer
 
+(underline
+  (content) @attribute.inner) @attribute.outer
+
+(strikethrough
+  (content) @attribute.inner) @attribute.outer
+
 (highlighted
   (content) @attribute.inner) @attribute.outer
 

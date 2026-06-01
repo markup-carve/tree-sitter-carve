@@ -153,6 +153,10 @@
 (bold_italic) @markup.strong
 (bold_italic) @markup.italic
 
+(underline) @markup.underline
+
+(strikethrough) @markup.strikethrough
+
 (symbol) @string.special.symbol
 
 (extension_inline) @function.macro
@@ -164,6 +168,9 @@
 (insert) @markup.underline
 
 (delete) @markup.strikethrough
+
+(substitution) @markup.strikethrough
+(editorial_comment) @comment
 
 [
   (highlighted)
@@ -178,6 +185,10 @@
   (bold_italic_end)
   (strong_begin)
   (strong_end)
+  (underline_begin)
+  (underline_end)
+  (strikethrough_begin)
+  (strikethrough_end)
   (superscript_begin)
   (superscript_end)
   (subscript_begin)

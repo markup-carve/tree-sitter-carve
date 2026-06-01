@@ -99,6 +99,10 @@ typedef enum {
   EMPHASIS_END,
   STRONG_MARK_BEGIN,
   STRONG_END,
+  UNDERLINE_MARK_BEGIN,
+  UNDERLINE_END,
+  STRIKETHROUGH_MARK_BEGIN,
+  STRIKETHROUGH_END,
   SUPERSCRIPT_MARK_BEGIN,
   SUPERSCRIPT_END,
   SUBSCRIPT_MARK_BEGIN,
@@ -178,6 +182,8 @@ typedef enum {
   VERBATIM,
   EMPHASIS,
   STRONG,
+  UNDERLINE,
+  STRIKETHROUGH,
   SUPERSCRIPT,
   SUBSCRIPT,
   HIGHLIGHTED,
@@ -2562,6 +2568,8 @@ static SpanType inline_span_type(InlineType type) {
   switch (type) {
   case EMPHASIS:
   case STRONG:
+  case UNDERLINE:
+  case STRIKETHROUGH:
   case SUBSCRIPT:
   case HIGHLIGHTED:
     return SpanBracketedAndSingleNoWhitespace;
@@ -2587,6 +2595,10 @@ static char inline_begin_token(InlineType type) {
     return EMPHASIS_MARK_BEGIN;
   case STRONG:
     return STRONG_MARK_BEGIN;
+  case UNDERLINE:
+    return UNDERLINE_MARK_BEGIN;
+  case STRIKETHROUGH:
+    return STRIKETHROUGH_MARK_BEGIN;
   case SUPERSCRIPT:
     return SUPERSCRIPT_MARK_BEGIN;
   case SUBSCRIPT:
@@ -2616,6 +2628,10 @@ static char inline_end_token(InlineType type) {
     return EMPHASIS_END;
   case STRONG:
     return STRONG_END;
+  case UNDERLINE:
+    return UNDERLINE_END;
+  case STRIKETHROUGH:
+    return STRIKETHROUGH_END;
   case SUPERSCRIPT:
     return SUPERSCRIPT_END;
   case SUBSCRIPT:
@@ -2643,6 +2659,10 @@ static char inline_marker(InlineType type) {
     return '/';
   case STRONG:
     return '*';
+  case UNDERLINE:
+    return '_';
+  case STRIKETHROUGH:
+    return '~';
   case SUPERSCRIPT:
     return '^';
   case SUBSCRIPT:
@@ -3139,6 +3159,12 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
   if (parse_span(s, lexer, valid_symbols, STRONG)) {
     return true;
   }
+  if (parse_span(s, lexer, valid_symbols, UNDERLINE)) {
+    return true;
+  }
+  if (parse_span(s, lexer, valid_symbols, STRIKETHROUGH)) {
+    return true;
+  }
   if (parse_span(s, lexer, valid_symbols, SUPERSCRIPT)) {
     return true;
   }
@@ -3420,6 +3446,14 @@ static char *token_type_s(TokenType t) {
     return "STRONG_MARK_BEGIN";
   case STRONG_END:
     return "STRONG_END";
+  case UNDERLINE_MARK_BEGIN:
+    return "UNDERLINE_MARK_BEGIN";
+  case UNDERLINE_END:
+    return "UNDERLINE_END";
+  case STRIKETHROUGH_MARK_BEGIN:
+    return "STRIKETHROUGH_MARK_BEGIN";
+  case STRIKETHROUGH_END:
+    return "STRIKETHROUGH_END";
   case SUPERSCRIPT_MARK_BEGIN:
     return "SUPERSCRIPT_MARK_BEGIN";
   case SUPERSCRIPT_END:
@@ -3537,6 +3571,10 @@ static char *inline_type_s(InlineType t) {
     return "EMPHASIS";
   case STRONG:
     return "STRONG";
+  case UNDERLINE:
+    return "UNDERLINE";
+  case STRIKETHROUGH:
+    return "STRIKETHROUGH";
   case SUPERSCRIPT:
     return "SUPERSCRIPT";
   case SUBSCRIPT:

@@ -379,6 +379,10 @@
           "named": true
         },
         {
+          "type": "editorial_comment",
+          "named": true
+        },
+        {
           "type": "ellipsis",
           "named": true
         },
@@ -495,11 +499,19 @@
           "named": true
         },
         {
+          "type": "strikethrough",
+          "named": true
+        },
+        {
           "type": "strong",
           "named": true
         },
         {
           "type": "subscript",
+          "named": true
+        },
+        {
+          "type": "substitution",
           "named": true
         },
         {
@@ -524,6 +536,10 @@
         },
         {
           "type": "todo",
+          "named": true
+        },
+        {
+          "type": "underline",
           "named": true
         },
         {
@@ -1180,6 +1196,10 @@
           "named": true
         },
         {
+          "type": "editorial_comment",
+          "named": true
+        },
+        {
           "type": "ellipsis",
           "named": true
         },
@@ -1264,11 +1284,19 @@
           "named": true
         },
         {
+          "type": "strikethrough",
+          "named": true
+        },
+        {
           "type": "strong",
           "named": true
         },
         {
           "type": "subscript",
+          "named": true
+        },
+        {
+          "type": "substitution",
           "named": true
         },
         {
@@ -1285,6 +1313,10 @@
         },
         {
           "type": "todo",
+          "named": true
+        },
+        {
+          "type": "underline",
           "named": true
         },
         {
@@ -1498,6 +1530,10 @@
           "named": true
         },
         {
+          "type": "editorial_comment",
+          "named": true
+        },
+        {
           "type": "ellipsis",
           "named": true
         },
@@ -1582,11 +1618,19 @@
           "named": true
         },
         {
+          "type": "strikethrough",
+          "named": true
+        },
+        {
           "type": "strong",
           "named": true
         },
         {
           "type": "subscript",
+          "named": true
+        },
+        {
+          "type": "substitution",
           "named": true
         },
         {
@@ -1603,6 +1647,10 @@
         },
         {
           "type": "todo",
+          "named": true
+        },
+        {
+          "type": "underline",
           "named": true
         },
         {
@@ -1682,6 +1730,10 @@
           "named": true
         },
         {
+          "type": "editorial_comment",
+          "named": true
+        },
+        {
           "type": "ellipsis",
           "named": true
         },
@@ -1766,11 +1818,19 @@
           "named": true
         },
         {
+          "type": "strikethrough",
+          "named": true
+        },
+        {
           "type": "strong",
           "named": true
         },
         {
           "type": "subscript",
+          "named": true
+        },
+        {
+          "type": "substitution",
           "named": true
         },
         {
@@ -1787,6 +1847,10 @@
         },
         {
           "type": "todo",
+          "named": true
+        },
+        {
+          "type": "underline",
           "named": true
         },
         {
@@ -2145,6 +2209,10 @@
           "named": true
         },
         {
+          "type": "editorial_comment",
+          "named": true
+        },
+        {
           "type": "ellipsis",
           "named": true
         },
@@ -2229,11 +2297,19 @@
           "named": true
         },
         {
+          "type": "strikethrough",
+          "named": true
+        },
+        {
           "type": "strong",
           "named": true
         },
         {
           "type": "subscript",
+          "named": true
+        },
+        {
+          "type": "substitution",
           "named": true
         },
         {
@@ -2250,6 +2326,10 @@
         },
         {
           "type": "todo",
+          "named": true
+        },
+        {
+          "type": "underline",
           "named": true
         },
         {
@@ -2524,6 +2604,47 @@
     }
   },
   {
+    "type": "strikethrough",
+    "named": true,
+    "fields": {
+      "begin_marker": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "strikethrough_begin",
+            "named": true
+          }
+        ]
+      },
+      "content": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "content",
+            "named": true
+          }
+        ]
+      },
+      "end_marker": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "strikethrough_end",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "strikethrough_begin",
+    "named": true,
+    "fields": {}
+  },
+  {
     "type": "strong",
     "named": true,
     "fields": {
@@ -2747,6 +2868,10 @@
           "named": true
         },
         {
+          "type": "editorial_comment",
+          "named": true
+        },
+        {
           "type": "ellipsis",
           "named": true
         },
@@ -2831,11 +2956,19 @@
           "named": true
         },
         {
+          "type": "strikethrough",
+          "named": true
+        },
+        {
           "type": "strong",
           "named": true
         },
         {
           "type": "subscript",
+          "named": true
+        },
+        {
+          "type": "substitution",
           "named": true
         },
         {
@@ -2852,6 +2985,10 @@
         },
         {
           "type": "todo",
+          "named": true
+        },
+        {
+          "type": "underline",
           "named": true
         },
         {
@@ -2954,6 +3091,10 @@
           "named": true
         },
         {
+          "type": "editorial_comment",
+          "named": true
+        },
+        {
           "type": "ellipsis",
           "named": true
         },
@@ -3038,11 +3179,19 @@
           "named": true
         },
         {
+          "type": "strikethrough",
+          "named": true
+        },
+        {
           "type": "strong",
           "named": true
         },
         {
           "type": "subscript",
+          "named": true
+        },
+        {
+          "type": "substitution",
           "named": true
         },
         {
@@ -3059,6 +3208,10 @@
         },
         {
           "type": "todo",
+          "named": true
+        },
+        {
+          "type": "underline",
           "named": true
         },
         {
@@ -3080,6 +3233,47 @@
   },
   {
     "type": "unchecked",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "underline",
+    "named": true,
+    "fields": {
+      "begin_marker": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "underline_begin",
+            "named": true
+          }
+        ]
+      },
+      "content": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "content",
+            "named": true
+          }
+        ]
+      },
+      "end_marker": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "underline_end",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "underline_begin",
     "named": true,
     "fields": {}
   },
@@ -3301,6 +3495,10 @@
     "named": true
   },
   {
+    "type": "editorial_comment",
+    "named": true
+  },
+  {
     "type": "ellipsis",
     "named": true
   },
@@ -3481,11 +3679,19 @@
     "named": true
   },
   {
+    "type": "strikethrough_end",
+    "named": true
+  },
+  {
     "type": "strong_end",
     "named": true
   },
   {
     "type": "subscript_end",
+    "named": true
+  },
+  {
+    "type": "substitution",
     "named": true
   },
   {
@@ -3502,6 +3708,10 @@
   },
   {
     "type": "tag",
+    "named": true
+  },
+  {
+    "type": "underline_end",
     "named": true
   },
   {
@@ -3546,6 +3756,10 @@
   },
   {
     "type": "}",
+    "named": false
+  },
+  {
+    "type": "~",
     "named": false
   }
 ]
