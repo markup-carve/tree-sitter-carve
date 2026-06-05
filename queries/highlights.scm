@@ -81,6 +81,12 @@
 
 (table_caption) @markup.italic
 
+(caption
+  (caption_marker) @punctuation.special)
+
+(caption
+  (caption_content) @markup.italic)
+
 [
   (list_marker_dash)
   (list_marker_plus)
@@ -220,6 +226,7 @@
 
 [
   (comment_line)
+  (fenced_comment_block)
   (comment)
   (inline_comment)
   (trailing_comment)
@@ -258,6 +265,8 @@
 
 (key_value
   (value) @string)
+
+(boolean_attribute) @property
 
 (link_text
   [
@@ -348,6 +357,12 @@
   (link_destination)
   (link_reference_definition)
 ] @markup.link.url
+
+(abbreviation_definition
+  (abbreviation_marker) @punctuation.special)
+
+(abbreviation_definition
+  (abbreviation_expansion) @string)
 
 (footnote
   (reference_label) @markup.link.label)

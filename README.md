@@ -10,7 +10,7 @@ changes the public syntax to Carve:
 - `^superscript^`, `,,subscript,,`, and `==highlight==`
 - `$` + backtick math spans, and `$$` + backtick display math spans
 - `:name[content]` inline extensions, `@mentions`, `#tags`, and `:emoji:`
-- `%%` line comments and `%%%` fenced comments
+- `%%` line comments, trailing inline `%%` comments, and `%%%` fenced comments
 - Djot-style blocks retained where Carve keeps them: headings, lists, tables,
   fenced code, links, images, attributes, footnotes, captions, and divs
 
