@@ -539,6 +539,10 @@
           "named": true
         },
         {
+          "type": "trailing_comment",
+          "named": true
+        },
+        {
           "type": "underline",
           "named": true
         },
@@ -1316,6 +1320,10 @@
           "named": true
         },
         {
+          "type": "trailing_comment",
+          "named": true
+        },
+        {
           "type": "underline",
           "named": true
         },
@@ -1650,6 +1658,10 @@
           "named": true
         },
         {
+          "type": "trailing_comment",
+          "named": true
+        },
+        {
           "type": "underline",
           "named": true
         },
@@ -1857,6 +1869,10 @@
         },
         {
           "type": "todo",
+          "named": true
+        },
+        {
+          "type": "trailing_comment",
           "named": true
         },
         {
@@ -2341,6 +2357,10 @@
         },
         {
           "type": "todo",
+          "named": true
+        },
+        {
+          "type": "trailing_comment",
           "named": true
         },
         {
@@ -3003,6 +3023,10 @@
           "named": true
         },
         {
+          "type": "trailing_comment",
+          "named": true
+        },
+        {
           "type": "underline",
           "named": true
         },
@@ -3223,6 +3247,10 @@
         },
         {
           "type": "todo",
+          "named": true
+        },
+        {
+          "type": "trailing_comment",
           "named": true
         },
         {
@@ -3727,6 +3755,10 @@
   },
   {
     "type": "tag",
+    "named": true
+  },
+  {
+    "type": "trailing_comment",
     "named": true
   },
   {
