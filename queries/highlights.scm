@@ -222,6 +222,7 @@
   (comment_line)
   (comment)
   (inline_comment)
+  (trailing_comment)
 ] @comment
 
 (span

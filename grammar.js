@@ -652,17 +652,11 @@ module.exports = grammar({
     // the whole line uniformly.
     abbreviation_definition: ($) =>
       seq(
-        alias(
-          token(seq("*[", /[^\]\r\n]+/, "]:")),
-          $.abbreviation_marker,
-        ),
+        alias(token(seq("*[", /[^\]\r\n]+/, "]:")), $.abbreviation_marker),
         optional(
           seq(
             $._whitespace1,
-            field(
-              "expansion",
-              alias(/[^\r\n]+/, $.abbreviation_expansion),
-            ),
+            field("expansion", alias(/[^\r\n]+/, $.abbreviation_expansion)),
           ),
         ),
         $._newline,
@@ -798,6 +792,7 @@ module.exports = grammar({
               $.raw_inline,
               $.symbol,
               $.inline_comment,
+              $.trailing_comment,
               $._todo_highlights,
               // Text and the symbol fallback matches everything not matched elsewhere.
               $._symbol_fallback,
@@ -835,8 +830,7 @@ module.exports = grammar({
 
     autolink: (_) => seq("<", /[^>\s]+/, ">"),
 
-    mention: (_) =>
-      token(seq("@", /[a-zA-Z0-9][a-zA-Z0-9_-]*/)),
+    mention: (_) => token(seq("@", /[a-zA-Z0-9][a-zA-Z0-9_-]*/)),
 
     tag: (_) => token(seq("#", /[a-zA-Z0-9][a-zA-Z0-9_-]*/)),
 
@@ -1092,6 +1086,11 @@ module.exports = grammar({
         $._comment,
         alias($._curly_bracket_span_end, "}"),
       ),
+
+    // Trailing inline comment: `%% text to end of line`.
+    // A `%%` marker that comments out the rest of the physical line.
+    // Does NOT consume the newline so the line's structure and soft-break are preserved.
+    trailing_comment: (_) => token(seq("%%", /[^\r\n]*/)),
 
     raw_inline: ($) =>
       seq(

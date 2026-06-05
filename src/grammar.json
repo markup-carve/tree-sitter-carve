@@ -3473,6 +3473,10 @@
                   },
                   {
                     "type": "SYMBOL",
+                    "name": "trailing_comment"
+                  },
+                  {
+                    "type": "SYMBOL",
                     "name": "_todo_highlights"
                   },
                   {
@@ -4808,6 +4812,22 @@
           "value": "}"
         }
       ]
+    },
+    "trailing_comment": {
+      "type": "TOKEN",
+      "content": {
+        "type": "SEQ",
+        "members": [
+          {
+            "type": "STRING",
+            "value": "%%"
+          },
+          {
+            "type": "PATTERN",
+            "value": "[^\\r\\n]*"
+          }
+        ]
+      }
     },
     "raw_inline": {
       "type": "SEQ",
