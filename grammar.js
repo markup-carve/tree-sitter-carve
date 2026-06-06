@@ -1087,10 +1087,13 @@ module.exports = grammar({
         alias($._curly_bracket_span_end, "}"),
       ),
 
-    // Trailing inline comment: `%% text to end of line`.
-    // A `%%` marker that comments out the rest of the physical line.
-    // Does NOT consume the newline so the line's structure and soft-break are preserved.
-    trailing_comment: (_) => token(seq("%%", /[^\r\n]*/)),
+    // Trailing inline comment: `text %% to end of line`.
+    // The `%%` marker comments out the rest of the physical line; it must be
+    // preceded by a space or tab (folded into the token, since tree-sitter has
+    // no lookbehind) so `a%%b` / `50%% off` stay literal, matching the runtime
+    // parsers. Does NOT consume the newline, so the line's structure and
+    // soft-break are preserved.
+    trailing_comment: (_) => token(seq(/[ \t]/, "%%", /[^\r\n]*/)),
 
     raw_inline: ($) =>
       seq(
