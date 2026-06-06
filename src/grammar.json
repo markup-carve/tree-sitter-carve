@@ -4819,6 +4819,10 @@
         "type": "SEQ",
         "members": [
           {
+            "type": "PATTERN",
+            "value": "[ \\t]"
+          },
+          {
             "type": "STRING",
             "value": "%%"
           },

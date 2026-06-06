@@ -333,8 +333,7 @@ a%%b
 (document
   (paragraph
     (trailing_comment))
-  (paragraph
-    (trailing_comment)))
+  (paragraph))
 
 ===============================================================================
 Official corpus: editorial markup
