@@ -98,7 +98,6 @@ module.exports = grammar({
       prec.left(
         choice(
           $._list_dash,
-          $._list_plus,
           $._list_star,
           $._list_task,
           $._list_definition,
@@ -125,15 +124,6 @@ module.exports = grammar({
       seq(
         optional($._block_quote_prefix),
         field("marker", $.list_marker_dash),
-        field("content", $.list_item_content),
-      ),
-
-    _list_plus: ($) =>
-      seq(repeat1(alias($._list_item_plus, $.list_item)), $._block_close),
-    _list_item_plus: ($) =>
-      seq(
-        optional($._block_quote_prefix),
-        field("marker", $.list_marker_plus),
         field("content", $.list_item_content),
       ),
 
@@ -1254,9 +1244,9 @@ module.exports = grammar({
     // Parsing a list marker opens or closes lists depending on the marker type.
     $.list_marker_dash,
     $.list_marker_star,
-    $.list_marker_plus,
-    // `list_marker_task_begin` only matches opening `- `, `+ `, or `* `, but
-    // only if followed by a valid task box.
+    // `list_marker_task_begin` only matches opening `- ` or `* `, but
+    // only if followed by a valid task box. `+` is never a bullet in Carve,
+    // so it cannot open a task list either.
     // This is done to allow the task box markers like `x` to have their own token.
     $._list_marker_task_begin,
     $.list_marker_definition,

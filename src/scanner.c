@@ -42,7 +42,6 @@ typedef enum {
   CODE_BLOCK_END,
   LIST_MARKER_DASH,
   LIST_MARKER_STAR,
-  LIST_MARKER_PLUS,
   LIST_MARKER_TASK_BEGIN,
   LIST_MARKER_DEFINITION,
   LIST_MARKER_DECIMAL_PERIOD,
@@ -141,7 +140,6 @@ typedef enum {
   TABLE_CAPTION,
   LIST_DASH,
   LIST_STAR,
-  LIST_PLUS,
   LIST_TASK,
   LIST_DEFINITION,
   LIST_DECIMAL_PERIOD,
@@ -265,7 +263,6 @@ static bool is_list(BlockType type) {
   switch (type) {
   case LIST_DASH:
   case LIST_STAR:
-  case LIST_PLUS:
   case LIST_TASK:
   case LIST_DEFINITION:
   case LIST_DECIMAL_PERIOD:
@@ -295,8 +292,6 @@ static BlockType list_marker_to_block(TokenType type) {
     return LIST_DASH;
   case LIST_MARKER_STAR:
     return LIST_STAR;
-  case LIST_MARKER_PLUS:
-    return LIST_PLUS;
   case LIST_MARKER_TASK_BEGIN:
     return LIST_TASK;
   case LIST_MARKER_DEFINITION:
@@ -815,7 +810,7 @@ static bool parse_backtick(Scanner *s, TSLexer *lexer,
   return false;
 }
 
-// Scan a '+ ' or similar.
+// Scan a '- ' or similar.
 static bool scan_bullet_list_marker(Scanner *s, TSLexer *lexer, char marker) {
   if (lexer->lookahead != marker) {
     return false;
@@ -1217,8 +1212,9 @@ static bool scan_task_list_marker(Scanner *s, TSLexer *lexer) {
 }
 
 static TokenType scan_unordered_list_marker_token(Scanner *s, TSLexer *lexer) {
-  // A task marker token can be started with any of `-`, `*`, or `+` and
-  // still be of the same type.
+  // A task marker token can be started with either `-` or `*` and still be of
+  // the same type. `+` is never a bullet in Carve, so it cannot open a task
+  // list.
   if (scan_bullet_list_marker(s, lexer, '-')) {
     if (scan_task_list_marker(s, lexer)) {
       return LIST_MARKER_TASK_BEGIN;
@@ -1231,13 +1227,6 @@ static TokenType scan_unordered_list_marker_token(Scanner *s, TSLexer *lexer) {
       return LIST_MARKER_TASK_BEGIN;
     } else {
       return LIST_MARKER_STAR;
-    }
-  }
-  if (scan_bullet_list_marker(s, lexer, '+')) {
-    if (scan_task_list_marker(s, lexer)) {
-      return LIST_MARKER_TASK_BEGIN;
-    } else {
-      return LIST_MARKER_PLUS;
     }
   }
   if (scan_bullet_list_marker(s, lexer, ':')) {
@@ -1578,35 +1567,6 @@ static bool parse_star(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   return parse_list_marker_or_thematic_break(s, lexer, valid_symbols, '*',
                                              LIST_MARKER_STAR, LIST_STAR,
                                              THEMATIC_BREAK_STAR);
-}
-
-static bool parse_plus(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
-  if (!valid_symbols[LIST_MARKER_PLUS] &&
-      !valid_symbols[LIST_MARKER_TASK_BEGIN]) {
-    return false;
-  }
-  if (!scan_bullet_list_marker(s, lexer, '+')) {
-    return false;
-  }
-
-  // We should only consume '+ '.
-  lexer->mark_end(lexer);
-
-  if (valid_symbols[LIST_MARKER_TASK_BEGIN]) {
-    if (scan_task_list_marker(s, lexer)) {
-      ensure_list_open(s, LIST_TASK, s->indent + 1);
-      lexer->result_symbol = LIST_MARKER_TASK_BEGIN;
-      return true;
-    }
-  }
-
-  if (valid_symbols[LIST_MARKER_PLUS]) {
-    ensure_list_open(s, LIST_PLUS, s->indent + 1);
-    lexer->result_symbol = LIST_MARKER_PLUS;
-    return true;
-  }
-
-  return false;
 }
 
 static bool parse_list_item_end(Scanner *s, TSLexer *lexer,
@@ -3128,11 +3088,6 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
       return true;
     }
     break;
-  case '+':
-    if (parse_plus(s, lexer, valid_symbols)) {
-      return true;
-    }
-    break;
   case '|':
     if (parse_table_begin(s, lexer, valid_symbols)) {
       return true;
@@ -3348,8 +3303,6 @@ static char *token_type_s(TokenType t) {
     return "LIST_MARKER_DASH";
   case LIST_MARKER_STAR:
     return "LIST_MARKER_STAR";
-  case LIST_MARKER_PLUS:
-    return "LIST_MARKER_PLUS";
   case LIST_MARKER_TASK_BEGIN:
     return "LIST_MARKER_TASK_BEGIN";
   case LIST_MARKER_DEFINITION:
@@ -3522,8 +3475,6 @@ static char *block_type_s(BlockType t) {
     return "LIST_DASH";
   case LIST_STAR:
     return "LIST_STAR";
-  case LIST_PLUS:
-    return "LIST_PLUS";
   case LIST_TASK:
     return "LIST_TASK";
   case LIST_DEFINITION:

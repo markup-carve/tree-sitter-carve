@@ -89,7 +89,6 @@
 
 [
   (list_marker_dash)
-  (list_marker_plus)
   (list_marker_star)
   (list_marker_definition)
   (list_marker_decimal_period)

@@ -1979,10 +1979,6 @@
             "named": true
           },
           {
-            "type": "list_marker_plus",
-            "named": true
-          },
-          {
             "type": "list_marker_star",
             "named": true
           },
@@ -3651,10 +3647,6 @@
   },
   {
     "type": "list_marker_lower_roman_period",
-    "named": true
-  },
-  {
-    "type": "list_marker_plus",
     "named": true
   },
   {
