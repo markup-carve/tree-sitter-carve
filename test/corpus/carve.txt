@@ -34,7 +34,7 @@ Carve emphasis
 /italic/ *bold* /*bold italic*/
 _underline_ ~strike~
 
-^super^ ,,sub,, ==mark==
+^super^ ,sub, =mark=
 
 -------------------------------------------------------------------------------
 
@@ -392,3 +392,26 @@ Fenced code
     language: (language)
     code: (code)
     (code_block_marker_end)))
+
+===============================================================================
+Forced brace forms for highlight, subscript, superscript
+===============================================================================
+
+{=hi=} {,lo,} {^up^}
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (highlighted
+      begin_marker: (highlighted_begin)
+      content: (content)
+      end_marker: (highlighted_end))
+    (subscript
+      begin_marker: (subscript_begin)
+      content: (content)
+      end_marker: (subscript_end))
+    (superscript
+      begin_marker: (superscript_begin)
+      content: (content)
+      end_marker: (superscript_end))))

@@ -30,6 +30,7 @@ typedef enum {
   NEWLINE,
   NEWLINE_INLINE,
   NON_WHITESPACE_CHECK,
+  HIGHLIGHTED_OPEN_CHECK,
   HARD_LINE_BREAK,
 
   FRONTMATTER_MARKER,
@@ -2660,11 +2661,6 @@ static bool scan_single_span_end(Scanner *s, TSLexer *lexer, char marker) {
     return false;
   }
   advance(s, lexer);
-  if ((marker == ',' || marker == '=') && lexer->lookahead == marker) {
-    advance(s, lexer);
-  } else if (marker == ',' || marker == '=') {
-    return false;
-  }
   return true;
 }
 
@@ -2694,11 +2690,6 @@ static bool scan_span_end(Scanner *s, TSLexer *lexer, char marker,
   // Match `_` or `_}`
   if (lexer->lookahead == marker) {
     advance(s, lexer);
-    if ((marker == ',' || marker == '=') && lexer->lookahead == marker) {
-      advance(s, lexer);
-    } else if (marker == ',' || marker == '=') {
-      return false;
-    }
     if (lexer->lookahead == '}') {
       advance(s, lexer);
     }
@@ -2950,6 +2941,27 @@ static bool check_non_whitespace(Scanner *s, TSLexer *lexer) {
   }
 }
 
+// A bare `=` opens a highlight only when the next char can start content.
+// It must NOT open on whitespace, nor on `=> =~ =< ==`: in Carve those are
+// smart-typography ligatures (`=>` is `⇒`) or table alignment / header markers
+// (`|=>`, `|=~`, `|=<`, `|=`), not a highlight. Matches carve-js.
+static bool check_highlighted_open(Scanner *s, TSLexer *lexer) {
+  switch (lexer->lookahead) {
+  case ' ':
+  case '\t':
+  case '\r':
+  case '\n':
+  case '>':
+  case '~':
+  case '<':
+  case '=':
+    return false;
+  default:
+    lexer->result_symbol = HIGHLIGHTED_OPEN_CHECK;
+    return true;
+  }
+}
+
 bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
                                             const bool *valid_symbols) {
   Scanner *s = (Scanner *)payload;
@@ -3100,6 +3112,11 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
     break;
   default:
     break;
+  }
+
+  if (valid_symbols[HIGHLIGHTED_OPEN_CHECK] &&
+      check_highlighted_open(s, lexer)) {
+    return true;
   }
 
   if (valid_symbols[NON_WHITESPACE_CHECK] && check_non_whitespace(s, lexer)) {
@@ -3283,6 +3300,8 @@ static char *token_type_s(TokenType t) {
     return "NEWLINE_INLINE";
   case NON_WHITESPACE_CHECK:
     return "NON_WHITESPACE_CHECK";
+  case HIGHLIGHTED_OPEN_CHECK:
+    return "HIGHLIGHTED_OPEN_CHECK";
 
   case FRONTMATTER_MARKER:
     return "FRONTMATTER_MARKER";

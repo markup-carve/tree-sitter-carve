@@ -1,4 +1,5 @@
 {
+  "$schema": "https://tree-sitter.github.io/tree-sitter/assets/schemas/grammar.schema.json",
   "name": "carve",
   "rules": {
     "document": {
@@ -3998,15 +3999,24 @@
       ]
     },
     "subscript_begin": {
-      "type": "SEQ",
+      "type": "CHOICE",
       "members": [
         {
           "type": "STRING",
-          "value": ",,"
+          "value": "{,"
         },
         {
-          "type": "SYMBOL",
-          "name": "_non_whitespace_check"
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "STRING",
+              "value": ","
+            },
+            {
+              "type": "SYMBOL",
+              "name": "_non_whitespace_check"
+            }
+          ]
         }
       ]
     },
@@ -4049,15 +4059,24 @@
       ]
     },
     "highlighted_begin": {
-      "type": "SEQ",
+      "type": "CHOICE",
       "members": [
         {
           "type": "STRING",
-          "value": "=="
+          "value": "{="
         },
         {
-          "type": "SYMBOL",
-          "name": "_non_whitespace_check"
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "STRING",
+              "value": "="
+            },
+            {
+              "type": "SYMBOL",
+              "name": "_highlighted_open_check"
+            }
+          ]
         }
       ]
     },
@@ -5032,6 +5051,14 @@
           "value": "~"
         },
         {
+          "type": "STRING",
+          "value": ","
+        },
+        {
+          "type": "STRING",
+          "value": "="
+        },
+        {
           "type": "SEQ",
           "members": [
             {
@@ -5199,8 +5226,26 @@
           "type": "SEQ",
           "members": [
             {
-              "type": "STRING",
-              "value": ",,"
+              "type": "CHOICE",
+              "members": [
+                {
+                  "type": "STRING",
+                  "value": "{,"
+                },
+                {
+                  "type": "SEQ",
+                  "members": [
+                    {
+                      "type": "STRING",
+                      "value": ","
+                    },
+                    {
+                      "type": "SYMBOL",
+                      "name": "_non_whitespace_check"
+                    }
+                  ]
+                }
+              ]
             },
             {
               "type": "CHOICE",
@@ -5221,8 +5266,26 @@
           "type": "SEQ",
           "members": [
             {
-              "type": "STRING",
-              "value": "=="
+              "type": "CHOICE",
+              "members": [
+                {
+                  "type": "STRING",
+                  "value": "{="
+                },
+                {
+                  "type": "SEQ",
+                  "members": [
+                    {
+                      "type": "STRING",
+                      "value": "="
+                    },
+                    {
+                      "type": "SYMBOL",
+                      "name": "_highlighted_open_check"
+                    }
+                  ]
+                }
+              ]
             },
             {
               "type": "CHOICE",
@@ -5460,6 +5523,14 @@
       "_symbol_fallback"
     ],
     [
+      "subscript_begin",
+      "_symbol_fallback"
+    ],
+    [
+      "highlighted_begin",
+      "_symbol_fallback"
+    ],
+    [
       "insert_begin",
       "_symbol_fallback"
     ],
@@ -5522,6 +5593,10 @@
     {
       "type": "SYMBOL",
       "name": "_non_whitespace_check"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_highlighted_open_check"
     },
     {
       "type": "SYMBOL",
@@ -5845,5 +5920,6 @@
     }
   ],
   "inline": [],
-  "supertypes": []
+  "supertypes": [],
+  "reserved": {}
 }

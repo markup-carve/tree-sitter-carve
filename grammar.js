@@ -11,6 +11,8 @@ module.exports = grammar({
     [$.underline_begin, $._symbol_fallback],
     [$.strikethrough_begin, $._symbol_fallback],
     [$.superscript_begin, $._symbol_fallback],
+    [$.subscript_begin, $._symbol_fallback],
+    [$.highlighted_begin, $._symbol_fallback],
     [$.insert_begin, $._symbol_fallback],
     [$.delete_begin, $._symbol_fallback],
     [$._bracketed_text_begin, $._symbol_fallback],
@@ -900,7 +902,7 @@ module.exports = grammar({
         field("content", alias($._inline, $.content)),
         field("end_marker", $.subscript_end),
       ),
-    subscript_begin: ($) => seq(",,", $._non_whitespace_check),
+    subscript_begin: ($) => choice("{,", seq(",", $._non_whitespace_check)),
 
     highlighted: ($) =>
       seq(
@@ -909,7 +911,7 @@ module.exports = grammar({
         field("content", alias($._inline, $.content)),
         field("end_marker", $.highlighted_end),
       ),
-    highlighted_begin: ($) => seq("==", $._non_whitespace_check),
+    highlighted_begin: ($) => choice("{=", seq("=", $._highlighted_open_check)),
     insert: ($) =>
       seq(
         field("begin_marker", $.insert_begin),
@@ -1135,6 +1137,11 @@ module.exports = grammar({
         "*",
         "_",
         "~",
+        // Single-char highlight/subscript markers also need a standalone
+        // fallback so a lone `=` / `,` that does not open a span (e.g. the `=`
+        // in a `|=` table header cell, or a comma in prose) becomes literal.
+        ",",
+        "=",
         // Whitespace sensitive
         seq(
           seq("/", $._non_whitespace_check),
@@ -1157,8 +1164,14 @@ module.exports = grammar({
           choice("{^", "^"),
           choice($._superscript_mark_begin, $._in_fallback),
         ),
-        seq(",,", choice($._subscript_mark_begin, $._in_fallback)),
-        seq("==", choice($._highlighted_mark_begin, $._in_fallback)),
+        seq(
+          choice("{,", seq(",", $._non_whitespace_check)),
+          choice($._subscript_mark_begin, $._in_fallback),
+        ),
+        seq(
+          choice("{=", seq("=", $._highlighted_open_check)),
+          choice($._highlighted_mark_begin, $._in_fallback),
+        ),
         seq("{+", choice($._insert_mark_begin, $._in_fallback)),
         seq("{-", choice($._delete_mark_begin, $._in_fallback)),
 
@@ -1216,6 +1229,7 @@ module.exports = grammar({
     $._newline_inline,
     // A zero-width whitespace check token.
     $._non_whitespace_check,
+    $._highlighted_open_check,
     // A hard line break that doesn't consume a newline.
     $.hard_line_break,
 
