@@ -461,15 +461,38 @@ module.exports = grammar({
     _div_marker_begin: ($) =>
       seq(
         alias($._div_begin, $.div_marker_begin),
-        optional(seq($._whitespace1, field("class", $.class_name))),
+        optional(
+          choice(
+            // Line block: `::: |` (whitespace required before the bar).
+            seq(
+              $._whitespace1,
+              field("line_block_marker", alias("|", $.line_block_marker)),
+            ),
+            // Named div / admonition, with an optional quoted custom title.
+            // The class may be glued to the fence (`:::note`) or separated by
+            // whitespace (`::: note`, `::: tip "Pro Tip"`).
+            seq(
+              optional($._whitespace1),
+              field("class", $.class_name),
+              optional(seq($._whitespace1, field("title", $.div_title))),
+            ),
+          ),
+        ),
       ),
-    class_name: ($) => $._id,
+    class_name: ($) => $._id_no_digit_start,
+    div_title: (_) =>
+      choice(seq('"', /[^"\n]*/, '"'), seq("'", /[^'\n]*/, "'")),
 
     code_block: ($) =>
       seq(
         alias($._code_block_begin, $.code_block_marker_begin),
         $._whitespace,
-        optional(field("language", $.language)),
+        optional(
+          seq(
+            field("language", $.language),
+            optional(seq($._whitespace1, field("label", $.code_block_label))),
+          ),
+        ),
         $._newline,
         optional(field("code", $.code)),
         $._block_close,
@@ -490,13 +513,22 @@ module.exports = grammar({
         ),
       ),
     raw_block_info: ($) =>
-      seq(
-        field("marker", alias("raw", $.language_marker)),
-        $._whitespace1,
-        field("language", $.language),
+      choice(
+        // Carve form: ```raw FORMAT
+        seq(
+          field("marker", alias("raw", $.language_marker)),
+          $._whitespace1,
+          field("language", $.language),
+        ),
+        // Djot form: ```=FORMAT (the `=` is glued to the fence, no space)
+        seq(
+          field("marker", alias(token.immediate("="), $.language_marker)),
+          field("language", $.language),
+        ),
       ),
 
-    language: (_) => /[^\n\t \{\}=]+/,
+    language: (_) => /[^\n\t \{\}=\[]+/,
+    code_block_label: (_) => seq("[", /[^\]\n]*/, "]"),
     code: ($) =>
       prec.left(repeat1(seq(optional($._block_quote_prefix), $._line))),
     _line: ($) => seq(/[^\n]*/, $._newline),
@@ -691,8 +723,16 @@ module.exports = grammar({
     identifier: (_) => token(seq("#", token.immediate(/[^\s\}]+/))),
     key_value: ($) => seq(field("key", $.key), "=", field("value", $.value)),
     boolean_attribute: ($) => $.key,
-    key: ($) => $._id,
-    value: (_) => choice(seq('"', /[^"\n]+/, '"'), /\w+/),
+    key: ($) => $._id_no_digit_start,
+    value: (_) =>
+      choice(
+        // Double-quoted: allow escaped quotes (`\"`) and any other char,
+        // including braces (`"{y}"`).
+        seq('"', /([^"\\\n]|\\[^\n])*/, '"'),
+        // Single-quoted: same, with `'` as the delimiter.
+        seq("'", /([^'\\\n]|\\[^\n])*/, "'"),
+        /\w+/,
+      ),
 
     // Paragraphs are a bit special parsing wise as it's the "fallback"
     // block, where everything that doesn't fit will go.
@@ -949,6 +989,12 @@ module.exports = grammar({
 
     reference_label: ($) => $._id,
     _id: (_) => /[\w_-]+/,
+    // An identifier that must start with a letter or underscore (a leading
+    // `_` is valid, e.g. the `_box` div class). Used for class names and
+    // attribute keys: a digit- or hyphen-leading token (`.123`, `12=v`,
+    // `-foo`) is not a valid attribute (and `::: 123` is not a div), so it
+    // falls back to literal text.
+    _id_no_digit_start: (_) => /[A-Za-z_][\w_-]*/,
 
     _image: ($) =>
       choice(

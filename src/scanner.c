@@ -561,6 +561,22 @@ static bool scan_identifier(Scanner *s, TSLexer *lexer) {
   return any_scanned;
 }
 
+// Like `scan_identifier`, but the first character must be a letter or `_` (a
+// leading `_` is valid, e.g. the `_box` div class). Carve class names and
+// attribute keys are identifiers in this sense: a digit- or hyphen-leading
+// token (`.123`, `12=v`, `-foo`) is not a valid attribute, matching the
+// grammar's `_id_no_digit_start` and the spec rule that also makes `::: 123`
+// not a div.
+static bool scan_name_no_digit_start(Scanner *s, TSLexer *lexer) {
+  int32_t c = lexer->lookahead;
+  bool valid_first =
+      (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '_';
+  if (!valid_first) {
+    return false;
+  }
+  return scan_identifier(s, lexer);
+}
+
 static bool scan_until_unescaped(Scanner *s, TSLexer *lexer, char c) {
   while (!lexer->eof(lexer)) {
     if (lexer->lookahead == c) {
@@ -779,13 +795,137 @@ static bool try_close_code_block(Scanner *s, TSLexer *lexer, uint8_t ticks) {
   return true;
 }
 
+// Validate the info string that follows a backtick code fence (the rest of the
+// opening line, after the ticks). The fence is opened only for an info string
+// the grammar can model: empty, or a single language word optionally followed
+// by a bracketed `[label]`. A `{` (attribute block) or a `key=value` pair makes
+// the line NOT a fence (e.g. ```js title="x"`), so we refuse and let the
+// backticks fall back to inline verbatim. The `=FORMAT` raw-block form is
+// allowed (it is handled by the `raw_block` rule in the grammar).
+//
+// Must be called with the lexer positioned right after the ticks, before
+// `mark_end` is committed for the begin token.
+static bool code_fence_info_is_modeled(Scanner *s, TSLexer *lexer) {
+  // Optional leading whitespace.
+  while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+    advance(s, lexer);
+  }
+  // Empty info string: just a newline / EOF.
+  if (lexer->lookahead == '\n' || lexer->eof(lexer)) {
+    return true;
+  }
+  // The raw-block `=FORMAT` form (`raw_block_info` in the grammar) needs a
+  // non-empty single-word format and nothing but trailing whitespace after it.
+  if (lexer->lookahead == '=') {
+    advance(s, lexer);
+    uint8_t fmt_len = 0;
+    while (lexer->lookahead != '\n' && !lexer->eof(lexer) &&
+           lexer->lookahead != ' ' && lexer->lookahead != '\t' &&
+           lexer->lookahead != '{' && lexer->lookahead != '}' &&
+           lexer->lookahead != '=' && lexer->lookahead != '[') {
+      fmt_len++;
+      advance(s, lexer);
+    }
+    if (fmt_len == 0) {
+      return false;
+    }
+    while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+      advance(s, lexer);
+    }
+    return lexer->lookahead == '\n' || lexer->eof(lexer);
+  }
+  // A `{` glued to the fence is never a code fence.
+  if (lexer->lookahead == '{') {
+    return false;
+  }
+  // Language word: run of non-space, non-brace, non-`=` characters. Remember
+  // the word so the carve raw-block form `raw FORMAT` (two words) can be
+  // recognized; it is modeled by the `raw_block` rule.
+  char word[4] = {0};
+  uint8_t word_len = 0;
+  while (lexer->lookahead != '\n' && !lexer->eof(lexer) &&
+         lexer->lookahead != ' ' && lexer->lookahead != '\t' &&
+         lexer->lookahead != '{' && lexer->lookahead != '}' &&
+         lexer->lookahead != '=' && lexer->lookahead != '[') {
+    if (word_len < 3) {
+      word[word_len] = (char)lexer->lookahead;
+    }
+    word_len++;
+    advance(s, lexer);
+  }
+  if (word_len == 0) {
+    return false;
+  }
+  bool is_raw =
+      word_len == 3 && word[0] == 'r' && word[1] == 'a' && word[2] == 'w';
+  // Optional whitespace, then an optional bracketed `[label]`. The grammar
+  // only models a label after `$._whitespace1`, so remember whether any
+  // whitespace separated the language word from a following `[`.
+  bool saw_trailing_ws = false;
+  while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+    saw_trailing_ws = true;
+    advance(s, lexer);
+  }
+  if (lexer->lookahead == '\n' || lexer->eof(lexer)) {
+    return true;
+  }
+  // The carve raw-block form `raw FORMAT` (`raw_block_info` in the grammar):
+  // exactly one more single-word format may follow the `raw` marker, with
+  // nothing but trailing whitespace after it.
+  if (is_raw) {
+    uint8_t fmt_len = 0;
+    while (lexer->lookahead != '\n' && !lexer->eof(lexer) &&
+           lexer->lookahead != ' ' && lexer->lookahead != '\t' &&
+           lexer->lookahead != '{' && lexer->lookahead != '}' &&
+           lexer->lookahead != '=' && lexer->lookahead != '[') {
+      fmt_len++;
+      advance(s, lexer);
+    }
+    if (fmt_len == 0) {
+      return false;
+    }
+    while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+      advance(s, lexer);
+    }
+    return lexer->lookahead == '\n' || lexer->eof(lexer);
+  }
+  if (lexer->lookahead == '[') {
+    // A label must be separated from the language by whitespace (the grammar
+    // requires `$._whitespace1`); `php[NPM]` glued together is not a fence.
+    if (!saw_trailing_ws) {
+      return false;
+    }
+    advance(s, lexer);
+    while (lexer->lookahead != ']' && lexer->lookahead != '\n' &&
+           !lexer->eof(lexer)) {
+      advance(s, lexer);
+    }
+    if (lexer->lookahead != ']') {
+      return false;
+    }
+    advance(s, lexer);
+    // Only trailing whitespace may follow the label.
+    while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+      advance(s, lexer);
+    }
+    return lexer->lookahead == '\n' || lexer->eof(lexer);
+  }
+  // Anything else after the language word (e.g. `key="x"`) is not a fence.
+  return false;
+}
+
 static bool try_begin_code_block(Scanner *s, TSLexer *lexer, uint8_t ticks) {
   Block *top = peek_block(s);
   if (top && top->type == CODE_BLOCK) {
     return false;
   }
-  push_block(s, CODE_BLOCK, ticks);
+  // Mark the begin token at the ticks before peeking ahead to validate the
+  // info string, so the lookahead is not folded into CODE_BLOCK_BEGIN.
   lexer->mark_end(lexer);
+  if (!code_fence_info_is_modeled(s, lexer)) {
+    return false;
+  }
+  push_block(s, CODE_BLOCK, ticks);
   lexer->result_symbol = CODE_BLOCK_BEGIN;
   return true;
 }
@@ -810,6 +950,11 @@ static bool parse_backtick(Scanner *s, TSLexer *lexer,
     if (valid_symbols[BLOCK_CLOSE] && try_close_code_block(s, lexer, ticks)) {
       return true;
     }
+    // Pin the token end at the ticks before `try_begin_code_block` peeks past
+    // them to validate the fence info string: that validation may advance the
+    // lexer before failing, and the verbatim fallback below must not swallow
+    // the lookahead (it intentionally does not re-mark).
+    lexer->mark_end(lexer);
     if (valid_symbols[CODE_BLOCK_BEGIN] &&
         try_begin_code_block(s, lexer, ticks)) {
       return true;
@@ -819,12 +964,20 @@ static bool parse_backtick(Scanner *s, TSLexer *lexer,
   Inline *top = peek_inline(s);
   if (valid_symbols[VERBATIM_END] && top && top->type == VERBATIM) {
     remove_inline(s);
-    lexer->mark_end(lexer);
+    // For ticks >= 3 the end is already pinned above (fence validation may have
+    // advanced the lexer); only re-mark for the 1-2 tick inline case.
+    if (ticks < 3) {
+      lexer->mark_end(lexer);
+    }
     lexer->result_symbol = VERBATIM_END;
     return true;
   }
   if (valid_symbols[VERBATIM_BEGIN]) {
-    lexer->mark_end(lexer);
+    // For ticks >= 3 the end is already pinned above; re-mark here for the
+    // 1-2 tick inline-verbatim case where no fence validation ran.
+    if (ticks < 3) {
+      lexer->mark_end(lexer);
+    }
     lexer->result_symbol = VERBATIM_BEGIN;
     push_inline(s, VERBATIM, ticks);
     return true;
@@ -1772,8 +1925,25 @@ static bool parse_colon(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     if (!valid_symbols[DIV_BEGIN]) {
       return false;
     }
-    push_block(s, DIV, colons);
+    // The token ends at the colons; mark it before peeking further so the
+    // lookahead used to validate the rest of the fence line is not folded
+    // into the DIV_BEGIN token.
     lexer->mark_end(lexer);
+    // Validate what follows the `:::` fence. A bare fence (newline/EOF) or a
+    // line-block bar (`|`) is fine; otherwise the next token must be able to
+    // start a class name: a letter or `_`. A `{` attribute block (`::: {.x}`),
+    // a digit-leading class (`::: 123`), or any other lead char makes the line
+    // a literal paragraph per the spec, so refuse the div opener there.
+    while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+      advance(s, lexer);
+    }
+    int32_t c = lexer->lookahead;
+    bool ok = c == '\n' || lexer->eof(lexer) || c == '|' ||
+              (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '_';
+    if (!ok) {
+      return false;
+    }
+    push_block(s, DIV, colons);
     lexer->result_symbol = DIV_BEGIN;
     return true;
   }
@@ -2062,6 +2232,10 @@ static bool scan_table_row(Scanner *s, TSLexer *lexer, TokenType *row_type) {
   return true;
 }
 
+// Defined below; validates a `{...}` attribute payload. Forward-declared so a
+// glued row attribute can reuse the same validation.
+static bool scan_valid_inline_attribute(Scanner *s, TSLexer *lexer);
+
 static bool parse_table_begin(Scanner *s, TSLexer *lexer,
                               const bool *valid_symbols) {
   if (lexer->lookahead != '|') {
@@ -2088,11 +2262,27 @@ static bool parse_table_begin(Scanner *s, TSLexer *lexer,
 }
 
 static bool parse_table_end_newline(Scanner *s, TSLexer *lexer) {
-  if (lexer->lookahead != '\n') {
-    return false;
-  }
   Block *top = peek_block(s);
   if (!top || top->type != TABLE_ROW) {
+    return false;
+  }
+
+  // A row attribute block may be glued to the row's closing pipe:
+  // `| a | b |{.head}`. Validate the attribute with the same payload grammar
+  // as inline/block attributes, then fold it into the row-end token (its
+  // payload is part of the token span). An invalid attribute (`|{not!}`) is
+  // refused so it is not silently swallowed.
+  if (lexer->lookahead == '{') {
+    if (!scan_valid_inline_attribute(s, lexer)) {
+      return false;
+    }
+    // Only trailing whitespace may follow the attribute block.
+    while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+      advance(s, lexer);
+    }
+  }
+
+  if (lexer->lookahead != '\n') {
     return false;
   }
 
@@ -2199,13 +2389,14 @@ static bool scan_comment(Scanner *s, TSLexer *lexer, uint8_t indent,
 }
 
 static bool scan_value(Scanner *s, TSLexer *lexer) {
-  if (lexer->lookahead == '"') {
-    // First "
+  if (lexer->lookahead == '"' || lexer->lookahead == '\'') {
+    char quote = (char)lexer->lookahead;
+    // Opening quote.
     advance(s, lexer);
-    if (!scan_until_unescaped(s, lexer, '"')) {
+    if (!scan_until_unescaped(s, lexer, quote)) {
       return false;
     }
-    // Last "
+    // Closing quote.
     advance(s, lexer);
     return true;
   } else {
@@ -2252,15 +2443,28 @@ static bool parse_open_curly_bracket(Scanner *s, TSLexer *lexer,
         return true;
       } else if (!must_be_inline_comment &&
                  valid_symbols[BLOCK_ATTRIBUTE_BEGIN]) {
-        lexer->result_symbol = BLOCK_ATTRIBUTE_BEGIN;
-        return true;
+        // A block attribute must stand alone on its line: after the closing
+        // `}` only trailing whitespace and a newline (or EOF) may follow.
+        // Otherwise (e.g. `{.c} text`, `para {.c} more`) the braces are
+        // ordinary inline text, so refuse the block-attribute token and let
+        // the line parse as a paragraph.
+        advance(s, lexer);
+        while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+          advance(s, lexer);
+        }
+        if (lexer->lookahead == '\n' || lexer->eof(lexer)) {
+          lexer->result_symbol = BLOCK_ATTRIBUTE_BEGIN;
+          return true;
+        }
+        return false;
       } else {
         return false;
       }
     case '.':
       can_be_inline_comment = false;
       advance(s, lexer);
-      if (!scan_identifier(s, lexer)) {
+      // Class names may not start with a digit (`.123` is not a class).
+      if (!scan_name_no_digit_start(s, lexer)) {
         return false;
       }
       break;
@@ -2290,23 +2494,19 @@ static bool parse_open_curly_bracket(Scanner *s, TSLexer *lexer,
       break;
     default: {
       can_be_inline_comment = false;
-      // Remember whether the first identifier char is alphanumeric (not `_`
-      // or `-`). carve-php Boolean Attribute Shorthand requires this so a
-      // curly-emphasis form like `{_text_}` is NOT mistaken for a bare key
-      // — only letters/digits-leading identifiers are valid as boolean
-      // attributes here.
-      bool first_is_alnum = carve_is_alnum_ascii(lexer->lookahead);
-      if (!scan_identifier(s, lexer)) {
+      // An attribute key may not start with a digit (`12=v` is not a key), and
+      // a digit/`_`/`-`-leading token is not a bare boolean key either. This
+      // also keeps a curly-emphasis form like `{_text_}` from being mistaken
+      // for a bare key.
+      if (!scan_name_no_digit_start(s, lexer)) {
         return false;
       }
       // carve-php Boolean Attribute Shorthand: a bare `key` (no `=value`)
-      // is accepted as long as it starts with an alnum char and is
-      // followed by a valid attribute boundary — `}`, whitespace, or
-      // newline.
+      // is accepted as long as it is followed by a valid attribute boundary
+      // — `}`, whitespace, or newline.
       if (lexer->lookahead != '=') {
-        if (first_is_alnum &&
-            (lexer->lookahead == '}' || lexer->lookahead == ' ' ||
-             lexer->lookahead == '\t' || lexer->lookahead == '\n')) {
+        if (lexer->lookahead == '}' || lexer->lookahead == ' ' ||
+            lexer->lookahead == '\t' || lexer->lookahead == '\n') {
           break;
         }
         return false;
@@ -2811,6 +3011,82 @@ static bool scan_until(Scanner *s, TSLexer *lexer, char c, InlineType *top) {
   return false;
 }
 
+// Validate a `{...}` inline attribute, mirroring the payload grammar used for
+// block attributes in `parse_open_curly_bracket` (class `.x`, id `#x`,
+// `key=value`, bare boolean `key`, `%comment%`, whitespace, a single newline).
+// The lexer must be positioned at the opening `{`. Returns true and leaves the
+// lexer just past the closing `}` when the attribute is well-formed; otherwise
+// returns false. Used so an unparseable attribute (`[x]{???}`, `[x]{.a!b}`)
+// does NOT mark a span, letting the brackets fall back to literal text instead
+// of forcing an ERROR/MISSING into the tree.
+static bool scan_valid_inline_attribute(Scanner *s, TSLexer *lexer) {
+  if (lexer->lookahead != '{') {
+    return false;
+  }
+  advance(s, lexer);
+  bool seen_newline = false;
+  while (!lexer->eof(lexer)) {
+    consume_whitespace(s, lexer);
+    switch (lexer->lookahead) {
+    case '}':
+      advance(s, lexer);
+      return true;
+    case '\\':
+      advance(s, lexer);
+      advance(s, lexer);
+      break;
+    case '.':
+      advance(s, lexer);
+      // A class name must not start with a digit (`.123` is not a class).
+      if (!scan_name_no_digit_start(s, lexer)) {
+        return false;
+      }
+      break;
+    case '#':
+      advance(s, lexer);
+      if (!scan_identifier(s, lexer)) {
+        return false;
+      }
+      break;
+    case '%': {
+      bool must_be_inline_comment = false;
+      if (!scan_comment(s, lexer, s->indent + 1, &must_be_inline_comment)) {
+        return false;
+      }
+      break;
+    }
+    case '\n':
+      // A single embedded newline is allowed, but not a blank line.
+      if (seen_newline) {
+        return false;
+      }
+      seen_newline = true;
+      advance(s, lexer);
+      break;
+    default: {
+      // An attribute key must not start with a digit (`12=v` is not a key).
+      if (!scan_name_no_digit_start(s, lexer)) {
+        return false;
+      }
+      if (lexer->lookahead != '=') {
+        // Bare boolean attribute: a key (already known non-digit-leading)
+        // followed by a valid boundary (`}`, whitespace, newline).
+        if (lexer->lookahead == '}' || lexer->lookahead == ' ' ||
+            lexer->lookahead == '\t' || lexer->lookahead == '\n') {
+          break;
+        }
+        return false;
+      }
+      advance(s, lexer);
+      if (!scan_value(s, lexer)) {
+        return false;
+      }
+    }
+    }
+  }
+  return false;
+}
+
 // Updates lookahead states that are used to block the acceptance of
 // the fallback characters `(` and `{` if there's a valid inline link
 // or span to be chosen.
@@ -2837,18 +3113,13 @@ static void update_square_bracket_lookahead_states(Scanner *s, TSLexer *lexer,
       s->state |= STATE_BRACKET_STARTS_INLINE_LINK;
     }
   } else if (lexer->lookahead == '{') {
-    // An inline attribute my follow, turning it into the Carve `span` type.
+    // An inline attribute may follow, turning it into the Carve `span` type.
     //
-    // Please note that we're not parsing the actual inline attribute
-    // that may have false positives.
-    //
-    // An invalid attribute may error out whole tree-sitter parsing
-    // because we're actively blocking fallback characters, preventing
-    // the parser from falling back to a paragraph.
-    //
-    // For a more correct implementation we should scan the inline attribute
-    // in the same way as defined in `grammar.js`.
-    if (scan_until(s, lexer, '}', top_type)) {
+    // We validate the attribute payload here (same shape as block
+    // attributes). Only a well-formed attribute marks a span; an unparseable
+    // one (`[x]{???}`, `[x]{.a!b}`) leaves the flag clear so the brackets fall
+    // back to literal text instead of forcing an ERROR/MISSING into the tree.
+    if (scan_valid_inline_attribute(s, lexer)) {
       s->state |= STATE_BRACKET_STARTS_SPAN;
     }
   }
@@ -3089,6 +3360,14 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
   }
 
   if (is_newline && parse_newline(s, lexer, valid_symbols)) {
+    return true;
+  }
+
+  // A row attribute block glued to a row's closing pipe (`| a | b |{.head}`)
+  // is consumed by the row-end-newline token even though it does not start on
+  // a newline.
+  if (lexer->lookahead == '{' && valid_symbols[TABLE_ROW_END_NEWLINE] &&
+      parse_table_end_newline(s, lexer)) {
     return true;
   }
 
