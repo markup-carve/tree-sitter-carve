@@ -500,3 +500,230 @@ A heading is bounded: a list marker ends it and starts the list
           marker: (list_marker_dash)
           content: (list_item_content
             (paragraph)))))))
+
+===============================================================================
+Raw block with =FORMAT info string
+===============================================================================
+```=html
+<custom-el>x</custom-el>
+```
+
+-------------------------------------------------------------------------------
+
+(document
+  (raw_block
+    (raw_block_marker_begin)
+    info: (raw_block_info
+      marker: (language_marker)
+      language: (language))
+    content: (content)
+    (raw_block_marker_end)))
+
+===============================================================================
+Fenced code with a bracket label
+===============================================================================
+```php [NPM]
+npm install x
+```
+
+-------------------------------------------------------------------------------
+
+(document
+  (code_block
+    (code_block_marker_begin)
+    language: (language)
+    label: (code_block_label)
+    code: (code)
+    (code_block_marker_end)))
+
+===============================================================================
+A key=value with an equals after the language is not a code fence
+===============================================================================
+```js title="x"
+code
+```
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (verbatim
+      begin_marker: (verbatim_marker_begin)
+      content: (content)
+      end_marker: (verbatim_marker_end))))
+
+===============================================================================
+Line block
+===============================================================================
+::: |
+Roses are red,
+Violets are blue.
+:::
+
+-------------------------------------------------------------------------------
+
+(document
+  (div
+    (div_marker_begin)
+    line_block_marker: (line_block_marker)
+    content: (content
+      (paragraph))
+    (div_marker_end)))
+
+===============================================================================
+Admonition with a quoted custom title
+===============================================================================
+::: tip "Pro Tip"
+Save early.
+:::
+
+-------------------------------------------------------------------------------
+
+(document
+  (div
+    (div_marker_begin)
+    class: (class_name)
+    title: (div_title)
+    content: (content
+      (paragraph))
+    (div_marker_end)))
+
+===============================================================================
+Admonition type glued to the fence interrupts a paragraph
+===============================================================================
+text
+:::note
+body
+:::
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph)
+  (div
+    (div_marker_begin)
+    class: (class_name)
+    content: (content
+      (paragraph))
+    (div_marker_end)))
+
+===============================================================================
+An attribute block glued to the div fence is a paragraph, not a div
+===============================================================================
+::: {.sidebar}
+not a div
+:::
+
+-------------------------------------------------------------------------------
+
+(document
+  (block_attribute
+    args: (args
+      (class)))
+  (paragraph)
+  (div
+    (div_marker_begin)))
+
+===============================================================================
+A div nested inside a list item
+===============================================================================
+- item
+  :::note
+  body
+  :::
+tail
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)
+        (div
+          (div_marker_begin)
+          class: (class_name)
+          content: (content
+            (paragraph))
+          (div_marker_end)))))
+  (paragraph))
+
+===============================================================================
+A space after the list marker makes a brace literal, not an item attribute
+===============================================================================
+- {.c} text
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)))))
+
+===============================================================================
+Table row attributes glued to the closing pipe
+===============================================================================
+| Name | Score |{.head}
+|------|-------|
+| Ann  | 9     |{.win}
+
+-------------------------------------------------------------------------------
+
+(document
+  (table
+    (table_header
+      (table_cell)
+      (table_cell))
+    (table_separator
+      (table_cell_alignment)
+      (table_cell_alignment))
+    (table_row
+      (table_cell)
+      (table_cell))))
+
+===============================================================================
+An unparseable inline attribute falls back to literal text
+===============================================================================
+[x]{???}
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph))
+
+===============================================================================
+Inline attribute value may contain escaped quotes and braces
+===============================================================================
+[x]{title="a\"b"} [y]{k='{z}'}
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (span
+      content: (content)
+      attribute: (inline_attribute
+        (args
+          (key_value
+            key: (key)
+            value: (value)))))
+    (span
+      content: (content)
+      attribute: (inline_attribute
+        (args
+          (key_value
+            key: (key)
+            value: (value)))))))
+
+===============================================================================
+A digit-leading class or key is not a valid attribute and stays literal
+===============================================================================
+[x]{.123} and [y]{12=v}
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph))
