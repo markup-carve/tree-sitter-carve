@@ -11,6 +11,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -19,10 +21,12 @@ jobs:
         run: npm ci
       - name: Generate parser
         run: npm run generate
-      - name: Check generated files
-        run: git diff --exit-code
-      - name: Run corpus tests
+      - name: Check generated files are up to date
+        run: git diff --exit-code -- src/parser.c src/grammar.json src/node-types.json
+      - name: Run hand-written corpus tests
         run: npm test
+      - name: Coverage matrix and shared-corpus conformance
+        run: npm run test:corpus
       - name: Build WASM grammar
         run: npm run build-wasm
       - name: Load Node binding

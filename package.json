@@ -7,6 +7,9 @@
   "scripts": {
     "generate": "tree-sitter generate",
     "test": "tree-sitter test",
+    "test:coverage": "node scripts/coverage-matrix.mjs",
+    "test:conformance": "node scripts/corpus-conformance.mjs",
+    "test:corpus": "node scripts/coverage-matrix.mjs && node scripts/corpus-conformance.mjs",
     "check-formatted": "prettier --check grammar.js",
     "build-wasm": "tree-sitter build --wasm",
     "install": "node-gyp-build",
