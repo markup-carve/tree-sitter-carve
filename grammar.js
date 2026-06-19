@@ -68,7 +68,12 @@ module.exports = grammar({
         $._paragraph,
       ),
 
-    // Section should end by a new header with the same or fewer amount of '#'.
+    // A heading continues (folds onto the next line) only when that line
+    // carries the SAME number of '#' as the opener, or none (djot). A marker
+    // with a DIFFERENT count -- more OR fewer -- starts a NEW heading: a larger
+    // count nests a new section, a smaller count ends the open section(s) and
+    // opens a sibling. (Carve dropped the older "same or fewer" leniency to
+    // align with djot; see carve grammar §10 and corpus 79-multi-line-headings.)
     section: ($) =>
       seq(
         field("heading", $.heading),

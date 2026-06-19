@@ -415,3 +415,88 @@ Forced brace forms for highlight, subscript, superscript
       begin_marker: (superscript_begin)
       content: (content)
       end_marker: (superscript_end))))
+
+===============================================================================
+Heading continuation requires the same number of #
+===============================================================================
+## A
+## still A
+# B
+
+-------------------------------------------------------------------------------
+
+(document
+  (section
+    (heading
+      (marker)
+      (content
+        (marker))))
+  (section
+    (heading
+      (marker)
+      (content))))
+
+===============================================================================
+Heading markers must be at column zero
+===============================================================================
+   # H
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph))
+
+===============================================================================
+Indented heading marker (two spaces) is a paragraph
+===============================================================================
+  ## H
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph))
+
+===============================================================================
+A list marker folds into a block-quote's lazy paragraph
+===============================================================================
+> quoted
+- item
+
+-------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (paragraph))))
+
+===============================================================================
+A list marker does not interrupt a top-level paragraph
+===============================================================================
+quoted
+- item
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph))
+
+===============================================================================
+A heading is bounded: a list marker ends it and starts the list
+===============================================================================
+# Title
+- item
+
+-------------------------------------------------------------------------------
+
+(document
+  (section
+    heading: (heading
+      marker: (marker)
+      content: (content))
+    content: (section_content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (paragraph)))))))

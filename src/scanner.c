@@ -485,6 +485,27 @@ static Block *find_list(Scanner *s) {
   return NULL;
 }
 
+// Whether the current line's leading whitespace (`s->indent`) is EXTRA --
+// indentation beyond the left margin of the innermost open container. A list
+// item, footnote, or table caption indents its content (any indent at or above
+// its `data` threshold stays inside it); blocks whose content sits flush left
+// (the document root, a `:::` div) and block quotes (whose `>` markers are
+// consumed separately, leaving indent at 0) expect a zero margin. A heading
+// marker only counts as a marker when it sits at this margin with NO extra
+// leading whitespace -- carve drops CommonMark's 0-3 space indent fuzz
+// (column-0, NORMATIVE; corpus 101-heading-marker-column-zero).
+static bool has_extra_indent(Scanner *s) {
+  for (int i = s->open_blocks->size - 1; i >= 0; --i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (is_list(b->type) || b->type == FOOTNOTE || b->type == TABLE_CAPTION) {
+      // Inside such a container, any indent at or above its content threshold
+      // is the container's own margin, not heading-disqualifying fuzz.
+      return s->indent < b->data;
+    }
+  }
+  return s->indent > 0;
+}
+
 static uint8_t count_blocks(Scanner *s, BlockType type) {
   uint8_t count = 0;
   for (int i = s->open_blocks->size - 1; i >= 0; --i) {
@@ -1268,6 +1289,28 @@ static bool scan_containing_block_closing_marker(Scanner *s, TSLexer *lexer) {
   return is_div_marker_next(s, lexer) || scan_list_marker(s, lexer);
 }
 
+// Variant for closing an open PARAGRAPH. A LIST MARKER does NOT interrupt a
+// standalone paragraph: with no open list, a bullet or ordered marker folds
+// into the open paragraph as plain text (§10 -- no list interrupts a
+// paragraph; a blank line is required before a list). This holds at the top
+// level and, by lazy continuation, inside a block quote: "> quoted \n - item"
+// is ONE quote whose paragraph is "quoted\n- item", not a quote plus a sibling
+// list. Only a HEADING, a bounded title, is ended by a list marker (handled via
+// the full helper in parse_heading). The `+` continuation marker (corpus 100)
+// is the way to attach a REAL list to a quote.
+//
+// When a list IS already open, a marker is a list operation, not a fold: it
+// continues the list with a sibling item (or, for a different type/indent,
+// closes it and opens a new one), so it still ends the item's paragraph -- e.g.
+// consecutive "- a \n - b" stay separate items. Pinned by carve corpus
+// 76-paragraph-interruption, 77/81 lazy-continuation, and 05-lists.
+static bool scan_paragraph_closing_marker(Scanner *s, TSLexer *lexer) {
+  if (is_div_marker_next(s, lexer)) {
+    return true;
+  }
+  return find_list(s) != NULL && scan_list_marker(s, lexer);
+}
+
 static void ensure_list_open(Scanner *s, BlockType type, uint8_t indent) {
   Block *top = peek_block(s);
   // Found a list with the same type and indent, we should continue it.
@@ -1768,6 +1811,23 @@ static bool parse_heading(Scanner *s, TSLexer *lexer,
 
   uint8_t hash_count = consume_chars(s, lexer, '#');
 
+  // COLUMN ZERO (NORMATIVE). A `#` is only a heading MARKER when it sits at the
+  // content column of its line with NO extra leading whitespace; carve does not
+  // accept CommonMark's 0-3 space leading indent. See corpus
+  // 101-heading-marker-column-zero.
+  if (hash_count > 0 && has_extra_indent(s)) {
+    // An indented `#` line is NOT a marker. Inside an open heading it folds in
+    // as PLAIN TEXT (an indented `#` continuation line is ordinary text, not a
+    // same-`#` continuation marker), exactly like a no-`#` lazy line; outside a
+    // heading it is a paragraph. We leave the `#`s unconsumed (no mark_end) so
+    // the following inline line keeps them as text.
+    if (top_heading && valid_symbols[HEADING_CONTINUATION]) {
+      lexer->result_symbol = HEADING_CONTINUATION;
+      return true;
+    }
+    return false;
+  }
+
   // We found a `# ` that can start or continue a heading.
   if (hash_count > 0 && lexer->lookahead == ' ') {
     if (!valid_symbols[HEADING_BEGIN] && !valid_symbols[HEADING_CONTINUATION] &&
@@ -1794,11 +1854,14 @@ static bool parse_heading(Scanner *s, TSLexer *lexer,
       return true;
     }
 
-    // Open a new heading.
+    // Open a new heading. (A same-`#` continuation was already handled above,
+    // so any marker reaching here differs from the open heading's count and
+    // starts a NEW heading -- djot's same-`#` rule, NOT the old same-or-fewer
+    // continuation leniency.)
     if (valid_symbols[HEADING_BEGIN]) {
       // Sections are created on the root level (or nested inside other
-      // sections). They should be closed when a header with the same or fewer
-      // `#` is encountered, and then a new section should be started.
+      // sections). A heading with MORE `#` nests a new section; one with the
+      // same or FEWER `#` closes the open section(s) and opens a sibling.
       if (!top || (top->type == SECTION && top->data < hash_count)) {
         push_block(s, SECTION, hash_count);
       } else if (top && top->type == SECTION && top->data >= hash_count) {
@@ -2293,7 +2356,7 @@ static bool end_paragraph_in_block_quote(Scanner *s, TSLexer *lexer) {
   }
 
   if (block != peek_block(s) &&
-      scan_containing_block_closing_marker(s, lexer)) {
+      scan_paragraph_closing_marker(s, lexer)) {
     return true;
   }
 
@@ -2364,7 +2427,7 @@ static bool close_paragraph(Scanner *s, TSLexer *lexer) {
     return true;
   }
 
-  if (scan_containing_block_closing_marker(s, lexer)) {
+  if (scan_paragraph_closing_marker(s, lexer)) {
     return true;
   }
 
