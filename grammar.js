@@ -468,13 +468,15 @@ module.exports = grammar({
               $._whitespace1,
               field("line_block_marker", alias("|", $.line_block_marker)),
             ),
-            // Named div / admonition, with an optional quoted custom title.
-            // The class may be glued to the fence (`:::note`) or separated by
-            // whitespace (`::: note`, `::: tip "Pro Tip"`).
+            // Named div / admonition, with an optional quoted custom title and
+            // an optional bracketed [label] (a grouping id; PART 9 §12). The
+            // class may be glued to the fence (`:::note`) or separated by
+            // whitespace (`::: note`, `::: tip "Pro Tip" [Build]`).
             seq(
               optional($._whitespace1),
               field("class", $.class_name),
               optional(seq($._whitespace1, field("title", $.div_title))),
+              optional(seq($._whitespace1, field("label", $.code_block_label))),
             ),
           ),
         ),
@@ -487,10 +489,32 @@ module.exports = grammar({
       seq(
         alias($._code_block_begin, $.code_block_marker_begin),
         $._whitespace,
+        // Info string (PART 9 §2): an optional language, then an optional
+        // quoted "header", then an optional bracketed [label] -- in that order,
+        // each whitespace-separated from the preceding token. The first token
+        // may sit against the fence, so a bare header or label is also valid.
         optional(
-          seq(
-            field("language", $.language),
-            optional(seq($._whitespace1, field("label", $.code_block_label))),
+          choice(
+            seq(
+              field("language", $.language),
+              optional(
+                seq(
+                  $._whitespace1,
+                  choice(
+                    seq(
+                      field("header", $.code_block_header),
+                      optional(seq($._whitespace1, field("label", $.code_block_label))),
+                    ),
+                    field("label", $.code_block_label),
+                  ),
+                ),
+              ),
+            ),
+            seq(
+              field("header", $.code_block_header),
+              optional(seq($._whitespace1, field("label", $.code_block_label))),
+            ),
+            field("label", $.code_block_label),
           ),
         ),
         $._newline,
@@ -527,8 +551,16 @@ module.exports = grammar({
         ),
       ),
 
-    language: (_) => /[^\n\t \{\}=\[]+/,
+    // Excludes `"` and `[` so a glued header/label (```php"x", ```php[x]) is
+    // not swallowed into the language token -- the info string then needs the
+    // space the spec requires, and a glued form falls back (matches the impls).
+    language: (_) => /[^\n\t \{\}=\["]+/,
     code_block_label: (_) => seq("[", /[^\]\n]*/, "]"),
+    // Quoted "header" on a code fence opener (PART 9 §2). A single token so it
+    // lexes cleanly right after the immediate inter-token whitespace.
+    // Double-quoted only, matching the carve impls' code-fence header (the
+    // `language` token excludes `"` and the external scanner gates on `"`).
+    code_block_header: (_) => token(seq('"', /[^"\n]*/, '"')),
     code: ($) =>
       prec.left(repeat1(seq(optional($._block_quote_prefix), $._line))),
     _line: ($) => seq(/[^\n]*/, $._newline),
