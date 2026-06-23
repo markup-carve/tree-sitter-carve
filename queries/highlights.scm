@@ -14,15 +14,15 @@
 
 ((heading
   (marker) @_heading.marker) @markup.heading.4
-  (#eq? @_heading.marker "##### "))
+  (#eq? @_heading.marker "#### "))
 
 ((heading
   (marker) @_heading.marker) @markup.heading.5
-  (#eq? @_heading.marker "###### "))
+  (#eq? @_heading.marker "##### "))
 
 ((heading
   (marker) @_heading.marker) @markup.heading.6
-  (#eq? @_heading.marker "####### "))
+  (#eq? @_heading.marker "###### "))
 
 (thematic_break) @string.special
 
