@@ -727,3 +727,105 @@ A digit-leading class or key is not a valid attribute and stays literal
 
 (document
   (paragraph))
+
+================================================================================
+Fenced code with a quoted header
+================================================================================
+```php "src/Auth.php"
+x = 1;
+```
+
+--------------------------------------------------------------------------------
+
+(document
+  (code_block
+    (code_block_marker_begin)
+    language: (language)
+    header: (code_block_header)
+    code: (code)
+    (code_block_marker_end)))
+
+================================================================================
+Fenced code with a header and a label
+================================================================================
+```php "src/Auth.php" [Composer]
+x
+```
+
+--------------------------------------------------------------------------------
+
+(document
+  (code_block
+    (code_block_marker_begin)
+    language: (language)
+    header: (code_block_header)
+    label: (code_block_label)
+    code: (code)
+    (code_block_marker_end)))
+
+================================================================================
+Fenced code with a header and no language
+================================================================================
+``` "notes.txt"
+remember
+```
+
+--------------------------------------------------------------------------------
+
+(document
+  (code_block
+    (code_block_marker_begin)
+    header: (code_block_header)
+    code: (code)
+    (code_block_marker_end)))
+
+================================================================================
+Glued header is not a code fence
+================================================================================
+```php"x"
+y
+```
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (verbatim
+      begin_marker: (verbatim_marker_begin)
+      content: (content)
+      end_marker: (verbatim_marker_end))))
+
+================================================================================
+Admonition with a title and a grouping label
+================================================================================
+::: tip "Pro Tip" [Build]
+body
+:::
+
+--------------------------------------------------------------------------------
+
+(document
+  (div
+    (div_marker_begin)
+    class: (class_name)
+    title: (div_title)
+    label: (code_block_label)
+    content: (content
+      (paragraph))
+    (div_marker_end)))
+
+================================================================================
+Raw fence with a glued quote is not a fence
+================================================================================
+```raw php"x"
+y
+```
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (verbatim
+      begin_marker: (verbatim_marker_begin)
+      content: (content)
+      end_marker: (verbatim_marker_end))))

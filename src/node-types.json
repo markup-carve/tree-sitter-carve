@@ -229,6 +229,16 @@
           }
         ]
       },
+      "header": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "code_block_header",
+            "named": true
+          }
+        ]
+      },
       "label": {
         "multiple": false,
         "required": false,
@@ -712,6 +722,16 @@
         "types": [
           {
             "type": "content",
+            "named": true
+          }
+        ]
+      },
+      "label": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "code_block_label",
             "named": true
           }
         ]
@@ -3547,6 +3567,10 @@
   },
   {
     "type": "caption_marker",
+    "named": true
+  },
+  {
+    "type": "code_block_header",
     "named": true
   },
   {

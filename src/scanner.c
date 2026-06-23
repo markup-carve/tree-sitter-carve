@@ -822,7 +822,8 @@ static bool code_fence_info_is_modeled(Scanner *s, TSLexer *lexer) {
     while (lexer->lookahead != '\n' && !lexer->eof(lexer) &&
            lexer->lookahead != ' ' && lexer->lookahead != '\t' &&
            lexer->lookahead != '{' && lexer->lookahead != '}' &&
-           lexer->lookahead != '=' && lexer->lookahead != '[') {
+           lexer->lookahead != '=' && lexer->lookahead != '[' &&
+           lexer->lookahead != '"') {
       fmt_len++;
       advance(s, lexer);
     }
@@ -838,62 +839,97 @@ static bool code_fence_info_is_modeled(Scanner *s, TSLexer *lexer) {
   if (lexer->lookahead == '{') {
     return false;
   }
-  // Language word: run of non-space, non-brace, non-`=` characters. Remember
-  // the word so the carve raw-block form `raw FORMAT` (two words) can be
-  // recognized; it is modeled by the `raw_block` rule.
-  char word[4] = {0};
-  uint8_t word_len = 0;
-  while (lexer->lookahead != '\n' && !lexer->eof(lexer) &&
-         lexer->lookahead != ' ' && lexer->lookahead != '\t' &&
-         lexer->lookahead != '{' && lexer->lookahead != '}' &&
-         lexer->lookahead != '=' && lexer->lookahead != '[') {
-    if (word_len < 3) {
-      word[word_len] = (char)lexer->lookahead;
-    }
-    word_len++;
-    advance(s, lexer);
-  }
-  if (word_len == 0) {
-    return false;
-  }
-  bool is_raw =
-      word_len == 3 && word[0] == 'r' && word[1] == 'a' && word[2] == 'w';
-  // Optional whitespace, then an optional bracketed `[label]`. The grammar
-  // only models a label after `$._whitespace1`, so remember whether any
-  // whitespace separated the language word from a following `[`.
-  bool saw_trailing_ws = false;
-  while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
-    saw_trailing_ws = true;
-    advance(s, lexer);
-  }
-  if (lexer->lookahead == '\n' || lexer->eof(lexer)) {
-    return true;
-  }
-  // The carve raw-block form `raw FORMAT` (`raw_block_info` in the grammar):
-  // exactly one more single-word format may follow the `raw` marker, with
-  // nothing but trailing whitespace after it.
-  if (is_raw) {
-    uint8_t fmt_len = 0;
+  // Info string (PART 9 §2): an optional language word, then an optional quoted
+  // "header", then an optional bracketed [label] -- in that order. Each must be
+  // whitespace-separated from the preceding token, but the FIRST token may sit
+  // directly against the fence. `had_token` tracks whether a prior token needs
+  // a separating space; `saw_ws` whether one was seen.
+  bool had_token = false;
+  bool saw_ws = true;
+
+  // Optional language word (a run that does not start a header/label and stops
+  // at `"`/`[` so a glued header/label is not folded into the language).
+  if (lexer->lookahead != '"' && lexer->lookahead != '[') {
+    char word[4] = {0};
+    uint8_t word_len = 0;
     while (lexer->lookahead != '\n' && !lexer->eof(lexer) &&
            lexer->lookahead != ' ' && lexer->lookahead != '\t' &&
            lexer->lookahead != '{' && lexer->lookahead != '}' &&
-           lexer->lookahead != '=' && lexer->lookahead != '[') {
-      fmt_len++;
+           lexer->lookahead != '=' && lexer->lookahead != '[' &&
+           lexer->lookahead != '"') {
+      if (word_len < 3) {
+        word[word_len] = (char)lexer->lookahead;
+      }
+      word_len++;
       advance(s, lexer);
     }
-    if (fmt_len == 0) {
+    if (word_len == 0) {
       return false;
     }
+    had_token = true;
+    bool is_raw =
+        word_len == 3 && word[0] == 'r' && word[1] == 'a' && word[2] == 'w';
+    saw_ws = false;
     while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+      saw_ws = true;
       advance(s, lexer);
     }
-    return lexer->lookahead == '\n' || lexer->eof(lexer);
+    if (lexer->lookahead == '\n' || lexer->eof(lexer)) {
+      return true;
+    }
+    // The carve raw-block form `raw FORMAT` (`raw_block_info` in the grammar):
+    // exactly one more single-word format follows the `raw` marker. (A `raw`
+    // language with a quoted header is not modeled as a code block here -- it
+    // falls back to inline verbatim rather than opening a fence.)
+    if (is_raw) {
+      uint8_t fmt_len = 0;
+      while (lexer->lookahead != '\n' && !lexer->eof(lexer) &&
+             lexer->lookahead != ' ' && lexer->lookahead != '\t' &&
+             lexer->lookahead != '{' && lexer->lookahead != '}' &&
+             lexer->lookahead != '=' && lexer->lookahead != '[' &&
+             lexer->lookahead != '"') {
+        fmt_len++;
+        advance(s, lexer);
+      }
+      if (fmt_len == 0) {
+        return false;
+      }
+      while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+        advance(s, lexer);
+      }
+      return lexer->lookahead == '\n' || lexer->eof(lexer);
+    }
   }
+
+  // Optional quoted "header".
+  if (lexer->lookahead == '"') {
+    if (had_token && !saw_ws) {
+      return false; // glued to the language token
+    }
+    advance(s, lexer);
+    while (lexer->lookahead != '"' && lexer->lookahead != '\n' &&
+           !lexer->eof(lexer)) {
+      advance(s, lexer);
+    }
+    if (lexer->lookahead != '"') {
+      return false; // unterminated header
+    }
+    advance(s, lexer);
+    had_token = true;
+    saw_ws = false;
+    while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+      saw_ws = true;
+      advance(s, lexer);
+    }
+    if (lexer->lookahead == '\n' || lexer->eof(lexer)) {
+      return true;
+    }
+  }
+
+  // Optional bracketed [label].
   if (lexer->lookahead == '[') {
-    // A label must be separated from the language by whitespace (the grammar
-    // requires `$._whitespace1`); `php[NPM]` glued together is not a fence.
-    if (!saw_trailing_ws) {
-      return false;
+    if (had_token && !saw_ws) {
+      return false; // glued to a preceding token
     }
     advance(s, lexer);
     while (lexer->lookahead != ']' && lexer->lookahead != '\n' &&
@@ -904,13 +940,13 @@ static bool code_fence_info_is_modeled(Scanner *s, TSLexer *lexer) {
       return false;
     }
     advance(s, lexer);
-    // Only trailing whitespace may follow the label.
     while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
       advance(s, lexer);
     }
     return lexer->lookahead == '\n' || lexer->eof(lexer);
   }
-  // Anything else after the language word (e.g. `key="x"`) is not a fence.
+
+  // Anything else (e.g. `key="x"`, a bare second word) is not a fence.
   return false;
 }
 
