@@ -829,3 +829,37 @@ y
       begin_marker: (verbatim_marker_begin)
       content: (content)
       end_marker: (verbatim_marker_end))))
+
+================================================================================
+Bare div with a grouping label
+================================================================================
+::: [First]
+body
+:::
+
+--------------------------------------------------------------------------------
+
+(document
+  (div
+    (div_marker_begin)
+    label: (code_block_label)
+    content: (content
+      (paragraph))
+    (div_marker_end)))
+
+================================================================================
+Bare div label glued to the fence
+================================================================================
+:::[First]
+body
+:::
+
+--------------------------------------------------------------------------------
+
+(document
+  (div
+    (div_marker_begin)
+    label: (code_block_label)
+    content: (content
+      (paragraph))
+    (div_marker_end)))

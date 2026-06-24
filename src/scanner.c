@@ -1965,16 +1965,17 @@ static bool parse_colon(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     // lookahead used to validate the rest of the fence line is not folded
     // into the DIV_BEGIN token.
     lexer->mark_end(lexer);
-    // Validate what follows the `:::` fence. A bare fence (newline/EOF) or a
-    // line-block bar (`|`) is fine; otherwise the next token must be able to
-    // start a class name: a letter or `_`. A `{` attribute block (`::: {.x}`),
-    // a digit-leading class (`::: 123`), or any other lead char makes the line
-    // a literal paragraph per the spec, so refuse the div opener there.
+    // Validate what follows the `:::` fence. A bare fence (newline/EOF), a
+    // line-block bar (`|`), a class name (letter or `_`), or a bare grouping
+    // label (`[...]`, a typeless tab member; PART 9 §12) is fine. A `{`
+    // attribute block (`::: {.x}`), a digit-leading class (`::: 123`), or any
+    // other lead char makes the line a literal paragraph per the spec, so
+    // refuse the div opener there.
     while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
       advance(s, lexer);
     }
     int32_t c = lexer->lookahead;
-    bool ok = c == '\n' || lexer->eof(lexer) || c == '|' ||
+    bool ok = c == '\n' || lexer->eof(lexer) || c == '|' || c == '[' ||
               (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '_';
     if (!ok) {
       return false;

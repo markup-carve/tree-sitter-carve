@@ -478,6 +478,12 @@ module.exports = grammar({
               optional(seq($._whitespace1, field("title", $.div_title))),
               optional(seq($._whitespace1, field("label", $.code_block_label))),
             ),
+            // Bare [label] with no type word (a typeless tab member); it may
+            // sit directly against the fence (`:::[First]`) or after a space.
+            seq(
+              optional($._whitespace1),
+              field("label", $.code_block_label),
+            ),
           ),
         ),
       ),
