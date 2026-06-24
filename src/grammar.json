@@ -1568,12 +1568,26 @@
       "type": "SEQ",
       "members": [
         {
-          "type": "SYMBOL",
-          "name": "_block_with_heading"
-        },
-        {
-          "type": "SYMBOL",
-          "name": "_indented_content_spacer"
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SEQ",
+              "members": [
+                {
+                  "type": "SYMBOL",
+                  "name": "_block_with_heading"
+                },
+                {
+                  "type": "SYMBOL",
+                  "name": "_indented_content_spacer"
+                }
+              ]
+            },
+            {
+              "type": "SYMBOL",
+              "name": "_list_continuation"
+            }
+          ]
         },
         {
           "type": "CHOICE",
@@ -1581,31 +1595,40 @@
             {
               "type": "REPEAT",
               "content": {
-                "type": "SEQ",
+                "type": "CHOICE",
                 "members": [
                   {
-                    "type": "CHOICE",
+                    "type": "SEQ",
                     "members": [
                       {
-                        "type": "SYMBOL",
-                        "name": "_block_quote_prefix"
+                        "type": "CHOICE",
+                        "members": [
+                          {
+                            "type": "SYMBOL",
+                            "name": "_block_quote_prefix"
+                          },
+                          {
+                            "type": "BLANK"
+                          }
+                        ]
                       },
                       {
-                        "type": "BLANK"
+                        "type": "SYMBOL",
+                        "name": "_list_item_continuation"
+                      },
+                      {
+                        "type": "SYMBOL",
+                        "name": "_block_with_heading"
+                      },
+                      {
+                        "type": "SYMBOL",
+                        "name": "_indented_content_spacer"
                       }
                     ]
                   },
                   {
                     "type": "SYMBOL",
-                    "name": "_list_item_continuation"
-                  },
-                  {
-                    "type": "SYMBOL",
-                    "name": "_block_with_heading"
-                  },
-                  {
-                    "type": "SYMBOL",
-                    "name": "_indented_content_spacer"
+                    "name": "_list_continuation"
                   }
                 ]
               }
@@ -1618,6 +1641,19 @@
         {
           "type": "SYMBOL",
           "name": "_list_item_end"
+        }
+      ]
+    },
+    "_list_continuation": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "list_continuation_marker"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "_block_with_heading"
         }
       ]
     },
@@ -2735,21 +2771,39 @@
         {
           "type": "REPEAT",
           "content": {
-            "type": "SEQ",
+            "type": "CHOICE",
             "members": [
               {
-                "type": "SYMBOL",
-                "name": "_block_quote_prefix"
-              },
-              {
-                "type": "CHOICE",
+                "type": "SEQ",
                 "members": [
                   {
                     "type": "SYMBOL",
-                    "name": "_block_element"
+                    "name": "_block_quote_prefix"
                   },
                   {
-                    "type": "BLANK"
+                    "type": "CHOICE",
+                    "members": [
+                      {
+                        "type": "SYMBOL",
+                        "name": "_block_element"
+                      },
+                      {
+                        "type": "BLANK"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "type": "SEQ",
+                "members": [
+                  {
+                    "type": "SYMBOL",
+                    "name": "list_continuation_marker"
+                  },
+                  {
+                    "type": "SYMBOL",
+                    "name": "_block_element"
                   }
                 ]
               }
@@ -6281,6 +6335,10 @@
     {
       "type": "SYMBOL",
       "name": "_error"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "list_continuation_marker"
     }
   ],
   "inline": [],

@@ -488,6 +488,10 @@
           "named": true
         },
         {
+          "type": "list_continuation_marker",
+          "named": true
+        },
+        {
           "type": "marker",
           "named": true
         },
@@ -2155,6 +2159,10 @@
           "named": true
         },
         {
+          "type": "list_continuation_marker",
+          "named": true
+        },
+        {
           "type": "math",
           "named": true
         },
@@ -3667,6 +3675,10 @@
   },
   {
     "type": "link_destination",
+    "named": true
+  },
+  {
+    "type": "list_continuation_marker",
     "named": true
   },
   {
