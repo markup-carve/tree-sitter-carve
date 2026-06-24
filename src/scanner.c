@@ -124,6 +124,11 @@ typedef enum {
   IN_FALLBACK,
 
   ERROR,
+
+  // A lone `+` on its own line: the list/block-quote continuation marker
+  // (PART 9 §17). Appended at the END of the enum so every existing token keeps
+  // its index (must stay aligned with the `externals` array in grammar.js).
+  LIST_CONTINUATION_MARKER,
 } TokenType;
 
 // The different blocks in Carve that we track,
@@ -248,6 +253,13 @@ static const uint8_t STATE_BRACKET_STARTS_INLINE_LINK = 1 << 0;
 static const uint8_t STATE_BRACKET_STARTS_SPAN = 1 << 1;
 // Tracks if the next table row is a separator row.
 static const uint8_t STATE_TABLE_SEPARATOR_NEXT = 1 << 2;
+// Tracks that a `+` continuation marker (PART 9 §17) has attached a flush-left
+// block to the current LIST item. While set, indent-based list closing is
+// suppressed so the attached block (which sits at indent 0, below the item's
+// content margin) is not torn out of the item -- e.g. a fenced code block's
+// body or a table's later rows. Cleared when a sibling list marker, a blank
+// line, or the list's close ends the attached block.
+static const uint8_t STATE_LIST_CONTINUATION = 1 << 3;
 
 static TokenType scan_list_marker_token(Scanner *s, TSLexer *lexer);
 static TokenType scan_unordered_list_marker_token(Scanner *s, TSLexer *lexer);
@@ -409,7 +421,16 @@ static void push_inline(Scanner *s, InlineType type, uint8_t data) {
 
 static void remove_block(Scanner *s) {
   if (s->open_blocks->size > 0) {
-    ts_free(array_pop(s->open_blocks));
+    Block *removed = array_pop(s->open_blocks);
+    // Closing a self-terminating container (fenced code, div, block quote,
+    // nested list, ...) that a `+` marker attached ends the continuation. A
+    // TABLE_ROW / TABLE_CAPTION pop is an INTERNAL table event -- the table is
+    // still being parsed row by row -- so it must NOT clear the flag, or a
+    // multi-row attached table would lose its later rows.
+    if (removed->type != TABLE_ROW && removed->type != TABLE_CAPTION) {
+      s->state &= ~STATE_LIST_CONTINUATION;
+    }
+    ts_free(removed);
     if (s->blocks_to_close > 0) {
       --s->blocks_to_close;
     }
@@ -615,6 +636,45 @@ static bool parse_list_item_continuation(Scanner *s, TSLexer *lexer) {
   return true;
 }
 
+// A lone `+` on its own line is the list/block-quote continuation marker
+// (PART 9 §17): it attaches the following flush-left block to the enclosing
+// list item or block quote. The marker is only valid where the grammar expects
+// it (inside a `_list_continuation` / `_quote_continuation`), so a top-level `+`
+// or a `+ text` line stays a normal paragraph -- no scanner state is needed,
+// the surrounding container stays open simply because no list/quote-closing
+// token is valid right after the marker. The `+` must stand ALONE: only
+// whitespace may follow before the line ends. Consumes the trailing newline so
+// the attached block starts on a fresh line.
+static bool parse_continuation_marker(Scanner *s, TSLexer *lexer) {
+  if (lexer->lookahead != '+') {
+    return false;
+  }
+  advance(s, lexer);
+  while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+    advance(s, lexer);
+  }
+  if (!lexer->eof(lexer) && lexer->lookahead != '\n' && lexer->lookahead != '\r') {
+    // `+ text` (or any trailing content) is not a marker.
+    return false;
+  }
+  if (lexer->lookahead == '\r') {
+    advance(s, lexer);
+  }
+  if (lexer->lookahead == '\n') {
+    advance(s, lexer);
+  }
+  lexer->mark_end(lexer);
+  // Only a LIST imposes a content margin that the attached flush-left block
+  // would otherwise be dedented out of; a block quote's content already sits at
+  // indent 0, so it needs no suppression (and must not get it, or its own
+  // nested lists would never close).
+  if (find_list(s) != NULL) {
+    s->state |= STATE_LIST_CONTINUATION;
+  }
+  lexer->result_symbol = LIST_CONTINUATION_MARKER;
+  return true;
+}
+
 // Close a block inside a list.
 // They should be closed if indentation is too little.
 static bool close_list_nested_block_if_needed(Scanner *s, TSLexer *lexer,
@@ -630,6 +690,12 @@ static bool close_list_nested_block_if_needed(Scanner *s, TSLexer *lexer,
 
   Block *top = peek_block(s);
   Block *list = find_list(s);
+
+  // A `+`-attached flush-left block (e.g. fenced code) legitimately sits at
+  // indent 0, below the list margin: don't tear it out of the item.
+  if (s->state & STATE_LIST_CONTINUATION) {
+    return false;
+  }
 
   // If we're in a block that's in a list
   // we should check the indentation level,
@@ -1804,6 +1870,11 @@ static bool parse_star(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
 
 static bool parse_list_item_end(Scanner *s, TSLexer *lexer,
                                 const bool *valid_symbols) {
+  // Captured before the block-quote / list-marker scans below advance the
+  // lexer: the first non-whitespace character of the line, used to tell whether
+  // a `+`-attached TABLE is still continuing (a `|` row).
+  int32_t line_lead = lexer->lookahead;
+
   // We only look at the top, list item end is only valid if we're
   // about to close the list. Otherwise we need to close the open blocks
   // first.
@@ -1904,6 +1975,22 @@ static bool parse_list_item_end(Scanner *s, TSLexer *lexer,
   //
   //    - b     <- different indent should close the `a` list.
   TokenType next_marker = scan_list_marker_token(s, lexer);
+
+  // While a `+`-attached flush-left block is being parsed, an indent-0 line
+  // that is NOT a sibling list marker (e.g. a table's second row) belongs to
+  // the attached block, so the item must not end. A real sibling marker ends
+  // the attached block and clears the continuation.
+  if (s->state & STATE_LIST_CONTINUATION) {
+    // A `+`-attached TABLE has no terminator and pushes/pops a block per row,
+    // so only a `|` row keeps the item open; anything else (a sibling marker, a
+    // plain flush-left paragraph, EOF) ends the attached block and clears the
+    // continuation so the item -- and list -- can close normally.
+    if (line_lead == '|' && next_marker == IGNORED && !lexer->eof(lexer)) {
+      return false;
+    }
+    s->state &= ~STATE_LIST_CONTINUATION;
+  }
+
   if (next_marker != IGNORED) {
     bool different_type = list_marker_to_block(next_marker) != list->type;
     bool different_indent = list->data != s->indent + 1;
@@ -2652,6 +2739,27 @@ static bool scan_fenced_comment_at_paragraph_end(Scanner *s, TSLexer *lexer) {
   return true;
 }
 
+// A lone `+` continuation marker (PART 9 §17) on the next line must terminate
+// the in-progress paragraph so the marker can fire as a sibling continuation
+// inside the enclosing list item or block quote (corpus 83 / 100). Only
+// meaningful when a list or block quote is open -- a bare top-level `+` stays a
+// paragraph. The advance() calls are scratch (only mark_end commits), so the
+// `+` is still seen at the new block-line start by `parse_continuation_marker`.
+static bool scan_continuation_marker_at_paragraph_end(Scanner *s,
+                                                      TSLexer *lexer) {
+  if (lexer->lookahead != '+') {
+    return false;
+  }
+  if (find_list(s) == NULL && find_block(s, BLOCK_QUOTE) == NULL) {
+    return false;
+  }
+  advance(s, lexer);
+  while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+    advance(s, lexer);
+  }
+  return lexer->eof(lexer) || lexer->lookahead == '\n' || lexer->lookahead == '\r';
+}
+
 static bool close_paragraph(Scanner *s, TSLexer *lexer) {
   // Workaround for not including the following blankline when closing a
   // paragraph inside a block.
@@ -2678,6 +2786,9 @@ static bool close_paragraph(Scanner *s, TSLexer *lexer) {
     return true;
   }
   if (scan_fenced_comment_at_paragraph_end(s, lexer)) {
+    return true;
+  }
+  if (scan_continuation_marker_at_paragraph_end(s, lexer)) {
     return true;
   }
 
@@ -3447,6 +3558,14 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
     return true;
   }
 
+  // A lone `+` continuation marker must win over closing the list item: it
+  // attaches the next flush-left block to the current item/quote instead of
+  // ending it. Only valid where the grammar expects it.
+  if (lexer->lookahead == '+' && valid_symbols[LIST_CONTINUATION_MARKER] &&
+      parse_continuation_marker(s, lexer)) {
+    return true;
+  }
+
   // End previous list item before opening new ones.
   if (valid_symbols[LIST_ITEM_END] &&
       parse_list_item_end(s, lexer, valid_symbols)) {
@@ -3844,6 +3963,9 @@ static char *token_type_s(TokenType t) {
 
   case ERROR:
     return "ERROR";
+
+  case LIST_CONTINUATION_MARKER:
+    return "LIST_CONTINUATION_MARKER";
     // default:
     //   return "NOT IMPLEMENTED";
   }

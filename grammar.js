@@ -360,19 +360,37 @@ module.exports = grammar({
 
     list_item_content: ($) =>
       seq(
-        $._block_with_heading,
-        $._indented_content_spacer,
+        choice(
+          seq($._block_with_heading, $._indented_content_spacer),
+          // The item may begin directly with a `+` continuation marker
+          // (e.g. `- +`), giving an item whose only content is the attached
+          // flush-left block (corpus 83-list-continuation-marker-3).
+          $._list_continuation,
+        ),
         optional(
           repeat(
-            seq(
-              optional($._block_quote_prefix),
-              $._list_item_continuation,
-              $._block_with_heading,
-              $._indented_content_spacer,
+            choice(
+              seq(
+                optional($._block_quote_prefix),
+                $._list_item_continuation,
+                $._block_with_heading,
+                $._indented_content_spacer,
+              ),
+              $._list_continuation,
             ),
           ),
         ),
         $._list_item_end,
+      ),
+    // A `+` continuation marker (PART 9 §17) plus the single flush-left block it
+    // attaches to the enclosing list item (corpus 83-list-continuation-marker).
+    // No `_indented_content_spacer` here: the attached block sits flush left, and
+    // a zero-width spacer would force a terminator-less block (a table) to reduce
+    // after its first row.
+    _list_continuation: ($) =>
+      seq(
+        $.list_continuation_marker,
+        $._block_with_heading,
       ),
 
     table: ($) =>
@@ -583,7 +601,14 @@ module.exports = grammar({
     _block_quote_content: ($) =>
       seq(
         choice($.heading, $._block_element),
-        repeat(seq($._block_quote_prefix, optional($._block_element))),
+        repeat(
+          choice(
+            seq($._block_quote_prefix, optional($._block_element)),
+            // A `+` continuation marker (PART 9 §17) attaches a flush-left block
+            // (not `>`-prefixed) to the quote (corpus 100-block-quote-continuation-marker).
+            seq($.list_continuation_marker, $._block_element),
+          ),
+        ),
       ),
     _block_quote_prefix: ($) =>
       prec.left(
@@ -1485,5 +1510,10 @@ module.exports = grammar({
 
     // Never valid and is only used to signal an internal scanner error.
     $._error,
+
+    // A lone `+` on its own line: the list/block-quote continuation marker
+    // (PART 9 §17). Appended at the END to keep all existing external indices
+    // aligned with the `TokenType` enum in scanner.c.
+    $.list_continuation_marker,
   ],
 });
