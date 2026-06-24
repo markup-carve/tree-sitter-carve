@@ -2150,6 +2150,31 @@
                       ]
                     }
                   ]
+                },
+                {
+                  "type": "SEQ",
+                  "members": [
+                    {
+                      "type": "CHOICE",
+                      "members": [
+                        {
+                          "type": "SYMBOL",
+                          "name": "_whitespace1"
+                        },
+                        {
+                          "type": "BLANK"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "FIELD",
+                      "name": "label",
+                      "content": {
+                        "type": "SYMBOL",
+                        "name": "code_block_label"
+                      }
+                    }
+                  ]
                 }
               ]
             },
