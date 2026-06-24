@@ -1525,6 +1525,22 @@ static bool scan_list_marker(Scanner *s, TSLexer *lexer) {
   return marker != IGNORED;
 }
 
+// NORMATIVE -- "MARKER REQUIRES CONTENT" (grammar, unordered_item/ordered_item
+// and PART 9 §11): a bullet or ordered marker opens a list item ONLY when it is
+// followed by NON-EMPTY content on the same line. Trailing whitespace is
+// ignored, so a content-less marker line -- bare (`-`) or whitespace-only
+// (`- `, `-   `) -- is paragraph text, not a list; `-` and `- ` behave
+// identically. Call with the lexer positioned at (or just past) the marker's
+// separating space, AFTER the token end has been marked: the scratch advances
+// here consume only trailing blanks and do not extend the committed token.
+static bool marker_line_has_content(Scanner *s, TSLexer *lexer) {
+  while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+    advance(s, lexer);
+  }
+  return !lexer->eof(lexer) && lexer->lookahead != '\n' &&
+         lexer->lookahead != '\r';
+}
+
 static bool scan_eof_or_blankline(Scanner *s, TSLexer *lexer) {
   if (lexer->eof(lexer)) {
     return true;
@@ -1583,9 +1599,15 @@ static bool handle_ordered_list_marker(Scanner *s, TSLexer *lexer,
                                        const bool *valid_symbols,
                                        TokenType marker) {
   if (marker != IGNORED && valid_symbols[marker]) {
+    // Mark the token end (after the marker's space) before the content probe,
+    // so the scratch advances in `marker_line_has_content` cannot extend it.
+    lexer->mark_end(lexer);
+    // A content-less marker line is paragraph text, not a list.
+    if (!marker_line_has_content(s, lexer)) {
+      return false;
+    }
     ensure_list_open(s, list_marker_to_block(marker), s->indent + 1);
     lexer->result_symbol = marker;
-    lexer->mark_end(lexer);
     return true;
   } else {
     return false;
@@ -1682,6 +1704,11 @@ static bool parse_list_marker_or_thematic_break(
     }
 
     if (valid_symbols[marker_type]) {
+      // A content-less marker line is paragraph text, not a list (the token end
+      // is already marked above, so this lookahead is scratch).
+      if (!marker_line_has_content(s, lexer)) {
+        return false;
+      }
       ensure_list_open(s, list_type, s->indent + 1);
       lexer->result_symbol = marker_type;
       return true;
@@ -2022,9 +2049,15 @@ static bool parse_colon(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   if (lexer->lookahead == ' ') {
     // Found a `: `, can only be a list.
     if (valid_symbols[LIST_MARKER_DEFINITION]) {
+      // Mark the token end before the content probe (scratch advances must not
+      // extend it), then require non-empty content: a content-less `: ` line is
+      // paragraph text, not a definition item.
+      lexer->mark_end(lexer);
+      if (!marker_line_has_content(s, lexer)) {
+        return false;
+      }
       ensure_list_open(s, LIST_DEFINITION, s->indent + 1);
       lexer->result_symbol = LIST_MARKER_DEFINITION;
-      lexer->mark_end(lexer);
       return true;
     } else {
       // Can't be a div anymore.
