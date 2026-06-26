@@ -59,12 +59,14 @@ module.exports = grammar({
         $.thematic_break,
         $.block_quote,
         alias($.block_math, $.math),
+        $.citation_definition,
         $.link_reference_definition,
         $.abbreviation_definition,
         $.comment_line,
         $.fenced_comment_block,
         $.caption,
         $.block_attribute,
+        $.callout_list,
         $._paragraph,
       ),
 
@@ -388,10 +390,7 @@ module.exports = grammar({
     // a zero-width spacer would force a terminator-less block (a table) to reduce
     // after its first row.
     _list_continuation: ($) =>
-      seq(
-        $.list_continuation_marker,
-        $._block_with_heading,
-      ),
+      seq($.list_continuation_marker, $._block_with_heading),
 
     table: ($) =>
       prec.right(
@@ -498,10 +497,7 @@ module.exports = grammar({
             ),
             // Bare [label] with no type word (a typeless tab member); it may
             // sit directly against the fence (`:::[First]`) or after a space.
-            seq(
-              optional($._whitespace1),
-              field("label", $.code_block_label),
-            ),
+            seq(optional($._whitespace1), field("label", $.code_block_label)),
           ),
         ),
       ),
@@ -527,7 +523,9 @@ module.exports = grammar({
                   choice(
                     seq(
                       field("header", $.code_block_header),
-                      optional(seq($._whitespace1, field("label", $.code_block_label))),
+                      optional(
+                        seq($._whitespace1, field("label", $.code_block_label)),
+                      ),
                     ),
                     field("label", $.code_block_label),
                   ),
@@ -644,6 +642,43 @@ module.exports = grammar({
         $._newline,
       ),
     link_destination: (_) => /\S+/,
+
+    // Citation definition block (Carve §22, Tier-2). `[@key]: entry text`.
+    //
+    // The spec reserves a leading `@` label here: `[@key]:` is NEVER a link
+    // reference definition, it is a bibliography entry (parallels the `[^...]:`
+    // footnote-definition precedence). The external scanner emits the same
+    // `_link_ref_def_mark_begin` / `_link_ref_def_label_end` pair as a link ref
+    // def (it matches any `[...]:`), so this rule shares that opener and is
+    // disambiguated by the `@`-prefixed citation label. Unlike a link ref def
+    // (whose destination is a single `\S+` token), the entry runs free-form to
+    // end of line, so a multi-word entry (`Smith, J. (2020). Title.`) is kept
+    // whole. The `prec(1)` makes this branch win over `link_reference_definition`
+    // (whose `_inline` label would otherwise also match the `@key`). The label
+    // is the SAME Pandoc citation-key charset that `citation_group` accepts, so
+    // a key with internal punctuation (`[@smith.2020]`, `[@doi/10.1]`) is
+    // defined consistently with the way it is cited.
+    citation_definition: ($) =>
+      prec(
+        1,
+        seq(
+          $._link_ref_def_mark_begin,
+          "[",
+          field("label", $.citation_label),
+          $._link_ref_def_label_end,
+          "]",
+          ":",
+          optional(
+            seq(
+              $._whitespace1,
+              field("entry", alias(/[^\r\n]+/, $.citation_entry)),
+            ),
+          ),
+          $._newline,
+        ),
+      ),
+    // `@` + Pandoc citation key (first char \w, then \w or internal punctuation).
+    citation_label: (_) => token(seq("@", /[\w][\w:.#$%&+?<>~\/-]*/)),
     link_title: (_) =>
       choice(seq('"', /[^"\n]*/, '"'), seq("'", /[^'\n]*/, "'")),
 
@@ -752,6 +787,85 @@ module.exports = grammar({
           ),
         ),
         $._newline,
+      ),
+
+    // Citation group inline: `[@key]`, `[+@key]`, `[-@key]`, `[@a; see @b, p.4]`
+    // (Carve §22, Tier-2 extension; Pandoc-compatible citation syntax.)
+    //
+    // The token is a single regex that matches the whole `[...]` construct so it
+    // wins over `_bracketed_text_begin` in the lexer without needing the external
+    // scanner.  Key charset follows Pandoc: first char \w, subsequent chars
+    // \w or any of  :  .  #  $  %  &  +  ?  <  >  ~  /  -
+    //
+    // TAIL-LOOKAHEAD LIMITATION (tree-sitter 0.22 regex has no lookahead). The
+    // spec / carve-js reference rule is: a `[...]` with a `@key` is a citation
+    // ONLY when it has NO `(url)` / `[ref]` / `{attrs}` tail; with a tail it is a
+    // link or span. A single lexer token cannot look past its own `]` to test the
+    // following char, and a structural rule that reuses the bracket-span scanner
+    // tokens collides irreconcilably with `link_text` / `span` over the inline
+    // body. So two deliberate trade-offs keep this a clean lexer token:
+    //
+    //   1. CONSERVATIVE FIRST ITEM (no leading prefix text). `[see @a]` and a
+    //      real link `[contact @support](url)` are lexically identical up to the
+    //      `]`; matching arbitrary first-item prefix would steal such links. The
+    //      first item therefore begins with `@` straight after `[`, `[+`, or
+    //      `[-`. Prefix text IS supported on SECOND and later `;`-items
+    //      (`[@a; see @b]`) where no link tail can follow a `;`. The dropped
+    //      `[prefix @key]` single-item form falls back to text + a `mention`.
+    //
+    //   2. RESIDUAL `[@key](url)` / `[@key][ref]` OVERLAP. A bracket that is
+    //      EXACTLY `[@key]` followed by a `(url)` or `[ref]` link tail is matched
+    //      here as a citation, leaving the tail as separate text. This narrow
+    //      mention-only-link form is the one case that still diverges; it is rare
+    //      (a profile link is normally written `[@user]` then a separate link, or
+    //      `[user](url)`), and the cost is cosmetic highlighting, not a parse
+    //      failure. A `{attrs}` tail still attaches as an `inline_attribute`
+    //      after the citation token (so `[@k]{.x}` stays citation + attribute).
+    citation_group: (_) =>
+      token(
+        prec(
+          1,
+          seq(
+            "[",
+            optional("+"),
+            // First item: `@key` immediately (optional `-` suppress-author).
+            optional("-"),
+            "@",
+            /[\w][\w:.#$%&+?<>~\/-]*/,
+            // optional locator text after the key
+            /[^\[\]@\r\n]*/,
+            // zero or more additional citation items separated by `;`; these MAY
+            // carry prefix text since no link tail can follow a `;`.
+            repeat(
+              seq(
+                ";",
+                /[^\[\]@\r\n]*/,
+                optional("-"),
+                "@",
+                /[\w][\w:.#$%&+?<>~\/-]*/,
+                /[^\[\]@\r\n]*/,
+              ),
+            ),
+            "]",
+          ),
+        ),
+      ),
+
+    // Callout list block (§10 / Tier-2 extension).
+    //
+    // A run of lines each starting with `<N> ` (one or more digits, then a
+    // space, then prose). Each item self-terminates with its own newline, so the
+    // list is just a `repeat1` of items: it ends naturally as soon as the next
+    // line is not a `<N> ` token (a plain prose line, a list marker, EOF, ...),
+    // and that following line is then parsed as its own block. (An earlier shape
+    // that consumed a shared `_newline_inline` between items errored when a
+    // non-callout line followed the last item, because the scanner offered the
+    // paragraph-continuation newline and the rule then demanded another item.)
+    callout_list: ($) => prec.right(repeat1($.callout_list_item)),
+    callout_list_item: ($) =>
+      seq(
+        alias(token(seq("<", /[0-9]+/, ">", " ", /[^\r\n]+/)), $.content),
+        $._eof_or_newline,
       ),
 
     block_attribute: ($) =>
@@ -886,6 +1000,7 @@ module.exports = grammar({
               prec.dynamic(ELEMENT_PRECEDENCE, $.extension_inline),
               prec.dynamic(ELEMENT_PRECEDENCE, $.mention),
               prec.dynamic(ELEMENT_PRECEDENCE, $.tag),
+              prec.dynamic(ELEMENT_PRECEDENCE, $.citation_group),
               $.autolink,
               $.verbatim,
               alias($.inline_math, $.math),
