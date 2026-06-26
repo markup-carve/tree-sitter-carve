@@ -160,6 +160,36 @@
     }
   },
   {
+    "type": "callout_list",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "callout_list_item",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "callout_list_item",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "content",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "caption",
     "named": true,
     "fields": {
@@ -189,6 +219,32 @@
     "type": "checked",
     "named": true,
     "fields": {}
+  },
+  {
+    "type": "citation_definition",
+    "named": true,
+    "fields": {
+      "entry": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "citation_entry",
+            "named": true
+          }
+        ]
+      },
+      "label": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "citation_label",
+            "named": true
+          }
+        ]
+      }
+    }
   },
   {
     "type": "class",
@@ -376,7 +432,19 @@
           "named": true
         },
         {
+          "type": "callout_list",
+          "named": true
+        },
+        {
           "type": "caption",
+          "named": true
+        },
+        {
+          "type": "citation_definition",
+          "named": true
+        },
+        {
+          "type": "citation_group",
           "named": true
         },
         {
@@ -607,7 +675,15 @@
           "named": true
         },
         {
+          "type": "callout_list",
+          "named": true
+        },
+        {
           "type": "caption",
+          "named": true
+        },
+        {
+          "type": "citation_definition",
           "named": true
         },
         {
@@ -806,7 +882,15 @@
           "named": true
         },
         {
+          "type": "callout_list",
+          "named": true
+        },
+        {
           "type": "caption",
+          "named": true
+        },
+        {
+          "type": "citation_definition",
           "named": true
         },
         {
@@ -974,7 +1058,15 @@
           "named": true
         },
         {
+          "type": "callout_list",
+          "named": true
+        },
+        {
           "type": "caption",
+          "named": true
+        },
+        {
+          "type": "citation_definition",
           "named": true
         },
         {
@@ -1249,6 +1341,10 @@
         },
         {
           "type": "bold_italic",
+          "named": true
+        },
+        {
+          "type": "citation_group",
           "named": true
         },
         {
@@ -1590,6 +1686,10 @@
           "named": true
         },
         {
+          "type": "citation_group",
+          "named": true
+        },
+        {
           "type": "collapsed_reference_image",
           "named": true
         },
@@ -1801,6 +1901,10 @@
         },
         {
           "type": "bold_italic",
+          "named": true
+        },
+        {
+          "type": "citation_group",
           "named": true
         },
         {
@@ -2123,7 +2227,15 @@
           "named": true
         },
         {
+          "type": "callout_list",
+          "named": true
+        },
+        {
           "type": "caption",
+          "named": true
+        },
+        {
+          "type": "citation_definition",
           "named": true
         },
         {
@@ -2289,6 +2401,10 @@
         },
         {
           "type": "bold_italic",
+          "named": true
+        },
+        {
+          "type": "citation_group",
           "named": true
         },
         {
@@ -2618,7 +2734,15 @@
           "named": true
         },
         {
+          "type": "callout_list",
+          "named": true
+        },
+        {
           "type": "caption",
+          "named": true
+        },
+        {
+          "type": "citation_definition",
           "named": true
         },
         {
@@ -2955,6 +3079,10 @@
           "named": true
         },
         {
+          "type": "citation_group",
+          "named": true
+        },
+        {
           "type": "collapsed_reference_image",
           "named": true
         },
@@ -3179,6 +3307,10 @@
         },
         {
           "type": "bold_italic",
+          "named": true
+        },
+        {
+          "type": "citation_group",
           "named": true
         },
         {
@@ -3575,6 +3707,18 @@
   },
   {
     "type": "caption_marker",
+    "named": true
+  },
+  {
+    "type": "citation_entry",
+    "named": true
+  },
+  {
+    "type": "citation_group",
+    "named": true
+  },
+  {
+    "type": "citation_label",
     "named": true
   },
   {

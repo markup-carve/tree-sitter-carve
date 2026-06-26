@@ -178,6 +178,10 @@
         },
         {
           "type": "SYMBOL",
+          "name": "citation_definition"
+        },
+        {
+          "type": "SYMBOL",
           "name": "link_reference_definition"
         },
         {
@@ -199,6 +203,10 @@
         {
           "type": "SYMBOL",
           "name": "block_attribute"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "callout_list"
         },
         {
           "type": "SYMBOL",
@@ -2989,6 +2997,93 @@
       "type": "PATTERN",
       "value": "\\S+"
     },
+    "citation_definition": {
+      "type": "PREC",
+      "value": 1,
+      "content": {
+        "type": "SEQ",
+        "members": [
+          {
+            "type": "SYMBOL",
+            "name": "_link_ref_def_mark_begin"
+          },
+          {
+            "type": "STRING",
+            "value": "["
+          },
+          {
+            "type": "FIELD",
+            "name": "label",
+            "content": {
+              "type": "SYMBOL",
+              "name": "citation_label"
+            }
+          },
+          {
+            "type": "SYMBOL",
+            "name": "_link_ref_def_label_end"
+          },
+          {
+            "type": "STRING",
+            "value": "]"
+          },
+          {
+            "type": "STRING",
+            "value": ":"
+          },
+          {
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "SEQ",
+                "members": [
+                  {
+                    "type": "SYMBOL",
+                    "name": "_whitespace1"
+                  },
+                  {
+                    "type": "FIELD",
+                    "name": "entry",
+                    "content": {
+                      "type": "ALIAS",
+                      "content": {
+                        "type": "PATTERN",
+                        "value": "[^\\r\\n]+"
+                      },
+                      "named": true,
+                      "value": "citation_entry"
+                    }
+                  }
+                ]
+              },
+              {
+                "type": "BLANK"
+              }
+            ]
+          },
+          {
+            "type": "SYMBOL",
+            "name": "_newline"
+          }
+        ]
+      }
+    },
+    "citation_label": {
+      "type": "TOKEN",
+      "content": {
+        "type": "SEQ",
+        "members": [
+          {
+            "type": "STRING",
+            "value": "@"
+          },
+          {
+            "type": "PATTERN",
+            "value": "[\\w][\\w:.#$%&+?<>~\\/-]*"
+          }
+        ]
+      }
+    },
     "link_title": {
       "type": "CHOICE",
       "members": [
@@ -3296,6 +3391,155 @@
         {
           "type": "SYMBOL",
           "name": "_newline"
+        }
+      ]
+    },
+    "citation_group": {
+      "type": "TOKEN",
+      "content": {
+        "type": "PREC",
+        "value": 1,
+        "content": {
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "STRING",
+              "value": "["
+            },
+            {
+              "type": "CHOICE",
+              "members": [
+                {
+                  "type": "STRING",
+                  "value": "+"
+                },
+                {
+                  "type": "BLANK"
+                }
+              ]
+            },
+            {
+              "type": "CHOICE",
+              "members": [
+                {
+                  "type": "STRING",
+                  "value": "-"
+                },
+                {
+                  "type": "BLANK"
+                }
+              ]
+            },
+            {
+              "type": "STRING",
+              "value": "@"
+            },
+            {
+              "type": "PATTERN",
+              "value": "[\\w][\\w:.#$%&+?<>~\\/-]*"
+            },
+            {
+              "type": "PATTERN",
+              "value": "[^\\[\\]@\\r\\n]*"
+            },
+            {
+              "type": "REPEAT",
+              "content": {
+                "type": "SEQ",
+                "members": [
+                  {
+                    "type": "STRING",
+                    "value": ";"
+                  },
+                  {
+                    "type": "PATTERN",
+                    "value": "[^\\[\\]@\\r\\n]*"
+                  },
+                  {
+                    "type": "CHOICE",
+                    "members": [
+                      {
+                        "type": "STRING",
+                        "value": "-"
+                      },
+                      {
+                        "type": "BLANK"
+                      }
+                    ]
+                  },
+                  {
+                    "type": "STRING",
+                    "value": "@"
+                  },
+                  {
+                    "type": "PATTERN",
+                    "value": "[\\w][\\w:.#$%&+?<>~\\/-]*"
+                  },
+                  {
+                    "type": "PATTERN",
+                    "value": "[^\\[\\]@\\r\\n]*"
+                  }
+                ]
+              }
+            },
+            {
+              "type": "STRING",
+              "value": "]"
+            }
+          ]
+        }
+      }
+    },
+    "callout_list": {
+      "type": "PREC_RIGHT",
+      "value": 0,
+      "content": {
+        "type": "REPEAT1",
+        "content": {
+          "type": "SYMBOL",
+          "name": "callout_list_item"
+        }
+      }
+    },
+    "callout_list_item": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "TOKEN",
+            "content": {
+              "type": "SEQ",
+              "members": [
+                {
+                  "type": "STRING",
+                  "value": "<"
+                },
+                {
+                  "type": "PATTERN",
+                  "value": "[0-9]+"
+                },
+                {
+                  "type": "STRING",
+                  "value": ">"
+                },
+                {
+                  "type": "STRING",
+                  "value": " "
+                },
+                {
+                  "type": "PATTERN",
+                  "value": "[^\\r\\n]+"
+                }
+              ]
+            }
+          },
+          "named": true,
+          "value": "content"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "_eof_or_newline"
         }
       ]
     },
@@ -3797,6 +4041,14 @@
                     "content": {
                       "type": "SYMBOL",
                       "name": "tag"
+                    }
+                  },
+                  {
+                    "type": "PREC_DYNAMIC",
+                    "value": 100,
+                    "content": {
+                      "type": "SYMBOL",
+                      "name": "citation_group"
                     }
                   },
                   {
