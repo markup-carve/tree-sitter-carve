@@ -2318,6 +2318,12 @@ static bool scan_table_cell(Scanner *s, TSLexer *lexer, bool *separator,
 
     case '|':
       *empty = first_char && leading_ws == 0;
+      // A whitespace-only gap is an empty DATA cell, not a separator cell
+      // (`| A |` + `| |` is header-less body rows in the reference engines,
+      // never a header + separator promotion).
+      if (first_char && leading_ws > 0) {
+        *separator = false;
+      }
       return true;
     case ':':
       advance(s, lexer);
