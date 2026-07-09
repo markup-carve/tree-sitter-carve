@@ -239,6 +239,12 @@ typedef struct {
   // The whitespace indent of the current line.
   uint8_t indent;
 
+  // Column right after the most recent list marker emitted on the current
+  // line (0 = none). A bullet marker that starts exactly at this column is a
+  // marker-line nested list (`- - A`, corpus 103-marker-line-nested-lists):
+  // its list opens at the marker's own column instead of the line indent.
+  uint8_t marker_end_col;
+
   // Parser state flags.
   uint8_t state;
 } Scanner;
@@ -1654,6 +1660,16 @@ static bool parse_list_marker_or_thematic_break(
 #ifdef DEBUG
   assert(lexer->lookahead == marker);
 #endif
+  // A bullet marker that begins exactly where the previous list marker on
+  // this line ended is a marker-line nested list (`- - A`, corpus
+  // 103-marker-line-nested-lists): its list nests at the marker's own column
+  // instead of continuing the outer list at the line indent.
+  uint32_t start_col = lexer->get_column(lexer);
+  uint8_t list_indent = s->indent;
+  if (start_col > s->indent && s->marker_end_col != 0 &&
+      start_col == s->marker_end_col) {
+    list_indent = (uint8_t)start_col;
+  }
   advance(s, lexer);
 
   // We should prioritize a thematic break over lists.
@@ -1697,7 +1713,10 @@ static bool parse_list_marker_or_thematic_break(
   if (can_be_list_marker) {
     if (valid_symbols[LIST_MARKER_TASK_BEGIN]) {
       if (scan_task_list_marker(s, lexer)) {
-        ensure_list_open(s, LIST_TASK, s->indent + 1);
+        ensure_list_open(s, LIST_TASK, list_indent + 1);
+        // The committed token is the two-char `<bullet> ` (the checkbox is
+        // grammar-level), so the chain column is right after it.
+        s->marker_end_col = (uint8_t)(start_col + 2);
         lexer->result_symbol = LIST_MARKER_TASK_BEGIN;
         return true;
       }
@@ -1709,7 +1728,8 @@ static bool parse_list_marker_or_thematic_break(
       if (!marker_line_has_content(s, lexer)) {
         return false;
       }
-      ensure_list_open(s, list_type, s->indent + 1);
+      ensure_list_open(s, list_type, list_indent + 1);
+      s->marker_end_col = (uint8_t)(start_col + 2);
       lexer->result_symbol = marker_type;
       return true;
     }
@@ -2266,10 +2286,15 @@ static bool parse_footnote_continuation(Scanner *s, TSLexer *lexer) {
 
 // Scan from a `|` to the next `|`, respecting verbatim and escapes.
 // May not contain any newline.
-static bool scan_table_cell(Scanner *s, TSLexer *lexer, bool *separator) {
+// `empty` is set when the cell closes without any non-whitespace content;
+// a row whose cells are ALL empty is not a table row (spec corpus
+// 111-a-pipe-pair-with-no-cell-is-not-a-table: `||` alone stays a paragraph).
+static bool scan_table_cell(Scanner *s, TSLexer *lexer, bool *separator,
+                            bool *empty) {
   consume_whitespace(s, lexer);
 
   *separator = true;
+  *empty = false;
 
   bool first_char = true;
   while (!lexer->eof(lexer)) {
@@ -2290,6 +2315,7 @@ static bool scan_table_cell(Scanner *s, TSLexer *lexer, bool *separator) {
       break;
 
     case '|':
+      *empty = first_char;
       return true;
     case ':':
       advance(s, lexer);
@@ -2318,10 +2344,15 @@ static bool scan_table_cell(Scanner *s, TSLexer *lexer, bool *separator) {
 
 static bool scan_separator_row(Scanner *s, TSLexer *lexer) {
   uint8_t cell_count = 0;
+  bool any_content = false;
   bool curr_separator;
-  while (scan_table_cell(s, lexer, &curr_separator)) {
+  bool curr_empty;
+  while (scan_table_cell(s, lexer, &curr_separator, &curr_empty)) {
     if (!curr_separator) {
       return false;
+    }
+    if (!curr_empty) {
+      any_content = true;
     }
     ++cell_count;
     if (lexer->lookahead == '|') {
@@ -2329,7 +2360,7 @@ static bool scan_separator_row(Scanner *s, TSLexer *lexer) {
     }
   }
 
-  if (cell_count == 0) {
+  if (cell_count == 0 || !any_content) {
     return false;
   }
 
@@ -2347,10 +2378,15 @@ static bool scan_table_row(Scanner *s, TSLexer *lexer, TokenType *row_type) {
 
   uint8_t cell_count = 0;
   bool all_separators = true;
+  bool any_content = false;
   bool curr_separator;
-  while (scan_table_cell(s, lexer, &curr_separator)) {
+  bool curr_empty;
+  while (scan_table_cell(s, lexer, &curr_separator, &curr_empty)) {
     if (!curr_separator) {
       all_separators = false;
+    }
+    if (!curr_empty) {
+      any_content = true;
     }
     ++cell_count;
     if (lexer->lookahead == '|') {
@@ -2358,7 +2394,9 @@ static bool scan_table_row(Scanner *s, TSLexer *lexer, TokenType *row_type) {
     }
   }
 
-  if (cell_count == 0) {
+  // A pipe pair with no cell content anywhere on the line is not a table
+  // (corpus 111: `||` alone stays paragraph text).
+  if (cell_count == 0 || !any_content) {
     return false;
   }
 
@@ -3497,6 +3535,8 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
   }
   if (lexer->get_column(lexer) == 0) {
     s->indent = consume_whitespace(s, lexer);
+    // A new line starts a new marker chain (see `marker_end_col`).
+    s->marker_end_col = 0;
   }
   bool is_newline = lexer->lookahead == '\n';
 
@@ -3740,6 +3780,7 @@ static void init(Scanner *s) {
   s->blocks_to_close = 0;
   s->block_quote_level = 0;
   s->indent = 0;
+  s->marker_end_col = 0;
   s->state = 0;
 }
 
@@ -3771,6 +3812,7 @@ unsigned tree_sitter_carve_external_scanner_serialize(void *payload,
   buffer[size++] = (char)s->blocks_to_close;
   buffer[size++] = (char)s->block_quote_level;
   buffer[size++] = (char)s->indent;
+  buffer[size++] = (char)s->marker_end_col;
   buffer[size++] = (char)s->state;
 
   buffer[size++] = (char)s->open_blocks->size;
@@ -3798,6 +3840,7 @@ void tree_sitter_carve_external_scanner_deserialize(void *payload, char *buffer,
     s->blocks_to_close = (uint8_t)buffer[size++];
     s->block_quote_level = (uint8_t)buffer[size++];
     s->indent = (uint8_t)buffer[size++];
+    s->marker_end_col = (uint8_t)buffer[size++];
     s->state = (uint8_t)buffer[size++];
 
     uint8_t open_blocks = (uint8_t)buffer[size++];

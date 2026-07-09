@@ -1870,6 +1870,16 @@
           }
         ]
       }
+    },
+    "children": {
+      "multiple": false,
+      "required": false,
+      "types": [
+        {
+          "type": "ignored_text",
+          "named": true
+        }
+      ]
     }
   },
   {
@@ -3799,6 +3809,10 @@
   },
   {
     "type": "identifier",
+    "named": true
+  },
+  {
+    "type": "ignored_text",
     "named": true
   },
   {

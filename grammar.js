@@ -637,8 +637,23 @@ module.exports = grammar({
             $._whitespace1,
             field("destination", $.link_destination),
             optional(seq($._whitespace1, field("title", $.link_title))),
+            // Unquoted trailing text after the destination (or title) is
+            // dropped by the renderer (corpus 34-reference-link-5:
+            // `[r]: a b c` resolves to href="a"). Consume it so the
+            // definition still parses without ERROR; the low lexical
+            // precedence keeps a quoted `link_title` winning when present.
+            optional(
+              seq(
+                $._whitespace1,
+                alias(token(prec(-1, /[^ \t\r\n][^\r\n]*/)), $.ignored_text),
+              ),
+            ),
           ),
         ),
+        // Trailing whitespace after the `:` (or the destination) is allowed:
+        // `[r]:   ` stays a definition-shaped line with no destination
+        // (corpus 34-reference-link-9).
+        optional($._whitespace1),
         $._newline,
       ),
     link_destination: (_) => /\S+/,
@@ -679,8 +694,13 @@ module.exports = grammar({
       ),
     // `@` + Pandoc citation key (first char \w, then \w or internal punctuation).
     citation_label: (_) => token(seq("@", /[\w][\w:.#$%&+?<>~\/-]*/)),
+    // A backslash escapes the next character inside a title, so
+    // `"a\"b\"c"` is one title (corpus 34-reference-link-7).
     link_title: (_) =>
-      choice(seq('"', /[^"\n]*/, '"'), seq("'", /[^'\n]*/, "'")),
+      choice(
+        seq('"', /(?:[^"\\\n]|\\[^\n])*/, '"'),
+        seq("'", /(?:[^'\\\n]|\\[^\n])*/, "'"),
+      ),
 
     // carve-php caption block: `^ caption text` on its own line.
     //

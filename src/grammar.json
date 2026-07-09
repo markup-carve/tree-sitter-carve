@@ -2979,8 +2979,53 @@
                       "type": "BLANK"
                     }
                   ]
+                },
+                {
+                  "type": "CHOICE",
+                  "members": [
+                    {
+                      "type": "SEQ",
+                      "members": [
+                        {
+                          "type": "SYMBOL",
+                          "name": "_whitespace1"
+                        },
+                        {
+                          "type": "ALIAS",
+                          "content": {
+                            "type": "TOKEN",
+                            "content": {
+                              "type": "PREC",
+                              "value": -1,
+                              "content": {
+                                "type": "PATTERN",
+                                "value": "[^ \\t\\r\\n][^\\r\\n]*"
+                              }
+                            }
+                          },
+                          "named": true,
+                          "value": "ignored_text"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "BLANK"
+                    }
+                  ]
                 }
               ]
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "_whitespace1"
             },
             {
               "type": "BLANK"
@@ -3096,7 +3141,7 @@
             },
             {
               "type": "PATTERN",
-              "value": "[^\"\\n]*"
+              "value": "(?:[^\"\\\\\\n]|\\\\[^\\n])*"
             },
             {
               "type": "STRING",
@@ -3113,7 +3158,7 @@
             },
             {
               "type": "PATTERN",
-              "value": "[^'\\n]*"
+              "value": "(?:[^'\\\\\\n]|\\\\[^\\n])*"
             },
             {
               "type": "STRING",
