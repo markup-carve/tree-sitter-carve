@@ -1,7 +1,7 @@
 # tree-sitter-carve
 
 Tree-sitter grammar for [Carve](https://markup-carve.github.io/carve/), a
-post-Djot lightweight markup language with visual mnemonics.
+post-Markdown lightweight markup language with visual mnemonics.
 
 This grammar is built from the proven Djot Tree-sitter scanner architecture and
 changes the public syntax to Carve:

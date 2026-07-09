@@ -5,7 +5,7 @@
       "camelcase": "Carve",
       "scope": "text.carve",
       "path": ".",
-      "file-types": ["crv", "carve"],
+      "file-types": ["crv"],
       "highlights": ["queries/highlights.scm"],
       "injection-regex": "carve"
     }
