@@ -2286,12 +2286,14 @@ static bool parse_footnote_continuation(Scanner *s, TSLexer *lexer) {
 
 // Scan from a `|` to the next `|`, respecting verbatim and escapes.
 // May not contain any newline.
-// `empty` is set when the cell closes without any non-whitespace content;
-// a row whose cells are ALL empty is not a table row (spec corpus
-// 111-a-pipe-pair-with-no-cell-is-not-a-table: `||` alone stays a paragraph).
+// `empty` is set when the cell closes with NO characters at all between the
+// pipes (not even whitespace: a whitespace-only gap like `| |` IS a cell per
+// the reference engines). A row whose pipe gaps are ALL zero-width is not a
+// table row (spec corpus 111-a-pipe-pair-with-no-cell-is-not-a-table: `||`
+// alone stays a paragraph).
 static bool scan_table_cell(Scanner *s, TSLexer *lexer, bool *separator,
                             bool *empty) {
-  consume_whitespace(s, lexer);
+  uint8_t leading_ws = consume_whitespace(s, lexer);
 
   *separator = true;
   *empty = false;
@@ -2315,7 +2317,7 @@ static bool scan_table_cell(Scanner *s, TSLexer *lexer, bool *separator,
       break;
 
     case '|':
-      *empty = first_char;
+      *empty = first_char && leading_ws == 0;
       return true;
     case ':':
       advance(s, lexer);
@@ -2394,8 +2396,9 @@ static bool scan_table_row(Scanner *s, TSLexer *lexer, TokenType *row_type) {
     }
   }
 
-  // A pipe pair with no cell content anywhere on the line is not a table
-  // (corpus 111: `||` alone stays paragraph text).
+  // A row whose pipe gaps are all zero-width (`||`) has no cells and is not
+  // a table row (corpus 111: `||` alone stays paragraph text). Whitespace-only
+  // gaps (`| |`) are real, empty cells and keep the row valid.
   if (cell_count == 0 || !any_content) {
     return false;
   }
