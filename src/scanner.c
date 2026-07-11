@@ -1475,15 +1475,18 @@ static TokenType scan_ordered_list_marker_token(Scanner *s, TSLexer *lexer) {
   }
 }
 
-// Scans a task marker box, e.g. `[x] ` or `[ ] ` or `[_] ` (carve-php
-// underscore-as-unchecked extension).
+// Scans a task marker box. `x`/`X` are the checked states; ` `, `_`, `-`,
+// `>`, `?` are the unchecked states (spec grammar.ebnf task_state; every
+// non-x state renders as an unchecked checkbox, matching djot-php).
 static bool scan_task_list_marker(Scanner *s, TSLexer *lexer) {
   if (lexer->lookahead != '[') {
     return false;
   }
   advance(s, lexer);
   if (lexer->lookahead != 'x' && lexer->lookahead != 'X' &&
-      lexer->lookahead != ' ' && lexer->lookahead != '_') {
+      lexer->lookahead != ' ' && lexer->lookahead != '_' &&
+      lexer->lookahead != '-' && lexer->lookahead != '>' &&
+      lexer->lookahead != '?') {
     return false;
   }
   advance(s, lexer);

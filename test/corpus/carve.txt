@@ -1270,3 +1270,68 @@ Citation definition with a punctuated Pandoc key
   (citation_definition
     label: (citation_label)
     entry: (citation_entry)))
+
+===============================================================================
+Task list unchecked state variants
+===============================================================================
+- [ ] todo
+- [x] done
+- [X] done upper
+- [_] underscore unchecked
+- [-] dropped
+- [>] deferred
+- [?] maybe
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_task
+        (unchecked))
+      (list_item_content
+        (paragraph)))
+    (list_item
+      (list_marker_task
+        (checked))
+      (list_item_content
+        (paragraph)))
+    (list_item
+      (list_marker_task
+        (checked))
+      (list_item_content
+        (paragraph)))
+    (list_item
+      (list_marker_task
+        (unchecked))
+      (list_item_content
+        (paragraph)))
+    (list_item
+      (list_marker_task
+        (unchecked))
+      (list_item_content
+        (paragraph)))
+    (list_item
+      (list_marker_task
+        (unchecked))
+      (list_item_content
+        (paragraph)))
+    (list_item
+      (list_marker_task
+        (unchecked))
+      (list_item_content
+        (paragraph)))))
+
+===============================================================================
+Bracketed letter that is not a task state stays a plain list
+===============================================================================
+- [y] not a task box
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph)))))
