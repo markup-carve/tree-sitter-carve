@@ -160,10 +160,12 @@ module.exports = grammar({
         $._whitespace1,
       ),
     checked: (_) => seq("[", choice("x", "X"), "]"),
-    // carve-php Task List Underscore Notation enhancement: `[_]` is an
-    // alternative to `[ ]` for unchecked task items. The grammar still
-    // emits a single `unchecked` node for either form.
-    unchecked: (_) => seq("[", choice(" ", "_"), "]"),
+    // Unchecked task states per the spec's task_state rule: ` `, `_`, `-`,
+    // `>`, `?` all render as an UNCHECKED checkbox (matches djot-php). The
+    // grammar emits a single `unchecked` node for every form; the state
+    // character stays recoverable from the node text for consumers that
+    // want to distinguish them.
+    unchecked: (_) => seq("[", choice(" ", "_", "-", ">", "?"), "]"),
 
     _list_definition: ($) =>
       seq(repeat1(alias($._list_item_definition, $.list_item)), $._block_close),
