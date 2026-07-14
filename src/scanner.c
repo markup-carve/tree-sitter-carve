@@ -3025,11 +3025,11 @@ static SpanType inline_span_type(InlineType type) {
   case STRONG:
   case UNDERLINE:
   case STRIKETHROUGH:
-  case SUBSCRIPT:
   case HIGHLIGHTED:
     return SpanBracketedAndSingleNoWhitespace;
   case SUPERSCRIPT:
-    return SpanBracketedAndSingle;
+  case SUBSCRIPT:
+    // Braced-only since spec PR 259: bare `^`/`,` are literal text.
   case INSERT:
   case DELETE:
     return SpanBracketed;

@@ -7,7 +7,8 @@ This grammar is built from the proven Djot Tree-sitter scanner architecture and
 changes the public syntax to Carve:
 
 - `/italic/`, `*bold*`, and `/*bold italic*/`
-- `^superscript^`, `,subscript,`, and `=highlight=`
+- `=highlight=`, plus the braced-only `{^superscript^}` and `{,subscript,}`
+  (a bare `^` or `,` is literal text)
 - `$` + backtick math spans, and `$$` + backtick display math spans
 - `:name[content]` inline extensions, `@mentions`, `#tags`, and `:emoji:`
 - `%%` line comments, trailing inline `%%` comments, and `%%%` fenced comments
