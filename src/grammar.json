@@ -4147,6 +4147,18 @@
                   },
                   {
                     "type": "SYMBOL",
+                    "name": "_glued_mention"
+                  },
+                  {
+                    "type": "SYMBOL",
+                    "name": "_glued_tag"
+                  },
+                  {
+                    "type": "SYMBOL",
+                    "name": "_glued_symbol"
+                  },
+                  {
+                    "type": "SYMBOL",
                     "name": "_symbol_fallback"
                   },
                   {
@@ -6213,6 +6225,39 @@
           ]
         }
       ]
+    },
+    "_glued_mention": {
+      "type": "TOKEN",
+      "content": {
+        "type": "PREC",
+        "value": 1,
+        "content": {
+          "type": "PATTERN",
+          "value": "[A-Za-z0-9_]+@[a-zA-Z0-9][a-zA-Z0-9_.-]*"
+        }
+      }
+    },
+    "_glued_tag": {
+      "type": "TOKEN",
+      "content": {
+        "type": "PREC",
+        "value": 1,
+        "content": {
+          "type": "PATTERN",
+          "value": "[A-Za-z0-9_]+#[a-zA-Z0-9][a-zA-Z0-9_.-]*"
+        }
+      }
+    },
+    "_glued_symbol": {
+      "type": "TOKEN",
+      "content": {
+        "type": "PREC",
+        "value": 1,
+        "content": {
+          "type": "PATTERN",
+          "value": "[A-Za-z0-9_]+:[a-zA-Z0-9+-][a-zA-Z0-9_+-]*:"
+        }
+      }
     },
     "_text": {
       "type": "REPEAT1",
