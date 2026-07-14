@@ -1074,7 +1074,9 @@ module.exports = grammar({
     extension_inline: (_) =>
       token(seq(":", /[a-zA-Z][a-zA-Z0-9_-]*/, "[", /[^\]\r\n]*/, "]")),
 
-    symbol: (_) => token(seq(":", /[\w\d_-]+/, ":")),
+    // A `:name:` symbol: the first name char is a letter, digit, `+` or `-`
+    // (so `:+1:` / `:-1:` parse), never `_`; the rest may add `_`. (carve#261)
+    symbol: (_) => token(seq(":", /[a-zA-Z0-9+-][\w+-]*/, ":")),
 
     // Emphasis and strong are a little special as they don't allow spaces next
     // to begin and end markers unless using the bracketed variant.
