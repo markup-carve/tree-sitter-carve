@@ -1346,3 +1346,26 @@ x^2^ and typo ,oops, happens
 
 (document
   (paragraph))
+
+===============================================================================
+Forced brace emphasis (intraword)
+===============================================================================
+
+my{_path_}name and {/a/b/} and x{~gone~}y
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (underline
+      begin_marker: (underline_begin)
+      content: (content)
+      end_marker: (underline_end))
+    (emphasis
+      begin_marker: (emphasis_begin)
+      content: (content)
+      end_marker: (emphasis_end))
+    (strikethrough
+      begin_marker: (strikethrough_begin)
+      content: (content)
+      end_marker: (strikethrough_end))))
