@@ -1091,7 +1091,7 @@ module.exports = grammar({
         field("content", alias($._inline_without_trailing_space, $.content)),
         field("end_marker", $.emphasis_end),
       ),
-    emphasis_begin: ($) => seq("/", $._non_whitespace_check),
+    emphasis_begin: ($) => choice("{/", seq("/", $._non_whitespace_check)),
 
     bold_italic: ($) =>
       seq(
@@ -1118,7 +1118,7 @@ module.exports = grammar({
         field("content", alias($._inline_without_trailing_space, $.content)),
         field("end_marker", $.underline_end),
       ),
-    underline_begin: ($) => seq("_", $._non_whitespace_check),
+    underline_begin: ($) => choice("{_", seq("_", $._non_whitespace_check)),
 
     strikethrough: ($) =>
       seq(
@@ -1127,7 +1127,7 @@ module.exports = grammar({
         field("content", alias($._inline_without_trailing_space, $.content)),
         field("end_marker", $.strikethrough_end),
       ),
-    strikethrough_begin: ($) => seq("~", $._non_whitespace_check),
+    strikethrough_begin: ($) => choice("{~", seq("~", $._non_whitespace_check)),
 
     // The syntax description isn't clear about if non-bracket can contain surrounding spaces.
     // The live playground suggests that yes they can, although it's a bit inconsistent.

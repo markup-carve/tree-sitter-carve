@@ -4032,11 +4032,23 @@
     "named": false
   },
   {
+    "type": "{/",
+    "named": false
+  },
+  {
     "type": "{=",
     "named": false
   },
   {
     "type": "{^",
+    "named": false
+  },
+  {
+    "type": "{_",
+    "named": false
+  },
+  {
+    "type": "{~",
     "named": false
   },
   {
