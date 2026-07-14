@@ -166,7 +166,7 @@ Official corpus: table alignment and escaped cell content
       (table_cell))))
 
 ===============================================================================
-Inline extension, mention, tag, and emoji
+Inline extension, mention, tag, and symbol
 ===============================================================================
 Press :kbd[Ctrl] and ask @alice about #release-1 :rocket:.
 
@@ -177,6 +177,18 @@ Press :kbd[Ctrl] and ask @alice about #release-1 :rocket:.
     (extension_inline)
     (mention)
     (tag)
+    (symbol)))
+
+===============================================================================
+Symbol names may start with + or -
+===============================================================================
+Vote :+1: or :-1: today.
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (symbol)
     (symbol)))
 
 ===============================================================================
