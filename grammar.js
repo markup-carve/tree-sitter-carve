@@ -1031,6 +1031,12 @@ module.exports = grammar({
               $.inline_comment,
               $.trailing_comment,
               $._todo_highlights,
+              // Word runs that ABSORB a glued mention / tag / symbol, which is
+              // how the leading word-boundary guard is enforced without
+              // lookbehind (see _glued_* below).
+              $._glued_mention,
+              $._glued_tag,
+              $._glued_symbol,
               // Text and the symbol fallback matches everything not matched elsewhere.
               $._symbol_fallback,
               $._text,
@@ -1453,6 +1459,15 @@ module.exports = grammar({
       seq("{", choice($._curly_bracket_span_mark_begin, $._in_fallback)),
 
     // It's a bit faster with repeat1 here.
+    // Leading word-boundary guard for mention / tag / symbol (PART 9 §7): a
+    // word run glued to one of them swallows it, so it stays literal text.
+    // `me@example.com`, `a#b`, `a:b:c`, `10:30:` and `x:rocket:` are text.
+    _glued_mention: (_) => token(prec(1, /[A-Za-z0-9_]+@[a-zA-Z0-9][a-zA-Z0-9_.-]*/)),
+    _glued_tag: (_) => token(prec(1, /[A-Za-z0-9_]+#[a-zA-Z0-9][a-zA-Z0-9_.-]*/)),
+    // The closing `:` is required, so an inline extension still fires intraword
+    // (`foo:kbd[Ctrl]`): `:kbd[` carries no closing colon and is not absorbed.
+    _glued_symbol: (_) => token(prec(1, /[A-Za-z0-9_]+:[a-zA-Z0-9+-][a-zA-Z0-9_+-]*:/)),
+
     _text: (_) => repeat1(/\S/),
   },
 

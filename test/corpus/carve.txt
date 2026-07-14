@@ -1381,3 +1381,26 @@ my{_path_}name and {/a/b/} and x{~gone~}y
       begin_marker: (strikethrough_begin)
       content: (content)
       end_marker: (strikethrough_end))))
+
+===============================================================================
+Mention, tag and symbol need a leading word boundary
+===============================================================================
+
+mail me@example.com and a#b and a:b:c and 10:30: stay literal
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph))
+
+===============================================================================
+An inline extension still fires intraword
+===============================================================================
+
+foo:kbd[Ctrl] end
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (extension_inline)))
