@@ -34,7 +34,7 @@ Carve emphasis
 /italic/ *bold* /*bold italic*/
 _underline_ ~strike~
 
-^super^ ,sub, =mark=
+{^super^} {,sub,} =mark=
 
 -------------------------------------------------------------------------------
 
@@ -1335,3 +1335,14 @@ Bracketed letter that is not a task state stays a plain list
       (list_marker_dash)
       (list_item_content
         (paragraph)))))
+
+===============================================================================
+Bare caret and comma are literal (no bare superscript or subscript)
+===============================================================================
+
+x^2^ and typo ,oops, happens
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph))

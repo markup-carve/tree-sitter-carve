@@ -1138,7 +1138,8 @@ module.exports = grammar({
         field("content", alias($._inline, $.content)),
         field("end_marker", $.superscript_end),
       ),
-    superscript_begin: (_) => choice("{^", "^"),
+    // Braced-only (spec PR 259): a bare `^` is literal text.
+    superscript_begin: (_) => "{^",
 
     subscript: ($) =>
       seq(
@@ -1147,7 +1148,8 @@ module.exports = grammar({
         field("content", alias($._inline, $.content)),
         field("end_marker", $.subscript_end),
       ),
-    subscript_begin: ($) => choice("{,", seq(",", $._non_whitespace_check)),
+    // Braced-only (spec PR 259): a bare `,` is literal text.
+    subscript_begin: (_) => "{,",
 
     highlighted: ($) =>
       seq(
