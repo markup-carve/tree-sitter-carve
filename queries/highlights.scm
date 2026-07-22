@@ -212,6 +212,9 @@
   (math_marker)
   (math_marker_begin)
   (math_marker_end)
+  (literal_marker)
+  (literal_marker_begin)
+  (literal_marker_end)
   (raw_inline_attribute)
   (raw_inline_marker_begin)
   (raw_inline_marker_end)
@@ -225,6 +228,9 @@
 
 ((raw_inline) @markup.raw
   (#set! priority 90))
+
+; Inline literal renders as prose (no code/math face), so capture it plainly.
+(inline_literal) @none
 
 [
   (comment_line)
@@ -412,6 +418,7 @@
   (math)
   (raw_inline)
   (verbatim)
+  (inline_literal)
   (reference_label)
   (class)
   (class_name)

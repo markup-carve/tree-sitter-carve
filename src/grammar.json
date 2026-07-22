@@ -4127,6 +4127,10 @@
                   },
                   {
                     "type": "SYMBOL",
+                    "name": "inline_literal"
+                  },
+                  {
+                    "type": "SYMBOL",
                     "name": "raw_inline"
                   },
                   {
@@ -5675,6 +5679,63 @@
         }
       ]
     },
+    "inline_literal": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "FIELD",
+          "name": "marker",
+          "content": {
+            "type": "ALIAS",
+            "content": {
+              "type": "STRING",
+              "value": "!"
+            },
+            "named": true,
+            "value": "literal_marker"
+          }
+        },
+        {
+          "type": "FIELD",
+          "name": "open",
+          "content": {
+            "type": "ALIAS",
+            "content": {
+              "type": "SYMBOL",
+              "name": "_verbatim_begin"
+            },
+            "named": true,
+            "value": "literal_marker_begin"
+          }
+        },
+        {
+          "type": "FIELD",
+          "name": "content",
+          "content": {
+            "type": "ALIAS",
+            "content": {
+              "type": "SYMBOL",
+              "name": "_verbatim_content"
+            },
+            "named": true,
+            "value": "content"
+          }
+        },
+        {
+          "type": "FIELD",
+          "name": "close",
+          "content": {
+            "type": "ALIAS",
+            "content": {
+              "type": "SYMBOL",
+              "name": "_verbatim_end"
+            },
+            "named": true,
+            "value": "literal_marker_end"
+          }
+        }
+      ]
+    },
     "verbatim": {
       "type": "SEQ",
       "members": [
@@ -6200,6 +6261,10 @@
         },
         {
           "type": "STRING",
+          "value": "!"
+        },
+        {
+          "type": "STRING",
           "value": "[]"
         }
       ]
@@ -6329,6 +6394,10 @@
     [
       "block_math",
       "inline_math",
+      "_symbol_fallback"
+    ],
+    [
+      "inline_literal",
       "_symbol_fallback"
     ],
     [

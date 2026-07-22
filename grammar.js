@@ -20,6 +20,7 @@ module.exports = grammar({
     [$.footnote_marker_begin, $._symbol_fallback],
     [$.inline_math, $._symbol_fallback],
     [$.block_math, $.inline_math, $._symbol_fallback],
+    [$.inline_literal, $._symbol_fallback],
     [$.link_text, $._symbol_fallback],
     [$._curly_bracket_span_begin, $._curly_bracket_span_fallback],
   ],
@@ -1026,6 +1027,7 @@ module.exports = grammar({
               $.autolink,
               $.verbatim,
               alias($.inline_math, $.math),
+              $.inline_literal,
               $.raw_inline,
               $.symbol,
               $.inline_comment,
@@ -1367,6 +1369,18 @@ module.exports = grammar({
         field("content", alias($._verbatim_content, $.content)),
         field("end_marker", alias($._verbatim_end, $.math_marker_end)),
       ),
+    // Inline literal: a `!` prefix on a verbatim span (`` !`…` ``). Structurally
+    // identical to inline_math, swapping the `$`/`$$` marker for `!`; renders as
+    // literal prose, so highlights.scm captures it plainly and injections.scm
+    // leaves it uninjected. A trailing `{…}` attaches as an ordinary inline
+    // attribute block, like any other inline element.
+    inline_literal: ($) =>
+      seq(
+        field("marker", alias("!", $.literal_marker)),
+        field("open", alias($._verbatim_begin, $.literal_marker_begin)),
+        field("content", alias($._verbatim_content, $.content)),
+        field("close", alias($._verbatim_end, $.literal_marker_end)),
+      ),
     verbatim: ($) =>
       seq(
         field(
@@ -1449,6 +1463,11 @@ module.exports = grammar({
         // Math
         "$$",
         "$",
+
+        // Inline literal: a bare `!` that does not open a `` !`…` `` span
+        // (no verbatim run follows) falls back to literal text, exactly as a
+        // lone `$` does for math.
+        "!",
 
         // Empty link text
         "[]",
