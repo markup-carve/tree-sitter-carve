@@ -10,6 +10,7 @@
     "test:coverage": "node scripts/coverage-matrix.mjs",
     "test:conformance": "node scripts/corpus-conformance.mjs",
     "test:corpus": "node scripts/coverage-matrix.mjs && node scripts/corpus-conformance.mjs",
+    "format": "prettier --write grammar.js",
     "check-formatted": "prettier --check grammar.js",
     "build-wasm": "tree-sitter build --wasm",
     "install": "node-gyp-build",
@@ -30,8 +31,9 @@
     }
   },
   "devDependencies": {
-    "tree-sitter-cli": "^0.22.1",
-    "prebuildify": "^6.0.0"
+    "prebuildify": "^6.0.0",
+    "prettier": "3.9.6",
+    "tree-sitter-cli": "^0.22.1"
   },
   "files": [
     "grammar.js",
