@@ -283,6 +283,29 @@ Inline $`E = mc^2` and display $$`\int_0^1 x\,dx`.
       end_marker: (math_marker_end))))
 
 ===============================================================================
+Inline literal
+===============================================================================
+A literal !`/kaet/` and attributed !`x`{.ipa}.
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (inline_literal
+      marker: (literal_marker)
+      open: (literal_marker_begin)
+      content: (content)
+      close: (literal_marker_end))
+    (inline_literal
+      marker: (literal_marker)
+      open: (literal_marker_begin)
+      content: (content)
+      close: (literal_marker_end))
+    attribute: (inline_attribute
+      (args
+        (class)))))
+
+===============================================================================
 Official corpus: raw blocks and raw inline
 ===============================================================================
 ```raw html

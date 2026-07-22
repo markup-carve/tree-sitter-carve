@@ -544,6 +544,10 @@
           "named": true
         },
         {
+          "type": "inline_literal",
+          "named": true
+        },
+        {
           "type": "insert",
           "named": true
         },
@@ -1420,6 +1424,10 @@
           "named": true
         },
         {
+          "type": "inline_literal",
+          "named": true
+        },
+        {
           "type": "insert",
           "named": true
         },
@@ -1581,6 +1589,52 @@
     "type": "inline_link_destination",
     "named": true,
     "fields": {}
+  },
+  {
+    "type": "inline_literal",
+    "named": true,
+    "fields": {
+      "close": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "literal_marker_end",
+            "named": true
+          }
+        ]
+      },
+      "content": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "content",
+            "named": true
+          }
+        ]
+      },
+      "marker": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "literal_marker",
+            "named": true
+          }
+        ]
+      },
+      "open": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "literal_marker_begin",
+            "named": true
+          }
+        ]
+      }
+    }
   },
   {
     "type": "insert",
@@ -1759,6 +1813,10 @@
         },
         {
           "type": "inline_link",
+          "named": true
+        },
+        {
+          "type": "inline_literal",
           "named": true
         },
         {
@@ -1987,6 +2045,10 @@
         },
         {
           "type": "inline_link",
+          "named": true
+        },
+        {
+          "type": "inline_literal",
           "named": true
         },
         {
@@ -2487,6 +2549,10 @@
         },
         {
           "type": "inline_link",
+          "named": true
+        },
+        {
+          "type": "inline_literal",
           "named": true
         },
         {
@@ -3165,6 +3231,10 @@
           "named": true
         },
         {
+          "type": "inline_literal",
+          "named": true
+        },
+        {
           "type": "insert",
           "named": true
         },
@@ -3396,6 +3466,10 @@
           "named": true
         },
         {
+          "type": "inline_literal",
+          "named": true
+        },
+        {
           "type": "insert",
           "named": true
         },
@@ -3573,6 +3647,10 @@
   },
   {
     "type": " ",
+    "named": false
+  },
+  {
+    "type": "!",
     "named": false
   },
   {
@@ -3917,6 +3995,18 @@
   },
   {
     "type": "list_marker_upper_roman_period",
+    "named": true
+  },
+  {
+    "type": "literal_marker",
+    "named": true
+  },
+  {
+    "type": "literal_marker_begin",
+    "named": true
+  },
+  {
+    "type": "literal_marker_end",
     "named": true
   },
   {
