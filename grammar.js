@@ -1481,11 +1481,14 @@ module.exports = grammar({
     // Leading word-boundary guard for mention / tag / symbol (PART 9 §7): a
     // word run glued to one of them swallows it, so it stays literal text.
     // `me@example.com`, `a#b`, `a:b:c`, `10:30:` and `x:rocket:` are text.
-    _glued_mention: (_) => token(prec(1, /[A-Za-z0-9_]+@[a-zA-Z0-9][a-zA-Z0-9_.-]*/)),
-    _glued_tag: (_) => token(prec(1, /[A-Za-z0-9_]+#[a-zA-Z0-9][a-zA-Z0-9_.-]*/)),
+    _glued_mention: (_) =>
+      token(prec(1, /[A-Za-z0-9_]+@[a-zA-Z0-9][a-zA-Z0-9_.-]*/)),
+    _glued_tag: (_) =>
+      token(prec(1, /[A-Za-z0-9_]+#[a-zA-Z0-9][a-zA-Z0-9_.-]*/)),
     // The closing `:` is required, so an inline extension still fires intraword
     // (`foo:kbd[Ctrl]`): `:kbd[` carries no closing colon and is not absorbed.
-    _glued_symbol: (_) => token(prec(1, /[A-Za-z0-9_]+:[a-zA-Z0-9+-][a-zA-Z0-9_+-]*:/)),
+    _glued_symbol: (_) =>
+      token(prec(1, /[A-Za-z0-9_]+:[a-zA-Z0-9+-][a-zA-Z0-9_+-]*:/)),
 
     _text: (_) => repeat1(/\S/),
   },
