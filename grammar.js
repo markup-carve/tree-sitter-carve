@@ -733,9 +733,20 @@ module.exports = grammar({
     comment_line: (_) => token(seq(/[ \t]*/, "%%", /[^\r\n]*/, /\r?\n/)),
 
     // Carve fenced comment block.
-    // semantics — opener is N `%` (N >= 3), closer must be N or more `%`,
+    // semantics — opener is N `%` (N >= 3), closer is a run of EXACTLY N `%`,
     // body may contain shorter `%`-runs as content (including pure `%%%`
     // lines as content inside a `%%%%` block).
+    //
+    // BOTH fence lines are a delimiter plus an INSIGNIFICANT TAIL (spec PART 9
+    // section 28): only the leading run of `%` is structural, so `%%% TODO`
+    // opens and `%%% end` closes. The opener already allowed a tail; the closer
+    // did not, so ` end` used to fall out of the block and parse as a paragraph.
+    //
+    // The closer tail is written as "optionally, a non-% character then the
+    // rest of the line" rather than as a negative lookahead, which this regex
+    // subset does not have. That keeps a LONGER run from closing a shorter
+    // fence: after `%%%`, a fourth `%` matches neither the tail nor the
+    // newline, so the token simply does not close there.
     //
     // Tree-sitter regex has no backreferences, so we encode each supported
     // fence length as a separate alternative. The lexer picks the longest
@@ -756,7 +767,7 @@ module.exports = grammar({
             /(?:[ \t]*%{0,5}(?:[^%\n][^\n]*)?\n|\n)*/,
             /[ \t]*/,
             "%%%%%%",
-            /\n?/,
+            /(?:[^%\n][^\n]*)?\n?/,
           ),
           // length 5 — body may contain up to 4 leading %s.
           seq(
@@ -766,7 +777,7 @@ module.exports = grammar({
             /(?:[ \t]*%{0,4}(?:[^%\n][^\n]*)?\n|\n)*/,
             /[ \t]*/,
             "%%%%%",
-            /\n?/,
+            /(?:[^%\n][^\n]*)?\n?/,
           ),
           // length 4 — body may contain up to 3 leading %s.
           seq(
@@ -776,7 +787,7 @@ module.exports = grammar({
             /(?:[ \t]*%{0,3}(?:[^%\n][^\n]*)?\n|\n)*/,
             /[ \t]*/,
             "%%%%",
-            /\n?/,
+            /(?:[^%\n][^\n]*)?\n?/,
           ),
           // length 3 — body may contain up to 2 leading %s.
           seq(
@@ -786,7 +797,7 @@ module.exports = grammar({
             /(?:[ \t]*%{0,2}(?:[^%\n][^\n]*)?\n|\n)*/,
             /[ \t]*/,
             "%%%",
-            /\n?/,
+            /(?:[^%\n][^\n]*)?\n?/,
           ),
         ),
       ),
