@@ -744,9 +744,16 @@ module.exports = grammar({
     //
     // The closer tail is written as "optionally, a non-% character then the
     // rest of the line" rather than as a negative lookahead, which this regex
-    // subset does not have. That keeps a LONGER run from closing a shorter
-    // fence: after `%%%`, a fourth `%` matches neither the tail nor the
-    // newline, so the token simply does not close there.
+    // subset does not have.
+    //
+    // A body line may carry a run of FEWER `%` than the fence or MORE of them,
+    // just never exactly the fence width - that is what "the closer matches on
+    // exact length" means from the body's side. Spelling only the "fewer" half,
+    // as this rule first did, left a longer run unmatchable: the token could
+    // not cover a `%%%%` line inside a `%%%` block, so the block closed on the
+    // line's first three percent signs and the fourth fell out as a paragraph
+    // (issue #28). Stating both halves removes the need for an end-of-input
+    // anchor, which a `token()` regex cannot express anyway.
     //
     // Tree-sitter regex has no backreferences, so we encode each supported
     // fence length as a separate alternative. The lexer picks the longest
@@ -764,40 +771,40 @@ module.exports = grammar({
             /[ \t]*/,
             "%%%%%%",
             /[^\n]*\n/,
-            /(?:[ \t]*%{0,5}(?:[^%\n][^\n]*)?\n|\n)*/,
+            /(?:[ \t]*(?:%{0,5}(?:[^%\n][^\n]*)?|%{7,}[^\n]*)\n|\n)*/,
             /[ \t]*/,
             "%%%%%%",
-            /(?:[^%\n][^\n]*)?\n?/,
+            /(?:[^%\n][^\n]*)?\n/,
           ),
           // length 5 — body may contain up to 4 leading %s.
           seq(
             /[ \t]*/,
             "%%%%%",
             /[^\n]*\n/,
-            /(?:[ \t]*%{0,4}(?:[^%\n][^\n]*)?\n|\n)*/,
+            /(?:[ \t]*(?:%{0,4}(?:[^%\n][^\n]*)?|%{6,}[^\n]*)\n|\n)*/,
             /[ \t]*/,
             "%%%%%",
-            /(?:[^%\n][^\n]*)?\n?/,
+            /(?:[^%\n][^\n]*)?\n/,
           ),
           // length 4 — body may contain up to 3 leading %s.
           seq(
             /[ \t]*/,
             "%%%%",
             /[^\n]*\n/,
-            /(?:[ \t]*%{0,3}(?:[^%\n][^\n]*)?\n|\n)*/,
+            /(?:[ \t]*(?:%{0,3}(?:[^%\n][^\n]*)?|%{5,}[^\n]*)\n|\n)*/,
             /[ \t]*/,
             "%%%%",
-            /(?:[^%\n][^\n]*)?\n?/,
+            /(?:[^%\n][^\n]*)?\n/,
           ),
           // length 3 — body may contain up to 2 leading %s.
           seq(
             /[ \t]*/,
             "%%%",
             /[^\n]*\n/,
-            /(?:[ \t]*%{0,2}(?:[^%\n][^\n]*)?\n|\n)*/,
+            /(?:[ \t]*(?:%{0,2}(?:[^%\n][^\n]*)?|%{4,}[^\n]*)\n|\n)*/,
             /[ \t]*/,
             "%%%",
-            /(?:[^%\n][^\n]*)?\n?/,
+            /(?:[^%\n][^\n]*)?\n/,
           ),
         ),
       ),
