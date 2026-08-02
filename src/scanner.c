@@ -128,6 +128,11 @@ typedef enum {
   // (PART 9 §17). Appended at the END of the enum so every existing token keeps
   // its index (must stay aligned with the `externals` array in grammar.js).
   LIST_CONTINUATION_MARKER,
+
+  // Bold-italic `/*…*/`. Appended for the same reason, and last so the two
+  // stay adjacent to the marker above them.
+  BOLD_ITALIC_MARK_BEGIN,
+  BOLD_ITALIC_END,
 } TokenType;
 
 // The different blocks in Carve that we track,
@@ -192,6 +197,9 @@ typedef enum {
   HIGHLIGHTED,
   INSERT,
   DELETE,
+  // The only span whose delimiters are TWO characters and not mirror images:
+  // `/*` opens and `*/` closes.
+  BOLD_ITALIC,
   // Spans where the start token is managed by `grammar.js`
   // and the tokens specify the ending token ), }, or ]
   PARENS_SPAN,
@@ -210,6 +218,8 @@ typedef enum {
   // Either single or bracketed, but no whitespace next to the single tags.
   // For example `_emphasis_}` (but not `_ emphasis _`).
   SpanBracketedAndSingleNoWhitespace,
+  // A two-character closer that is not a mirror of its opener: `/*…*/`.
+  SpanPair,
 } SpanType;
 
 typedef struct {
@@ -3066,6 +3076,8 @@ static SpanType inline_span_type(InlineType type) {
   case INSERT:
   case DELETE:
     return SpanBracketed;
+  case BOLD_ITALIC:
+    return SpanPair;
   case PARENS_SPAN:
   case CURLY_BRACKET_SPAN:
   case SQUARE_BRACKET_SPAN:
@@ -3097,6 +3109,8 @@ static char inline_begin_token(InlineType type) {
     return INSERT_MARK_BEGIN;
   case DELETE:
     return DELETE_MARK_BEGIN;
+  case BOLD_ITALIC:
+    return BOLD_ITALIC_MARK_BEGIN;
   case PARENS_SPAN:
     return PARENS_SPAN_MARK_BEGIN;
   case CURLY_BRACKET_SPAN:
@@ -3130,6 +3144,8 @@ static char inline_end_token(InlineType type) {
     return INSERT_END;
   case DELETE:
     return DELETE_END;
+  case BOLD_ITALIC:
+    return BOLD_ITALIC_END;
   case PARENS_SPAN:
     return PARENS_SPAN_END;
   case CURLY_BRACKET_SPAN:
@@ -3161,6 +3177,10 @@ static char inline_marker(InlineType type) {
     return '+';
   case DELETE:
     return '-';
+  case BOLD_ITALIC:
+    // The FIRST character of the closer; scan_bold_italic_span_end reads the
+    // `/` that follows it.
+    return '*';
   case PARENS_SPAN:
     return ')';
   case CURLY_BRACKET_SPAN:
@@ -3185,6 +3205,21 @@ static Inline *find_inline(Scanner *s, InlineType type) {
 
 static bool scan_single_span_end(Scanner *s, TSLexer *lexer, char marker) {
   if (lexer->lookahead != marker) {
+    return false;
+  }
+  advance(s, lexer);
+  return true;
+}
+
+// Match the `*/` that closes a bold-italic span. Two characters, and not a
+// mirror of the `/*` that opened it, which is why this span has a kind of its
+// own rather than reusing the single/bracketed helpers.
+static bool scan_bold_italic_span_end(Scanner *s, TSLexer *lexer) {
+  if (lexer->lookahead != '*') {
+    return false;
+  }
+  advance(s, lexer);
+  if (lexer->lookahead != '/') {
     return false;
   }
   advance(s, lexer);
@@ -3244,6 +3279,8 @@ static bool scan_span_end_marker(Scanner *s, TSLexer *lexer,
     return scan_span_end(s, lexer, marker, false);
   case SpanBracketedAndSingleNoWhitespace:
     return scan_span_end(s, lexer, marker, true);
+  case SpanPair:
+    return scan_bold_italic_span_end(s, lexer);
   default:
     return false;
   }
@@ -3741,6 +3778,11 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
 
   // Span scanning for inline elements, implemented
   // in the same way to have consistent precedence handling.
+  // Before STRONG: an open bold-italic must be offered the `*/` closer before
+  // the `*` in it can be read as a strong delimiter.
+  if (parse_span(s, lexer, valid_symbols, BOLD_ITALIC)) {
+    return true;
+  }
   if (parse_span(s, lexer, valid_symbols, EMPHASIS)) {
     return true;
   }
@@ -4083,6 +4125,10 @@ static char *token_type_s(TokenType t) {
   case ERROR:
     return "ERROR";
 
+  case BOLD_ITALIC_MARK_BEGIN:
+    return "BOLD_ITALIC_MARK_BEGIN";
+  case BOLD_ITALIC_END:
+    return "BOLD_ITALIC_END";
   case LIST_CONTINUATION_MARKER:
     return "LIST_CONTINUATION_MARKER";
     // default:
@@ -4157,6 +4203,8 @@ static char *inline_type_s(InlineType t) {
   switch (t) {
   case VERBATIM:
     return "VERBATIM";
+  case BOLD_ITALIC:
+    return "BOLD_ITALIC";
   case EMPHASIS:
     return "EMPHASIS";
   case STRONG:

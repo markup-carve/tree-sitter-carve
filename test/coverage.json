@@ -41,6 +41,7 @@
     "125-autolink-display-keeps-the-raw-content",
     "126-editorial-markup-takes-a-trailing-attribute",
     "127-emphasis-opener-slash-adjacency",
+    "128-bold-italic-delimiter-needs-content",
     "129-emphasis-span-closes-before-a-following-delimiter",
     "13-attributes",
     "130-thematic-break-requires-contiguous-markers",
@@ -173,7 +174,6 @@
     "99-table-header-cell-rowspan"
   ],
   "skip": {
-    "128-bold-italic-delimiter-needs-content": "An empty bold-italic run (`/**/`, `/* */`) has no content and is literal text; the grammar produces ERROR. The category-named example is one of the failing pair, so the skip is category-wide and takes the two non-empty examples with it.",
     "68-nested-containers-2": "Equal-width container nesting: `::: tip` inside an open `::: note` is content, not a child container (divergence 13). The scanner nests it and then errors on the leftover closer. Example-level, so the other four examples in this category stay asserted."
   }
 }
