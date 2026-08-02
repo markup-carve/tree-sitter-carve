@@ -71,12 +71,11 @@ module.exports = grammar({
         $._paragraph,
       ),
 
-    // A heading continues (folds onto the next line) only when that line
-    // carries the SAME number of '#' as the opener, or none (djot). A marker
-    // with a DIFFERENT count -- more OR fewer -- starts a NEW heading: a larger
-    // count nests a new section, a smaller count ends the open section(s) and
-    // opens a sibling. (Carve dropped the older "same or fewer" leniency to
-    // align with djot; see carve grammar §10 and corpus 79-multi-line-headings.)
+    // A heading ends at its newline and nothing folds into it (SINGLE-LINE
+    // HEADINGS, carve#451): every following line, `#`-marked or not, begins
+    // whatever block it begins. A marker with MORE `#` nests a new section, one
+    // with the same or FEWER closes the open section(s) and opens a sibling.
+    // (See carve grammar PART 2 and corpus 82-single-line-headings.)
     section: ($) =>
       seq(
         field("heading", $.heading),
@@ -87,8 +86,8 @@ module.exports = grammar({
         $._block_close,
       ),
 
-    // The external scanner allows for an arbitrary number of `#`
-    // that can be continued on the next line.
+    // The external scanner allows for an arbitrary number of `#`. The heading
+    // is one line: `_block_close` arrives at the newline.
     heading: ($) =>
       seq(
         field("marker", alias($._heading_begin, $.marker)),
@@ -96,11 +95,7 @@ module.exports = grammar({
         $._block_close,
         optional($._eof_or_newline),
       ),
-    _heading_content: ($) =>
-      seq(
-        $._inline_line,
-        repeat(seq(alias($._heading_continuation, $.marker), $._inline_line)),
-      ),
+    _heading_content: ($) => $._inline_line,
 
     // Carve has a crazy number of different list types
     // that we need to keep separate from each other.
@@ -1554,9 +1549,6 @@ module.exports = grammar({
     // Headings open and close sections, but they're not exposed to `grammar.js`
     // but is used by the external scanner internally.
     $._heading_begin,
-    // Heading continuation can continue a heading, but only if
-    // they match the number of `#` (or there's no `#`).
-    $._heading_continuation,
 
     // Matches div markers with varying number of `:`.
     $._div_begin,

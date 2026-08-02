@@ -295,34 +295,8 @@
       ]
     },
     "_heading_content": {
-      "type": "SEQ",
-      "members": [
-        {
-          "type": "SYMBOL",
-          "name": "_inline_line"
-        },
-        {
-          "type": "REPEAT",
-          "content": {
-            "type": "SEQ",
-            "members": [
-              {
-                "type": "ALIAS",
-                "content": {
-                  "type": "SYMBOL",
-                  "name": "_heading_continuation"
-                },
-                "named": true,
-                "value": "marker"
-              },
-              {
-                "type": "SYMBOL",
-                "name": "_inline_line"
-              }
-            ]
-          }
-        }
-      ]
+      "type": "SYMBOL",
+      "name": "_inline_line"
     },
     "list": {
       "type": "PREC_LEFT",
@@ -6450,10 +6424,6 @@
     {
       "type": "SYMBOL",
       "name": "_heading_begin"
-    },
-    {
-      "type": "SYMBOL",
-      "name": "_heading_continuation"
     },
     {
       "type": "SYMBOL",
