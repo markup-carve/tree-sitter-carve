@@ -36,7 +36,6 @@ typedef enum {
   FRONTMATTER_MARKER,
 
   HEADING_BEGIN,
-  HEADING_CONTINUATION,
   DIV_BEGIN,
   DIV_END,
   CODE_BLOCK_BEGIN,
@@ -2166,13 +2165,13 @@ static bool parse_heading(Scanner *s, TSLexer *lexer,
   // accept CommonMark's 0-3 space leading indent. See corpus
   // 101-heading-marker-column-zero.
   if (hash_count > 0 && has_extra_indent(s)) {
-    // An indented `#` line is NOT a marker. Inside an open heading it folds in
-    // as PLAIN TEXT (an indented `#` continuation line is ordinary text, not a
-    // same-`#` continuation marker), exactly like a no-`#` lazy line; outside a
-    // heading it is a paragraph. We leave the `#`s unconsumed (no mark_end) so
-    // the following inline line keeps them as text.
-    if (top_heading && valid_symbols[HEADING_CONTINUATION]) {
-      lexer->result_symbol = HEADING_CONTINUATION;
+    // An indented `#` line is NOT a marker: outside a heading it is a
+    // paragraph, and an open heading ended at its own newline, so it closes
+    // here and the line starts its own block. We leave the `#`s unconsumed (no
+    // mark_end) so that block keeps them as text.
+    if (top_heading && valid_symbols[BLOCK_CLOSE]) {
+      lexer->result_symbol = BLOCK_CLOSE;
+      remove_block(s);
       return true;
     }
     return false;
@@ -2180,34 +2179,23 @@ static bool parse_heading(Scanner *s, TSLexer *lexer,
 
   // We found a `# ` that can start or continue a heading.
   if (hash_count > 0 && lexer->lookahead == ' ') {
-    if (!valid_symbols[HEADING_BEGIN] && !valid_symbols[HEADING_CONTINUATION] &&
-        !valid_symbols[BLOCK_CLOSE]) {
+    if (!valid_symbols[HEADING_BEGIN] && !valid_symbols[BLOCK_CLOSE]) {
       return false;
     }
 
     advance(s, lexer); // Consume the ' '.
 
-    if (valid_symbols[HEADING_CONTINUATION] && top_heading &&
-        top->data == hash_count) {
-      // We're in a heading matching the same number of '#'.
-      lexer->mark_end(lexer);
-      lexer->result_symbol = HEADING_CONTINUATION;
-      return true;
-    }
-
-    if (valid_symbols[BLOCK_CLOSE] && top_heading && top->data != hash_count &&
+    if (valid_symbols[BLOCK_CLOSE] && top_heading &&
         s->open_inline->size == 0) {
-      // Found a mismatched heading level, need to close the previous
-      // before opening this one.
+      // An open heading ended at its own newline, whatever this marker's count
+      // is -- a same-count marker used to CONTINUE it (djot) and now simply
+      // opens the next heading. Close the previous one before opening it.
       lexer->result_symbol = BLOCK_CLOSE;
       remove_block(s);
       return true;
     }
 
-    // Open a new heading. (A same-`#` continuation was already handled above,
-    // so any marker reaching here differs from the open heading's count and
-    // starts a NEW heading -- djot's same-`#` rule, NOT the old same-or-fewer
-    // continuation leniency.)
+    // Open a new heading.
     if (valid_symbols[HEADING_BEGIN]) {
       // Sections are created on the root level (or nested inside other
       // sections). A heading with MORE `#` nests a new section; one with the
@@ -2228,23 +2216,12 @@ static bool parse_heading(Scanner *s, TSLexer *lexer,
       return true;
     }
   } else if (hash_count == 0 && top_heading) {
-    // We didn't find any `#`, but we might be able to continue
-    // the heading lazily.
-
-    // We need to always provide a BLOCK_CLOSE to end headings.
-    // We do this here, either when a blankline is followed or
-    // by the end of a container block.
-    if (valid_symbols[BLOCK_CLOSE] &&
-        (scan_eof_or_blankline(s, lexer) ||
-         scan_containing_block_closing_marker(s, lexer))) {
+    // No `#`, and a heading is open. It ended at its own newline, so it closes
+    // here no matter what this line is -- blank, a container closer, or the
+    // plain text that used to fold in.
+    if (valid_symbols[BLOCK_CLOSE]) {
       remove_block(s);
       lexer->result_symbol = BLOCK_CLOSE;
-      return true;
-    }
-
-    // We should continue the heading, if it's open.
-    if (valid_symbols[HEADING_CONTINUATION]) {
-      lexer->result_symbol = HEADING_CONTINUATION;
       return true;
     }
   }
@@ -3894,8 +3871,6 @@ static char *token_type_s(TokenType t) {
 
   case HEADING_BEGIN:
     return "HEADING";
-  case HEADING_CONTINUATION:
-    return "HEADING_CONTINUATION";
   case DIV_BEGIN:
     return "DIV_BEGIN";
   case DIV_END:
