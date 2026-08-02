@@ -45,6 +45,7 @@
     "13-attributes",
     "130-thematic-break-requires-contiguous-markers",
     "131-sublist-marker-interrupts-a-continuation-paragraph",
+    "132-footnote-definition-requires-an-inline-body",
     "133-footnote-definition-separator-must-be-a-space",
     "134-link-reference-definition-separator-must-be-a-space",
     "135-abbreviation-definition-separator-must-be-a-space",
@@ -53,6 +54,7 @@
     "138-all-space-verbatim-content",
     "139-trailing-whitespace-boundaries",
     "14-frontmatter",
+    "140-table-row-closing-pipe",
     "141-post-blank-list-continuation-content-column-model",
     "142-nested-item-looseness-does-not-propagate-to-the-outer-item",
     "143-definition-list-as-a-first-class-block-opener",
@@ -70,6 +72,7 @@
     "154-wrapped-definition-term-continuation-below-the-content-column-strips-leading-whitespace",
     "155-indented-attribute-line-stays-literal",
     "156-indented-image-and-caption-stay-literal",
+    "157-indented-reference-and-footnote-definitions-stay-literal",
     "158-indented-colon-fence-blocks-stay-literal",
     "159-below-content-column-div-body-in-a-list-item-stays-literal",
     "16-reference-link",
@@ -171,9 +174,6 @@
   ],
   "skip": {
     "128-bold-italic-delimiter-needs-content": "An empty bold-italic run (`/**/`, `/* */`) has no content and is literal text; the grammar produces ERROR. The category-named example is one of the failing pair, so the skip is category-wide and takes the two non-empty examples with it.",
-    "132-footnote-definition-requires-an-inline-body": "A footnote definition whose marker line carries no inline body (`[^a]:` then an indented line) is not a definition; the grammar produces ERROR.",
-    "140-table-row-closing-pipe": "A row missing its closing pipe is paragraph text, not a table row; the grammar produces ERROR. The category-named example is one of the failing pair, so the skip is category-wide.",
-    "157-indented-reference-and-footnote-definitions-stay-literal": "An indented reference / footnote definition is literal paragraph text (strict column zero); the grammar produces ERROR on both examples.",
     "68-nested-containers-2": "Equal-width container nesting: `::: tip` inside an open `::: note` is content, not a child container (divergence 13). The scanner nests it and then errors on the leftover closer. Example-level, so the other four examples in this category stay asserted."
   }
 }
