@@ -541,7 +541,7 @@ Forced brace forms for highlight, subscript, superscript
       end_marker: (superscript_end))))
 
 ===============================================================================
-Heading continuation requires the same number of #
+A same-count # line is a second heading, not a continuation
 ===============================================================================
 ## A
 ## still A
@@ -553,12 +553,31 @@ Heading continuation requires the same number of #
   (section
     (heading
       (marker)
-      (content
-        (marker))))
+      (content)))
+  (section
+    (heading
+      (marker)
+      (content)))
   (section
     (heading
       (marker)
       (content))))
+
+===============================================================================
+A plain line after a heading is its own paragraph
+===============================================================================
+# Title
+outside
+
+-------------------------------------------------------------------------------
+
+(document
+  (section
+    (heading
+      (marker)
+      (content))
+    (section_content
+      (paragraph))))
 
 ===============================================================================
 Heading markers must be at column zero

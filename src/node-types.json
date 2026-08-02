@@ -564,10 +564,6 @@
           "named": true
         },
         {
-          "type": "marker",
-          "named": true
-        },
-        {
           "type": "math",
           "named": true
         },
