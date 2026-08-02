@@ -7,7 +7,9 @@
 // ERROR and no MISSING node. A spec construct the grammar chokes on fails CI.
 //
 // Files in SKIP categories are not asserted here (they have a recorded grammar
-// gap); the coverage-matrix check is what guards the skip list itself.
+// gap), and a skip key may also name a single EXAMPLE (`NN-slug-2`) so one
+// unparsable example does not drop assertion for its whole category. The
+// coverage-matrix check is what guards the skip list itself.
 //
 // Parsing is delegated to the `tree-sitter parse` CLI so this script does not
 // depend on the compiled native node binding being loadable in CI. All covered
@@ -42,7 +44,8 @@ const coveredFiles = [];
 let skippedCount = 0;
 for (const file of allFiles) {
   const category = baseCategory(file);
-  if (skip.has(category)) {
+  const stem = path.basename(file, '.crv');
+  if (skip.has(category) || skip.has(stem)) {
     skippedCount += 1;
     continue;
   }
@@ -89,7 +92,8 @@ if (failures.length === 0 && result.status !== 0) {
 
 console.log(
   `corpus-conformance: parsed ${coveredFiles.length} file(s) across ${covered.size} ` +
-    `covered categories; ${skippedCount} file(s) in ${skip.size} skipped categories.`,
+    `covered categories; ${skippedCount} file(s) skipped via ${skip.size} skip entr` +
+    `${skip.size === 1 ? 'y' : 'ies'}.`,
 );
 
 if (failures.length) {
