@@ -6,6 +6,7 @@ module.exports = grammar({
   extras: (_) => ["\r"],
 
   conflicts: ($) => [
+    [$.bold_italic_begin, $._symbol_fallback],
     [$.emphasis_begin, $._symbol_fallback],
     [$.strong_begin, $._symbol_fallback],
     [$.underline_begin, $._symbol_fallback],
@@ -1119,11 +1120,11 @@ module.exports = grammar({
     bold_italic: ($) =>
       seq(
         field("begin_marker", $.bold_italic_begin),
+        $._bold_italic_mark_begin,
         field("content", alias($._inline_without_trailing_space, $.content)),
         field("end_marker", $.bold_italic_end),
       ),
     bold_italic_begin: ($) => seq("/*", $._non_whitespace_check),
-    bold_italic_end: (_) => "*/",
 
     strong: ($) =>
       seq(
@@ -1422,6 +1423,10 @@ module.exports = grammar({
       choice(
         // Standalone emphasis and strong markers are required for backtracking
         "/",
+        // `/*` is a token in its own right, so a bare one needs its own
+        // standalone fallback the way `/` and `*` do - otherwise `/* x/`, where
+        // the whitespace check after `/*` fails, has no lexing left at all.
+        "/*",
         "*",
         "_",
         "~",
@@ -1431,6 +1436,13 @@ module.exports = grammar({
         ",",
         "=",
         // Whitespace sensitive
+        // `/*` is a longer token than `/`, so without a branch of its own an
+        // unclosed bold-italic could not lose to emphasis at all: the parser
+        // commits to `bold_italic_begin` and errors at the end of the line.
+        seq(
+          seq("/*", $._non_whitespace_check),
+          choice($._bold_italic_mark_begin, $._in_fallback),
+        ),
         seq(
           seq("/", $._non_whitespace_check),
           choice($._emphasis_mark_begin, $._in_fallback),
@@ -1703,5 +1715,10 @@ module.exports = grammar({
     // (PART 9 §17). Appended at the END to keep all existing external indices
     // aligned with the `TokenType` enum in scanner.c.
     $.list_continuation_marker,
+
+    // Bold-italic `/*…*/`, the one span whose delimiters are two characters
+    // and not mirror images. Appended for the same reason as the marker above.
+    $._bold_italic_mark_begin,
+    $.bold_italic_end,
   ],
 });
