@@ -564,6 +564,22 @@ A same-count # line is the next heading, not a continuation
       (content))))
 
 ===============================================================================
+A plain line after a heading is its own paragraph
+===============================================================================
+# Title
+outside
+
+-------------------------------------------------------------------------------
+
+(document
+  (section
+    (heading
+      (marker)
+      (content))
+    (section_content
+      (paragraph))))
+
+===============================================================================
 Heading markers must be at column zero
 ===============================================================================
    # H
