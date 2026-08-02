@@ -6,7 +6,10 @@
 // new spec category therefore forces an explicit classify decision, mirroring
 // the IMPLEMENTED guard in the core Carve implementations.
 //
-// It also fails on stale matrix entries (a covered/skip category that no longer
+// A skip key is a CATEGORY (`NN-slug`) or a single EXAMPLE (`NN-slug-2`), so one
+// unparsable example does not drop assertion for the whole category it lives in.
+//
+// It also fails on stale matrix entries (a covered/skip key that no longer
 // exists in the corpus) and on a category listed in both lists.
 
 import { readFileSync, readdirSync } from 'node:fs';
@@ -26,11 +29,12 @@ function baseCategory(file) {
   return path.basename(file, '.crv').replace(/-[0-9]+$/, '');
 }
 
-const corpusCategories = new Set(
+const corpusStems = new Set(
   readdirSync(corpusDir)
     .filter((f) => f.endsWith('.crv'))
-    .map(baseCategory),
+    .map((f) => path.basename(f, '.crv')),
 );
+const corpusCategories = new Set([...corpusStems].map((stem) => baseCategory(stem)));
 
 const errors = [];
 
@@ -38,6 +42,8 @@ const errors = [];
 for (const category of [...corpusCategories].sort()) {
   const inCovered = covered.has(category);
   const inSkip = skip.has(category);
+  // An example-level skip does not classify its category: the rest of the
+  // category still has to be covered (or skipped) explicitly.
   if (!inCovered && !inSkip) {
     errors.push(
       `unclassified category: "${category}" exists in the corpus but is in neither ` +
@@ -56,16 +62,18 @@ for (const category of [...covered].sort()) {
     errors.push(`stale covered entry: "${category}" is not present in the corpus.`);
   }
 }
-for (const category of [...skip].sort()) {
-  if (!corpusCategories.has(category)) {
-    errors.push(`stale skip entry: "${category}" is not present in the corpus.`);
+for (const key of [...skip].sort()) {
+  if (!corpusCategories.has(key) && !corpusStems.has(key)) {
+    errors.push(
+      `stale skip entry: "${key}" is neither a corpus category nor a corpus example.`,
+    );
   }
 }
 
 // 3. Every skip entry must carry a non-empty reason.
-for (const [category, reason] of Object.entries(coverage.skip)) {
+for (const [key, reason] of Object.entries(coverage.skip)) {
   if (typeof reason !== 'string' || reason.trim() === '') {
-    errors.push(`skip entry "${category}" has no reason.`);
+    errors.push(`skip entry "${key}" has no reason.`);
   }
 }
 
