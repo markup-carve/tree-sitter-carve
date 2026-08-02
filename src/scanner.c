@@ -1855,7 +1855,21 @@ static bool scan_footnote_begin(Scanner *s, TSLexer *lexer) {
   }
   advance(s, lexer);
 
-  // Don't actually have to have anything else after the colon.
+  // A footnote definition's body STARTS on the marker line: the grammar reads
+  // `"]:", space, inline_content, newline`, so `[^a]:` alone is not one - the
+  // line and what follows it are paragraph text (corpus
+  // 132-footnote-definition-requires-an-inline-body). The separator is a
+  // literal SPACE; a tab in its place leaves a paragraph too. This is where a
+  // footnote definition parts company with a LINK reference definition, which
+  // is allowed to carry nothing after the colon (corpus 34-reference-link-9).
+  if (lexer->lookahead != ' ') {
+    return false;
+  }
+  consume_whitespace(s, lexer);
+  if (lexer->eof(lexer) || lexer->lookahead == '\n') {
+    return false;
+  }
+
   return true;
 }
 
@@ -1889,6 +1903,14 @@ static bool parse_open_bracket(Scanner *s, TSLexer *lexer,
 
   if (!valid_symbols[FOOTNOTE_MARK_BEGIN] &&
       !valid_symbols[LINK_REF_DEF_MARK_BEGIN]) {
+    return false;
+  }
+
+  // COLUMN ZERO, same rule the heading marker follows. A definition opens only
+  // at its container's content column; an indented `[x]:` / `[^x]:` is ordinary
+  // paragraph text, not a definition with a stray space (corpus
+  // 157-indented-reference-and-footnote-definitions-stay-literal).
+  if (has_extra_indent(s)) {
     return false;
   }
 
@@ -2271,12 +2293,17 @@ static bool parse_footnote_continuation(Scanner *s, TSLexer *lexer) {
 // the reference engines). A row whose pipe gaps are ALL zero-width is not a
 // table row (spec corpus 111-a-pipe-pair-with-no-cell-is-not-a-table: `||`
 // alone stays a paragraph).
+// `unterminated` reports the one failure the caller has to tell apart: the cell
+// ran into the NEWLINE after consuming content, meaning the row never closed on
+// a pipe. Hitting the newline with nothing but whitespace consumed is the normal
+// way a properly closed row ends, and leaves it false.
 static bool scan_table_cell(Scanner *s, TSLexer *lexer, bool *separator,
-                            bool *empty) {
+                            bool *empty, bool *unterminated) {
   uint8_t leading_ws = consume_whitespace(s, lexer);
 
   *separator = true;
   *empty = false;
+  *unterminated = false;
 
   bool first_char = true;
   while (!lexer->eof(lexer)) {
@@ -2287,6 +2314,7 @@ static bool scan_table_cell(Scanner *s, TSLexer *lexer, bool *separator,
       advance(s, lexer);
       break;
     case '\n':
+      *unterminated = !first_char;
       return false;
     case '`':
       *separator = false;
@@ -2335,7 +2363,13 @@ static bool scan_separator_row(Scanner *s, TSLexer *lexer) {
   bool any_content = false;
   bool curr_separator;
   bool curr_empty;
-  while (scan_table_cell(s, lexer, &curr_separator, &curr_empty)) {
+  bool unterminated = false;
+  bool attr_after_pipe = false;
+  while (true) {
+    attr_after_pipe = lexer->lookahead == '{';
+    if (!scan_table_cell(s, lexer, &curr_separator, &curr_empty, &unterminated)) {
+      break;
+    }
     if (!curr_separator) {
       return false;
     }
@@ -2347,8 +2381,11 @@ static bool scan_separator_row(Scanner *s, TSLexer *lexer) {
       advance(s, lexer);
     }
   }
+  if (attr_after_pipe) {
+    unterminated = false;
+  }
 
-  if (cell_count == 0 || !any_content) {
+  if (cell_count == 0 || !any_content || unterminated) {
     return false;
   }
 
@@ -2367,9 +2404,18 @@ static bool scan_table_row(Scanner *s, TSLexer *lexer, TokenType *row_type) {
   uint8_t cell_count = 0;
   bool all_separators = true;
   bool any_content = false;
+  bool unterminated = false;
   bool curr_separator;
   bool curr_empty;
-  while (scan_table_cell(s, lexer, &curr_separator, &curr_empty)) {
+  // A row attribute block glued to the closing pipe (`| a |{.head}`) sits where
+  // a next cell would start. It is not an unterminated final cell; the row-end
+  // token validates and consumes it (parse_table_end_newline).
+  bool attr_after_pipe = false;
+  while (true) {
+    attr_after_pipe = lexer->lookahead == '{';
+    if (!scan_table_cell(s, lexer, &curr_separator, &curr_empty, &unterminated)) {
+      break;
+    }
     if (!curr_separator) {
       all_separators = false;
     }
@@ -2381,11 +2427,21 @@ static bool scan_table_row(Scanner *s, TSLexer *lexer, TokenType *row_type) {
       advance(s, lexer);
     }
   }
+  if (attr_after_pipe) {
+    unterminated = false;
+  }
 
   // A row whose pipe gaps are all zero-width (`||`) has no cells and is not
   // a table row (corpus 111: `||` alone stays paragraph text). Whitespace-only
   // gaps (`| |`) are real, empty cells and keep the row valid.
   if (cell_count == 0 || !any_content) {
+    return false;
+  }
+
+  // A row without its CLOSING pipe is prose, not a row: `| a | b` is a
+  // paragraph, and a second row missing the pipe ends the table it followed
+  // (corpus 140-table-row-closing-pipe).
+  if (unterminated) {
     return false;
   }
 
