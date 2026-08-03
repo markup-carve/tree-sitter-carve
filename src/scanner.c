@@ -1409,6 +1409,19 @@ static TokenType scan_ordered_list_marker_token_type(Scanner *s,
 
   OrderedListType list_type;
   if (!scan_ordered_list_type(s, lexer, &list_type)) {
+    // BARE DOT (carve#472). The value may be omitted when the delimiter is
+    // `.`: a bare `. ` is a decimal ordered marker counting from 1. It shares
+    // the decimal-dot flavour, so it opens and continues the same list as `1.`
+    // and needs no token of its own.
+    //
+    // Only `.` may drop its value. A lone `)` stays paragraph text, which is
+    // why this is guarded on the delimiter and on not having consumed a `(` -
+    // `() x` is not a marker either. The caller requires the trailing space,
+    // so `.x` and a bare `.` on its own line are unaffected.
+    if (!surrounding_parens && lexer->lookahead == '.') {
+      advance(s, lexer);
+      return LIST_MARKER_DECIMAL_PERIOD;
+    }
     return IGNORED;
   }
 

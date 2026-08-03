@@ -1626,3 +1626,81 @@ A bold-italic run with content still parses
       begin_marker: (bold_italic_begin)
       content: (content)
       end_marker: (bold_italic_end))))
+
+===============================================================================
+A bare dot is a decimal ordered marker
+===============================================================================
+
+. first
+. second
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_decimal_period)
+      content: (list_item_content
+        (paragraph)))
+    (list_item
+      marker: (list_marker_decimal_period)
+      content: (list_item_content
+        (paragraph)))))
+
+
+===============================================================================
+A bare dot and an explicit decimal dot are one list
+===============================================================================
+
+. a
+2. b
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_decimal_period)
+      content: (list_item_content
+        (paragraph)))
+    (list_item
+      marker: (list_marker_decimal_period)
+      content: (list_item_content
+        (paragraph)))))
+
+
+===============================================================================
+A bare dot needs a space and content
+===============================================================================
+
+.x
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph))
+
+
+===============================================================================
+Two dots are not a marker
+===============================================================================
+
+.. text
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph))
+
+
+===============================================================================
+A lone paren is not the bare dot's counterpart
+===============================================================================
+
+) text
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph))
+
