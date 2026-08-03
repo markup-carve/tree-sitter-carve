@@ -1,5 +1,5 @@
 {
-  "_comment": "Coverage matrix for the shared Carve spec corpus (spec/tests/corpus/*.crv). Every NN-slug base category must appear in covered or skip; the coverage-matrix test fails otherwise so a new spec category forces a classify decision. covered = grammar parses every file in the category with no ERROR/MISSING node. skip = at least one file currently produces an ERROR/MISSING node; reason records the unmodeled construct (a grammar gap to surface, not to hack around). A skip key is a CATEGORY (NN-slug) or a single EXAMPLE (NN-slug-2) \u2014 use the example form when the rest of the category parses cleanly, so one gap does not drop assertion for its siblings. A key equal to a category name is read as the CATEGORY, so the first example of a category cannot be skipped on its own.",
+  "_comment": "Coverage matrix for the shared Carve spec corpus (spec/tests/corpus/*.crv). Every NN-slug base category must appear in covered or skip; the coverage-matrix test fails otherwise so a new spec category forces a classify decision. covered = grammar parses every file in the category with no ERROR/MISSING node. skip = at least one file currently produces an ERROR/MISSING node; reason records the unmodeled construct (a grammar gap to surface, not to hack around). A skip key is a CATEGORY (NN-slug) or a single EXAMPLE (NN-slug-2) — use the example form when the rest of the category parses cleanly, so one gap does not drop assertion for its siblings. A key equal to a category name is read as the CATEGORY, so the first example of a category cannot be skipped on its own.",
   "covered": [
     "01-emphasis",
     "02-headings",
@@ -175,5 +175,63 @@
   ],
   "skip": {
     "68-nested-containers-2": "Equal-width container nesting: `::: tip` inside an open `::: note` is content, not a child container (divergence 13). The scanner nests it and then errors on the leftover closer. Example-level, so the other four examples in this category stay asserted."
+  },
+  "overAcceptance": {
+    "11-fenced-code-16": {
+      "nodes": "code_block",
+      "reason": "an indented fence is not an opener (strict column-0 rule)"
+    },
+    "130-thematic-break-requires-contiguous-markers-3": {
+      "nodes": "thematic_break",
+      "reason": "an indented break is not an opener"
+    },
+    "155-indented-attribute-line-stays-literal-2": {
+      "nodes": "list",
+      "reason": "an indented attribute line and the bullets under it stay literal"
+    },
+    "158-indented-colon-fence-blocks-stay-literal": {
+      "nodes": "div",
+      "reason": "an indented colon fence is not an opener"
+    },
+    "158-indented-colon-fence-blocks-stay-literal-2": {
+      "nodes": "div",
+      "reason": "an indented line-block fence is not an opener"
+    },
+    "158-indented-colon-fence-blocks-stay-literal-3": {
+      "nodes": "div",
+      "reason": "an indented colon fence is not an opener"
+    },
+    "24-generic-divs-2": {
+      "nodes": "div",
+      "reason": "`::: {.sidebar}` is a paragraph - the opener takes a type word, not an attribute block"
+    },
+    "24-generic-divs-4": {
+      "nodes": "div",
+      "reason": "`::: 123` is a paragraph - a type word cannot start with a digit"
+    },
+    "41-line-blocks-5": {
+      "nodes": "div",
+      "reason": "`::: {.line-block}` is a paragraph, not a line block"
+    },
+    "68-nested-containers-4": {
+      "nodes": "div",
+      "reason": "stale-corpus artifact - an unclosed container now closes at end of input (carve#455), so this resolves on the next corpus bump"
+    },
+    "71-parenthesized-ordered-marker": {
+      "nodes": "list",
+      "reason": "`(1)` is not a marker in Carve; scan_ordered_list_marker_token_type accepts a leading `(` (djot heritage)"
+    },
+    "79-paragraph-interruption-11": {
+      "nodes": "div",
+      "reason": "a colon fence that does not interrupt a paragraph here"
+    },
+    "79-paragraph-interruption-19": {
+      "nodes": "div",
+      "reason": "a colon fence that does not interrupt a paragraph here"
+    },
+    "82-single-line-headings-5": {
+      "nodes": "section",
+      "reason": "a heading shape the language declines"
+    }
   }
 }

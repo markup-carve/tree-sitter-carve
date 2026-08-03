@@ -106,4 +106,122 @@ if (failures.length) {
   process.exit(1);
 }
 
+// ---------------------------------------------------------------------------
+// The other side: OVER-ACCEPTANCE.
+//
+// The check above asserts that a covered document parses with no ERROR and no
+// MISSING node. That is one-sided. It catches a construct the grammar CHOKES
+// on, and it is structurally incapable of catching one the grammar ACCEPTS
+// that the language declines - an over-permissive rule produces a perfectly
+// clean tree.
+//
+// That direction is the more damaging one. Parsing an invalid construct as
+// valid HIDES the author's mistake: an indented `:::` is prose, and a grammar
+// that folds it as a container tells the author their fence worked.
+//
+// The corpus already carries the oracle. Where the expected HTML is a SINGLE
+// paragraph, the language declined every block construct in the input, so the
+// grammar must not have built a block node either - except the ones that
+// legitimately render nothing (a reference definition, an abbreviation
+// definition, frontmatter, a comment, an attribute line).
+//
+// Known gaps are RECORDED rather than tolerated, and the list is exact in
+// THREE directions: a NEW over-acceptance fails, a recorded one that has been
+// FIXED fails, and a recorded one that starts building a DIFFERENT block node
+// fails. A subset check would let the first through as soon as the list had an
+// entry, and comparing keys alone would let the third through - the grammar
+// would still be wrong, just wrong in a way the record no longer describes.
+// Each entry is `{ nodes, reason }`; `nodes` is the comma-joined sorted list.
+const RENDERS_NOTHING = new Set([
+  'link_reference_definition',
+  'abbreviation_definition',
+  'frontmatter',
+  'comment_line',
+  'comment_block',
+  'footnote_definition',
+  'block_attribute',
+]);
+
+const overAcceptance = coverage.overAcceptance ?? {};
+
+const singleParagraphFiles = coveredFiles.filter((file) => {
+  const html = readFileSync(file.replace(/\.crv$/, '.html'), 'utf8').trim();
+  return (
+    /^<p[\s>]/.test(html) && /<\/p>$/.test(html) && html.split('<p').length === 2
+  );
+});
+
+if (singleParagraphFiles.length) {
+  const trees = spawnSync(
+    'npx',
+    ['tree-sitter', 'parse', ...singleParagraphFiles],
+    { cwd: repoRoot, encoding: 'utf8' },
+  );
+  if (trees.error) {
+    console.error(`Failed to run tree-sitter parse: ${trees.error.message}`);
+    process.exit(2);
+  }
+
+  // One `(document ...)` per input, in input order, each starting at column 0.
+  const perFile = (trees.stdout || '').split(/^(?=\(document )/m).filter((t) => t.trim());
+  if (perFile.length !== singleParagraphFiles.length) {
+    console.error(
+      `Expected ${singleParagraphFiles.length} parse trees, got ${perFile.length}; ` +
+        'the tree-sitter output format changed and this check cannot be trusted.',
+    );
+    process.exit(2);
+  }
+
+  const found = {};
+  perFile.forEach((tree, i) => {
+    const stem = path.basename(singleParagraphFiles[i], '.crv');
+    const blocks = tree
+      .split('\n')
+      .filter((l) => /^ {2}\(/.test(l))
+      .map((l) => l.trim().match(/^\(([a-z_]+)/)?.[1])
+      .filter(Boolean);
+    const offending = [
+      ...new Set(blocks.filter((n) => n !== 'paragraph' && !RENDERS_NOTHING.has(n))),
+    ].sort();
+    if (offending.length) found[stem] = offending.join(', ');
+  });
+
+  const newlyAccepting = Object.keys(found).filter((k) => !(k in overAcceptance));
+  const nowFixed = Object.keys(overAcceptance).filter((k) => !(k in found));
+  const changed = Object.keys(found)
+    .filter((k) => k in overAcceptance && overAcceptance[k].nodes !== found[k])
+    .map((k) => `${k}: recorded ${overAcceptance[k].nodes}, now ${found[k]}`);
+
+  console.log(
+    `corpus-conformance: checked ${singleParagraphFiles.length} single-paragraph ` +
+      `document(s) for over-acceptance; ${Object.keys(found).length} found, ` +
+      `${Object.keys(overAcceptance).length} recorded.`,
+  );
+
+  if (newlyAccepting.length || nowFixed.length || changed.length) {
+    if (newlyAccepting.length) {
+      console.error(
+        '\nOver-acceptance (the language declines this, the grammar builds a block):',
+      );
+      for (const k of newlyAccepting) console.error(`  - ${k}: ${found[k]}`);
+    }
+    if (nowFixed.length) {
+      console.error(
+        '\nRecorded over-acceptance that no longer happens - remove these from ' +
+          '`overAcceptance` in test/coverage.json:',
+      );
+      for (const k of nowFixed) console.error(`  - ${k}`);
+    }
+    if (changed.length) {
+      console.error(
+        '\nRecorded over-acceptance that now builds a DIFFERENT block - the ' +
+          'grammar changed, so update `nodes` (and the reason) in ' +
+          'test/coverage.json:',
+      );
+      for (const k of changed) console.error(`  - ${k}`);
+    }
+    process.exit(1);
+  }
+}
+
 console.log('corpus-conformance: OK (no ERROR/MISSING in any covered category).');
