@@ -2267,11 +2267,11 @@ static bool parse_heading(Scanner *s, TSLexer *lexer,
     // Open a new heading.
     if (valid_symbols[HEADING_BEGIN]) {
       // Sections are created on the root level (or nested inside other
-      // sections). A heading with MORE `#` nests a new section; one with the
-      // same or FEWER `#` closes the open section(s) and opens a sibling.
-      if (!top || (top->type == SECTION && top->data < hash_count)) {
-        push_block(s, SECTION, hash_count);
-      } else if (top && top->type == SECTION && top->data >= hash_count) {
+      // sections). A heading with the same or FEWER `#` closes the open
+      // section(s) first; this returns a ZERO-WIDTH close, so the marker is
+      // re-scanned afterwards -- which is why nothing may mark the token end
+      // above this point.
+      if (top && top->type == SECTION && top->data >= hash_count) {
         // NOTE closing multiple nested sections requires us to re-scan the
         // heading when we return without saving our work.
         lexer->result_symbol = BLOCK_CLOSE;
@@ -2279,8 +2279,24 @@ static bool parse_heading(Scanner *s, TSLexer *lexer,
         return true;
       }
 
-      push_block(s, HEADING, hash_count);
+      // A CONTENT-LESS marker line is paragraph text, not a heading, the same
+      // rule the list markers follow: a `#` with nothing after it but spaces
+      // renders as `<p>#</p>` in every engine (corpus
+      // 82-single-line-headings). The end is pinned at the `# ` first so the
+      // probe's scratch advances over the trailing whitespace cannot extend
+      // the token, and the probe runs before either push so a refusal leaves
+      // no block behind.
       lexer->mark_end(lexer);
+      if (!marker_line_has_content(s, lexer)) {
+        return false;
+      }
+
+      // A heading with MORE `#` than the open section nests a new one.
+      if (!top || (top->type == SECTION && top->data < hash_count)) {
+        push_block(s, SECTION, hash_count);
+      }
+
+      push_block(s, HEADING, hash_count);
       lexer->result_symbol = HEADING_BEGIN;
       return true;
     }
