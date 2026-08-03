@@ -177,30 +177,6 @@
     "68-nested-containers-2": "Equal-width container nesting: `::: tip` inside an open `::: note` is content, not a child container (divergence 13). The scanner nests it and then errors on the leftover closer. Example-level, so the other four examples in this category stay asserted."
   },
   "overAcceptance": {
-    "11-fenced-code-16": {
-      "nodes": "code_block",
-      "reason": "an indented fence is not an opener (strict column-0 rule)"
-    },
-    "130-thematic-break-requires-contiguous-markers-3": {
-      "nodes": "thematic_break",
-      "reason": "an indented break is not an opener"
-    },
-    "155-indented-attribute-line-stays-literal-2": {
-      "nodes": "list",
-      "reason": "an indented attribute line and the bullets under it stay literal"
-    },
-    "158-indented-colon-fence-blocks-stay-literal": {
-      "nodes": "div",
-      "reason": "an indented colon fence is not an opener"
-    },
-    "158-indented-colon-fence-blocks-stay-literal-2": {
-      "nodes": "div",
-      "reason": "an indented line-block fence is not an opener"
-    },
-    "158-indented-colon-fence-blocks-stay-literal-3": {
-      "nodes": "div",
-      "reason": "an indented colon fence is not an opener"
-    },
     "24-generic-divs-2": {
       "nodes": "div",
       "reason": "`::: {.sidebar}` is a paragraph - the opener takes a type word, not an attribute block"
