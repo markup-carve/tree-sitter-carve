@@ -204,10 +204,6 @@
     "79-paragraph-interruption-19": {
       "nodes": "div",
       "reason": "a colon fence that does not interrupt a paragraph here"
-    },
-    "82-single-line-headings-5": {
-      "nodes": "section",
-      "reason": "a heading shape the language declines"
     }
   }
 }
