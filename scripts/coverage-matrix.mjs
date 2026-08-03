@@ -22,8 +22,19 @@ const coverage = JSON.parse(
   readFileSync(path.join(repoRoot, 'test', 'coverage.json'), 'utf8'),
 );
 
-const covered = new Set(coverage.covered);
-const skip = new Set(Object.keys(coverage.skip));
+// A category's identity is its SLUG, not its numbered filename.
+//
+// The corpus is generated from docs/examples in document order, so the numeric
+// prefix is a POSITION: inserting one example anywhere renumbers every category
+// after it. Keyed by the full name, this matrix reports the whole tail as
+// stale - bumping the submodule 49 commits produced 103 stale covered entries,
+// of which none was a real change and exactly THREE categories were new. That
+// is why the submodule sat behind: refreshing it meant re-keying a hundred
+// entries by hand for no information, so nobody did.
+const slugOf = (name) => name.replace(/^\d+-/, '');
+
+const covered = new Set(coverage.covered.map(slugOf));
+const skip = new Set(Object.keys(coverage.skip).map(slugOf));
 
 function baseCategory(file) {
   return path.basename(file, '.crv').replace(/-[0-9]+$/, '');
@@ -32,9 +43,9 @@ function baseCategory(file) {
 const corpusStems = new Set(
   readdirSync(corpusDir)
     .filter((f) => f.endsWith('.crv'))
-    .map((f) => path.basename(f, '.crv')),
+    .map((f) => slugOf(path.basename(f, '.crv'))),
 );
-const corpusCategories = new Set([...corpusStems].map((stem) => baseCategory(stem)));
+const corpusCategories = new Set([...corpusStems].map((stem) => slugOf(baseCategory(stem))));
 
 const errors = [];
 
@@ -81,6 +92,19 @@ console.log(
   `coverage-matrix: ${corpusCategories.size} corpus categories; ` +
     `${covered.size} covered, ${skip.size} skipped.`,
 );
+
+// 4. The matrix keys must BE slugs. Slug-keyed lookups against numbered keys
+// silently match nothing, and "matches nothing" reads as "no findings" in every
+// consumer here - the conformance script's covered set would simply go empty
+// and it would report success over zero files.
+for (const key of [...coverage.covered, ...Object.keys(coverage.skip), ...Object.keys(coverage.overAcceptance ?? {})]) {
+  if (/^\d+-/.test(key)) {
+    errors.push(
+      `matrix key "${key}" carries a corpus number. Keys are slugs: the number ` +
+        `is a position in the spec's document order and moves on every insert.`,
+    );
+  }
+}
 
 if (errors.length) {
   console.error('\nCoverage-matrix failures:');
