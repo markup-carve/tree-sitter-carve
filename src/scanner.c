@@ -531,6 +531,13 @@ static Block *find_list(Scanner *s) {
 // leading whitespace -- carve drops CommonMark's 0-3 space indent fuzz
 // (column-0, NORMATIVE; corpus 101-heading-marker-column-zero).
 static bool has_extra_indent(Scanner *s) {
+  // A `+` continuation marker attaches a FLUSH-LEFT block to the list item
+  // (PART 9 section 17), so while one is attached the margin is zero rather
+  // than the item's content column -- otherwise the attached block's own
+  // opener would read as indented and refuse to open.
+  if (s->state & STATE_LIST_CONTINUATION) {
+    return s->indent > 0;
+  }
   for (int i = s->open_blocks->size - 1; i >= 0; --i) {
     Block *b = *array_get(s->open_blocks, i);
     if (is_list(b->type) || b->type == FOOTNOTE || b->type == TABLE_CAPTION) {
@@ -1072,7 +1079,11 @@ static bool parse_backtick(Scanner *s, TSLexer *lexer,
     // lexer before failing, and the verbatim fallback below must not swallow
     // the lookahead (it intentionally does not re-mark).
     lexer->mark_end(lexer);
-    if (valid_symbols[CODE_BLOCK_BEGIN] &&
+    // COLUMN ZERO. An indented fence opens nothing; the line is paragraph
+    // text, and the ticks fall through to the verbatim handling below exactly
+    // as they would mid-paragraph (corpus 11-fenced-code). Only the OPENER is
+    // guarded -- a closer is matched against its opener's block, above.
+    if (valid_symbols[CODE_BLOCK_BEGIN] && !has_extra_indent(s) &&
         try_begin_code_block(s, lexer, ticks)) {
       return true;
     }
@@ -1706,7 +1717,11 @@ static bool parse_list_marker_or_thematic_break(
   // We have now checked the two first characters.
   uint32_t marker_count = lexer->lookahead == marker ? 2 : 1;
 
+  // COLUMN ZERO. An indented `***` is a paragraph, not a break (corpus
+  // 130-thematic-break-requires-contiguous-markers). The list marker below is
+  // deliberately NOT guarded: a list may be indented, a block opener may not.
   bool can_be_thematic_break = valid_symbols[thematic_break_type] &&
+                               !has_extra_indent(s) &&
                                (marker_count == 2 || lexer->lookahead == ' ');
 
   // We might have scanned a '- ', we need to mark the end here
@@ -2146,6 +2161,15 @@ static bool parse_colon(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
 
   if (from_top == 0) {
     if (!valid_symbols[DIV_BEGIN]) {
+      return false;
+    }
+    // COLUMN ZERO, the same rule the heading marker and the definition
+    // markers follow. An indented `:::` opens nothing: it is paragraph text
+    // (corpus 158-indented-colon-fence-blocks-stay-literal). A CLOSER is left
+    // alone here -- it is handled below, and `has_extra_indent` already
+    // measures against the innermost container, so a fence at a list item's
+    // content column is not "indented".
+    if (has_extra_indent(s)) {
       return false;
     }
     // The token ends at the colons; mark it before peeking further so the
@@ -2705,7 +2729,13 @@ static bool parse_open_curly_bracket(Scanner *s, TSLexer *lexer,
         lexer->result_symbol = INLINE_COMMENT_BEGIN;
         return true;
       } else if (!must_be_inline_comment &&
-                 valid_symbols[BLOCK_ATTRIBUTE_BEGIN]) {
+                 valid_symbols[BLOCK_ATTRIBUTE_BEGIN] &&
+                 // COLUMN ZERO. An indented `{.x}` line is literal text, not
+                 // an attribute for the block below it (corpus
+                 // 155-indented-attribute-line-stays-literal). Inline
+                 // attributes and `{% comments %}` are unaffected: they are
+                 // separate symbols, and only this branch is guarded.
+                 !has_extra_indent(s)) {
         // A block attribute must stand alone on its line: after the closing
         // `}` only trailing whitespace and a newline (or EOF) may follow.
         // Otherwise (e.g. `{.c} text`, `para {.c} more`) the braces are
