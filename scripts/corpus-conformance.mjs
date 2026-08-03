@@ -29,8 +29,13 @@ const coverage = JSON.parse(
   readFileSync(path.join(repoRoot, 'test', 'coverage.json'), 'utf8'),
 );
 
-const covered = new Set(coverage.covered);
-const skip = new Set(Object.keys(coverage.skip));
+// A category's identity is its SLUG, not its numbered filename: the numeric
+// prefix is a position in the spec's document order, so one inserted example
+// renumbers every category after it. Same note as coverage-matrix.mjs.
+const slugOf = (name) => name.replace(/^\d+-/, '');
+
+const covered = new Set(coverage.covered.map(slugOf));
+const skip = new Set(Object.keys(coverage.skip).map(slugOf));
 
 function baseCategory(file) {
   return path.basename(file, '.crv').replace(/-[0-9]+$/, '');
@@ -43,8 +48,8 @@ const allFiles = readdirSync(corpusDir)
 const coveredFiles = [];
 let skippedCount = 0;
 for (const file of allFiles) {
-  const category = baseCategory(file);
-  const stem = path.basename(file, '.crv');
+  const category = slugOf(baseCategory(file));
+  const stem = slugOf(path.basename(file, '.crv'));
   if (skip.has(category) || skip.has(stem)) {
     skippedCount += 1;
     continue;
@@ -174,7 +179,7 @@ if (singleParagraphFiles.length) {
 
   const found = {};
   perFile.forEach((tree, i) => {
-    const stem = path.basename(singleParagraphFiles[i], '.crv');
+    const stem = slugOf(path.basename(singleParagraphFiles[i], '.crv'));
     const blocks = tree
       .split('\n')
       .filter((l) => /^ {2}\(/.test(l))
