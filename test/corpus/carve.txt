@@ -1841,3 +1841,30 @@ A run of spaces between the bullet and the checkbox is still a task marker
         checkmark: (unchecked))
       content: (list_item_content
         (paragraph)))))
+
+===============================================================================
+A container opener in a code fence body is data, not an opener
+===============================================================================
+::: note
+```text
+::: tip
+```
+body
+:::
+after
+
+-------------------------------------------------------------------------------
+
+(document
+  (div
+    (div_marker_begin)
+    class: (class_name)
+    content: (content
+      (code_block
+        (code_block_marker_begin)
+        language: (language)
+        code: (code)
+        (code_block_marker_end))
+      (paragraph))
+    (div_marker_end))
+  (paragraph))

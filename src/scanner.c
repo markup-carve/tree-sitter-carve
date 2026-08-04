@@ -2107,6 +2107,19 @@ static bool parse_list_item_end(Scanner *s, TSLexer *lexer,
 }
 
 static bool parse_colon(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
+  // Nothing block-level opens inside a code fence - the body is data. The
+  // heading scanner has carried this guard since it was written; the colon
+  // scanner did not, so a `::: tip` line in a fence body was taken as a real
+  // container opener and the ENCLOSING container's closer then had nothing to
+  // match (corpus 69-opaque-spans-inside-a-container-3, which was skipped for
+  // parsing as ERROR). The fence's own closer is CODE_BLOCK_END and is
+  // unaffected.
+  {
+    Block *in_code = peek_block(s);
+    if (in_code && in_code->type == CODE_BLOCK) {
+      return false;
+    }
+  }
   bool can_be_div = valid_symbols[DIV_BEGIN] || valid_symbols[DIV_END] ||
                     valid_symbols[BLOCK_CLOSE];
   if (!valid_symbols[LIST_MARKER_DEFINITION] && !can_be_div) {
