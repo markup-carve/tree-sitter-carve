@@ -1493,6 +1493,14 @@ static TokenType scan_ordered_list_marker_token(Scanner *s, TSLexer *lexer) {
 // `>`, `?` are the unchecked states (spec grammar.ebnf task_state; every
 // non-x state renders as an unchecked checkbox, matching djot-php).
 static bool scan_task_list_marker(Scanner *s, TSLexer *lexer) {
+  // The caller has consumed `<bullet> `, one space. A RUN of spaces before the
+  // checkbox is still a task marker - `-   [ ] a` renders a checkbox in every
+  // engine, the same way `#   H` is a heading - and requiring exactly one put
+  // an ERROR inside the marker node (corpus 75-list-nesting-and-looseness-9).
+  // Tabs are not accepted: the separator is a space.
+  while (lexer->lookahead == ' ') {
+    advance(s, lexer);
+  }
   if (lexer->lookahead != '[') {
     return false;
   }

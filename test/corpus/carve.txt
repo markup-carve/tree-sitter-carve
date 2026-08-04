@@ -1825,3 +1825,19 @@ A hash with content is still a heading
     heading: (heading
       marker: (marker)
       content: (content))))
+
+===============================================================================
+A run of spaces between the bullet and the checkbox is still a task marker
+===============================================================================
+-   [ ] item
+    # H
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_task
+        checkmark: (unchecked))
+      content: (list_item_content
+        (paragraph)))))

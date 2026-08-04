@@ -182,8 +182,7 @@
   "skip": {
     "nested-containers-2": "Equal-width container nesting: `::: tip` inside an open `::: note` is content, not a child container (divergence 13). The scanner nests it and then errors on the leftover closer. Example-level, so the other four examples in this category stay asserted.",
     "blocks-that-render-to-nothing": "a `%%%` comment fence inside a blockquote is not recognized, so the prefixed fence lines and everything after them parse as ERROR",
-    "opaque-spans-inside-a-container-3": "a code fence whose body is a `::: ` opener: the scanner takes the inner line as a real container opener rather than fence content, so the container's own closer no longer matches",
-    "list-nesting-and-looseness-9": "an ATX heading on a task item's continuation line parses as ERROR; the marker column is measured from the `-` rather than from the checkbox"
+    "opaque-spans-inside-a-container-3": "a code fence whose body is a `::: ` opener: the scanner takes the inner line as a real container opener rather than fence content, so the container's own closer no longer matches"
   },
   "overAcceptance": {
     "generic-divs-2": {
