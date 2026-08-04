@@ -587,7 +587,21 @@ module.exports = grammar({
     _line: ($) => seq(/[^\n]*/, $._newline),
 
     thematic_break: ($) =>
-      seq(choice($._thematic_break_dash, $._thematic_break_star), $._newline),
+      seq(
+        choice(
+          $._thematic_break_dash,
+          $._thematic_break_star,
+          // The underscore spelling needs no external token: unlike `-` and
+          // `*`, `_` is not a list marker, so there is nothing for the scanner
+          // to disambiguate against. It was simply missing - and a line of
+          // underscores has an obvious fallback (a paragraph), so the corpus
+          // conformance run, which fails only on ERROR and MISSING nodes, saw
+          // nothing wrong with `___`.
+          $._thematic_break_underscore,
+        ),
+        $._newline,
+      ),
+    _thematic_break_underscore: (_) => token(prec(2, /_{3,}[ \t]*/)),
 
     block_quote: ($) =>
       seq(
