@@ -28,6 +28,7 @@
     "adjacent-slash-and-underscore-emphasis-nest",
     "admonitions",
     "all-space-verbatim-content",
+    "an-abbreviation-at-a-list-item-s-content-column-is-still-not-a-definition",
     "an-abbreviation-definition-is-recognized-only-at-document-level",
     "an-invisible-line-does-not-cancel-a-blank-line-separation",
     "attribute-block-after-a-mention-stays-literal",
