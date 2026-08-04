@@ -13,6 +13,7 @@
     "a-continuation-row-needs-a-body-row",
     "a-definition-below-every-content-column-folds-as-text",
     "a-definition-inside-a-comment-registers-nothing",
+    "a-definition-inside-a-container-is-collected-at-that-container-s-content-column",
     "a-floating-attribute-stops-at-the-item-boundary",
     "a-flush-left-line-needs-an-open-paragraph-to-fold-into",
     "a-list-item-does-not-define-an-abbreviation-either",
