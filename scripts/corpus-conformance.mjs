@@ -142,7 +142,12 @@ const RENDERS_NOTHING = new Set([
   'abbreviation_definition',
   'frontmatter',
   'comment_line',
-  'comment_block',
+  // `fenced_comment_block`, not `comment_block` - the latter is a name this
+  // grammar has never produced, so the entry was dead and the check was blind
+  // to comment fences. It only surfaced once a corpus document put one in a
+  // single-paragraph file (189-a-definition-inside-a-comment-registers-nothing),
+  // where a construct that renders NOTHING was reported as over-acceptance.
+  'fenced_comment_block',
   'footnote_definition',
   'block_attribute',
 ]);
