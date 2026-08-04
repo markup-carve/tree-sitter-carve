@@ -1,0 +1,83 @@
+name: Engine drift
+
+# `@markup-carve/carve` is a GIT dependency, and a pin is what makes a build
+# reproducible - but nothing notices when the pin falls behind, and a push-only
+# CI reports the state of the day someone last touched the repo.
+#
+# The exposure here is specific and worse than "a grammar uses a parser". The
+# engine is this repository's ORACLE: `scripts/under-acceptance.mjs` parses each
+# corpus document with carve-js and asks whether the grammar produced a node for
+# every block the engine did. A stale oracle silently changes what the
+# conformance gate accepts, in the direction nobody checks - the gate keeps
+# passing while it grades against an engine nobody ships.
+#
+# `spec-drift.yml` already watches the corpus submodule for the same reason;
+# this is its other half. Adapted from carve-grammars, which hit exactly this:
+# its pin sat 87 commits behind and was hiding two round-trip failures
+# (carve-grammars#101, #102).
+#
+# It reports rather than gates on lag: upstream moving is not a defect here, and
+# a job that goes red for something outside the repository teaches people to
+# ignore it. It DOES fail when the pin is not a 40-hex revision, or is not a real
+# commit on carve-js main. carve-js has rewritten history before - three sibling
+# repos pinned revisions a fresh clone cannot check out (carve#499) - so an
+# unreachable pin is a real failure mode rather than a hypothetical.
+
+on:
+  schedule:
+    # 05:00 UTC daily, alongside the spec-drift run.
+    - cron: "0 5 * * *"
+  workflow_dispatch:
+
+jobs:
+  engine-pin:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check out the engine
+        uses: actions/checkout@v4
+        with:
+          repository: markup-carve/carve-js
+          path: carve-js
+          fetch-depth: 0
+
+      - name: Compare the pinned revision against carve-js main
+        run: |
+          set -euo pipefail
+          # devDependencies here, not dependencies: the engine is the test
+          # ORACLE, never shipped to a grammar consumer. Reading only
+          # `dependencies` (as carve-grammars does, where it IS a runtime dep)
+          # yields undefined and the 40-hex check below fails on the string
+          # "undefined" rather than on anything real.
+          spec="$(node -p "const p=require('./package.json'); (p.dependencies||{})['@markup-carve/carve'] ?? (p.devDependencies||{})['@markup-carve/carve'] ?? ''")"
+          rev="${spec##*#}"
+          if ! printf '%s' "${rev}" | grep -qE '^[0-9a-f]{40}$'; then
+            echo "::error::@markup-carve/carve is \"${spec}\" - it must pin a 40-hex revision, or a fresh install takes whatever was on the default branch at the time"
+            exit 1
+          fi
+          if ! git -C carve-js cat-file -e "${rev}^{commit}" 2>/dev/null; then
+            echo "::error::the engine pins ${rev}, which is not a commit in markup-carve/carve-js"
+            exit 1
+          fi
+          if ! git -C carve-js merge-base --is-ancestor "${rev}" origin/main; then
+            echo "::error::engine ${rev} is not on main, so the pin came from an unmerged or rewritten branch"
+            exit 1
+          fi
+          behind="$(git -C carve-js rev-list --count "${rev}..origin/main")"
+          echo "engine pin: ${rev} ($(git -C carve-js log -1 --format=%s "${rev}"))"
+          echo "carve-js main is ${behind} commit(s) ahead"
+          if [ "${behind}" -gt 0 ]; then
+            echo "::warning::the engine pin is ${behind} commit(s) behind carve-js main"
+          fi
+
+      - name: The declared pin and the lockfile agree
+        run: |
+          set -euo pipefail
+          declared="$(node -p "const p=require('./package.json'); ((p.dependencies||{})['@markup-carve/carve'] ?? (p.devDependencies||{})['@markup-carve/carve'] ?? '').split('#').pop()")"
+          locked="$(node -p "require('./package-lock.json').packages['node_modules/@markup-carve/carve'].resolved.split('#').pop()")"
+          if [ "${declared}" != "${locked}" ]; then
+            echo "::error::package.json pins ${declared} but the lockfile resolves ${locked}"
+            exit 1
+          fi
+          echo "package.json and package-lock.json both pin ${declared}"
