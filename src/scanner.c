@@ -1411,12 +1411,10 @@ static bool scan_ordered_list_type(Scanner *s, TSLexer *lexer,
 
 static TokenType scan_ordered_list_marker_token_type(Scanner *s,
                                                      TSLexer *lexer) {
-  // A marker can be `(a)` or `a)`.
-  bool surrounding_parens = false;
-  if (lexer->lookahead == '(') {
-    surrounding_parens = true;
-    advance(s, lexer);
-  }
+  // A marker is `a)` or `a.` - the delimiter TRAILS the value. A wrapped
+  // `(a)` is not one: `(1) First` and `(a) x` are paragraphs in every engine
+  // (corpus 156-parenthesized-ordered-marker). Accepting the wrapped form
+  // coloured ordinary parenthesised prose as a list.
 
   OrderedListType list_type;
   if (!scan_ordered_list_type(s, lexer, &list_type)) {
@@ -1429,7 +1427,7 @@ static TokenType scan_ordered_list_marker_token_type(Scanner *s,
     // why this is guarded on the delimiter and on not having consumed a `(` -
     // `() x` is not a marker either. The caller requires the trailing space,
     // so `.x` and a bare `.` on its own line are unaffected.
-    if (!surrounding_parens && lexer->lookahead == '.') {
+    if (lexer->lookahead == '.') {
       advance(s, lexer);
       return LIST_MARKER_DECIMAL_PERIOD;
     }
@@ -1439,24 +1437,7 @@ static TokenType scan_ordered_list_marker_token_type(Scanner *s,
   switch (lexer->lookahead) {
   case ')':
     advance(s, lexer);
-    if (surrounding_parens) {
-      // (a)
-      switch (list_type) {
-      case DECIMAL:
-        return LIST_MARKER_DECIMAL_PARENS;
-      case LOWER_ALPHA:
-        return LIST_MARKER_LOWER_ALPHA_PARENS;
-      case UPPER_ALPHA:
-        return LIST_MARKER_UPPER_ALPHA_PARENS;
-      case LOWER_ROMAN:
-        return LIST_MARKER_LOWER_ROMAN_PARENS;
-      case UPPER_ROMAN:
-        return LIST_MARKER_UPPER_ROMAN_PARENS;
-      default:
-        return IGNORED;
-      }
-    } else {
-      // a)
+    {
       switch (list_type) {
       case DECIMAL:
         return LIST_MARKER_DECIMAL_PAREN;

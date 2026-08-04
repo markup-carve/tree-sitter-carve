@@ -201,10 +201,6 @@
     "paragraph-interruption-9": {
       "nodes": "div",
       "reason": "`:::note` with no space after the colons does not interrupt a paragraph; the grammar opens a container"
-    },
-    "parenthesized-ordered-marker": {
-      "nodes": "list",
-      "reason": "`(1)` is not a marker in Carve; scan_ordered_list_marker_token_type accepts a leading `(` (djot heritage)"
     }
   },
   "batteryDisagreements": {
