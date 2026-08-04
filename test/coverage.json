@@ -229,6 +229,9 @@
     }
   },
   "underAcceptance": {
+    "a-definition-inside-a-container-is-collected-at-that-container-s-content-column-2": {
+      "gaps": "block_quote: want 1 have 0"
+    },
     "a-marker-separator-is-a-space-never-a-tab-2": {
       "gaps": "definition_list: want 1 have 0"
     },
