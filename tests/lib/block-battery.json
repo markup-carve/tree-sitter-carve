@@ -1,0 +1,160 @@
+{
+  "$comment": "The block shapes every Carve grammar must classify the same way. JSON so the ported grammars can read it from any language. Generated from nothing - this file IS the source. See block-battery.js for the reducer and the reasoning.",
+  "shapes": [
+    {
+      "src": "#",
+      "want": "none"
+    },
+    {
+      "src": "# ",
+      "want": "none"
+    },
+    {
+      "src": "#  ",
+      "want": "none",
+      "why": "a RUN of spaces is still not content - corpus 84-single-line-headings-5"
+    },
+    {
+      "src": "-",
+      "want": "none"
+    },
+    {
+      "src": "- ",
+      "want": "none"
+    },
+    {
+      "src": "1.",
+      "want": "none"
+    },
+    {
+      "src": "1. ",
+      "want": "none"
+    },
+    {
+      "src": ".",
+      "want": "none",
+      "why": "the bare dot may drop its VALUE, not its content"
+    },
+    {
+      "src": "::",
+      "want": "none"
+    },
+    {
+      "src": ":: ",
+      "want": "none"
+    },
+    {
+      "src": "^",
+      "want": "none"
+    },
+    {
+      "src": "^ ",
+      "want": "none"
+    },
+    {
+      "src": "# H",
+      "want": "heading"
+    },
+    {
+      "src": "- item",
+      "want": "list"
+    },
+    {
+      "src": "1. item",
+      "want": "list"
+    },
+    {
+      "src": ". bare",
+      "want": "list"
+    },
+    {
+      "src": ":: term",
+      "want": "deflist"
+    },
+    {
+      "src": "^ cap",
+      "want": "caption"
+    },
+    {
+      "src": "#  Title",
+      "want": "heading",
+      "why": "NBSP is content, not a separator"
+    },
+    {
+      "src": "-  item",
+      "want": "list"
+    },
+    {
+      "src": ">",
+      "want": "quote"
+    },
+    {
+      "src": "> real",
+      "want": "quote"
+    },
+    {
+      "src": ">no space",
+      "want": "none"
+    },
+    {
+      "src": ">>x",
+      "want": "none"
+    },
+    {
+      "src": ">> x",
+      "want": "none"
+    },
+    {
+      "src": ">\tx",
+      "want": "none",
+      "why": "a tab does not separate"
+    },
+    {
+      "src": "#\tH",
+      "want": "none",
+      "why": "the separator is a SPACE, never a tab - corpus 176-a-marker-separator-is-a-space-never-a-tab"
+    },
+    {
+      "src": "-\ta",
+      "want": "none",
+      "why": "same rule on the bullet marker"
+    },
+    {
+      "src": "1.\ta",
+      "want": "none",
+      "why": "same rule on the ordered marker"
+    },
+    {
+      "src": "::\tx",
+      "want": "none",
+      "why": "same rule on the definition-term marker"
+    },
+    {
+      "src": "^\tcap",
+      "want": "none",
+      "why": "same rule on the caption marker"
+    },
+    {
+      "src": "-\t[x] a",
+      "want": "none",
+      "why": "a tab does not separate the bullet from its checkbox either - the engines render this as a paragraph"
+    },
+    {
+      "src": "- - ",
+      "want": "list"
+    },
+    {
+      "src": "- - item",
+      "want": "list"
+    },
+    {
+      "src": "- [ ] ",
+      "want": "list",
+      "why": "a plain bullet holding the literal [ ], no checkbox"
+    },
+    {
+      "src": "- [x] done",
+      "want": "list"
+    }
+  ]
+}

@@ -721,7 +721,7 @@ module.exports = grammar({
     // the external scanner — this caption block is the standalone form.
     caption: ($) =>
       seq(
-        alias(token(seq("^", /[ \t]/)), $.caption_marker),
+        alias(token(seq("^", " ")), $.caption_marker),
         field("content", alias(/[^\r\n]+/, $.caption_content)),
         $._newline,
       ),

@@ -2890,8 +2890,8 @@ static bool scan_block_math_marker(Scanner *s, TSLexer *lexer) {
   return true;
 }
 
-// carve-php standalone caption: a line starting with `^ ` (caret + space or
-// tab) at block position must terminate any paragraph that was continuing,
+// carve-php standalone caption: a line starting with `^ ` (caret + SPACE) at
+// block position must terminate any paragraph that was continuing,
 // so the caption rule can fire as a sibling block. The advance() calls here
 // are scratch — they don't commit (only mark_end commits), so the caption
 // rule itself will still see `^` at the new block-line start.
@@ -2900,7 +2900,11 @@ static bool scan_caption_at_paragraph_end(Scanner *s, TSLexer *lexer) {
     return false;
   }
   advance(s, lexer);
-  if (lexer->lookahead != ' ' && lexer->lookahead != '\t') {
+  // A TAB does not separate the marker from its content - `^\tcap` is a
+  // paragraph in every engine (corpus 176-a-marker-separator-is-a-space-
+  // never-a-tab). Accepting one here ended the paragraph above for a line
+  // that is not a caption at all.
+  if (lexer->lookahead != ' ') {
     return false;
   }
   return true;

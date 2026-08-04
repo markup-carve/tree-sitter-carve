@@ -14,7 +14,9 @@
     "check-formatted": "prettier --check grammar.js",
     "build-wasm": "tree-sitter build --wasm",
     "install": "node-gyp-build",
-    "prebuildify": "prebuildify --napi --strip"
+    "prebuildify": "prebuildify --napi --strip",
+    "test:battery": "node scripts/block-battery.mjs",
+    "test:battery-drift": "./tools/check-battery-drift.sh"
   },
   "author": "",
   "license": "MIT",
