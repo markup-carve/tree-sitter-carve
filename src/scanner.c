@@ -2182,12 +2182,21 @@ static bool parse_colon(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     // attribute block (`::: {.x}`), a digit-leading class (`::: 123`), or any
     // other lead char makes the line a literal paragraph per the spec, so
     // refuse the div opener there.
+    bool spaced = false;
     while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
       advance(s, lexer);
+      spaced = true;
     }
     int32_t c = lexer->lookahead;
-    bool ok = c == '\n' || lexer->eof(lexer) || c == '|' || c == '[' ||
-              (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '_';
+    bool bare = c == '\n' || lexer->eof(lexer);
+    bool named = c == '|' || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+                 c == '_';
+    // A CLASS or a line-block bar needs the separator space: `:::note` and
+    // `:::|` are paragraphs in every engine, the same rule every other marker
+    // follows. A bare fence and a glued `[label]` do not - `:::` alone opens a
+    // div and `:::[First]` opens a labelled one, both checked against the
+    // engine.
+    bool ok = bare || c == '[' || (named && spaced);
     if (!ok) {
       return false;
     }

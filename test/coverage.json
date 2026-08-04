@@ -198,10 +198,6 @@
       "nodes": "div",
       "reason": "`::: {.line-block}` is a paragraph, not a line block - the opener takes a type word, not an attribute block (this was line-blocks-5 before the corpus grew)"
     },
-    "paragraph-interruption-12": {
-      "nodes": "div",
-      "reason": "same unspaced `:::note` opener, here with no closing fence at all"
-    },
     "paragraph-interruption-9": {
       "nodes": "div",
       "reason": "`:::note` with no space after the colons does not interrupt a paragraph; the grammar opens a container"

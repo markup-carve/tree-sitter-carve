@@ -485,11 +485,15 @@ module.exports = grammar({
               field("line_block_marker", alias("|", $.line_block_marker)),
             ),
             // Named div / admonition, with an optional quoted custom title and
-            // an optional bracketed [label] (a grouping id; PART 9 §12). The
-            // class may be glued to the fence (`:::note`) or separated by
-            // whitespace (`::: note`, `::: tip "Pro Tip" [Build]`).
+            // an optional bracketed [label] (a grouping id; PART 9 §12).
+            //
+            // The class needs a SPACE after the fence. `:::note` glued is a
+            // paragraph in every engine - the separator rule that governs every
+            // other marker governs this one - and accepting it coloured a
+            // malformed opener as a real container. A glued [label] is a
+            // different case and stays valid below: `:::[First]` does open.
             seq(
-              optional($._whitespace1),
+              $._whitespace1,
               field("class", $.class_name),
               optional(seq($._whitespace1, field("title", $.div_title))),
               optional(seq($._whitespace1, field("label", $.code_block_label))),
