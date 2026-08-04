@@ -153,6 +153,11 @@ module.exports = grammar({
     list_marker_task: ($) =>
       seq(
         $._list_marker_task_begin,
+        // The scanner commits `<bullet> ` and leaves any FURTHER spaces before
+        // the checkbox to the grammar. `-   [ ] a` is a task item in every
+        // engine, and requiring the checkbox to sit against the marker put an
+        // ERROR inside this node (corpus 75-list-nesting-and-looseness-9).
+        optional($._whitespace1),
         field("checkmark", choice($.checked, $.unchecked)),
         $._whitespace1,
       ),
