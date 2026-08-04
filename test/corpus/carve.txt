@@ -748,12 +748,12 @@ body
     (div_marker_begin)))
 
 ===============================================================================
-An attribute block after the div fence: KNOWN GAP, still a block attribute
-;; `::: {.sidebar}` is one paragraph in every engine - `{` is not a valid
-;; div type, so the fence opens nothing. The refused opener leaves the
-;; lexer past the colons and the brace then reads as a line start, so the
-;; attribute is built anyway. Recorded in test/coverage.json as
-;; generic-divs-2 / line-blocks-6 and tracked in #38.
+An attribute block after the div fence is a paragraph, not a div
+;; `::: {.sidebar}` is one paragraph in every engine - `{` is not a valid div
+;; type, so the fence opens nothing. The scanner used to refuse the opener
+;; AFTER marking the token, which left the colons consumed and let the brace
+;; read as a line start. It emits a zero-width `_not_a_container_opener`
+;; instead, handing the run back (#38).
 ===============================================================================
 ::: {.sidebar}
 not a div
@@ -762,9 +762,6 @@ not a div
 -------------------------------------------------------------------------------
 
 (document
-  (block_attribute
-    (args
-      (class)))
   (paragraph)
   (div
     (div_marker_begin)))

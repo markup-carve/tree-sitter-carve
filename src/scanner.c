@@ -40,6 +40,7 @@ typedef enum {
   DIV_END,
   CODE_BLOCK_BEGIN,
   CODE_BLOCK_END,
+  NOT_A_CONTAINER_OPENER,
   LIST_MARKER_DASH,
   LIST_MARKER_STAR,
   LIST_MARKER_TASK_BEGIN,
@@ -2174,10 +2175,6 @@ static bool parse_colon(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     if (has_extra_indent(s)) {
       return false;
     }
-    // The token ends at the colons; mark it before peeking further so the
-    // lookahead used to validate the rest of the fence line is not folded
-    // into the DIV_BEGIN token.
-    lexer->mark_end(lexer);
     // Validate what follows the `:::` fence. A bare fence (newline/EOF), a
     // line-block bar (`|`), a class name (letter or `_`), or a bare grouping
     // label (`[...]`, a typeless tab member; PART 9 §12) is fine. A `{`
@@ -2200,8 +2197,33 @@ static bool parse_colon(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     // engine.
     bool ok = bare || c == '[' || (named && spaced);
     if (!ok) {
+      // EMIT rather than refuse. Refusing leaves the lexer past the colons -
+      // `mark_end` above already committed the token to them - and the `{`
+      // then read as the start of a line, so `::: {.c}` built a block
+      // attribute where every engine renders a paragraph.
+      //
+      // Emitting a zero-width token is the handoff `try_close_code_block`
+      // uses for its ticks: `return true` with the end still at the scan
+      // start, so the run is offered again and the line falls through to a
+      // paragraph. `BLOCK_CLOSE` cannot be borrowed here because there is no
+      // block to close, hence a token of its own that produces no node.
+      if (valid_symbols[NOT_A_CONTAINER_OPENER]) {
+        lexer->result_symbol = NOT_A_CONTAINER_OPENER;
+        return true;
+      }
       return false;
     }
+    // Committed. The token ends here rather than at the colons, so the
+    // separator whitespace is inside DIV_BEGIN for the spaced forms.
+    //
+    // That is a deliberate trade, and the alternative was measured: marking at
+    // the colons keeps `div_marker_begin` exactly three characters, but then
+    // the zero-width handoff below is three characters wide too, and the
+    // paragraph for `::: {.c}` starts at column 3 - the tree stops covering
+    // the `:::` the engine renders as text. A marker node one space wider on
+    // VALID openers is the smaller loss than three characters of source
+    // uncovered on invalid ones.
+    lexer->mark_end(lexer);
     push_block(s, DIV, colons);
     lexer->result_symbol = DIV_BEGIN;
     return true;
@@ -4051,6 +4073,8 @@ static char *token_type_s(TokenType t) {
     return "CODE_BLOCK_BEGIN";
   case CODE_BLOCK_END:
     return "CODE_BLOCK_END";
+  case NOT_A_CONTAINER_OPENER:
+    return "NOT_A_CONTAINER_OPENER";
   case LIST_MARKER_DASH:
     return "LIST_MARKER_DASH";
   case LIST_MARKER_STAR:
