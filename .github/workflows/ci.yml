@@ -37,6 +37,12 @@ jobs:
       - name: Block battery
         run: npm run test:battery
 
+      # The mirror of the over-acceptance check: the language builds a block
+      # and the grammar builds none. Not an ERROR - the input falls back to a
+      # paragraph and the tree is clean - so nothing else can see it.
+      - name: Under-acceptance
+        run: npm run test:under-acceptance
+
       - name: The vendored battery is still carve-grammars' copy
         run: npm run test:battery-drift
       - name: Build WASM grammar

@@ -211,5 +211,181 @@
       "got": "none",
       "why": "a bullet whose only content is a bare `-` parses as a paragraph here; the engines render <ul><li>-"
     }
+  },
+  "underAcceptance": {
+    "a-marker-separator-is-a-space-never-a-tab-2": {
+      "gaps": "definition_list: want 1 have 0"
+    },
+    "adjacent-attribute-blocks-on-one-line-merge": {
+      "gaps": "heading: want 1 have 0"
+    },
+    "attribute-braces-on-a-list-item-marker-line": {
+      "gaps": "heading: want 1 have 0"
+    },
+    "attribute-order-on-an-unwrapped-heading": {
+      "gaps": "block_quote: want 2 have 1; heading: want 3 have 1"
+    },
+    "bare-dot-ordered-markers-3": {
+      "gaps": "list: want 1 have 0"
+    },
+    "blockquote-lazy-continuation-5": {
+      "gaps": "definition_list: want 1 have 0"
+    },
+    "blockquote-lazy-continuation-stops-at-a-fenced-block": {
+      "gaps": "block_quote: want 2 have 1"
+    },
+    "blockquote-lazy-continuation-stops-at-a-fenced-block-3": {
+      "gaps": "block_quote: want 2 have 1"
+    },
+    "definition-list-as-a-first-class-block-opener": {
+      "gaps": "definition_list: want 1 have 0"
+    },
+    "definition-list-as-a-first-class-block-opener-2": {
+      "gaps": "definition_list: want 1 have 0"
+    },
+    "definition-list-as-a-first-class-block-opener-4": {
+      "gaps": "definition_list: want 1 have 0"
+    },
+    "definition-lists": {
+      "gaps": "definition_list: want 1 have 0"
+    },
+    "definition-lists-2": {
+      "gaps": "definition_list: want 1 have 0"
+    },
+    "definition-lists-3": {
+      "gaps": "definition_list: want 1 have 0"
+    },
+    "definition-lists-4": {
+      "gaps": "definition_list: want 1 have 0"
+    },
+    "definition-lists-5": {
+      "gaps": "block_quote: want 1 have 0; definition_list: want 1 have 0"
+    },
+    "definition-lists-6": {
+      "gaps": "definition_list: want 1 have 0"
+    },
+    "definition-lists-7": {
+      "gaps": "definition_list: want 1 have 0"
+    },
+    "fence-opener-with-a-nested-list-body-inside-a-list-item-5": {
+      "gaps": "div: want 1 have 0"
+    },
+    "fence-opener-with-a-nested-list-body-inside-a-list-item-6": {
+      "gaps": "div: want 2 have 1"
+    },
+    "fenced-code-13": {
+      "gaps": "code_block: want 1 have 0"
+    },
+    "headings-inside-containers-are-not-wrapped": {
+      "gaps": "heading: want 3 have 2"
+    },
+    "implicit-heading-references-with-no-definition": {
+      "gaps": "heading: want 4 have 3"
+    },
+    "line-blocks": {
+      "gaps": "line_block: want 1 have 0"
+    },
+    "line-blocks-2": {
+      "gaps": "line_block: want 1 have 0"
+    },
+    "line-blocks-3": {
+      "gaps": "line_block: want 1 have 0"
+    },
+    "line-blocks-4": {
+      "gaps": "line_block: want 1 have 0"
+    },
+    "line-blocks-5": {
+      "gaps": "line_block: want 1 have 0"
+    },
+    "line-blocks-9": {
+      "gaps": "line_block: want 1 have 0"
+    },
+    "list-item-attributes": {
+      "gaps": "list: want 1 have 0"
+    },
+    "list-item-attributes-2": {
+      "gaps": "list: want 1 have 0"
+    },
+    "list-item-attributes-3": {
+      "gaps": "list: want 1 have 0"
+    },
+    "list-item-attributes-4": {
+      "gaps": "list: want 1 have 0"
+    },
+    "list-item-attributes-5": {
+      "gaps": "list: want 1 have 0"
+    },
+    "list-lazy-continuation-2": {
+      "gaps": "heading: want 1 have 0"
+    },
+    "list-lazy-continuation-6": {
+      "gaps": "block_quote: want 1 have 0"
+    },
+    "list-lazy-continuation-7": {
+      "gaps": "code_block: want 1 have 0"
+    },
+    "list-lazy-continuation-8": {
+      "gaps": "table: want 1 have 0"
+    },
+    "list-nesting-and-looseness-4": {
+      "gaps": "heading: want 1 have 0"
+    },
+    "list-nesting-and-looseness-5": {
+      "gaps": "code_block: want 1 have 0"
+    },
+    "list-nesting-and-looseness-6": {
+      "gaps": "code_block: want 1 have 0"
+    },
+    "list-nesting-and-looseness-7": {
+      "gaps": "heading: want 1 have 0"
+    },
+    "opaque-spans-inside-a-container-2": {
+      "gaps": "code_block: want 1 have 0"
+    },
+    "paragraph-interruption": {
+      "gaps": "heading: want 1 have 0"
+    },
+    "paragraph-interruption-2": {
+      "gaps": "code_block: want 1 have 0"
+    },
+    "paragraph-interruption-3": {
+      "gaps": "thematic_break: want 1 have 0"
+    },
+    "paragraph-interruption-4": {
+      "gaps": "block_quote: want 1 have 0"
+    },
+    "paragraph-interruption-8": {
+      "gaps": "table: want 1 have 0"
+    },
+    "post-blank-list-continuation-content-column-model-5": {
+      "gaps": "code_block: want 1 have 0"
+    },
+    "table-as-a-block-opener-in-a-list-item": {
+      "gaps": "table: want 1 have 0"
+    },
+    "table-row-closing-pipe-3": {
+      "gaps": "table: want 1 have 0"
+    },
+    "thematic-break-requires-contiguous-markers": {
+      "gaps": "list: want 2 have 0"
+    },
+    "tight-list-item-keeps-trailing-text-after-a-block-bare": {
+      "gaps": "code_block: want 1 have 0"
+    },
+    "under-indented-definition-attaches-over-indented-definition-folds": {
+      "gaps": "definition_list: want 1 have 0"
+    },
+    "under-indented-definition-attaches-over-indented-definition-folds-2": {
+      "gaps": "definition_list: want 1 have 0"
+    },
+    "under-indented-definition-attaches-over-indented-definition-folds-3": {
+      "gaps": "definition_list: want 1 have 0"
+    },
+    "wrapped-definition-term-continuation-below-the-content-column-strips-leading-whitespace": {
+      "gaps": "definition_list: want 1 have 0"
+    },
+    "wrapped-definition-term-continuation-below-the-content-column-strips-leading-whitespace-2": {
+      "gaps": "definition_list: want 1 have 0"
+    }
   }
 }
