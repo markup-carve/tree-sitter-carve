@@ -6,6 +6,7 @@
     "a-caret-is-a-reference-label-not-an-empty-footnote",
     "a-comment-fence-is-a-comment-at-any-column-too",
     "a-comment-is-recognized-at-any-column",
+    "a-comment-under-a-nested-item-does-not-close-it",
     "a-continuation-row-needs-a-body-row",
     "a-definition-below-every-content-column-folds-as-text",
     "a-floating-attribute-stops-at-the-item-boundary",
