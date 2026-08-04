@@ -13,6 +13,7 @@
     "a-continuation-row-needs-a-body-row",
     "a-definition-below-every-content-column-folds-as-text",
     "a-definition-inside-a-comment-registers-nothing",
+    "a-definition-inside-a-container-is-collected-at-that-container-s-content-column",
     "a-floating-attribute-stops-at-the-item-boundary",
     "a-flush-left-line-needs-an-open-paragraph-to-fold-into",
     "a-list-item-does-not-define-an-abbreviation-either",
@@ -179,6 +180,7 @@
     "thematic-breaks",
     "tight-list-item-keeps-trailing-text-after-a-block-bare",
     "trailing-attribute-block-edge-cases",
+    "trailing-attributes-on-a-link-reference-definition",
     "trailing-whitespace-boundaries",
     "trojan-source-heading-ids-are-nfc-normalized-and-strip-invisible-controls",
     "trojan-source-rendered-text-and-code-strip-bidi-override-controls",
@@ -227,6 +229,9 @@
     }
   },
   "underAcceptance": {
+    "a-definition-inside-a-container-is-collected-at-that-container-s-content-column-2": {
+      "gaps": "block_quote: want 1 have 0"
+    },
     "a-marker-separator-is-a-space-never-a-tab-2": {
       "gaps": "definition_list: want 1 have 0"
     },
