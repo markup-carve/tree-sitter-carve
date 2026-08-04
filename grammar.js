@@ -486,7 +486,7 @@ module.exports = grammar({
           choice(
             // Line block: `::: |` (whitespace required before the bar).
             seq(
-              $._whitespace1,
+              optional($._whitespace1),
               field("line_block_marker", alias("|", $.line_block_marker)),
             ),
             // Named div / admonition, with an optional quoted custom title and
@@ -498,7 +498,7 @@ module.exports = grammar({
             // malformed opener as a real container. A glued [label] is a
             // different case and stays valid below: `:::[First]` does open.
             seq(
-              $._whitespace1,
+              optional($._whitespace1),
               field("class", $.class_name),
               optional(seq($._whitespace1, field("title", $.div_title))),
               optional(seq($._whitespace1, field("label", $.code_block_label))),
@@ -984,6 +984,10 @@ module.exports = grammar({
     // token can be emitted which closes the paragraph content.
     _paragraph: ($) =>
       seq(
+        // Zero-width, and only ever present where the scanner declined a
+        // container opener - it hands the run back so this paragraph can take
+        // it. Produces no node.
+        optional($._not_a_container_opener),
         alias($._paragraph_content, $.paragraph),
         // Blankline is split out from paragraph to enable textobject
         // to not select newline up to following text.
@@ -1591,6 +1595,9 @@ module.exports = grammar({
     // Matches code block markers with varying number of `.
     $._code_block_begin,
     $._code_block_end,
+    // Zero-width, emitted where a `:::` run is NOT an opener. Refusing there
+    // leaves the colons consumed; emitting hands them back.
+    $._not_a_container_opener,
     // There are lots of lists in Carve that shouldn't be mixed.
     // Parsing a list marker opens or closes lists depending on the marker type.
     $.list_marker_dash,
