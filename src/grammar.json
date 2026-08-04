@@ -2706,6 +2706,10 @@
             {
               "type": "SYMBOL",
               "name": "_thematic_break_star"
+            },
+            {
+              "type": "SYMBOL",
+              "name": "_thematic_break_underscore"
             }
           ]
         },
@@ -2714,6 +2718,17 @@
           "name": "_newline"
         }
       ]
+    },
+    "_thematic_break_underscore": {
+      "type": "TOKEN",
+      "content": {
+        "type": "PREC",
+        "value": 2,
+        "content": {
+          "type": "PATTERN",
+          "value": "_{3,}[ \\t]*"
+        }
+      }
     },
     "block_quote": {
       "type": "SEQ",
