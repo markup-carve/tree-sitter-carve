@@ -3169,8 +3169,8 @@
                   "value": "^"
                 },
                 {
-                  "type": "PATTERN",
-                  "value": "[ \\t]"
+                  "type": "STRING",
+                  "value": " "
                 }
               ]
             }

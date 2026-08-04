@@ -12396,8 +12396,7 @@ static bool ts_lex(TSLexer *lexer, TSStateId state) {
       END_STATE();
     case 603:
       ACCEPT_TOKEN(anon_sym_CARET);
-      if (lookahead == '\t' ||
-          lookahead == ' ') ADVANCE(409);
+      if (lookahead == ' ') ADVANCE(409);
       END_STATE();
     case 604:
       ACCEPT_TOKEN(anon_sym_CARET);

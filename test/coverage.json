@@ -4,7 +4,10 @@
     "a-backslash-in-a-link-destination-is-a-literal-character",
     "a-bare-attribute-block-on-its-own-line-is-literal",
     "a-continuation-row-needs-a-body-row",
+    "a-flush-left-line-needs-an-open-paragraph-to-fold-into",
+    "a-marker-separator-is-a-space-never-a-tab",
     "a-pipe-pair-with-no-cell-is-not-a-table",
+    "a-repeated-definition-which-one-wins",
     "abbreviation-definition-interrupts-a-paragraph",
     "abbreviation-definition-separator-must-be-a-space",
     "abbreviation-matches-on-word-boundaries-only",
@@ -165,6 +168,7 @@
     "trailing-whitespace-boundaries",
     "trojan-source-heading-ids-are-nfc-normalized-and-strip-invisible-controls",
     "trojan-source-rendered-text-and-code-strip-bidi-override-controls",
+    "two-abbreviation-definitions",
     "two-char-delimiter-runs",
     "unclaimed-openers-stay-literal",
     "under-indented-definition-attaches-over-indented-definition-folds",
@@ -205,6 +209,16 @@
     "parenthesized-ordered-marker": {
       "nodes": "list",
       "reason": "`(1)` is not a marker in Carve; scan_ordered_list_marker_token_type accepts a leading `(` (djot heritage)"
+    }
+  },
+  "batteryDisagreements": {
+    ":: term": {
+      "got": "none",
+      "why": "a definition term with no blank line above parses as a paragraph here; the engines render <dl><dt>"
+    },
+    "- - ": {
+      "got": "none",
+      "why": "a bullet whose only content is a bare `-` parses as a paragraph here; the engines render <ul><li>-"
     }
   }
 }

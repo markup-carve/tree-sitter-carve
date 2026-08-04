@@ -29,6 +29,16 @@ jobs:
         run: npm test
       - name: Coverage matrix and shared-corpus conformance
         run: npm run test:corpus
+
+      # The shape-level counterpart to corpus conformance. The corpus checks
+      # whole documents the spec ships; the battery checks the one-line forms
+      # that sit on a rule's boundary, which is where a grammar drifts first -
+      # and it is what every other Carve grammar already runs.
+      - name: Block battery
+        run: npm run test:battery
+
+      - name: The vendored battery is still carve-grammars' copy
+        run: npm run test:battery-drift
       - name: Build WASM grammar
         run: npm run build-wasm
       - name: Load Node binding
