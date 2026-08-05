@@ -229,25 +229,54 @@ if (singleParagraphFiles.length) {
     process.exit(2);
   }
 
+  // THE LINE IS RECORDED TOO, because the reason is free text and nothing
+  // checked it. Four of the five entries here blamed a cause that had since been
+  // fixed: they said the OPENER over-accepts (`::: {.sidebar}` taking an
+  // attribute block for a type word), and every one of those opener lines parses
+  // as a paragraph today. What remains is the TRAILING `:::`, three lines lower,
+  // read as a fresh bare-div opener - a different defect with a different fix,
+  // recorded under a reason that sent a reader to the wrong line
+  // (markup-carve/carve#770).
+  //
+  // A start line cannot capture intent, but it does pin WHICH construct the
+  // entry is about, so a record whose cause moves fails instead of quietly
+  // describing the wrong one.
   const found = {};
   perFile.forEach((tree, i) => {
     const stem = slugOf(path.basename(singleParagraphFiles[i], '.crv'));
     const blocks = tree
       .split('\n')
       .filter((l) => /^ {2}\(/.test(l))
-      .map((l) => l.trim().match(/^\(([a-z_]+)/)?.[1])
+      .map((l) => {
+        const match = l.trim().match(/^\(([a-z_]+) \[(\d+),/);
+        return match ? { node: match[1], line: Number(match[2]) + 1 } : null;
+      })
       .filter(Boolean);
-    const offending = [
-      ...new Set(blocks.filter((n) => n !== 'paragraph' && !RENDERS_NOTHING.has(n))),
-    ].sort();
-    if (offending.length) found[stem] = offending.join(', ');
+    const offending = blocks.filter(
+      (b) => b.node !== 'paragraph' && !RENDERS_NOTHING.has(b.node),
+    );
+    if (offending.length) {
+      found[stem] = {
+        nodes: [...new Set(offending.map((b) => b.node))].sort().join(', '),
+        lines: [...new Set(offending.map((b) => b.line))].sort((a, b) => a - b).join(', '),
+      };
+    }
   });
 
   const newlyAccepting = Object.keys(found).filter((k) => !(k in overAcceptance));
   const nowFixed = Object.keys(overAcceptance).filter((k) => !(k in found));
   const changed = Object.keys(found)
-    .filter((k) => k in overAcceptance && overAcceptance[k].nodes !== found[k])
-    .map((k) => `${k}: recorded ${overAcceptance[k].nodes}, now ${found[k]}`);
+    .filter(
+      (k) =>
+        k in overAcceptance &&
+        (overAcceptance[k].nodes !== found[k].nodes ||
+          String(overAcceptance[k].lines) !== found[k].lines),
+    )
+    .map(
+      (k) =>
+        `${k}: recorded ${overAcceptance[k].nodes} at line ${overAcceptance[k].lines}, ` +
+        `now ${found[k].nodes} at line ${found[k].lines}`,
+    );
 
   console.log(
     `corpus-conformance: checked ${singleParagraphFiles.length} single-paragraph ` +
@@ -260,7 +289,9 @@ if (singleParagraphFiles.length) {
       console.error(
         '\nOver-acceptance (the language declines this, the grammar builds a block):',
       );
-      for (const k of newlyAccepting) console.error(`  - ${k}: ${found[k]}`);
+      for (const k of newlyAccepting) {
+        console.error(`  - ${k}: ${found[k].nodes} at line ${found[k].lines}`);
+      }
     }
     if (nowFixed.length) {
       console.error(
@@ -272,7 +303,7 @@ if (singleParagraphFiles.length) {
     if (changed.length) {
       console.error(
         '\nRecorded over-acceptance that now builds a DIFFERENT block - the ' +
-          'grammar changed, so update `nodes` (and the reason) in ' +
+          'grammar changed, so update `nodes`, `lines` and the reason in ' +
           'test/coverage.json:',
       );
       for (const k of changed) console.error(`  - ${k}`);
