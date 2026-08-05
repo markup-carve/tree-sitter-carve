@@ -133,6 +133,7 @@
     "numbered-cross-references",
     "only-the-id-hoists-to-the-section-wrapper",
     "opaque-spans-inside-a-container",
+    "openers-past-the-nesting-cap-are-one-paragraph",
     "ordered-list-dialects",
     "ordered-list-start-and-delimiter",
     "ordered-marker-vs-prose",
@@ -196,10 +197,7 @@
     "widened-verbatim-fences",
     "wrapped-definition-term-continuation-below-the-content-column-strips-leading-whitespace"
   ],
-  "skip": {
-    "nested-containers-2": "Equal-width container nesting: `::: tip` inside an open `::: note` is content, not a child container (divergence 13). The scanner nests it and then errors on the leftover closer. Example-level, so the other four examples in this category stay asserted.",
-    "openers-past-the-nesting-cap-are-one-paragraph": "the grammar requires a nested container to be WIDER than the one holding it: `:::: note` inside an open `:::: note` is ERROR from the second opener on, while `:::: note` inside `::: note` parses clean. This category is 200 equal-width `:::: note` lines, so all 205 lines are ERROR. Verified with a 5-line case, not inferred from the corpus file."
-  },
+  "skip": {},
   "overAcceptance": {
     "generic-divs-2": {
       "nodes": "div",
