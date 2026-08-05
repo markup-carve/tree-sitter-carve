@@ -1,5 +1,5 @@
 {
-  "_comment": "Coverage matrix for the shared Carve spec corpus (spec/tests/corpus/*.crv). Every NN-slug base category must appear in covered or skip; the coverage-matrix test fails otherwise so a new spec category forces a classify decision. covered = grammar parses every file in the category with no ERROR/MISSING node. skip = at least one file currently produces an ERROR/MISSING node; reason records the unmodeled construct (a grammar gap to surface, not to hack around). A skip key is a CATEGORY (NN-slug) or a single EXAMPLE (NN-slug-2) — use the example form when the rest of the category parses cleanly, so one gap does not drop assertion for its siblings. A key equal to a category name is read as the CATEGORY, so the first example of a category cannot be skipped on its own.",
+  "_comment": "Coverage matrix for the shared Carve spec corpus (spec/tests/corpus/*.crv). Every NN-slug base category must appear in covered or skip; the coverage-matrix test fails otherwise so a new spec category forces a classify decision. covered = grammar parses every file in the category with no ERROR/MISSING node. skip = at least one file currently produces an ERROR/MISSING node; reason records the unmodeled construct (a grammar gap to surface, not to hack around). A skip key is a CATEGORY (NN-slug) or a single EXAMPLE (NN-slug-2) \u2014 use the example form when the rest of the category parses cleanly, so one gap does not drop assertion for its siblings. A key equal to a category name is read as the CATEGORY, so the first example of a category cannot be skipped on its own.",
   "covered": [
     "a-backslash-in-a-link-destination-is-a-literal-character",
     "a-bare-attribute-block-on-its-own-line-is-literal",
@@ -268,9 +268,6 @@
     "attribute-order-on-an-unwrapped-heading": {
       "gaps": "block_quote: want 2 have 1; heading: want 3 have 1"
     },
-    "bare-dot-ordered-markers-3": {
-      "gaps": "list: want 1 have 0"
-    },
     "fence-opener-with-a-nested-list-body-inside-a-list-item-5": {
       "gaps": "div: want 1 have 0"
     },
@@ -305,12 +302,6 @@
       "gaps": "line_block: want 1 have 0"
     },
     "list-item-attributes": {
-      "gaps": "list: want 1 have 0"
-    },
-    "list-item-attributes-2": {
-      "gaps": "list: want 1 have 0"
-    },
-    "list-item-attributes-3": {
       "gaps": "list: want 1 have 0"
     },
     "list-item-attributes-4": {
@@ -369,10 +360,6 @@
     },
     "tight-list-item-keeps-trailing-text-after-a-block-bare": {
       "gaps": "code_block: want 1 have 0"
-    },
-    "a-marker-attribute-may-hold-a-quoted-brace": {
-      "gaps": "list: want 1 have 0",
-      "reason": "`1.{title='a}b'} item` is a list: the `}` inside the quoted value does not close the marker's attribute block. The scanner ends the block at the first `}` it sees, so the marker never completes and the line stays a paragraph (tree-sitter-carve#81)."
     }
   }
 }

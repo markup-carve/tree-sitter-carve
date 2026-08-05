@@ -285,6 +285,7 @@ static TokenType scan_list_marker_token(Scanner *s, TSLexer *lexer);
 static uint8_t scan_block_quote_markers(Scanner *s, TSLexer *lexer,
                                         bool *ending_newline);
 static TokenType scan_unordered_list_marker_token(Scanner *s, TSLexer *lexer);
+static bool scan_valid_inline_attribute(Scanner *s, TSLexer *lexer);
 
 #ifdef DEBUG
 static char *block_type_s(BlockType t);
@@ -1278,11 +1279,39 @@ static bool parse_backtick(Scanner *s, TSLexer *lexer,
 }
 
 // Scan a '- ' or similar.
+
+/// Consume an attribute block GLUED to a list marker, if one is there.
+///
+/// `1.{.x} item` and `-{.x} item` are lists in every engine: the marker takes an
+/// attribute block before its separator, and the block's own rules apply inside
+/// it - including quoting, so the `}` in `1.{title='a}b'} item` closes nothing
+/// (carve#215, corpus `a-marker-attribute-may-hold-a-quoted-brace`).
+///
+/// This grammar required a space directly after the marker, so every one of
+/// those lines stayed a paragraph: no list highlighting, no indentation
+/// behaviour, no item textobject, for a line every renderer treats as an item
+/// (#81). `scan_valid_inline_attribute` already validates the payload and is
+/// quote-aware, so the marker path reuses it rather than growing a second
+/// brace-matching loop that could disagree with the first.
+///
+/// Returns false only when a `{` is present and does NOT form a valid block -
+/// `1.{not!} item` stays a paragraph, which is what the attribute grammar says.
+static bool scan_marker_attribute(Scanner *s, TSLexer *lexer) {
+  if (lexer->lookahead != '{') {
+    return true;
+  }
+
+  return scan_valid_inline_attribute(s, lexer);
+}
+
 static bool scan_bullet_list_marker(Scanner *s, TSLexer *lexer, char marker) {
   if (lexer->lookahead != marker) {
     return false;
   }
   advance(s, lexer);
+  if (!scan_marker_attribute(s, lexer)) {
+    return false;
+  }
   if (lexer->lookahead != ' ') {
     return false;
   }
@@ -1682,6 +1711,10 @@ static TokenType scan_ordered_list_marker_token(Scanner *s, TSLexer *lexer) {
   TokenType res = scan_ordered_list_marker_token_type(s, lexer);
   if (res == IGNORED) {
     return res;
+  }
+
+  if (!scan_marker_attribute(s, lexer)) {
+    return IGNORED;
   }
 
   if (lexer->lookahead == ' ') {
