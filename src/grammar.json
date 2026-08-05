@@ -3483,7 +3483,7 @@
                 },
                 {
                   "type": "PATTERN",
-                  "value": "[^\\]\\r\\n]+"
+                  "value": "[A-Za-z0-9]+"
                 },
                 {
                   "type": "STRING",
