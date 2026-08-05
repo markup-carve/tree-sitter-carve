@@ -17,7 +17,8 @@
     "prebuildify": "prebuildify --napi --strip",
     "test:battery": "node scripts/block-battery.mjs",
     "test:battery-drift": "./tools/check-battery-drift.sh",
-    "test:under-acceptance": "node scripts/under-acceptance.mjs"
+    "test:under-acceptance": "node scripts/under-acceptance.mjs",
+    "test:no-error": "node scripts/no-error-sweep.mjs"
   },
   "author": "",
   "license": "MIT",

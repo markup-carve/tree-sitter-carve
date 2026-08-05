@@ -347,5 +347,247 @@
     "tight-list-item-keeps-trailing-text-after-a-block-bare": {
       "gaps": "code_block: want 1 have 0"
     }
+  },
+  "errorFamilies": {
+    "\"   x\" + \">\"": {
+      "documents": 1,
+      "reason": "a bare `>` with nothing after it - EOF or a blank line - errors; every engine renders an empty blockquote (tree-sitter-carve#96)"
+    },
+    "\"  - n\" + \">\"": {
+      "documents": 1,
+      "reason": "a bare `>` with nothing after it - EOF or a blank line - errors; every engine renders an empty blockquote (tree-sitter-carve#96)"
+    },
+    "\"  {.c}\" + \">\"": {
+      "documents": 1,
+      "reason": "a bare `>` with nothing after it - EOF or a blank line - errors; every engine renders an empty blockquote (tree-sitter-carve#96)"
+    },
+    "\"\" + \">\"": {
+      "documents": 1,
+      "reason": "a bare `>` with nothing after it - EOF or a blank line - errors; every engine renders an empty blockquote (tree-sitter-carve#96)"
+    },
+    "\"%%\" + \">\"": {
+      "documents": 1,
+      "reason": "a bare `>` with nothing after it - EOF or a blank line - errors; every engine renders an empty blockquote (tree-sitter-carve#96)"
+    },
+    "\"%%%\" + \">\"": {
+      "documents": 1,
+      "reason": "a bare `>` with nothing after it - EOF or a blank line - errors; every engine renders an empty blockquote (tree-sitter-carve#96)"
+    },
+    "\"***\" + \">\"": {
+      "documents": 1,
+      "reason": "a bare `>` with nothing after it - EOF or a blank line - errors; every engine renders an empty blockquote (tree-sitter-carve#96)"
+    },
+    "\"- \" + \">\"": {
+      "documents": 1,
+      "reason": "a bare `>` with nothing after it - EOF or a blank line - errors; every engine renders an empty blockquote (tree-sitter-carve#96)"
+    },
+    "\"- [x] t\" + \">\"": {
+      "documents": 1,
+      "reason": "a bare `>` with nothing after it - EOF or a blank line - errors; every engine renders an empty blockquote (tree-sitter-carve#96)"
+    },
+    "\"- a\" + \">\"": {
+      "documents": 1,
+      "reason": "a bare `>` with nothing after it - EOF or a blank line - errors; every engine renders an empty blockquote (tree-sitter-carve#96)"
+    },
+    "\"-\" + \"---\"": {
+      "documents": 3,
+      "reason": "a `---` after a content-less marker errors; carve-js renders a paragraph then a thematic break (tree-sitter-carve#96)"
+    },
+    "\"-\" + \">\"": {
+      "documents": 1,
+      "reason": "a bare `>` with nothing after it - EOF or a blank line - errors; every engine renders an empty blockquote (tree-sitter-carve#96)"
+    },
+    "\"---\" + \"   x\"": {
+      "documents": 3,
+      "reason": "a document opening with an unclosed `---` commits to frontmatter and errors; every engine reads a thematic break (tree-sitter-carve#95)"
+    },
+    "\"---\" + \"  - n\"": {
+      "documents": 3,
+      "reason": "a document opening with an unclosed `---` commits to frontmatter and errors; every engine reads a thematic break (tree-sitter-carve#95)"
+    },
+    "\"---\" + \"  {.c}\"": {
+      "documents": 3,
+      "reason": "a document opening with an unclosed `---` commits to frontmatter and errors; every engine reads a thematic break (tree-sitter-carve#95)"
+    },
+    "\"---\" + \"\"": {
+      "documents": 3,
+      "reason": "a document opening with an unclosed `---` commits to frontmatter and errors; every engine reads a thematic break (tree-sitter-carve#95)"
+    },
+    "\"---\" + \"%%\"": {
+      "documents": 3,
+      "reason": "a document opening with an unclosed `---` commits to frontmatter and errors; every engine reads a thematic break (tree-sitter-carve#95)"
+    },
+    "\"---\" + \"%%%\"": {
+      "documents": 3,
+      "reason": "a document opening with an unclosed `---` commits to frontmatter and errors; every engine reads a thematic break (tree-sitter-carve#95)"
+    },
+    "\"---\" + \"***\"": {
+      "documents": 3,
+      "reason": "a document opening with an unclosed `---` commits to frontmatter and errors; every engine reads a thematic break (tree-sitter-carve#95)"
+    },
+    "\"---\" + \"- \"": {
+      "documents": 3,
+      "reason": "a document opening with an unclosed `---` commits to frontmatter and errors; every engine reads a thematic break (tree-sitter-carve#95)"
+    },
+    "\"---\" + \"- [x] t\"": {
+      "documents": 3,
+      "reason": "a document opening with an unclosed `---` commits to frontmatter and errors; every engine reads a thematic break (tree-sitter-carve#95)"
+    },
+    "\"---\" + \"- a\"": {
+      "documents": 3,
+      "reason": "a document opening with an unclosed `---` commits to frontmatter and errors; every engine reads a thematic break (tree-sitter-carve#95)"
+    },
+    "\"---\" + \"-\"": {
+      "documents": 3,
+      "reason": "a document opening with an unclosed `---` commits to frontmatter and errors; every engine reads a thematic break (tree-sitter-carve#95)"
+    },
+    "\"---\" + \"---\"": {
+      "documents": 3,
+      "reason": "a document opening with an unclosed `---` commits to frontmatter and errors; every engine reads a thematic break (tree-sitter-carve#95)"
+    },
+    "\"---\" + \"-{.x} a\"": {
+      "documents": 3,
+      "reason": "a document opening with an unclosed `---` commits to frontmatter and errors; every engine reads a thematic break (tree-sitter-carve#95)"
+    },
+    "\"---\" + \"1. \"": {
+      "documents": 3,
+      "reason": "a document opening with an unclosed `---` commits to frontmatter and errors; every engine reads a thematic break (tree-sitter-carve#95)"
+    },
+    "\"---\" + \"1. a\"": {
+      "documents": 3,
+      "reason": "a document opening with an unclosed `---` commits to frontmatter and errors; every engine reads a thematic break (tree-sitter-carve#95)"
+    },
+    "\"---\" + \"1.\"": {
+      "documents": 3,
+      "reason": "a document opening with an unclosed `---` commits to frontmatter and errors; every engine reads a thematic break (tree-sitter-carve#95)"
+    },
+    "\"---\" + \":  d\"": {
+      "documents": 3,
+      "reason": "a document opening with an unclosed `---` commits to frontmatter and errors; every engine reads a thematic break (tree-sitter-carve#95)"
+    },
+    "\"---\" + \": d\"": {
+      "documents": 3,
+      "reason": "a document opening with an unclosed `---` commits to frontmatter and errors; every engine reads a thematic break (tree-sitter-carve#95)"
+    },
+    "\"---\" + \":: t\"": {
+      "documents": 3,
+      "reason": "a document opening with an unclosed `---` commits to frontmatter and errors; every engine reads a thematic break (tree-sitter-carve#95)"
+    },
+    "\"---\" + \"::: note\"": {
+      "documents": 3,
+      "reason": "a document opening with an unclosed `---` commits to frontmatter and errors; every engine reads a thematic break (tree-sitter-carve#95)"
+    },
+    "\"---\" + \":::\"": {
+      "documents": 3,
+      "reason": "a document opening with an unclosed `---` commits to frontmatter and errors; every engine reads a thematic break (tree-sitter-carve#95)"
+    },
+    "\"---\" + \"> q\"": {
+      "documents": 3,
+      "reason": "a document opening with an unclosed `---` commits to frontmatter and errors; every engine reads a thematic break (tree-sitter-carve#95)"
+    },
+    "\"---\" + \">\"": {
+      "documents": 3,
+      "reason": "a document opening with an unclosed `---` commits to frontmatter and errors; every engine reads a thematic break (tree-sitter-carve#95)"
+    },
+    "\"---\" + \"^ cap\"": {
+      "documents": 3,
+      "reason": "a document opening with an unclosed `---` commits to frontmatter and errors; every engine reads a thematic break (tree-sitter-carve#95)"
+    },
+    "\"---\" + \"``` js\"": {
+      "documents": 3,
+      "reason": "a document opening with an unclosed `---` commits to frontmatter and errors; every engine reads a thematic break (tree-sitter-carve#95)"
+    },
+    "\"---\" + \"```\"": {
+      "documents": 3,
+      "reason": "a document opening with an unclosed `---` commits to frontmatter and errors; every engine reads a thematic break (tree-sitter-carve#95)"
+    },
+    "\"---\" + \"a) x\"": {
+      "documents": 3,
+      "reason": "a document opening with an unclosed `---` commits to frontmatter and errors; every engine reads a thematic break (tree-sitter-carve#95)"
+    },
+    "\"---\" + \"x\"": {
+      "documents": 3,
+      "reason": "a document opening with an unclosed `---` commits to frontmatter and errors; every engine reads a thematic break (tree-sitter-carve#95)"
+    },
+    "\"---\" + \"{.c}\"": {
+      "documents": 3,
+      "reason": "a document opening with an unclosed `---` commits to frontmatter and errors; every engine reads a thematic break (tree-sitter-carve#95)"
+    },
+    "\"---\" + \"| a |\"": {
+      "documents": 3,
+      "reason": "a document opening with an unclosed `---` commits to frontmatter and errors; every engine reads a thematic break (tree-sitter-carve#95)"
+    },
+    "\"-{.x} a\" + \">\"": {
+      "documents": 1,
+      "reason": "a bare `>` with nothing after it - EOF or a blank line - errors; every engine renders an empty blockquote (tree-sitter-carve#96)"
+    },
+    "\"1. \" + \">\"": {
+      "documents": 1,
+      "reason": "a bare `>` with nothing after it - EOF or a blank line - errors; every engine renders an empty blockquote (tree-sitter-carve#96)"
+    },
+    "\"1. a\" + \">\"": {
+      "documents": 1,
+      "reason": "a bare `>` with nothing after it - EOF or a blank line - errors; every engine renders an empty blockquote (tree-sitter-carve#96)"
+    },
+    "\"1.\" + \">\"": {
+      "documents": 1,
+      "reason": "a bare `>` with nothing after it - EOF or a blank line - errors; every engine renders an empty blockquote (tree-sitter-carve#96)"
+    },
+    "\":  d\" + \">\"": {
+      "documents": 1,
+      "reason": "a bare `>` with nothing after it - EOF or a blank line - errors; every engine renders an empty blockquote (tree-sitter-carve#96)"
+    },
+    "\": d\" + \">\"": {
+      "documents": 1,
+      "reason": "a bare `>` with nothing after it - EOF or a blank line - errors; every engine renders an empty blockquote (tree-sitter-carve#96)"
+    },
+    "\":: t\" + \">\"": {
+      "documents": 1,
+      "reason": "a bare `>` with nothing after it - EOF or a blank line - errors; every engine renders an empty blockquote (tree-sitter-carve#96)"
+    },
+    "\"::: note\" + \">\"": {
+      "documents": 1,
+      "reason": "a bare `>` with nothing after it - EOF or a blank line - errors; every engine renders an empty blockquote (tree-sitter-carve#96)"
+    },
+    "\":::\" + \">\"": {
+      "documents": 1,
+      "reason": "a bare `>` with nothing after it - EOF or a blank line - errors; every engine renders an empty blockquote (tree-sitter-carve#96)"
+    },
+    "\">\" + \"\"": {
+      "documents": 2,
+      "reason": "ERROR on a valid document, not yet reduced to a minimal case (tree-sitter-carve#96)"
+    },
+    "\">\" + \">\"": {
+      "documents": 1,
+      "reason": "a bare `>` with nothing after it - EOF or a blank line - errors; every engine renders an empty blockquote (tree-sitter-carve#96)"
+    },
+    "\"^ cap\" + \">\"": {
+      "documents": 1,
+      "reason": "a bare `>` with nothing after it - EOF or a blank line - errors; every engine renders an empty blockquote (tree-sitter-carve#96)"
+    },
+    "\"``` js\" + \"``` js\"": {
+      "documents": 3,
+      "reason": "an unclosed fence whose body opens with another fence line errors; carve-js puts the second line inside the code block (tree-sitter-carve#96)"
+    },
+    "\"```\" + \"``` js\"": {
+      "documents": 3,
+      "reason": "an unclosed fence whose body opens with another fence line errors; carve-js puts the second line inside the code block (tree-sitter-carve#96)"
+    },
+    "\"a) x\" + \">\"": {
+      "documents": 1,
+      "reason": "a bare `>` with nothing after it - EOF or a blank line - errors; every engine renders an empty blockquote (tree-sitter-carve#96)"
+    },
+    "\"x\" + \">\"": {
+      "documents": 1,
+      "reason": "a bare `>` with nothing after it - EOF or a blank line - errors; every engine renders an empty blockquote (tree-sitter-carve#96)"
+    },
+    "\"{.c}\" + \">\"": {
+      "documents": 1,
+      "reason": "a bare `>` with nothing after it - EOF or a blank line - errors; every engine renders an empty blockquote (tree-sitter-carve#96)"
+    },
+    "\"| a |\" + \">\"": {
+      "documents": 1,
+      "reason": "a bare `>` with nothing after it - EOF or a blank line - errors; every engine renders an empty blockquote (tree-sitter-carve#96)"
+    }
   }
 }
