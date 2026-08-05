@@ -220,9 +220,6 @@
   },
   "batteryDisagreements": {},
   "underAcceptance": {
-    "a-definition-inside-a-container-is-collected-at-that-container-s-content-column-2": {
-      "gaps": "block_quote: want 1 have 0"
-    },
     "adjacent-attribute-blocks-on-one-line-merge": {
       "gaps": "heading: want 1 have 0"
     },
@@ -234,15 +231,6 @@
     },
     "bare-dot-ordered-markers-3": {
       "gaps": "list: want 1 have 0"
-    },
-    "blockquote-lazy-continuation-stops-at-a-fenced-block": {
-      "gaps": "block_quote: want 2 have 1"
-    },
-    "blockquote-lazy-continuation-stops-at-a-fenced-block-3": {
-      "gaps": "block_quote: want 2 have 1"
-    },
-    "definition-lists-5": {
-      "gaps": "block_quote: want 1 have 0"
     },
     "fence-opener-with-a-nested-list-body-inside-a-list-item-5": {
       "gaps": "div: want 1 have 0"
@@ -295,9 +283,6 @@
     "list-lazy-continuation-2": {
       "gaps": "heading: want 1 have 0"
     },
-    "list-lazy-continuation-6": {
-      "gaps": "block_quote: want 1 have 0"
-    },
     "list-lazy-continuation-7": {
       "gaps": "code_block: want 1 have 0"
     },
@@ -327,9 +312,6 @@
     },
     "paragraph-interruption-3": {
       "gaps": "thematic_break: want 1 have 0"
-    },
-    "paragraph-interruption-4": {
-      "gaps": "block_quote: want 1 have 0"
     },
     "paragraph-interruption-8": {
       "gaps": "table: want 1 have 0"

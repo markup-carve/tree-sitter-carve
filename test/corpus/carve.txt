@@ -2177,11 +2177,98 @@ A quoted closer does not close a fence opened at the top level
 %%%
 x
 > %%%
+
 after
 
 -------------------------------------------------------------------------------
 
 (document
   (comment_line)
-  (paragraph
-    (trailing_comment)))
+  (paragraph)
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (comment_line)))
+  (paragraph))
+
+===============================================================================
+A block quote at a list item's content column opens a quote
+===============================================================================
+- a
+  > q
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)
+        (block_quote
+          (block_quote_marker)
+          content: (content
+            (paragraph)))))))
+
+===============================================================================
+A block quote interrupts an open paragraph
+===============================================================================
+x
+> q
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph)
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (paragraph))))
+
+===============================================================================
+A deeper quote interrupts, a same-depth one continues
+===============================================================================
+> a
+> > b
+
+-------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (paragraph)
+      (block_quote_marker)
+      (block_quote
+        (block_quote_marker)
+        content: (content
+          (paragraph))))))
+
+===============================================================================
+A same-depth quote marker continues the paragraph
+===============================================================================
+> a
+> b
+
+-------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (paragraph
+        (block_quote_marker)))))
+
+===============================================================================
+A flush-left line after a quote is still a lazy continuation
+===============================================================================
+> a
+b
+
+-------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (paragraph))))
