@@ -43,6 +43,9 @@ jobs:
       - name: Under-acceptance
         run: npm run test:under-acceptance
 
+      - name: No-ERROR sweep
+        run: npm run test:no-error
+
       - name: The vendored battery is still carve-grammars' copy
         run: npm run test:battery-drift
       - name: Build WASM grammar
