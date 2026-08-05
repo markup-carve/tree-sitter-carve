@@ -39,6 +39,9 @@ typedef enum {
   DIV_END,
   CODE_BLOCK_BEGIN,
   CODE_BLOCK_END,
+  COMMENT_FENCE_BEGIN,
+  COMMENT_FENCE_CONTENT,
+  COMMENT_FENCE_END,
   NOT_A_CONTAINER_OPENER,
   LIST_MARKER_DASH,
   LIST_MARKER_STAR,
@@ -141,6 +144,7 @@ typedef enum {
 // Note that paragraphs are anonymous and aren't tracked.
 typedef enum {
   BLOCK_QUOTE,
+  COMMENT_FENCE,
   CODE_BLOCK,
   DIV,
   SECTION,
@@ -278,6 +282,8 @@ static const uint8_t STATE_TABLE_SEPARATOR_NEXT = 1 << 2;
 static const uint8_t STATE_LIST_CONTINUATION = 1 << 3;
 
 static TokenType scan_list_marker_token(Scanner *s, TSLexer *lexer);
+static uint8_t scan_block_quote_markers(Scanner *s, TSLexer *lexer,
+                                        bool *ending_newline);
 static TokenType scan_unordered_list_marker_token(Scanner *s, TSLexer *lexer);
 
 #ifdef DEBUG
@@ -1054,6 +1060,162 @@ static bool try_begin_code_block(Scanner *s, TSLexer *lexer, uint8_t ticks) {
   push_block(s, CODE_BLOCK, ticks);
   lexer->result_symbol = CODE_BLOCK_BEGIN;
   return true;
+}
+
+/// A `%%%` comment fence, scanned line by line by the SCANNER rather than
+/// matched as one multi-line token by the grammar.
+///
+/// The construct used to be a single `token()` regex, which cannot survive a
+/// block quote: an internal token consumes its own text, so it would have to
+/// eat the `> ` prefixes, and then the scanner never sees those lines and its
+/// per-line block bookkeeping goes stale - the quote parsed as ERROR from the
+/// fence onward (tree-sitter-carve#45).
+///
+/// Nor can the body be `optional(block_quote_prefix) line` the way a code
+/// block's is: after the prefix token the parser is committed to a content
+/// line, so the closer is never offered and the fence runs to the end of the
+/// document. The scanner already knows the fence's width and the quote depth,
+/// so it decides where the body ends and the grammar is left with three plain
+/// tokens and no ambiguity to resolve.
+///
+/// Consume a run of block-quote markers and then a `%` run, and report the
+/// width. Used to ask, of the line the lexer is sitting on, "is this the
+/// closer?" - the answer is an EXACT width match, the rule the carve engines
+/// follow: a `%%%%` line does not close a `%%%` fence.
+static uint8_t scan_comment_fence_line_width(Scanner *s, TSLexer *lexer) {
+  bool ending_newline = false;
+  uint8_t markers = scan_block_quote_markers(s, lexer, &ending_newline);
+  if (ending_newline) {
+    return 0;
+  }
+  // The line has to sit at the fence's OWN quote depth. A `> %%%` does not
+  // close a fence opened at the top level - there the `%%%` was never a fence
+  // at all, it was an unterminated opener, which degrades to a line comment -
+  // and a `> %%%` does not close one opened at `> > `. The open BLOCK_QUOTE
+  // blocks are that depth, so no extra bookkeeping is needed.
+  if (markers != count_blocks(s, BLOCK_QUOTE)) {
+    return 0;
+  }
+  while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+    advance(s, lexer);
+  }
+  return consume_chars(s, lexer, '%');
+}
+
+/// Consume the rest of the line, leaving the lexer ON its newline.
+static void scan_to_line_end(Scanner *s, TSLexer *lexer) {
+  while (!lexer->eof(lexer) && lexer->lookahead != '\n') {
+    advance(s, lexer);
+  }
+}
+
+static bool parse_comment_fence(Scanner *s, TSLexer *lexer,
+                                const bool *valid_symbols) {
+  // Nothing to say unless one of this construct's tokens is wanted here: the
+  // classification below CONSUMES the line, and a probe that consumes and then
+  // declines leaves every later probe in the same call reading from the middle
+  // of it.
+  if (!valid_symbols[BLOCK_CLOSE] && !valid_symbols[COMMENT_FENCE_CONTENT] &&
+      !valid_symbols[COMMENT_FENCE_END]) {
+    return false;
+  }
+  Block *top = peek_block(s);
+  if (!top || top->type != COMMENT_FENCE) {
+    return false;
+  }
+  uint8_t width = top->data;
+
+  // Is the line the lexer sits on this fence's closer? Asked once, because
+  // asking twice would leave the second question looking at the middle of the
+  // first answer.
+  uint8_t percents = scan_comment_fence_line_width(s, lexer);
+  bool closes = percents == width;
+
+  if (closes) {
+    // The end marker is asked for FIRST where both are valid, the order the
+    // code fence beside this one uses: `_block_close` is zero-width, so if it
+    // answered here too it would answer forever and the marker would never be
+    // reached.
+    if (valid_symbols[COMMENT_FENCE_END]) {
+      // Trailing text on a closer is allowed and discarded (`%%% end`), so the
+      // marker runs to the end of its line.
+      scan_to_line_end(s, lexer);
+      remove_block(s);
+      lexer->mark_end(lexer);
+      lexer->result_symbol = COMMENT_FENCE_END;
+      return true;
+    }
+    // `_block_close` comes before the end marker in the rule and is zero-width,
+    // so the closer line is still there for the marker token.
+    if (valid_symbols[BLOCK_CLOSE]) {
+      lexer->result_symbol = BLOCK_CLOSE;
+      return true;
+    }
+    return false;
+  }
+
+  if (!valid_symbols[COMMENT_FENCE_CONTENT]) {
+    return false;
+  }
+  // Body lines, up to but not including the closer. Whatever prefixes they
+  // carry are the comment's, which is the whole point of scanning them here.
+  bool consumed = false;
+  while (!lexer->eof(lexer)) {
+    scan_to_line_end(s, lexer);
+    if (lexer->eof(lexer)) {
+      break;
+    }
+    advance(s, lexer);
+    consumed = true;
+    lexer->mark_end(lexer);
+    if (lexer->eof(lexer)) {
+      break;
+    }
+    if (scan_comment_fence_line_width(s, lexer) == width) {
+      break;
+    }
+  }
+  if (!consumed) {
+    return false;
+  }
+  lexer->result_symbol = COMMENT_FENCE_CONTENT;
+  return true;
+}
+
+static bool parse_comment_fence_begin(Scanner *s, TSLexer *lexer,
+                                      const bool *valid_symbols) {
+  if (!valid_symbols[COMMENT_FENCE_BEGIN]) {
+    return false;
+  }
+  Block *top = peek_block(s);
+  if (top && top->type == COMMENT_FENCE) {
+    return false;
+  }
+  uint8_t percents = consume_chars(s, lexer, '%');
+  if (percents < 3) {
+    return false;
+  }
+  lexer->mark_end(lexer);
+
+  // An UNTERMINATED `%%%` is not a fence: the engines degrade it to a
+  // single-line comment rather than swallowing the rest of the document, and
+  // the regex this replaces required a closer too. Look for one before
+  // committing - the lookahead is scratch, since the token end is already
+  // pinned at the opener.
+  scan_to_line_end(s, lexer);
+  while (!lexer->eof(lexer)) {
+    advance(s, lexer);
+    if (lexer->eof(lexer)) {
+      return false;
+    }
+    if (scan_comment_fence_line_width(s, lexer) == percents) {
+      push_block(s, COMMENT_FENCE, percents);
+      lexer->result_symbol = COMMENT_FENCE_BEGIN;
+      return true;
+    }
+    scan_to_line_end(s, lexer);
+  }
+  return false;
 }
 
 static bool parse_backtick(Scanner *s, TSLexer *lexer,
@@ -3906,6 +4068,12 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
   }
 
   // Needs to be done before indented content spacer and list item continuation
+  // Before the block-quote scan: inside an open comment fence the `> ` on a
+  // body or closer line belongs to the comment, not to the quote's own
+  // structure, and only this function knows a fence is open.
+  if (parse_comment_fence(s, lexer, valid_symbols)) {
+    return true;
+  }
   if (lexer->lookahead == '`' && parse_backtick(s, lexer, valid_symbols)) {
     return true;
   }
@@ -4100,6 +4268,14 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
     return true;
   }
 
+  // LAST: the opener's own probe reads forward to the end of the document
+  // looking for a closer, and a probe that consumes and then declines leaves
+  // every later probe in the same call reading from where it stopped. Nothing
+  // runs after this one, so there is nothing left to poison.
+  if (lexer->lookahead == '%' &&
+      parse_comment_fence_begin(s, lexer, valid_symbols)) {
+    return true;
+  }
   return false;
 }
 
@@ -4219,6 +4395,12 @@ static char *token_type_s(TokenType t) {
     return "CODE_BLOCK_BEGIN";
   case CODE_BLOCK_END:
     return "CODE_BLOCK_END";
+  case COMMENT_FENCE_BEGIN:
+    return "COMMENT_FENCE_BEGIN";
+  case COMMENT_FENCE_CONTENT:
+    return "COMMENT_FENCE_CONTENT";
+  case COMMENT_FENCE_END:
+    return "COMMENT_FENCE_END";
   case NOT_A_CONTAINER_OPENER:
     return "NOT_A_CONTAINER_OPENER";
   case LIST_MARKER_DASH:
