@@ -1865,3 +1865,91 @@ after
       (paragraph))
     (div_marker_end))
   (paragraph))
+
+===============================================================================
+A caret label is a reference label, not an empty footnote label
+===============================================================================
+[^]: /u
+
+-------------------------------------------------------------------------------
+
+(document
+  (link_reference_definition
+    label: (link_label)
+    destination: (link_destination)))
+
+===============================================================================
+A reference to a caret label resolves against that definition
+===============================================================================
+see [text][^]
+
+[^]: /u
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (full_reference_link
+      text: (link_text)
+      label: (link_label)))
+  (link_reference_definition
+    label: (link_label)
+    destination: (link_destination)))
+
+===============================================================================
+A footnote label with content is still a footnote
+===============================================================================
+[^a]: note
+
+-------------------------------------------------------------------------------
+
+(document
+  (footnote
+    (footnote_marker_begin)
+    label: (reference_label)
+    (footnote_marker_end)
+    content: (footnote_content
+      (paragraph))))
+
+===============================================================================
+A bullet whose only content is a bare marker is a list item holding that marker
+===============================================================================
+- -
+after
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)))))
+
+===============================================================================
+A run of markers long enough is still a thematic break
+===============================================================================
+***
+
+-------------------------------------------------------------------------------
+
+(document
+  (thematic_break))
+
+===============================================================================
+A marker-line nested list with content still nests
+===============================================================================
+- - x
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (list
+          (list_item
+            marker: (list_marker_dash)
+            content: (list_item_content
+              (paragraph))))))))

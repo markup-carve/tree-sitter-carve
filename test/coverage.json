@@ -222,10 +222,6 @@
     ":: term": {
       "got": "none",
       "why": "a definition term with no blank line above parses as a paragraph here; the engines render <dl><dt>"
-    },
-    "- - ": {
-      "got": "none",
-      "why": "a bullet whose only content is a bare `-` parses as a paragraph here; the engines render <ul><li>-"
     }
   },
   "underAcceptance": {
