@@ -3194,6 +3194,16 @@ static bool end_paragraph_in_block_quote(Scanner *s, TSLexer *lexer) {
     return true;
   }
 
+  // And UP a level: a deeper quote is a new block, so it interrupts the
+  // paragraph rather than continuing it - `> a` / `> > b` is a quote holding a
+  // paragraph and a nested quote in every engine (#70). Checked here rather
+  // than beside the depth-0 case below, because this function has already
+  // consumed the markers the check needs.
+  //
+  if (marker_count > count_blocks(s, BLOCK_QUOTE)) {
+    return true;
+  }
+
   if (block != peek_block(s) &&
       scan_paragraph_closing_marker(s, lexer)) {
     return true;
@@ -3279,6 +3289,30 @@ static bool scan_continuation_marker_at_paragraph_end(Scanner *s,
   return lexer->eof(lexer) || lexer->lookahead == '\n' || lexer->lookahead == '\r';
 }
 
+/// A block quote that goes DEEPER than the one we are in interrupts an open
+/// paragraph (PART 9 §10: a visible block opener interrupts; only a list does
+/// not).
+///
+/// `end_paragraph_in_block_quote` above handles the other direction - a line
+/// that drops to a SHALLOWER depth - and does nothing when no quote is open at
+/// all, so a `>` line after a paragraph opened nothing: `x` / `> q` came out as
+/// one paragraph, and so did `- a` / `  > q` at a list item's content column,
+/// where carve-js and carve-php both open a quote (tree-sitter-carve#70).
+///
+/// Depth, not presence: `> a` / `> b` is one paragraph in every engine (the
+/// second line continues the first at the SAME depth), and `> a` / `b` is a
+/// lazy continuation. Only `> a` / `> > b` opens something new.
+static bool scan_deeper_block_quote_at_paragraph_end(Scanner *s,
+                                                     TSLexer *lexer) {
+  if (lexer->lookahead != '>') {
+    return false;
+  }
+  uint8_t open_depth = count_blocks(s, BLOCK_QUOTE);
+  bool ending_newline = false;
+  uint8_t marker_count = scan_block_quote_markers(s, lexer, &ending_newline);
+  return marker_count > open_depth;
+}
+
 static bool close_paragraph(Scanner *s, TSLexer *lexer) {
   // Workaround for not including the following blankline when closing a
   // paragraph inside a block.
@@ -3288,6 +3322,10 @@ static bool close_paragraph(Scanner *s, TSLexer *lexer) {
   }
 
   if (end_paragraph_in_block_quote(s, lexer)) {
+    return true;
+  }
+
+  if (scan_deeper_block_quote_at_paragraph_end(s, lexer)) {
     return true;
   }
 
