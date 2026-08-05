@@ -251,12 +251,7 @@
       "reason": "`![a][nope]` + `^ cap` is one paragraph: the reference does not resolve, so the image is literal text and the `^` line is literal with it. Whether it resolves depends on the DEFINITIONS in the document, which a context-free grammar does not have - so the caption is built here and cannot be declined without a symbol table. The renderer decides correctly; highlighting a caption that the language declines is the cost."
     }
   },
-  "invisibleOverAcceptance": {
-    "compact-list-blocks-10": {
-      "nodes": "block_attribute: {.c}",
-      "reason": "`{.c}` indented one column past its list item's content column still opens a real block_attribute; the fixture renders it as a literal, separate paragraph instead. Tracked in tree-sitter-carve#84."
-    }
-  },
+  "invisibleOverAcceptance": {},
   "batteryDisagreements": {},
   "underAcceptance": {
     "adjacent-attribute-blocks-on-one-line-merge": {

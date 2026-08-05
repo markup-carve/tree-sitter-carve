@@ -189,6 +189,15 @@ typedef struct {
   // Can be indentation, number of opening/ending symbols, or number of cells in
   // a table row.
   uint8_t data;
+  // The column where this container's CONTENT starts, or 0 when unknown.
+  //
+  // `data` is the marker's own indent plus one, which is a minimum indent and
+  // not a column: it is 1 for both `- ` (content at column 2) and `1. `
+  // (content at column 3), so no arithmetic on it recovers the column. A block
+  // opener inside a container has to sit exactly AT that column - one space
+  // past is literal text - and nothing could express that
+  // (tree-sitter-carve#84).
+  uint8_t content_col;
 } Block;
 
 typedef enum {
@@ -425,6 +434,7 @@ static Block *create_block(BlockType type, uint8_t data) {
   Block *b = ts_malloc(sizeof(Block));
   b->type = type;
   b->data = data;
+  b->content_col = 0;
   return b;
 }
 
@@ -539,6 +549,32 @@ static Block *find_list(Scanner *s) {
 // marker only counts as a marker when it sits at this margin with NO extra
 // leading whitespace -- carve drops CommonMark's 0-3 space indent fuzz
 // (column-0, NORMATIVE; corpus 101-heading-marker-column-zero).
+/// TRUE when the line sits PAST its container's content column.
+///
+/// `has_extra_indent` answers the opposite question - short OF the column - and
+/// a block attribute needs both. Measured against carve-js: inside `- a`, whose
+/// content column is 2, `{.c}` at column 2 attaches to the block under it and
+/// `{.c}` at column 3 is a literal paragraph (corpus 87-compact-list-blocks-10).
+///
+/// Uses the container's recorded content column, NOT `data`: `data` is the
+/// marker's indent plus one, so it is 1 for both `- ` and `1. ` and cannot tell
+/// column 2 from column 3. A container opened before this field existed, or one
+/// whose column was never recorded, reads 0 and is treated as "no opinion" -
+/// the guard then behaves exactly as it did before (tree-sitter-carve#84).
+static bool has_surplus_indent(Scanner *s) {
+  // A `+` continuation attaches a FLUSH-LEFT block, so the margin is zero.
+  if (s->state & STATE_LIST_CONTINUATION) {
+    return s->indent > 0;
+  }
+  for (int i = s->open_blocks->size - 1; i >= 0; --i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (is_list(b->type) || b->type == FOOTNOTE || b->type == TABLE_CAPTION) {
+      return b->content_col != 0 && s->indent > b->content_col;
+    }
+  }
+  return s->indent > 0;
+}
+
 static bool has_extra_indent(Scanner *s) {
   // A `+` continuation marker attaches a FLUSH-LEFT block to the list item
   // (PART 9 section 17), so while one is attached the margin is zero rather
@@ -1880,6 +1916,19 @@ static bool scan_paragraph_closing_marker(Scanner *s, TSLexer *lexer) {
   return find_list(s) != NULL && scan_list_marker(s, lexer);
 }
 
+/// Record where the innermost container's content starts.
+///
+/// Called at every site that opens a list, with the column the lexer sits at
+/// once the marker and its separator are consumed. Kept separate from
+/// `ensure_list_open` because a CONTINUED list keeps the column it opened with -
+/// re-recording would let a lazily-indented later item move it.
+static void set_content_col(Scanner *s, uint8_t col) {
+  Block *top = peek_block(s);
+  if (top && top->content_col == 0) {
+    top->content_col = col;
+  }
+}
+
 static void ensure_list_open(Scanner *s, BlockType type, uint8_t indent) {
   Block *top = peek_block(s);
   // Found a list with the same type and indent, we should continue it.
@@ -1905,6 +1954,9 @@ static bool handle_ordered_list_marker(Scanner *s, TSLexer *lexer,
       return false;
     }
     ensure_list_open(s, list_marker_to_block(marker), s->indent + 1);
+    // The lexer sits just past the marker's separator here (mark_end above), so
+    // this is the content column for every marker WIDTH - `1. `, `a) `, `iv. `.
+    set_content_col(s, (uint8_t)lexer->get_column(lexer));
     lexer->result_symbol = marker;
     return true;
   } else {
@@ -2025,6 +2077,7 @@ static bool parse_list_marker_or_thematic_break(
     if (valid_symbols[LIST_MARKER_TASK_BEGIN]) {
       if (scan_task_list_marker(s, lexer)) {
         ensure_list_open(s, LIST_TASK, list_indent + 1);
+        set_content_col(s, (uint8_t)(start_col + 2));
         // The committed token is the two-char `<bullet> ` (the checkbox is
         // grammar-level), so the chain column is right after it.
         s->marker_end_col = (uint8_t)(start_col + 2);
@@ -2040,6 +2093,7 @@ static bool parse_list_marker_or_thematic_break(
         return false;
       }
       ensure_list_open(s, list_type, list_indent + 1);
+      set_content_col(s, (uint8_t)(start_col + 2));
       s->marker_end_col = (uint8_t)(start_col + 2);
       lexer->result_symbol = marker_type;
       return true;
@@ -3147,7 +3201,12 @@ static bool parse_open_curly_bracket(Scanner *s, TSLexer *lexer,
                  // 155-indented-attribute-line-stays-literal). Inline
                  // attributes and `{% comments %}` are unaffected: they are
                  // separate symbols, and only this branch is guarded.
-                 !has_extra_indent(s)) {
+                 //
+                 // BOTH directions: short of the column is not an attribute and
+                 // neither is past it. Only the first half was checked, so
+                 // `{.c}` one space past a list item's content column opened a
+                 // real attribute where the corpus says literal text (#84).
+                 !has_extra_indent(s) && !has_surplus_indent(s)) {
         // A block attribute must stand alone on its line: after the closing
         // `}` only trailing whitespace and a newline (or EOF) may follow.
         // Otherwise (e.g. `{.c} text`, `para {.c} more`) the braces are
@@ -4443,6 +4502,7 @@ unsigned tree_sitter_carve_external_scanner_serialize(void *payload,
     Block *b = *array_get(s->open_blocks, i);
     buffer[size++] = (char)b->type;
     buffer[size++] = (char)b->data;
+    buffer[size++] = (char)b->content_col;
   }
 
   for (size_t i = 0; i < s->open_inline->size; ++i) {
@@ -4470,7 +4530,10 @@ void tree_sitter_carve_external_scanner_deserialize(void *payload, char *buffer,
     while (open_blocks-- > 0) {
       BlockType type = (BlockType)buffer[size++];
       uint8_t level = (uint8_t)buffer[size++];
-      array_push(s->open_blocks, create_block(type, level));
+      uint8_t content_col = (uint8_t)buffer[size++];
+      Block *b = create_block(type, level);
+      b->content_col = content_col;
+      array_push(s->open_blocks, b);
     }
     while (size < length) {
       InlineType type = (InlineType)buffer[size++];
