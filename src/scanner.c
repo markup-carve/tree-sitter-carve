@@ -2016,6 +2016,30 @@ static bool parse_list_marker_or_thematic_break(
   }
   advance(s, lexer);
 
+  // A GLUED ATTRIBUTE BLOCK. `-{.x} item` and `*{.x} item` are lists in every
+  // engine: the marker takes an attribute block before its separator, and the
+  // block's own rules apply inside it, so the `}` in `-{title='a}b'} item`
+  // closes nothing. The ordered markers gained this in #81; bullets come
+  // through here instead, where the character right after the marker decides
+  // everything below (tree-sitter-carve#89).
+  //
+  // Consumed BEFORE the two probes below, both of which are inert on a `{`
+  // anyway - a frontmatter run needs marker characters and a thematic break
+  // needs a second marker or a space - and forced off explicitly once a block
+  // is taken, because after it the lookahead IS a space and the break test
+  // would otherwise say yes.
+  bool marker_attribute = false;
+  if (lexer->lookahead == '{' &&
+      (valid_symbols[marker_type] || valid_symbols[LIST_MARKER_TASK_BEGIN])) {
+    // No rewind on failure, which is the same contract the ordered path uses:
+    // an invalid payload (`-{not!} item`) refuses the token and the line parses
+    // as a paragraph, which is what the attribute grammar says it is.
+    if (!scan_valid_inline_attribute(s, lexer)) {
+      return false;
+    }
+    marker_attribute = true;
+  }
+
   // We should prioritize a thematic break over lists.
   // We need to remember if a '- ' is found, which means we can open a list.
   bool can_be_list_marker =
@@ -2029,7 +2053,7 @@ static bool parse_list_marker_or_thematic_break(
   // 130-thematic-break-requires-contiguous-markers). The list marker below is
   // deliberately NOT guarded: a list may be indented, a block opener may not.
   bool can_be_thematic_break = valid_symbols[thematic_break_type] &&
-                               !has_extra_indent(s) &&
+                               !marker_attribute && !has_extra_indent(s) &&
                                (marker_count == 2 || lexer->lookahead == ' ');
 
   // We might have scanned a '- ', we need to mark the end here
@@ -2037,6 +2061,11 @@ static bool parse_list_marker_or_thematic_break(
   // only consumes these two characters.
   advance(s, lexer);
   lexer->mark_end(lexer);
+  // The column just past the COMMITTED token, captured here because the content
+  // probe below advances the lexer as scratch - reading the column after it
+  // returns wherever that probe stopped, which broke `- - A` (corpus
+  // 103-marker-line-nested-lists) while this was being written.
+  uint8_t marker_content_col = (uint8_t)lexer->get_column(lexer);
 
   // Whether the probes below have consumed marker characters from the rest of
   // the line. The lexer cannot rewind, so what they eat decides the CONTENT
@@ -2077,10 +2106,10 @@ static bool parse_list_marker_or_thematic_break(
     if (valid_symbols[LIST_MARKER_TASK_BEGIN]) {
       if (scan_task_list_marker(s, lexer)) {
         ensure_list_open(s, LIST_TASK, list_indent + 1);
-        set_content_col(s, (uint8_t)(start_col + 2));
-        // The committed token is the two-char `<bullet> ` (the checkbox is
-        // grammar-level), so the chain column is right after it.
-        s->marker_end_col = (uint8_t)(start_col + 2);
+        set_content_col(s, marker_content_col);
+        // The chain column is right after the committed token: two characters
+        // for a bare `<bullet> `, more when the marker took an attribute block.
+        s->marker_end_col = marker_content_col;
         lexer->result_symbol = LIST_MARKER_TASK_BEGIN;
         return true;
       }
@@ -2093,8 +2122,8 @@ static bool parse_list_marker_or_thematic_break(
         return false;
       }
       ensure_list_open(s, list_type, list_indent + 1);
-      set_content_col(s, (uint8_t)(start_col + 2));
-      s->marker_end_col = (uint8_t)(start_col + 2);
+      set_content_col(s, marker_content_col);
+      s->marker_end_col = marker_content_col;
       lexer->result_symbol = marker_type;
       return true;
     }
