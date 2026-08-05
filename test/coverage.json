@@ -227,22 +227,27 @@
   "overAcceptance": {
     "generic-divs-2": {
       "nodes": "div",
-      "reason": "`::: {.sidebar}` is a paragraph - the opener takes a type word, not an attribute block"
+      "lines": "3",
+      "reason": "The `div` is the TRAILING `:::` on line 3, not the opener. `::: {.sidebar}` parses as a paragraph correctly (measured line by line), and then the closing fence is read as a fresh bare-div opener. Every engine keeps that line inside the paragraph: once a colon-fence line has failed the opener test, a later fence-shaped line at ANY width is text. That rule is load-bearing in all three and stated in no clause - markup-carve/carve#770. Fixing it needs scanner state, not a tighter opener rule."
     },
     "generic-divs-4": {
       "nodes": "div",
-      "reason": "`::: 123` is a paragraph - a type word cannot start with a digit"
+      "lines": "3",
+      "reason": "Same defect as generic-divs-2, same line: `::: 123` is already a paragraph, and the `div` comes from the trailing `:::` on line 3 (markup-carve/carve#770)."
     },
     "line-blocks-6": {
       "nodes": "div",
-      "reason": "`::: {.line-block}` is a paragraph, not a line block - the opener takes a type word, not an attribute block (this was line-blocks-5 before the corpus grew)"
+      "lines": "4",
+      "reason": "Same defect as generic-divs-2: `::: {.line-block}` is already a paragraph, and the `div` is the trailing `:::` on line 4 (markup-carve/carve#770). This was line-blocks-5 before the corpus grew."
     },
     "paragraph-interruption-9": {
       "nodes": "div",
-      "reason": "`:::note` with no space after the colons does not interrupt a paragraph; the grammar opens a container"
+      "lines": "4",
+      "reason": "`:::note` glued is correctly a paragraph here, so the `div` is the trailing `:::` on line 4 (markup-carve/carve#770). The grammar also splits `text` and `:::note` into two paragraphs where the engines produce one - invisible to this check, since both are paragraphs."
     },
     "an-unresolved-reference-image-takes-no-caption": {
       "nodes": "caption",
+      "lines": "2",
       "reason": "`![a][nope]` + `^ cap` is one paragraph: the reference does not resolve, so the image is literal text and the `^` line is literal with it. Whether it resolves depends on the DEFINITIONS in the document, which a context-free grammar does not have - so the caption is built here and cannot be declined without a symbol table. The renderer decides correctly; highlighting a caption that the language declines is the cost."
     }
   },
