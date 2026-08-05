@@ -49,6 +49,7 @@
     "blockquote-lazy-continuation",
     "blockquote-lazy-continuation-stops-at-a-fenced-block",
     "blockquote-with-attribution",
+    "blocks-that-render-to-nothing",
     "bold-italic-delimiter-needs-content",
     "boolean-attributes",
     "classes-are-deduplicated",
@@ -197,7 +198,6 @@
   ],
   "skip": {
     "nested-containers-2": "Equal-width container nesting: `::: tip` inside an open `::: note` is content, not a child container (divergence 13). The scanner nests it and then errors on the leftover closer. Example-level, so the other four examples in this category stay asserted.",
-    "blocks-that-render-to-nothing": "a `%%%` comment fence inside a blockquote is not recognized, so the prefixed fence lines and everything after them parse as ERROR",
     "openers-past-the-nesting-cap-are-one-paragraph": "the grammar requires a nested container to be WIDER than the one holding it: `:::: note` inside an open `:::: note` is ERROR from the second opener on, while `:::: note` inside `::: note` parses clean. This category is 200 equal-width `:::: note` lines, so all 205 lines are ERROR. Verified with a 5-line case, not inferred from the corpus file."
   },
   "overAcceptance": {

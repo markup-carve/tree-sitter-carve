@@ -1192,6 +1192,46 @@
     "fields": {}
   },
   {
+    "type": "fenced_comment_block",
+    "named": true,
+    "fields": {
+      "content": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "content",
+            "named": true
+          }
+        ]
+      },
+      "info": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "comment_fence_info",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "comment_fence_marker_begin",
+          "named": true
+        },
+        {
+          "type": "comment_fence_marker_end",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "footnote",
     "named": true,
     "fields": {
@@ -4124,6 +4164,18 @@
     "named": true
   },
   {
+    "type": "comment_fence_info",
+    "named": true
+  },
+  {
+    "type": "comment_fence_marker_begin",
+    "named": true
+  },
+  {
+    "type": "comment_fence_marker_end",
+    "named": true
+  },
+  {
     "type": "comment_line",
     "named": true
   },
@@ -4161,10 +4213,6 @@
   },
   {
     "type": "extension_inline",
-    "named": true
-  },
-  {
-    "type": "fenced_comment_block",
     "named": true
   },
   {

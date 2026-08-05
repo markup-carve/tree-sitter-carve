@@ -3378,144 +3378,94 @@
       }
     },
     "fenced_comment_block": {
-      "type": "TOKEN",
-      "content": {
-        "type": "CHOICE",
-        "members": [
-          {
-            "type": "SEQ",
-            "members": [
-              {
-                "type": "PATTERN",
-                "value": "[ \\t]*"
-              },
-              {
-                "type": "STRING",
-                "value": "%%%%%%"
-              },
-              {
-                "type": "PATTERN",
-                "value": "[^\\n]*\\n"
-              },
-              {
-                "type": "PATTERN",
-                "value": "(?:[ \\t]*(?:%{0,5}(?:[^%\\n][^\\n]*)?|%{7,}[^\\n]*)\\n|\\n)*"
-              },
-              {
-                "type": "PATTERN",
-                "value": "[ \\t]*"
-              },
-              {
-                "type": "STRING",
-                "value": "%%%%%%"
-              },
-              {
-                "type": "PATTERN",
-                "value": "(?:[^%\\n][^\\n]*)?\\n"
-              }
-            ]
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_comment_fence_begin"
           },
-          {
-            "type": "SEQ",
-            "members": [
-              {
-                "type": "PATTERN",
-                "value": "[ \\t]*"
-              },
-              {
-                "type": "STRING",
-                "value": "%%%%%"
-              },
-              {
-                "type": "PATTERN",
-                "value": "[^\\n]*\\n"
-              },
-              {
-                "type": "PATTERN",
-                "value": "(?:[ \\t]*(?:%{0,4}(?:[^%\\n][^\\n]*)?|%{6,}[^\\n]*)\\n|\\n)*"
-              },
-              {
-                "type": "PATTERN",
-                "value": "[ \\t]*"
-              },
-              {
-                "type": "STRING",
-                "value": "%%%%%"
-              },
-              {
-                "type": "PATTERN",
-                "value": "(?:[^%\\n][^\\n]*)?\\n"
+          "named": true,
+          "value": "comment_fence_marker_begin"
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "FIELD",
+              "name": "info",
+              "content": {
+                "type": "ALIAS",
+                "content": {
+                  "type": "PATTERN",
+                  "value": "[^\\n]+"
+                },
+                "named": true,
+                "value": "comment_fence_info"
               }
-            ]
-          },
-          {
-            "type": "SEQ",
-            "members": [
-              {
-                "type": "PATTERN",
-                "value": "[ \\t]*"
-              },
-              {
-                "type": "STRING",
-                "value": "%%%%"
-              },
-              {
-                "type": "PATTERN",
-                "value": "[^\\n]*\\n"
-              },
-              {
-                "type": "PATTERN",
-                "value": "(?:[ \\t]*(?:%{0,3}(?:[^%\\n][^\\n]*)?|%{5,}[^\\n]*)\\n|\\n)*"
-              },
-              {
-                "type": "PATTERN",
-                "value": "[ \\t]*"
-              },
-              {
-                "type": "STRING",
-                "value": "%%%%"
-              },
-              {
-                "type": "PATTERN",
-                "value": "(?:[^%\\n][^\\n]*)?\\n"
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        },
+        {
+          "type": "SYMBOL",
+          "name": "_newline"
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "FIELD",
+              "name": "content",
+              "content": {
+                "type": "ALIAS",
+                "content": {
+                  "type": "SYMBOL",
+                  "name": "_comment_fence_content"
+                },
+                "named": true,
+                "value": "content"
               }
-            ]
-          },
-          {
-            "type": "SEQ",
-            "members": [
-              {
-                "type": "PATTERN",
-                "value": "[ \\t]*"
-              },
-              {
-                "type": "STRING",
-                "value": "%%%"
-              },
-              {
-                "type": "PATTERN",
-                "value": "[^\\n]*\\n"
-              },
-              {
-                "type": "PATTERN",
-                "value": "(?:[ \\t]*(?:%{0,2}(?:[^%\\n][^\\n]*)?|%{4,}[^\\n]*)\\n|\\n)*"
-              },
-              {
-                "type": "PATTERN",
-                "value": "[ \\t]*"
-              },
-              {
-                "type": "STRING",
-                "value": "%%%"
-              },
-              {
-                "type": "PATTERN",
-                "value": "(?:[^%\\n][^\\n]*)?\\n"
-              }
-            ]
-          }
-        ]
-      }
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        },
+        {
+          "type": "SYMBOL",
+          "name": "_block_close"
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SEQ",
+              "members": [
+                {
+                  "type": "ALIAS",
+                  "content": {
+                    "type": "SYMBOL",
+                    "name": "_comment_fence_end"
+                  },
+                  "named": true,
+                  "value": "comment_fence_marker_end"
+                },
+                {
+                  "type": "SYMBOL",
+                  "name": "_eof_or_newline"
+                }
+              ]
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        }
+      ]
     },
     "abbreviation_definition": {
       "type": "SEQ",
@@ -6647,6 +6597,18 @@
     {
       "type": "SYMBOL",
       "name": "_code_block_end"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_comment_fence_begin"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_comment_fence_content"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_comment_fence_end"
     },
     {
       "type": "SYMBOL",

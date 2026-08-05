@@ -822,61 +822,33 @@ module.exports = grammar({
     // Body line pattern for length N: optional indent, then up to N-1
     // leading `%`s, optionally followed by non-`%` content. Blank lines
     // also allowed.
-    fenced_comment_block: (_) =>
-      token(
-        choice(
-          // length 6 — body may contain up to 5 leading %s.
+    // A `%%%` comment fence. The SCANNER reads its body line by line and
+    // decides where it ends, so this rule is three plain tokens with no
+    // ambiguity to resolve.
+    //
+    // It used to be one multi-line `token()` regex, which cannot survive a
+    // block quote: an internal token consumes its own text, so it would eat the
+    // `> ` prefixes and the scanner would never see those lines - its per-line
+    // bookkeeping went stale and the quote parsed as ERROR from the fence
+    // onward (#45). Modelling the body as `optional(block_quote_prefix) line`,
+    // the way a code block's is, does not work either: after the prefix token
+    // the parser is committed to a content line and the closer is never
+    // offered, so the fence ran to the end of the document.
+    fenced_comment_block: ($) =>
+      seq(
+        alias($._comment_fence_begin, $.comment_fence_marker_begin),
+        optional(field("info", alias(/[^\n]+/, $.comment_fence_info))),
+        $._newline,
+        optional(field("content", alias($._comment_fence_content, $.content))),
+        $._block_close,
+        optional(
           seq(
-            /[ \t]*/,
-            "%%%%%%",
-            /[^\n]*\n/,
-            /(?:[ \t]*(?:%{0,5}(?:[^%\n][^\n]*)?|%{7,}[^\n]*)\n|\n)*/,
-            /[ \t]*/,
-            "%%%%%%",
-            /(?:[^%\n][^\n]*)?\n/,
-          ),
-          // length 5 — body may contain up to 4 leading %s.
-          seq(
-            /[ \t]*/,
-            "%%%%%",
-            /[^\n]*\n/,
-            /(?:[ \t]*(?:%{0,4}(?:[^%\n][^\n]*)?|%{6,}[^\n]*)\n|\n)*/,
-            /[ \t]*/,
-            "%%%%%",
-            /(?:[^%\n][^\n]*)?\n/,
-          ),
-          // length 4 — body may contain up to 3 leading %s.
-          seq(
-            /[ \t]*/,
-            "%%%%",
-            /[^\n]*\n/,
-            /(?:[ \t]*(?:%{0,3}(?:[^%\n][^\n]*)?|%{5,}[^\n]*)\n|\n)*/,
-            /[ \t]*/,
-            "%%%%",
-            /(?:[^%\n][^\n]*)?\n/,
-          ),
-          // length 3 — body may contain up to 2 leading %s.
-          seq(
-            /[ \t]*/,
-            "%%%",
-            /[^\n]*\n/,
-            /(?:[ \t]*(?:%{0,2}(?:[^%\n][^\n]*)?|%{4,}[^\n]*)\n|\n)*/,
-            /[ \t]*/,
-            "%%%",
-            /(?:[^%\n][^\n]*)?\n/,
+            alias($._comment_fence_end, $.comment_fence_marker_end),
+            $._eof_or_newline,
           ),
         ),
       ),
 
-    // carve-php abbreviation definitions (PHP Markdown Extra style).
-    //   *[HTML]: HyperText Markup Language
-    //
-    // Single-line block. The `*[KEY]:` opener is matched as one token so the
-    // lexer only commits when the complete pattern is on the line. That keeps
-    // `*[*](y)` style strong-emphasis-with-inner-link from being grabbed.
-    // Trade-off: key is not a separate child capture; the whole `*[KEY]:`
-    // shows up as `abbreviation_marker`. Highlight queries can still color
-    // the whole line uniformly.
     abbreviation_definition: ($) =>
       seq(
         alias(token(seq("*[", /[^\]\r\n]+/, "]:")), $.abbreviation_marker),
@@ -1635,6 +1607,11 @@ module.exports = grammar({
     // Matches code block markers with varying number of `.
     $._code_block_begin,
     $._code_block_end,
+    // NOTE: this array is POSITIONAL - its order must match the TokenType enum
+    // in src/scanner.c exactly.
+    $._comment_fence_begin,
+    $._comment_fence_content,
+    $._comment_fence_end,
     // Zero-width, emitted where a `:::` run is NOT an opener. Refusing there
     // leaves the colons consumed; emitting hands them back.
     $._not_a_container_opener,

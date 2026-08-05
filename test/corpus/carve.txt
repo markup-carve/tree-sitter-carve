@@ -378,7 +378,10 @@ Visible text.
 
 (document
   (comment_line)
-  (fenced_comment_block)
+  (fenced_comment_block
+    (comment_fence_marker_begin)
+    (content)
+    (comment_fence_marker_end))
   (paragraph))
 
 ===============================================================================
@@ -393,7 +396,11 @@ after
 -------------------------------------------------------------------------------
 
 (document
-  (fenced_comment_block)
+  (fenced_comment_block
+    (comment_fence_marker_begin)
+    (comment_fence_info)
+    (content)
+    (comment_fence_marker_end))
   (paragraph))
 
 ===============================================================================
@@ -408,7 +415,11 @@ after
 -------------------------------------------------------------------------------
 
 (document
-  (fenced_comment_block)
+  (fenced_comment_block
+    (comment_fence_marker_begin)
+    (comment_fence_info)
+    (content)
+    (comment_fence_marker_end))
   (paragraph))
 
 ===============================================================================
@@ -442,7 +453,11 @@ after
 -------------------------------------------------------------------------------
 
 (document
-  (fenced_comment_block)
+  (fenced_comment_block
+    (comment_fence_marker_begin)
+    (comment_fence_info)
+    (content)
+    (comment_fence_marker_end))
   (paragraph))
 
 ===============================================================================
@@ -2095,3 +2110,78 @@ A definition list inside a block quote is not an error
           (block_quote_marker)
           marker: (list_marker_description)
           definition: (definition))))))
+
+===============================================================================
+A comment fence inside a block quote keeps the quote intact
+===============================================================================
+> q
+> %%%
+> x
+> %%%
+> body
+
+-------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (paragraph)
+      (block_quote_marker)
+      (fenced_comment_block
+        (comment_fence_marker_begin)
+        content: (content)
+        (comment_fence_marker_end))
+      (block_quote_marker)
+      (paragraph))))
+
+===============================================================================
+A comment fence inside a list item keeps the item intact
+===============================================================================
+- a
+  %%%
+  x
+  %%%
+  b
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)
+        (fenced_comment_block
+          (comment_fence_marker_begin)
+          content: (content)
+          (comment_fence_marker_end))
+        (paragraph)))))
+
+===============================================================================
+An unterminated comment fence is a line comment, not a fence
+===============================================================================
+%%%
+x
+after
+
+-------------------------------------------------------------------------------
+
+(document
+  (comment_line)
+  (paragraph))
+
+===============================================================================
+A quoted closer does not close a fence opened at the top level
+===============================================================================
+%%%
+x
+> %%%
+after
+
+-------------------------------------------------------------------------------
+
+(document
+  (comment_line)
+  (paragraph
+    (trailing_comment)))
