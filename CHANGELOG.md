@@ -6,6 +6,22 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **A malformed colon fence leaves the paragraph expecting a closer** (spec:
+  PART 9 §12, normative since markup-carve/carve#778). A `:::` line that is not
+  a valid opener - `::: {.x}`, `::: 123`, a glued `:::note` - is paragraph text,
+  and from there a bare fence at ANY width is text too, so `::: {.x}` over
+  `not a div` over `:::` is ONE paragraph rather than a paragraph plus an empty
+  `div`. The decision whether a colon line ends an open paragraph counted the
+  colons and stopped, while the opener applied a shape test the peek did not,
+  so the paragraph was cut one line early and the closing fence was then read
+  as a fresh opener. Both now ask the same predicate. A bare fence still
+  interrupts an ordinary paragraph, a valid opener still interrupts one that
+  absorbed a malformed fence, and a fence that closes an open div is still that
+  closer. Four recorded over-acceptances close with it, and `text` over
+  `:::note` is now the single paragraph every engine renders instead of two.
+
 ### Changed
 
 - **A definition's marker-to-content separator is a space** (spec: U+0020 for
