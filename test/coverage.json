@@ -225,26 +225,6 @@
   ],
   "skip": {},
   "overAcceptance": {
-    "generic-divs-2": {
-      "nodes": "div",
-      "lines": "3",
-      "reason": "The `div` is the TRAILING `:::` on line 3, not the opener. `::: {.sidebar}` parses as a paragraph correctly (measured line by line), and then the closing fence is read as a fresh bare-div opener. Every engine keeps that line inside the paragraph: once a colon-fence line has failed the opener test, a later fence-shaped line at ANY width is text. That rule is load-bearing in all three and stated in no clause - markup-carve/carve#770. Fixing it needs scanner state, not a tighter opener rule."
-    },
-    "generic-divs-4": {
-      "nodes": "div",
-      "lines": "3",
-      "reason": "Same defect as generic-divs-2, same line: `::: 123` is already a paragraph, and the `div` comes from the trailing `:::` on line 3 (markup-carve/carve#770)."
-    },
-    "line-blocks-6": {
-      "nodes": "div",
-      "lines": "4",
-      "reason": "Same defect as generic-divs-2: `::: {.line-block}` is already a paragraph, and the `div` is the trailing `:::` on line 4 (markup-carve/carve#770). This was line-blocks-5 before the corpus grew."
-    },
-    "paragraph-interruption-9": {
-      "nodes": "div",
-      "lines": "4",
-      "reason": "`:::note` glued is correctly a paragraph here, so the `div` is the trailing `:::` on line 4 (markup-carve/carve#770). The grammar also splits `text` and `:::note` into two paragraphs where the engines produce one - invisible to this check, since both are paragraphs."
-    },
     "an-unresolved-reference-image-takes-no-caption": {
       "nodes": "caption",
       "lines": "2",
@@ -292,6 +272,10 @@
     },
     "line-blocks-5": {
       "gaps": "line_block: want 1 have 0"
+    },
+    "line-blocks-7": {
+      "gaps": "div: want 1 have 0",
+      "reason": "`::: \\` is the hard-break block form and a real opener, but the opener branch in `parse_colon` only accepts a bare fence, a `[label]`, or a line-block bar / class name after a space - a backslash reaches no route to DIV_BEGIN. This gap was masked until #103: the grammar built no div for the opener and a bogus one for the trailing `:::`, so the COUNT matched at 1 and nothing reported it. Closing the over-acceptance removed the bogus div and left the real gap visible. Closing it for real is a different change - widening the opener - so it is recorded here rather than folded into the peek fix."
     },
     "line-blocks-9": {
       "gaps": "line_block: want 1 have 0"

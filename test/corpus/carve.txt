@@ -748,6 +748,12 @@ Save early.
 
 ===============================================================================
 Admonition type glued to the fence is paragraph text, not an opener
+;; ONE paragraph, all four lines. `:::note` is not an opener (a class needs the
+;; separator space), so it is paragraph text, and from there the paragraph is
+;; expecting a closer: the trailing `:::` is text too (PART 9 §12, normative
+;; since markup-carve/carve#778). This used to be paragraph + paragraph + div -
+;; the peek ended the paragraph on a line the opener rejects, and then read the
+;; closing fence as a fresh opener (#103).
 ===============================================================================
 text
 :::note
@@ -757,10 +763,7 @@ body
 -------------------------------------------------------------------------------
 
 (document
-  (paragraph)
-  (paragraph)
-  (div
-    (div_marker_begin)))
+  (paragraph))
 
 ===============================================================================
 An attribute block after the div fence is a paragraph, not a div
@@ -769,8 +772,28 @@ An attribute block after the div fence is a paragraph, not a div
 ;; AFTER marking the token, which left the colons consumed and let the brace
 ;; read as a line start. It emits a zero-width `_not_a_container_opener`
 ;; instead, handing the run back (#38).
+;;
+;; The trailing `:::` is inside that paragraph as well: a malformed fence
+;; leaves the paragraph expecting a closer (§12). The div that used to appear
+;; here was the recorded over-acceptance `generic-divs-2` (#103).
 ===============================================================================
 ::: {.sidebar}
+not a div
+:::
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph))
+
+===============================================================================
+A bare fence still interrupts an ordinary paragraph
+;; The control for the two tests above. Every assertion about absorption would
+;; also hold if `:::` had stopped opening blocks at all, which is a different
+;; and much larger bug: with no malformed fence earlier in the paragraph, a
+;; bare `:::` interrupts it and opens an empty div (§10).
+===============================================================================
+text
 not a div
 :::
 
@@ -782,7 +805,102 @@ not a div
     (div_marker_begin)))
 
 ===============================================================================
+The absorption after a malformed fence is not width-tagged
+;; Unlike the closer rule it resembles, which matches on EXACT length: a
+;; malformed opener has no length for a closer to match, so a WIDER fence below
+;; it is absorbed as well (§12).
+===============================================================================
+::: {.x}
+not a div
+::::
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph))
+
+===============================================================================
+A valid opener still interrupts a paragraph that absorbed a malformed fence
+;; The other boundary: absorption suppresses a BARE fence, which would open a
+;; new div, and nothing else. `::: note` carries a type word, so it interrupts
+;; and opens its admonition exactly as it would have without the `::: {.x}`
+;; above it.
+===============================================================================
+::: {.x}
+not a div
+::: note
+body
+:::
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph)
+  (div
+    (div_marker_begin)
+    class: (class_name)
+    content: (content
+      (paragraph))
+    (div_marker_end)))
+
+===============================================================================
+A real closer is still a closer inside a paragraph that absorbed a fence
+;; A bare fence that closes a div which is actually OPEN stays that closer -
+;; the absorb state only suppresses opening a NEW div. So the first `:::` ends
+;; the admonition and the second opens an empty div, which is what every engine
+;; renders.
+===============================================================================
+::: note
+::: {.x}
+text
+:::
+:::
+
+-------------------------------------------------------------------------------
+
+(document
+  (div
+    (div_marker_begin)
+    class: (class_name)
+    content: (content
+      (paragraph))
+    (div_marker_end))
+  (div
+    (div_marker_begin)))
+
+===============================================================================
+A blank line ends the absorption
+;; The absorb state belongs to the paragraph that absorbed the malformed fence,
+;; so the fence below the blank line opens a div normally.
+===============================================================================
+::: {.x}
+x
+
+:::
+y
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph)
+  (div
+    (div_marker_begin)
+    content: (content
+      (paragraph))))
+
+===============================================================================
 A glued admonition type in a list item is text, not a nested div
+;; The item holds ONE paragraph: `:::note` is not an opener, and the `:::`
+;; below it is absorbed the same way it is at the top level.
+;;
+;; KNOWN DIVERGENCE, and the reason `tail` is inside that paragraph here: every
+;; engine ends the item at the fence-shaped line and renders `tail` as a
+;; sibling paragraph, because a colon-fence-shaped line closes an item's
+;; lazy-continuation window (§17) whether or not it is a valid opener. This
+;; grammar has no such rule, so the lazy line folds in. Before #103 `tail`
+;; landed outside for the wrong reason - the bogus `div` ended the item - so
+;; the placement was right and the tree around it was not. Tracked separately;
+;; the peek fix does not reach it.
 ===============================================================================
 - item
   :::note
@@ -797,11 +915,7 @@ tail
     (list_item
       marker: (list_marker_dash)
       content: (list_item_content
-        (paragraph)
-        (paragraph)
-        (div
-          (div_marker_begin)))))
-  (paragraph))
+        (paragraph)))))
 
 ===============================================================================
 A space after the list marker makes a brace literal, not an item attribute

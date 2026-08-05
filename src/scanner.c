@@ -289,6 +289,18 @@ static const uint8_t STATE_TABLE_SEPARATOR_NEXT = 1 << 2;
 // body or a table's later rows. Cleared when a sibling list marker, a blank
 // line, or the list's close ends the attached block.
 static const uint8_t STATE_LIST_CONTINUATION = 1 << 3;
+// Tracks that a colon-fence line in the CURRENT paragraph failed the opener
+// test, so the paragraph is left "expecting a closer" (PART 9 §12, NORMATIVE
+// since markup-carve/carve#778). While set, a BARE fence that would otherwise
+// open a new div is paragraph text instead: `::: {.x}` / `not a div` / `:::` is
+// ONE paragraph, and the absorption is not width-tagged, so a `::::` after a
+// malformed `:::` is absorbed too.
+//
+// It suppresses only the bare-fence-as-OPENER case. A valid non-bare opener
+// still interrupts (`::: {.x}` / `x` / `::: note` is a paragraph plus an
+// admonition), and a bare fence that CLOSES a div which is actually open is
+// still that closer. Cleared when the paragraph ends.
+static const uint8_t STATE_FENCE_ABSORBS = 1 << 4;
 
 static TokenType scan_list_marker_token(Scanner *s, TSLexer *lexer);
 static uint8_t scan_block_quote_markers(Scanner *s, TSLexer *lexer,
@@ -831,20 +843,31 @@ static bool try_close_different_typed_list(Scanner *s, TSLexer *lexer,
   return false;
 }
 
-static bool scan_div_marker(Scanner *s, TSLexer *lexer, uint8_t *colons,
-                            size_t *from_top) {
-  *colons = consume_chars(s, lexer, ':');
-  if (*colons < 3) {
-    return false;
+/// Does the text AFTER a `:::` run open a block?
+///
+/// The one place that answers it. The opener branch in `parse_colon` and the
+/// paragraph-closing peek in `scan_paragraph_closing_marker` both ask, and a
+/// grammar where the two answer differently cuts the paragraph one line early
+/// and then reads the next fence as a fresh opener - which is what produced
+/// four of the five recorded over-acceptances (#103). There used to be a
+/// `scan_div_marker` here that counted colons and stopped; it had no reachable
+/// caller, so the live second spelling was the peek's own `colons >= 3`.
+///
+/// Call with the lexer already past the colons and their separating
+/// whitespace: `bare` is true when the line ends there, `spaced` when any
+/// separator was consumed, `c` is the first character of the tail.
+///
+/// A bare fence, a `[label]` (glued or not), and a line-block bar or class name
+/// AFTER a separator are openers. A `{` attribute block, a digit-leading class
+/// and a glued class name are not - those lines are paragraph text per PART 9
+/// §12.
+static bool colon_fence_tail_opens_block(bool bare, bool spaced, int32_t c) {
+  if (bare || c == '[') {
+    return true;
   }
-  *from_top = number_of_blocks_from_top(s, DIV, *colons);
-  return true;
-}
-
-static bool is_div_marker_next(Scanner *s, TSLexer *lexer) {
-  uint8_t colons;
-  size_t from_top;
-  return scan_div_marker(s, lexer, &colons, &from_top);
+  bool named = c == '|' || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+               c == '_';
+  return named && spaced;
 }
 
 // Try to close an open verbatim implicitly
@@ -1862,12 +1885,6 @@ static bool scan_eof_or_blankline(Scanner *s, TSLexer *lexer) {
   }
 }
 
-// Can we scan a block closing marker?
-// For example, if we see a valid div marker.
-static bool scan_containing_block_closing_marker(Scanner *s, TSLexer *lexer) {
-  return is_div_marker_next(s, lexer) || scan_list_marker(s, lexer);
-}
-
 // Variant for closing an open PARAGRAPH. A LIST MARKER does NOT interrupt a
 // standalone paragraph: with no open list, a bullet or ordered marker folds
 // into the open paragraph as plain text (§10 -- no list interrupts a
@@ -1903,7 +1920,37 @@ static bool scan_paragraph_closing_marker(Scanner *s, TSLexer *lexer) {
   if (lexer->lookahead == ':') {
     uint8_t colons = consume_chars(s, lexer, ':');
     if (colons >= 3) {
-      return true;
+      // A COLON FENCE ENDS THE PARAGRAPH ONLY WHEN IT IS REALLY A MARKER.
+      // Counting the colons and stopping here is what closed the paragraph one
+      // line early: `::: {.x}` is not an opener, so the line is paragraph text,
+      // yet the peek ended the paragraph on it and the trailing `:::` three
+      // lines down was then read as a fresh opener (#103). The tail test is
+      // the opener's own, shared rather than restated.
+      bool spaced = false;
+      while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+        advance(s, lexer);
+        spaced = true;
+      }
+      int32_t c = lexer->lookahead;
+      bool bare = c == '\n' || lexer->eof(lexer);
+      if (!colon_fence_tail_opens_block(bare, spaced, c)) {
+        // Paragraph text - and from here the paragraph is "expecting a
+        // closer": a later BARE fence is text too (PART 9 §12).
+        s->state |= STATE_FENCE_ABSORBS;
+        return false;
+      }
+      if (!bare) {
+        // A valid opener carrying something interrupts even after a malformed
+        // sibling: `::: {.x}` / `x` / `::: note` is a paragraph plus an
+        // admonition in every engine.
+        return true;
+      }
+      // Bare. A closer for a div that is actually open is still that closer,
+      // absorption or not - the flag only suppresses opening a NEW div.
+      if (number_of_blocks_from_top(s, DIV, colons) > 0) {
+        return true;
+      }
+      return (s->state & STATE_FENCE_ABSORBS) == 0;
     }
     if (find_list(s) == NULL) {
       return false;
@@ -2795,14 +2842,21 @@ static bool parse_colon(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     // attribute block (`::: {.x}`), a digit-leading class (`::: 123`), or any
     // other lead char makes the line a literal paragraph per the spec, so
     // refuse the div opener there.
-    bool named = c == '|' || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
-                 c == '_';
+    //
     // A CLASS or a line-block bar needs the separator space: `:::note` and
     // `:::|` are paragraphs in every engine, the same rule every other marker
     // follows. A bare fence and a glued `[label]` do not - `:::` alone opens a
     // div and `:::[First]` opens a labelled one, both checked against the
-    // engine.
-    bool ok = bare || c == '[' || (named && spaced);
+    // engine. The test lives in `colon_fence_tail_opens_block` so the
+    // paragraph-closing peek applies the SAME one.
+    bool ok = colon_fence_tail_opens_block(bare, spaced, c);
+    // ...and a bare fence is not an opener at all while the open paragraph is
+    // absorbing: after a malformed `::: {.x}` the trailing `:::` is text, at
+    // any width (PART 9 §12). The peek above normally keeps the parser inside
+    // the paragraph so this branch is not reached, but the two must agree.
+    if (ok && bare && (s->state & STATE_FENCE_ABSORBS)) {
+      ok = false;
+    }
     if (!ok) {
       // EMIT rather than refuse. Refusing leaves the lexer past the colons -
       // `mark_end` above already committed the token to them - and the `{`
@@ -2815,6 +2869,11 @@ static bool parse_colon(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       // paragraph. `BLOCK_CLOSE` cannot be borrowed here because there is no
       // block to close, hence a token of its own that produces no node.
       if (valid_symbols[NOT_A_CONTAINER_OPENER]) {
+        // The line starts a paragraph that is now expecting a closer, so a
+        // later bare fence inside it is text rather than a new div - the
+        // half of §12 that the peek alone cannot see, because the malformed
+        // line is BEHIND the position it looks from.
+        s->state |= STATE_FENCE_ABSORBS;
         lexer->result_symbol = NOT_A_CONTAINER_OPENER;
         return true;
       }
@@ -3676,6 +3735,10 @@ static bool parse_close_paragraph(Scanner *s, TSLexer *lexer) {
     return false;
   }
 
+  // The paragraph is over, so whatever malformed fence it absorbed no longer
+  // governs the next one: `::: {.x}` / `x` / blank / `:::` ends with a real
+  // div in every engine.
+  s->state &= ~STATE_FENCE_ABSORBS;
   lexer->result_symbol = CLOSE_PARAGRAPH;
   return true;
 }
@@ -3778,12 +3841,16 @@ static bool parse_newline(Scanner *s, TSLexer *lexer,
   // We need to handle NEWLINE in the external scanner for our
   // changes to the Scanner state to be saved
   // (the reset of `block_quote_level` at newline in the main scan function).
+  // A plain NEWLINE (rather than NEWLINE_INLINE) is the end of the paragraph,
+  // which is where the §12 absorption stops - see `parse_close_paragraph`.
   if (valid_symbols[NEWLINE]) {
+    s->state &= ~STATE_FENCE_ABSORBS;
     lexer->result_symbol = NEWLINE;
     return true;
   }
 
   if (valid_symbols[EOF_OR_NEWLINE]) {
+    s->state &= ~STATE_FENCE_ABSORBS;
     lexer->result_symbol = EOF_OR_NEWLINE;
     return true;
   }
