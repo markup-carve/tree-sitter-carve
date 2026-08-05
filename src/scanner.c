@@ -1952,20 +1952,37 @@ static bool scan_paragraph_closing_marker(Scanner *s, TSLexer *lexer) {
       }
       return (s->state & STATE_FENCE_ABSORBS) == 0;
     }
-    if (find_list(s) == NULL) {
+    Block *open_list = find_list(s);
+    if (open_list == NULL) {
       return false;
     }
-    // MARKER REQUIRES CONTENT applies here too: `:: ` or `:  ` with nothing
-    // after it is paragraph text, so it must not end the term or description
-    // above it either. Saying otherwise closed the item and then let the marker
-    // itself be rejected, which left an ERROR where the engines render a
-    // paragraph.
+    // Inside a DEFINITION list, a marker-shaped colon line ends the item above
+    // it on its SHAPE alone - deliberately unlike every other list, where the
+    // marker must carry content. MARKER REQUIRES CONTENT still applies to the
+    // marker itself: the line is paragraph text, it just is not part of the
+    // term or description above it. `:: t` / `:: ` / `x` is a one-term `<dl>`
+    // followed by a paragraph holding both remaining lines in carve-rs and
+    // carve-php (markup-carve/carve#788; carve-js folds it into the term and is
+    // the outlier, filed as markup-carve/carve-js#731).
+    //
+    // The separator space is the whole of the shape test. A BARE `::` carries
+    // no separator, so it is not marker-shaped at all and continues the term
+    // lazily - which is what all three engines do with it, and why this is not
+    // simply "a colon run ends the term".
+    //
+    // The shape-only rule is scoped to a definition list because a colon line
+    // has no marker meaning anywhere else: inside a bullet item, `- a` / `:: `
+    // / `x` keeps both lines in the item as lazy text in every engine, exactly
+    // like the content-less bullet line #98 fixed. Only a colon marker WITH
+    // content ends a bullet item (`- a` / `:: b` is a `<ul>` plus a `<dl>`),
+    // which is what the content test below still answers.
+    bool in_definition_list = open_list->type == LIST_DEFINITION;
     if (colons == 2) {
       if (lexer->lookahead != ' ') {
         return false;
       }
       advance(s, lexer);
-      return marker_line_has_content(s, lexer);
+      return in_definition_list || marker_line_has_content(s, lexer);
     }
     // One colon: a description needs a SECOND space, since one space is the
     // term's own lazy continuation.
@@ -1976,7 +1993,7 @@ static bool scan_paragraph_closing_marker(Scanner *s, TSLexer *lexer) {
     if (lexer->lookahead != ' ') {
       return false;
     }
-    return marker_line_has_content(s, lexer);
+    return in_definition_list || marker_line_has_content(s, lexer);
   }
   if (find_list(s) == NULL) {
     return false;

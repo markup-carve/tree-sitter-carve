@@ -2226,7 +2226,7 @@ then
       (paragraph))))
 
 ===============================================================================
-A content-less definition marker does not end the item above it
+A content-less definition marker ends the item above it
 ===============================================================================
 :: t
 :: 
@@ -2235,6 +2235,94 @@ x
 -------------------------------------------------------------------------------
 
 (document
+  (definition_list
+    (list_item
+      marker: (list_marker_definition)
+      term: (term)))
+  (paragraph))
+
+===============================================================================
+A content-less description marker ends the item above it
+===============================================================================
+:: t
+:  
+x
+
+-------------------------------------------------------------------------------
+
+(document
+  (definition_list
+    (list_item
+      marker: (list_marker_definition)
+      term: (term)))
+  (paragraph))
+
+===============================================================================
+A content-less definition marker ends an open description too
+===============================================================================
+:: t
+:  d
+:: 
+x
+
+-------------------------------------------------------------------------------
+
+(document
+  (definition_list
+    (list_item
+      marker: (list_marker_definition)
+      term: (term))
+    (list_item
+      marker: (list_marker_description)
+      definition: (definition)))
+  (paragraph))
+
+===============================================================================
+A bare definition marker with no separator continues the term
+===============================================================================
+:: t
+::
+x
+
+-------------------------------------------------------------------------------
+
+(document
+  (definition_list
+    (list_item
+      marker: (list_marker_definition)
+      term: (term))))
+
+===============================================================================
+A content-less definition marker inside a bullet item stays lazy text
+===============================================================================
+- a
+:: 
+x
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)))))
+
+===============================================================================
+A definition marker with content still ends a bullet item
+===============================================================================
+- a
+:: b
+x
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph))))
   (definition_list
     (list_item
       marker: (list_marker_definition)
