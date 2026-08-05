@@ -2560,3 +2560,28 @@ x
     content: (frontmatter_content)
     (frontmatter_marker))
   (paragraph))
+
+===============================================================================
+A tab advances to the next tab stop, so mixed indentation stays siblings
+===============================================================================
+- a
+    - b
+ 	- c
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)
+        (list
+          (list_item
+            marker: (list_marker_dash)
+            content: (list_item_content
+              (paragraph)))
+          (list_item
+            marker: (list_marker_dash)
+            content: (list_item_content
+              (paragraph))))))))
