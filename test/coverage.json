@@ -360,6 +360,10 @@
     },
     "tight-list-item-keeps-trailing-text-after-a-block-bare": {
       "gaps": "code_block: want 1 have 0"
+    },
+    "a-marker-attribute-may-hold-a-quoted-brace": {
+      "gaps": "list: want 1 have 0",
+      "reason": "`1.{title='a}b'} item` is a list: the `}` inside the quoted value does not close the marker's attribute block. The scanner ends the block at the first `}` it sees, so the marker never completes and the line stays a paragraph (tree-sitter-carve#81)."
     }
   }
 }
