@@ -2136,6 +2136,36 @@ A comment fence inside a block quote keeps the quote intact
       (paragraph))))
 
 ===============================================================================
+A block quote holding only a comment closes on a dedent (tree-sitter-carve#77)
+===============================================================================
+> %% c
+after
+
+-------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (comment_line)))
+  (paragraph))
+
+===============================================================================
+A block quote holding only an unterminated comment fence closes on a dedent
+===============================================================================
+> %%%
+after
+
+-------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (comment_line)))
+  (paragraph))
+
+===============================================================================
 A comment fence inside a list item keeps the item intact
 ===============================================================================
 - a

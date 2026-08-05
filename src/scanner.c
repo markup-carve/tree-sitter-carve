@@ -4116,6 +4116,20 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
     s->indent = consume_whitespace(s, lexer);
     // A new line starts a new marker chain (see `marker_end_col`).
     s->marker_end_col = 0;
+    // A new line also starts a fresh block-quote marker count. Normally a
+    // trailing NEWLINE token clears `block_quote_level` (below) before the
+    // next line is scanned, but a construct whose own token swallows its
+    // trailing newline in one lexer match - `comment_line`, an empty
+    // `fenced_comment_block` with no closer - never yields control back to
+    // the scanner at that boundary, so the count from the quote's opening
+    // marker line survives into the next line untouched. On a dedent with
+    // no open paragraph to absorb it (tree-sitter-carve#77), that stale
+    // count reads as "still at the quote's own depth" and blocks the
+    // BLOCK_CLOSE branch in `parse_block_quote`. Clearing it here, at every
+    // line's first character, makes the reset unconditional on reaching a
+    // new line rather than on how the previous line's last token happened
+    // to be shaped.
+    s->block_quote_level = 0;
   }
   bool is_newline = lexer->lookahead == '\n';
 
