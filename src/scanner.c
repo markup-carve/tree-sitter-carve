@@ -2003,6 +2003,82 @@ static uint8_t consume_line_with_char_or_whitespace(Scanner *s, TSLexer *lexer,
   return seen;
 }
 
+// Does a document-level closing frontmatter marker exist anywhere later in
+// the input? Called right after the OPENING run of `-` characters has been
+// consumed (so the lexer sits at whatever follows them on the opener line).
+// Frontmatter content is raw text end to end (`frontmatter_content` is just
+// `repeat1($._line)`, an unparsed `/[^\n]*/` per line), so the closer is
+// simply the first later line that is, from column 0, nothing but three or
+// more '-' characters and trailing horizontal whitespace - the identical
+// shape `parse_list_marker_or_thematic_break` itself commits to when it is
+// asked to recognize that same line as the closer.
+//
+// Deliberately takes only `lexer`, never `Scanner *s`: every `advance` here
+// is a plain read with no effect on persistent scanner state (no indent,
+// list or block-quote tracking touched), so however far this travels -
+// potentially to the end of the document - there is nothing left to unwind
+// if the caller ultimately decides not to use what it finds. An earlier
+// attempt at this same lookahead (tree-sitter-carve#95) used the ordinary
+// state-tracking helpers to scan ahead and, on failing to find a closer,
+// left `Scanner *s` mid-document for the NEXT token - this function is
+// written to make that class of mistake impossible by construction rather
+// than by care.
+static bool frontmatter_has_closer(TSLexer *lexer) {
+  // Skip whatever remains of the OPENER line (optional whitespace and/or a
+  // language tag per the grammar) without caring about its shape.
+  while (!lexer->eof(lexer) && lexer->lookahead != '\n') {
+    lexer->advance(lexer, false);
+  }
+  if (lexer->eof(lexer)) {
+    return false;
+  }
+  lexer->advance(lexer, false); // the opener line's own newline
+
+  // `frontmatter_content` is `repeat1($._line)`: at least ONE content line is
+  // grammatically required between the opener and the closer, so the very
+  // next line can never itself close the block, however it is shaped -
+  // `---` immediately followed by another `---` is not empty, closed
+  // frontmatter, it is still an unclosed opener (tracked separately as the
+  // "---" + "---" no-error family). Consume that mandatory line unconditionally
+  // before the closer search below even starts looking.
+  if (lexer->eof(lexer)) {
+    return false;
+  }
+  while (!lexer->eof(lexer) && lexer->lookahead != '\n') {
+    lexer->advance(lexer, false);
+  }
+  if (lexer->eof(lexer)) {
+    return false;
+  }
+  lexer->advance(lexer, false); // the mandatory content line's newline
+
+  while (!lexer->eof(lexer)) {
+    uint32_t dashes = 0;
+    while (lexer->lookahead == '-') {
+      ++dashes;
+      lexer->advance(lexer, false);
+    }
+    if (dashes >= 3) {
+      while (lexer->lookahead == ' ' || lexer->lookahead == '\t' ||
+             lexer->lookahead == '\r') {
+        lexer->advance(lexer, false);
+      }
+      if (lexer->eof(lexer) || lexer->lookahead == '\n') {
+        return true;
+      }
+    }
+    // Not a closer: skip to the end of this line and try the next one.
+    while (!lexer->eof(lexer) && lexer->lookahead != '\n') {
+      lexer->advance(lexer, false);
+    }
+    if (lexer->eof(lexer)) {
+      return false;
+    }
+    lexer->advance(lexer, false);
+  }
+  return false;
+}
+
 // Either parse a list item marker (like '- ') or a thematic break
 // (like '- - -').
 static bool parse_list_marker_or_thematic_break(
@@ -2099,8 +2175,42 @@ static bool parse_list_marker_or_thematic_break(
     uint8_t frontmatter_run = consume_chars(s, lexer, marker);
     marker_count += frontmatter_run;
     if (marker_count >= 3) {
-      lexer->result_symbol = FRONTMATTER_MARKER;
+      // The boundary for FRONTMATTER_MARKER either way: just the marker
+      // characters themselves, matching what a closed frontmatter opener has
+      // always produced here.
       lexer->mark_end(lexer);
+      // `can_be_thematic_break` is only true when a thematic break is ALSO
+      // grammatically valid at this exact position - which is the document
+      // start (frontmatter is optional there), never the closing-marker
+      // position inside `frontmatter_content` (raw lines, no thematic break
+      // reachable). So this gate is what tells the OPENING commitment apart
+      // from the CLOSING one without needing any extra state: the closer
+      // keeps committing unconditionally below, exactly as before.
+      if (can_be_thematic_break) {
+        // PART 9 section 12: "an opener with no exact closer ahead opens
+        // nothing" - already the rule for the `%%%` comment block and the
+        // code fence. An unclosed `---` at document start is the same shape,
+        // and every engine reads it as a thematic break instead
+        // (tree-sitter-carve#95).
+        if (frontmatter_has_closer(lexer)) {
+          lexer->result_symbol = FRONTMATTER_MARKER;
+          return true;
+        }
+        // No closer anywhere in the rest of the document: fall back to a
+        // thematic break, spanning exactly the marker run already consumed
+        // above (the `mark_end` call before the lookahead). Any trailing
+        // same-line whitespace after the markers cannot also be folded into
+        // this token: `frontmatter_has_closer` has already read past this
+        // line (and potentially to the end of the document) to answer the
+        // closer question, so the lexer's physical position is no longer
+        // right after the marker run, and `mark_end` cannot be pointed
+        // backward to reclaim it. Every case this fixes
+        // (tree-sitter-carve#95) is a bare `---` with nothing else on the
+        // line, where this boundary is already exact.
+        lexer->result_symbol = thematic_break_type;
+        return true;
+      }
+      lexer->result_symbol = FRONTMATTER_MARKER;
       return true;
     }
     consumed_line_of_markers = frontmatter_run > 0;
