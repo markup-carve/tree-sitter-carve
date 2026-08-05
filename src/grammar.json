@@ -3487,7 +3487,7 @@
                 },
                 {
                   "type": "STRING",
-                  "value": "]:"
+                  "value": "]: "
                 }
               ]
             }
@@ -3502,8 +3502,16 @@
               "type": "SEQ",
               "members": [
                 {
-                  "type": "SYMBOL",
-                  "name": "_whitespace1"
+                  "type": "CHOICE",
+                  "members": [
+                    {
+                      "type": "SYMBOL",
+                      "name": "_whitespace1"
+                    },
+                    {
+                      "type": "BLANK"
+                    }
+                  ]
                 },
                 {
                   "type": "FIELD",
