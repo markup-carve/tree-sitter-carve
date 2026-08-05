@@ -404,10 +404,6 @@
       "required": false,
       "types": [
         {
-          "type": "abbreviation_definition",
-          "named": true
-        },
-        {
           "type": "autolink",
           "named": true
         },
@@ -673,10 +669,6 @@
       "multiple": true,
       "required": false,
       "types": [
-        {
-          "type": "abbreviation_definition",
-          "named": true
-        },
         {
           "type": "autolink",
           "named": true
@@ -1279,10 +1271,6 @@
       "multiple": true,
       "required": false,
       "types": [
-        {
-          "type": "abbreviation_definition",
-          "named": true
-        },
         {
           "type": "block_attribute",
           "named": true
@@ -2510,10 +2498,6 @@
       "required": false,
       "types": [
         {
-          "type": "abbreviation_definition",
-          "named": true
-        },
-        {
           "type": "block_attribute",
           "named": true
         },
@@ -2608,10 +2592,6 @@
       "multiple": true,
       "required": false,
       "types": [
-        {
-          "type": "abbreviation_definition",
-          "named": true
-        },
         {
           "type": "block_attribute",
           "named": true

@@ -94,6 +94,10 @@
         },
         {
           "type": "SYMBOL",
+          "name": "abbreviation_definition"
+        },
+        {
+          "type": "SYMBOL",
           "name": "_newline"
         }
       ]
@@ -187,10 +191,6 @@
         {
           "type": "SYMBOL",
           "name": "link_reference_definition"
-        },
-        {
-          "type": "SYMBOL",
-          "name": "abbreviation_definition"
         },
         {
           "type": "SYMBOL",

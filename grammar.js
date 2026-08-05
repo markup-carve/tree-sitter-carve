@@ -44,7 +44,25 @@ module.exports = grammar({
 
     // A section is only valid on the top level, or nested inside other sections.
     // Otherwise standalone headings are used (inside divs for example).
-    _block_with_section: ($) => choice($.section, $._block_element, $._newline),
+    //
+    // `abbreviation_definition` is added here, and NOT in `_block_element`,
+    // because it is recognized only at document level (PART 5, NORMATIVE):
+    // written inside a block quote, a list item or a div, `*[TERM]: expansion`
+    // is not a definition at all, just paragraph text (corpus 179/180/181).
+    // A reference/footnote/citation definition is different - those ARE
+    // recognized inside a container and hoisted to the document - so they stay
+    // in `_block_element`, reachable from every container path. Document level
+    // is reached only through this rule (`document` and `section`), never
+    // through `_block_with_heading` (list items, divs, footnotes) or a block
+    // quote's own content rule, so this single choice point is what keeps an
+    // abbreviation definition out of every container in one place.
+    _block_with_section: ($) =>
+      choice(
+        $.section,
+        $._block_element,
+        $.abbreviation_definition,
+        $._newline,
+      ),
     _block_with_heading: ($) =>
       seq(
         optional($._block_quote_continuation),
@@ -64,7 +82,6 @@ module.exports = grammar({
         alias($.block_math, $.math),
         $.citation_definition,
         $.link_reference_definition,
-        $.abbreviation_definition,
         $.comment_line,
         $.fenced_comment_block,
         $.caption,
