@@ -2457,7 +2457,27 @@ static bool parse_colon(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     return false;
   }
 
-  size_t from_top = number_of_blocks_from_top(s, DIV, colons);
+  // A fence line that CARRIES something - a class, a line-block `|`, a
+  // `[label]` - is an OPENER, even when a div of the same width is already
+  // open: `:::: note` nests inside `:::: note`, and so does `::: tip` inside
+  // `::: note` (corpus 181-openers-past-the-nesting-cap-are-one-paragraph and
+  // nested-containers-2, both of which render nested `<aside>` elements). Only
+  // a BARE fence closes.
+  //
+  // Deciding by WIDTH alone made every equal-width opener a closer, and a
+  // closer with a class name after it is not a line the grammar has - so the
+  // whole document came apart from the second opener on (#59). The separator
+  // whitespace is consumed here rather than inside the opener branch, because
+  // the answer is needed before the branch is chosen.
+  bool spaced = false;
+  while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+    advance(s, lexer);
+    spaced = true;
+  }
+  int32_t c = lexer->lookahead;
+  bool bare = c == '\n' || lexer->eof(lexer);
+
+  size_t from_top = bare ? number_of_blocks_from_top(s, DIV, colons) : 0;
 
   if (from_top == 0) {
     if (!valid_symbols[DIV_BEGIN]) {
@@ -2478,13 +2498,6 @@ static bool parse_colon(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     // attribute block (`::: {.x}`), a digit-leading class (`::: 123`), or any
     // other lead char makes the line a literal paragraph per the spec, so
     // refuse the div opener there.
-    bool spaced = false;
-    while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
-      advance(s, lexer);
-      spaced = true;
-    }
-    int32_t c = lexer->lookahead;
-    bool bare = c == '\n' || lexer->eof(lexer);
     bool named = c == '|' || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
                  c == '_';
     // A CLASS or a line-block bar needs the separator space: `:::note` and

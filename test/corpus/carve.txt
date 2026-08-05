@@ -2272,3 +2272,70 @@ b
     (block_quote_marker)
     content: (content
       (paragraph))))
+
+===============================================================================
+An equal-width container opener nests instead of closing
+===============================================================================
+::: note
+::: tip
+x
+:::
+:::
+
+-------------------------------------------------------------------------------
+
+(document
+  (div
+    (div_marker_begin)
+    class: (class_name)
+    content: (content
+      (div
+        (div_marker_begin)
+        class: (class_name)
+        content: (content
+          (paragraph))
+        (div_marker_end)))
+    (div_marker_end)))
+
+===============================================================================
+An equal-width opener of the same class nests too
+===============================================================================
+:::: note
+:::: note
+x
+::::
+::::
+
+-------------------------------------------------------------------------------
+
+(document
+  (div
+    (div_marker_begin)
+    class: (class_name)
+    content: (content
+      (div
+        (div_marker_begin)
+        class: (class_name)
+        content: (content
+          (paragraph))
+        (div_marker_end)))
+    (div_marker_end)))
+
+===============================================================================
+A bare fence still closes the open container
+===============================================================================
+::: note
+x
+:::
+after
+
+-------------------------------------------------------------------------------
+
+(document
+  (div
+    (div_marker_begin)
+    class: (class_name)
+    content: (content
+      (paragraph))
+    (div_marker_end))
+  (paragraph))
