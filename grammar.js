@@ -866,12 +866,22 @@ module.exports = grammar({
         ),
       ),
 
+    // The marker carries its own separator SPACE. The spec requires U+0020
+    // after `]:` for all three definition markers and names carve-rs as the
+    // reference: `*[HTML]:<TAB>Hyper` is an ordinary paragraph, not a
+    // definition (corpus 137-abbreviation-definition-separator-must-be-a-space).
+    //
+    // The space has to be inside the TOKEN rather than a separate one after it.
+    // A separate space-first token still lets `token(seq("*[", ..., "]:"))`
+    // match and commit, and the rule then fails with an ERROR node instead of
+    // falling back to a paragraph. Folding it in means the marker simply does
+    // not tokenize without it, and the line stays prose (tree-sitter-carve#83).
     abbreviation_definition: ($) =>
       seq(
-        alias(token(seq("*[", /[^\]\r\n]+/, "]:")), $.abbreviation_marker),
+        alias(token(seq("*[", /[^\]\r\n]+/, "]: ")), $.abbreviation_marker),
         optional(
           seq(
-            $._whitespace1,
+            optional($._whitespace1),
             field("expansion", alias(/[^\r\n]+/, $.abbreviation_expansion)),
           ),
         ),

@@ -2071,7 +2071,27 @@ static bool scan_ref_def(Scanner *s, TSLexer *lexer) {
   }
   advance(s, lexer);
 
-  // Don't actually have to have anything else after the colon.
+  // THE SEPARATOR IS A SPACE (U+0020), NOT WHITESPACE. The spec states it for
+  // all three definition markers - "A tab does NOT satisfy `space`, so
+  // `[^a]:<TAB>x`, `[a]:<TAB>/url` and `*[HTML]:<TAB>x` are ordinary
+  // paragraphs, not definitions" - and names carve-rs as the reference.
+  //
+  // Measured against carve-rs, it is the FIRST character after the colon that
+  // has to be a space; whitespace after that is free:
+  //
+  //   [a]: /url      definition        [a]:<TAB>/url   paragraph
+  //   [a]:   /url    definition        [a]:<TAB> /url  paragraph
+  //   [a]: <TAB>/url definition        [a]:/url        paragraph
+  //
+  // Refusing here rather than in grammar.js is what puts the line back on the
+  // paragraph path. Tightening the separator token instead leaves the rule
+  // matching a truncated `[a]:` and the rest of the line parsing as something
+  // else, because the destination group is optional and the rule's tail accepts
+  // trailing whitespace (tree-sitter-carve#83).
+  if (lexer->lookahead != ' ') {
+    return false;
+  }
+
   return true;
 }
 

@@ -1,5 +1,5 @@
 {
-  "_comment": "Coverage matrix for the shared Carve spec corpus (spec/tests/corpus/*.crv). Every NN-slug base category must appear in covered or skip; the coverage-matrix test fails otherwise so a new spec category forces a classify decision. covered = grammar parses every file in the category with no ERROR/MISSING node. skip = at least one file currently produces an ERROR/MISSING node; reason records the unmodeled construct (a grammar gap to surface, not to hack around). A skip key is a CATEGORY (NN-slug) or a single EXAMPLE (NN-slug-2) \u2014 use the example form when the rest of the category parses cleanly, so one gap does not drop assertion for its siblings. A key equal to a category name is read as the CATEGORY, so the first example of a category cannot be skipped on its own.",
+  "_comment": "Coverage matrix for the shared Carve spec corpus (spec/tests/corpus/*.crv). Every NN-slug base category must appear in covered or skip; the coverage-matrix test fails otherwise so a new spec category forces a classify decision. covered = grammar parses every file in the category with no ERROR/MISSING node. skip = at least one file currently produces an ERROR/MISSING node; reason records the unmodeled construct (a grammar gap to surface, not to hack around). A skip key is a CATEGORY (NN-slug) or a single EXAMPLE (NN-slug-2) — use the example form when the rest of the category parses cleanly, so one gap does not drop assertion for its siblings. A key equal to a category name is read as the CATEGORY, so the first example of a category cannot be skipped on its own.",
   "covered": [
     "a-backslash-in-a-link-destination-is-a-literal-character",
     "a-bare-attribute-block-on-its-own-line-is-literal",
@@ -252,14 +252,6 @@
     }
   },
   "invisibleOverAcceptance": {
-    "link-reference-definition-separator-must-be-a-space": {
-      "nodes": "link_reference_definition: [a]: /url",
-      "reason": "`[a]:\\t/url` (tab, not space) still builds a real link_reference_definition; the fixture keeps the marker line literal and leaves `[a][]` unresolved on the next line, so the definition should never have registered. Tracked in tree-sitter-carve#83."
-    },
-    "abbreviation-definition-separator-must-be-a-space": {
-      "nodes": "abbreviation_definition: *[HTML]: Hyper",
-      "reason": "`*[HTML]:\\tHyper` (tab, not space) still builds a real abbreviation_definition; the fixture keeps the marker line literal and leaves \"The HTML\" unexpanded on the next line, so the definition should never have registered. Tracked in tree-sitter-carve#83."
-    },
     "compact-list-blocks-10": {
       "nodes": "block_attribute: {.c}",
       "reason": "`{.c}` indented one column past its list item's content column still opens a real block_attribute; the fixture renders it as a literal, separate paragraph instead. Tracked in tree-sitter-carve#84."
