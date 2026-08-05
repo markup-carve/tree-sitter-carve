@@ -422,7 +422,15 @@ static uint8_t consume_whitespace(Scanner *s, TSLexer *lexer) {
       advance(s, lexer);
     } else if (lexer->lookahead == '\t') {
       advance(s, lexer);
-      indent += 4;
+      // PART 9 §24 C1: a tab advances to the NEXT MULTIPLE OF 4 from wherever
+      // it starts, not by four from wherever it starts. The two agree only
+      // when the tab begins on a tab stop, so `<SPACE><TAB>` is column 4 and
+      // not 5. `s->indent` is compared against list content columns - several
+      // of those comparisons are exact - so the difference changed structure:
+      // a marker at column 4 reached by a space and a tab nested INSIDE a
+      // marker at column 4 reached by four spaces, instead of being its
+      // sibling (#100).
+      indent += 4 - (indent % 4);
     } else {
       break;
     }
