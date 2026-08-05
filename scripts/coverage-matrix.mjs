@@ -97,7 +97,12 @@ console.log(
 // silently match nothing, and "matches nothing" reads as "no findings" in every
 // consumer here - the conformance script's covered set would simply go empty
 // and it would report success over zero files.
-for (const key of [...coverage.covered, ...Object.keys(coverage.skip), ...Object.keys(coverage.overAcceptance ?? {})]) {
+for (const key of [
+  ...coverage.covered,
+  ...Object.keys(coverage.skip),
+  ...Object.keys(coverage.overAcceptance ?? {}),
+  ...Object.keys(coverage.invisibleOverAcceptance ?? {}),
+]) {
   if (/^\d+-/.test(key)) {
     errors.push(
       `matrix key "${key}" carries a corpus number. Keys are slugs: the number ` +

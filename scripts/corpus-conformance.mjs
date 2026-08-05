@@ -281,4 +281,197 @@ if (singleParagraphFiles.length) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// INVISIBLE OVER-ACCEPTANCE: a RENDERS_NOTHING node whose own source text is
+// still visible in the rendered fixture.
+//
+// The scan above only ever looks at a document whose ENTIRE fixture is a
+// single `<p>`, so it is structurally blind to a RENDERS_NOTHING node built
+// inside a container (a block quote, a list item, a div): the fixture there
+// is never a single paragraph, so the file is never even examined. It is also
+// blind BY DESIGN to a node the RENDERS_NOTHING allowlist itself names, on the
+// reasoning that a node producing no output cannot corrupt a render - true at
+// document level, and exactly wrong wherever the construct is not actually
+// recognized as a definition and its source line survives as ordinary,
+// visible text instead (tree-sitter-carve#60: `*[HTML]: Hyper Text` inside a
+// block quote or a list item still built an `abbreviation_definition`, and
+// neither hole above could see it).
+//
+// This asks the more direct question, of EVERY covered file: does a
+// RENDERS_NOTHING node's own source text still show up as visible content in
+// the fixture? If it does, the node was wrong to swallow it - "renders
+// nothing" and "the line disappeared from the render" are the same claim, and
+// this checks the claim instead of assuming it from the node's name.
+//
+// `footnote_definition` is excluded from this set even though the allowlist
+// above calls it RENDERS_NOTHING: a footnote definition IS hoisted and
+// re-rendered, in its own footnotes section, holding the SAME body text - its
+// text is SUPPOSED to reappear there, and flagging that would fail every
+// correctly conforming footnote in the corpus.
+const INVISIBLE_ANYWHERE = new Set(
+  [...RENDERS_NOTHING].filter((type) => type !== 'footnote_definition'),
+);
+
+// Turns a fixture's HTML into the text a reader actually sees: strip every
+// tag, decode the handful of named entities the corpus fixtures use, and
+// collapse whitespace so a source line that the renderer wrapped or
+// re-indented still compares equal.
+function visibleTextOf(html) {
+  return html
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#0?39;/g, "'")
+    .replace(/&amp;/g, '&')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function normalizeSpan(text) {
+  return text.replace(/\s+/g, ' ').trim();
+}
+
+// Slices `[startRow,startCol]` .. `[endRow,endCol]`, exactly as `tree-sitter
+// parse` prints a node's range, out of the ORIGINAL source lines (already
+// split on `\n`, so a line holds no trailing newline of its own). Columns are
+// byte offsets within the line, as tree-sitter reports them; every corpus
+// fixture line this check inspects is ASCII, so a byte offset and a character
+// offset coincide.
+function sliceSpan(lines, startRow, startCol, endRow, endCol) {
+  if (startRow === endRow) return lines[startRow].slice(startCol, endCol);
+  const parts = [lines[startRow].slice(startCol)];
+  for (let r = startRow + 1; r < endRow; r++) parts.push(lines[r]);
+  parts.push(lines[endRow].slice(0, endCol));
+  return parts.join('\n');
+}
+
+// A minimum span length guards against a coincidental substring match: a
+// one- or two-character span (a bare `%%` empty comment, say) is meaningless
+// to search for in prose, since it is likely to appear by chance and would
+// turn this check into noise rather than a signal.
+const MIN_SPAN_LENGTH = 3;
+
+// Returns the full printed block for the node whose header starts at
+// `startIndex` (the index of its opening `(`) - not just the header line, but
+// every nested child down to the matching closing paren. Safe to bracket-match
+// on raw `(`/`)` count because plain (non `-x`) `tree-sitter parse` output
+// never prints a node's own source text, only type names, field labels and
+// positions - every paren in the string is a structural s-expression
+// delimiter, never data that could itself contain an unbalanced paren (an
+// unquoted link destination such as `/a(b)c` prints as `(link_destination
+// [0, 5] - [0, 11])`, not as the literal text).
+function extractBlock(text, startIndex) {
+  let depth = 0;
+  for (let i = startIndex; i < text.length; i++) {
+    if (text[i] === '(') depth++;
+    else if (text[i] === ')') {
+      depth--;
+      if (depth === 0) return text.slice(startIndex, i + 1);
+    }
+  }
+  return text.slice(startIndex);
+}
+
+// A `link_reference_definition` with NO `destination` field is a documented
+// exception, not a bug: `[r]:` and `[r]:   ` are corpus-pinned (16-reference-link-8,
+// 16-reference-link-9, see the note at `link_reference_definition` in
+// grammar.js) to stay "definition-shaped" for parsing purposes while still
+// rendering their literal source text - a destination-less reference is never
+// usable, so unlike a complete definition it was never meant to disappear.
+// Flagging it here would fail two corpus fixtures for behavior the grammar
+// gets right on purpose.
+function isExemptOccurrence(type, block) {
+  if (type === 'link_reference_definition' && !block.includes('destination:')) {
+    return true;
+  }
+  return false;
+}
+
+const invisibleOverAcceptance = coverage.invisibleOverAcceptance ?? {};
+
+// The full (non `--quiet`) parse has to run over every COVERED file, not only
+// the single-paragraph subset above - that subset is exactly the scope this
+// check exists to get past.
+const fullTrees = spawnSync('npx', ['tree-sitter', 'parse', ...coveredFiles], {
+  cwd: repoRoot,
+  encoding: 'utf8',
+  maxBuffer: 256 * 1024 * 1024,
+});
+if (fullTrees.error) {
+  console.error(`Failed to run tree-sitter parse: ${fullTrees.error.message}`);
+  process.exit(2);
+}
+const fullPerFile = (fullTrees.stdout || '')
+  .split(/^(?=\(document )/m)
+  .filter((t) => t.trim());
+if (fullPerFile.length !== coveredFiles.length) {
+  console.error(
+    `Expected ${coveredFiles.length} parse trees, got ${fullPerFile.length}; the ` +
+      'tree-sitter output format changed and this check cannot be trusted.',
+  );
+  process.exit(2);
+}
+
+const spanLineRe = /\(([a-z_]+) \[(\d+), (\d+)\] - \[(\d+), (\d+)\]/g;
+
+const invisibleFound = {};
+coveredFiles.forEach((file, i) => {
+  const visible = visibleTextOf(readFileSync(file.replace(/\.crv$/, '.html'), 'utf8'));
+  const sourceLines = readFileSync(file, 'utf8').split('\n');
+  const stem = slugOf(path.basename(file, '.crv'));
+  const offenders = new Set();
+  for (const m of fullPerFile[i].matchAll(spanLineRe)) {
+    const [, type, sr, sc, er, ec] = m;
+    if (!INVISIBLE_ANYWHERE.has(type)) continue;
+    if (isExemptOccurrence(type, extractBlock(fullPerFile[i], m.index))) continue;
+    const span = normalizeSpan(
+      sliceSpan(sourceLines, Number(sr), Number(sc), Number(er), Number(ec)),
+    );
+    if (span.length >= MIN_SPAN_LENGTH && visible.includes(span)) {
+      offenders.add(`${type}: ${span}`);
+    }
+  }
+  if (offenders.size) invisibleFound[stem] = [...offenders].sort().join('; ');
+});
+
+const invisibleNew = Object.keys(invisibleFound).filter((k) => !(k in invisibleOverAcceptance));
+const invisibleFixed = Object.keys(invisibleOverAcceptance).filter(
+  (k) => !(k in invisibleFound),
+);
+const invisibleChanged = Object.keys(invisibleFound)
+  .filter((k) => k in invisibleOverAcceptance && invisibleOverAcceptance[k].nodes !== invisibleFound[k])
+  .map((k) => `${k}: recorded ${invisibleOverAcceptance[k].nodes}, now ${invisibleFound[k]}`);
+
+console.log(
+  `corpus-conformance: checked ${coveredFiles.length} covered document(s) for ` +
+    `invisible over-acceptance; ${Object.keys(invisibleFound).length} found, ` +
+    `${Object.keys(invisibleOverAcceptance).length} recorded.`,
+);
+
+if (invisibleNew.length || invisibleFixed.length || invisibleChanged.length) {
+  if (invisibleNew.length) {
+    console.error(
+      "\nInvisible over-acceptance (a RENDERS_NOTHING node's own text is still " +
+        'visible in the fixture):',
+    );
+    for (const k of invisibleNew) console.error(`  - ${k}: ${invisibleFound[k]}`);
+  }
+  if (invisibleFixed.length) {
+    console.error(
+      '\nRecorded invisible over-acceptance that no longer happens - remove these ' +
+        'from `invisibleOverAcceptance` in test/coverage.json:',
+    );
+    for (const k of invisibleFixed) console.error(`  - ${k}`);
+  }
+  if (invisibleChanged.length) {
+    console.error(
+      '\nRecorded invisible over-acceptance that now shows a DIFFERENT node - the ' +
+        'grammar changed, so update `nodes` (and the reason) in test/coverage.json:',
+    );
+    for (const k of invisibleChanged) console.error(`  - ${k}`);
+  }
+  process.exit(1);
+}
+
 console.log('corpus-conformance: OK (no ERROR/MISSING in any covered category).');
