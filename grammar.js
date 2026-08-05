@@ -878,7 +878,12 @@ module.exports = grammar({
     // not tokenize without it, and the line stays prose (tree-sitter-carve#83).
     abbreviation_definition: ($) =>
       seq(
-        alias(token(seq("*[", /[^\]\r\n]+/, "]: ")), $.abbreviation_marker),
+        // `abbreviation_term = (letter | digit)+`, and `letter` is enumerated
+        // ASCII in the spec. `[^\]]+` accepted `*[e.g.]:` and `*[ß]:`, which
+        // stay paragraph text in every engine - and a definition renders
+        // NOTHING, so this highlighted a line as one that disappears from the
+        // rendered document when it does not (carve#791).
+        alias(token(seq("*[", /[A-Za-z0-9]+/, "]: ")), $.abbreviation_marker),
         optional(
           seq(
             optional($._whitespace1),

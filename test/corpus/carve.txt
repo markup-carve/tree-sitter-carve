@@ -2443,3 +2443,41 @@ A reference definition needs a space, not just any separator
 
 (document
   (paragraph))
+
+===============================================================================
+An abbreviation term is case-blind and may be digits
+===============================================================================
+*[dl]: definition list
+*[3D]: three dimensional
+*[9]: nine
+
+A dl, a 3D one, and 9.
+
+-------------------------------------------------------------------------------
+
+(document
+  (abbreviation_definition
+    (abbreviation_marker)
+    expansion: (abbreviation_expansion))
+  (abbreviation_definition
+    (abbreviation_marker)
+    expansion: (abbreviation_expansion))
+  (abbreviation_definition
+    (abbreviation_marker)
+    expansion: (abbreviation_expansion))
+  (paragraph))
+
+===============================================================================
+A term outside letter or digit is not a definition
+===============================================================================
+*[e.g.]: for example
+*[HTTP API]: an interface
+*[ß]: sharp s
+
+Text below.
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph)
+  (paragraph))
