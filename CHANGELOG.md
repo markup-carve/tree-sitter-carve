@@ -8,6 +8,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **A content-less definition marker line ends the item above it** (spec:
+  `docs/examples/core.md`, MARKER REQUIRES CONTENT, settled for definition
+  markers in markup-carve/carve#788). `:: t` over `:: ` over `x` is a one-term
+  `<dl>` followed by a paragraph holding both remaining lines; the marker line
+  is paragraph text, and being paragraph text is exactly what makes it end the
+  term. The grammar folded the whole thing into the term instead, so a document
+  that closes a definition list looked like one that never left it. The
+  description shape (`:  `) and a content-less marker after an open description
+  behave the same. A BARE `::` carries no separator, is not marker-shaped, and
+  still continues the term lazily, which is what every engine does with it. The
+  shape-only rule is scoped to definition lists: inside a bullet item a
+  content-less `:: ` line is still lazy text, and only a colon marker carrying
+  content ends the item.
+
 - **A malformed colon fence leaves the paragraph expecting a closer** (spec:
   PART 9 §12, normative since markup-carve/carve#778). A `:::` line that is not
   a valid opener - `::: {.x}`, `::: 123`, a glued `:::note` - is paragraph text,
