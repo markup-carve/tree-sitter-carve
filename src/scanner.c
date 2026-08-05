@@ -1870,11 +1870,21 @@ static bool scan_containing_block_closing_marker(Scanner *s, TSLexer *lexer) {
 // the full helper in parse_heading). The `+` continuation marker (corpus 100)
 // is the way to attach a REAL list to a quote.
 //
-// When a list IS already open, a marker is a list operation, not a fold: it
-// continues the list with a sibling item (or, for a different type/indent,
-// closes it and opens a new one), so it still ends the item's paragraph -- e.g.
-// consecutive "- a \n - b" stay separate items. Pinned by carve corpus
-// 76-paragraph-interruption, 77/81 lazy-continuation, and 05-lists.
+// When a list IS already open, a marker WITH CONTENT is a list operation, not
+// a fold: it continues the list with a sibling item (or, for a different
+// type/indent, closes it and opens a new one), so it still ends the item's
+// paragraph -- e.g. consecutive "- a \n - b" stay separate items. Pinned by
+// carve corpus 76-paragraph-interruption, 77/81 lazy-continuation, and
+// 05-lists.
+//
+// MARKER REQUIRES CONTENT applies here too, same as the definition-marker
+// branch below already does: a content-less bullet/ordered marker line does
+// not open a sibling item, so it must not close the current item's paragraph
+// either. Without the check, "- a" / "- " / "x" closed the paragraph here,
+// then the item-end lookahead (which independently applies the same rule,
+// tree-sitter-carve#94) ended the item too -- landing the marker line and the
+// text after it OUTSIDE the item as a new top-level paragraph, where every
+// engine keeps both lines INSIDE the item as lazy text (tree-sitter-carve#75).
 static bool scan_paragraph_closing_marker(Scanner *s, TSLexer *lexer) {
   // A COLON-led line is classified in one pass, because every candidate starts
   // with the same run of colons and the lexer cannot rewind: `:::`+ is a
@@ -1913,7 +1923,13 @@ static bool scan_paragraph_closing_marker(Scanner *s, TSLexer *lexer) {
     }
     return marker_line_has_content(s, lexer);
   }
-  return find_list(s) != NULL && scan_list_marker(s, lexer);
+  if (find_list(s) == NULL) {
+    return false;
+  }
+  if (!scan_list_marker(s, lexer)) {
+    return false;
+  }
+  return marker_line_has_content(s, lexer);
 }
 
 /// Record where the innermost container's content starts.

@@ -1942,6 +1942,42 @@ after
         (paragraph)))))
 
 ===============================================================================
+A content-less bullet marker line folds into the item as lazy text
+===============================================================================
+- a
+- 
+x
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)))))
+
+===============================================================================
+A content-less marker line does not stop a real sibling marker from splitting the list
+===============================================================================
+- a
+- 
+- b
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)))
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)))))
+
+===============================================================================
 A run of markers long enough is still a thematic break
 ===============================================================================
 ***
