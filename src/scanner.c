@@ -1,7 +1,6 @@
 #include "tree_sitter/alloc.h"
 #include "tree_sitter/array.h"
 #include "tree_sitter/parser.h"
-#include <stdio.h>
 
 // WASM-host compatibility: avoid linking against libc's ctype helpers.
 // Some Tree-sitter consumers (e.g. Zed via wasi-sdk + wasmtime) cannot
@@ -1720,24 +1719,39 @@ static bool parse_list_marker_or_thematic_break(
   advance(s, lexer);
   lexer->mark_end(lexer);
 
+  // Whether the probes below have consumed marker characters from the rest of
+  // the line. The lexer cannot rewind, so what they eat decides the CONTENT
+  // question further down: a line of markers reaches the newline, and the
+  // content check would then see nothing and call the line content-less. It is
+  // not - the marker characters ARE the content. `- -` and `- - ` are a list
+  // whose item holds a literal `-`, because MARKER REQUIRES CONTENT applies to
+  // the INNER marker and leaves it as text; carve-rs, carve-js and carve-php
+  // all publish `<ul><li>-</li></ul>` where this grammar flattened the pair to
+  // a paragraph (tree-sitter-carve#48).
+  bool consumed_line_of_markers = false;
+
   // Check frontmatter, if needed.
   if (check_frontmatter) {
-    marker_count += consume_chars(s, lexer, marker);
+    uint8_t frontmatter_run = consume_chars(s, lexer, marker);
+    marker_count += frontmatter_run;
     if (marker_count >= 3) {
       lexer->result_symbol = FRONTMATTER_MARKER;
       lexer->mark_end(lexer);
       return true;
     }
+    consumed_line_of_markers = frontmatter_run > 0;
   }
 
   // Check a thematic break that can span the entire line.
   if (can_be_thematic_break) {
-    marker_count += consume_line_with_char_or_whitespace(s, lexer, marker);
+    uint8_t trailing = consume_line_with_char_or_whitespace(s, lexer, marker);
+    marker_count += trailing;
     if (marker_count >= 3) {
       lexer->result_symbol = thematic_break_type;
       lexer->mark_end(lexer);
       return true;
     }
+    consumed_line_of_markers = consumed_line_of_markers || trailing > 0;
   }
 
   if (can_be_list_marker) {
@@ -1755,7 +1769,7 @@ static bool parse_list_marker_or_thematic_break(
     if (valid_symbols[marker_type]) {
       // A content-less marker line is paragraph text, not a list (the token end
       // is already marked above, so this lookahead is scratch).
-      if (!marker_line_has_content(s, lexer)) {
+      if (!consumed_line_of_markers && !marker_line_has_content(s, lexer)) {
         return false;
       }
       ensure_list_open(s, list_type, list_indent + 1);
@@ -1860,12 +1874,10 @@ static bool parse_link_ref_def_label_end(Scanner *s, TSLexer *lexer) {
   return true;
 }
 
-static bool scan_footnote_begin(Scanner *s, TSLexer *lexer) {
-  if (lexer->lookahead != '^') {
-    return false;
-  }
-  advance(s, lexer);
-
+/// The footnote scan from just AFTER the caret, so the caller can look one
+/// character past it before choosing between a footnote and a reference
+/// definition (see `parse_open_bracket`).
+static bool scan_footnote_after_caret(Scanner *s, TSLexer *lexer) {
   // Identifier can have surrounding whitespace
   consume_whitespace(s, lexer);
   if (!scan_identifier(s, lexer)) {
@@ -1901,12 +1913,12 @@ static bool scan_footnote_begin(Scanner *s, TSLexer *lexer) {
   return true;
 }
 
-static bool parse_footnote_begin(Scanner *s, TSLexer *lexer,
-                                 const bool *valid_symbols) {
+static bool parse_footnote_after_caret(Scanner *s, TSLexer *lexer,
+                                       const bool *valid_symbols) {
   if (!valid_symbols[FOOTNOTE_MARK_BEGIN]) {
     return false;
   }
-  if (!scan_footnote_begin(s, lexer)) {
+  if (!scan_footnote_after_caret(s, lexer)) {
     return false;
   }
 
@@ -1949,10 +1961,22 @@ static bool parse_open_bracket(Scanner *s, TSLexer *lexer,
   advance(s, lexer);
 
   if (lexer->lookahead == '^') {
-    return parse_footnote_begin(s, lexer, valid_symbols);
-  } else {
-    return parse_ref_def_begin(s, lexer, valid_symbols);
+    advance(s, lexer);
+    // An EMPTY footnote label is not a footnote label: `footnote_label` is
+    // one-or-more characters, so `[^]: /u` is a LINK reference definition whose
+    // label is `^` (carve#632, corpus
+    // 184-a-caret-is-a-reference-label-not-an-empty-footnote). The caret is
+    // already consumed here, which is exactly where the ref-def scan expects to
+    // pick up: it reads to `]` and then requires `]:`. Committing to the
+    // footnote path on the caret alone left this line a paragraph, and with it
+    // every reference to the label (carve-rs style oracle: the reference side
+    // `[text][^]` already parsed here, so the two halves disagreed).
+    if (lexer->lookahead == ']') {
+      return parse_ref_def_begin(s, lexer, valid_symbols);
+    }
+    return parse_footnote_after_caret(s, lexer, valid_symbols);
   }
+  return parse_ref_def_begin(s, lexer, valid_symbols);
 }
 
 static bool parse_dash(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
