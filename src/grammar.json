@@ -141,6 +141,10 @@
         },
         {
           "type": "SYMBOL",
+          "name": "definition_list"
+        },
+        {
+          "type": "SYMBOL",
           "name": "table"
         },
         {
@@ -315,10 +319,6 @@
           {
             "type": "SYMBOL",
             "name": "_list_task"
-          },
-          {
-            "type": "SYMBOL",
-            "name": "_list_definition"
           },
           {
             "type": "SYMBOL",
@@ -651,7 +651,7 @@
         }
       ]
     },
-    "_list_definition": {
+    "definition_list": {
       "type": "SEQ",
       "members": [
         {
@@ -659,8 +659,17 @@
           "content": {
             "type": "ALIAS",
             "content": {
-              "type": "SYMBOL",
-              "name": "_list_item_definition"
+              "type": "CHOICE",
+              "members": [
+                {
+                  "type": "SYMBOL",
+                  "name": "_list_item_definition"
+                },
+                {
+                  "type": "SYMBOL",
+                  "name": "_list_item_description"
+                }
+              ]
             },
             "named": true,
             "value": "list_item"
@@ -672,9 +681,121 @@
         }
       ]
     },
+    "_list_item_description": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "_block_quote_prefix"
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        },
+        {
+          "type": "FIELD",
+          "name": "marker",
+          "content": {
+            "type": "SYMBOL",
+            "name": "list_marker_description"
+          }
+        },
+        {
+          "type": "FIELD",
+          "name": "definition",
+          "content": {
+            "type": "ALIAS",
+            "content": {
+              "type": "SYMBOL",
+              "name": "_paragraph_content"
+            },
+            "named": true,
+            "value": "definition"
+          }
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "_eof_or_newline"
+            },
+            {
+              "type": "SYMBOL",
+              "name": "_close_paragraph"
+            }
+          ]
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "REPEAT",
+              "content": {
+                "type": "CHOICE",
+                "members": [
+                  {
+                    "type": "SEQ",
+                    "members": [
+                      {
+                        "type": "CHOICE",
+                        "members": [
+                          {
+                            "type": "SYMBOL",
+                            "name": "_block_quote_prefix"
+                          },
+                          {
+                            "type": "BLANK"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "SYMBOL",
+                        "name": "_list_item_continuation"
+                      },
+                      {
+                        "type": "SYMBOL",
+                        "name": "_block_with_heading"
+                      }
+                    ]
+                  },
+                  {
+                    "type": "SYMBOL",
+                    "name": "_list_continuation"
+                  }
+                ]
+              }
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        },
+        {
+          "type": "SYMBOL",
+          "name": "_list_item_end"
+        }
+      ]
+    },
     "_list_item_definition": {
       "type": "SEQ",
       "members": [
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "_block_quote_prefix"
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        },
         {
           "type": "FIELD",
           "name": "marker",
@@ -6546,6 +6667,10 @@
     {
       "type": "SYMBOL",
       "name": "list_marker_definition"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "list_marker_description"
     },
     {
       "type": "SYMBOL",

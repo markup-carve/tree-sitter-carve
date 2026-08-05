@@ -44,6 +44,7 @@ typedef enum {
   LIST_MARKER_STAR,
   LIST_MARKER_TASK_BEGIN,
   LIST_MARKER_DEFINITION,
+  LIST_MARKER_DESCRIPTION,
   LIST_MARKER_DECIMAL_PERIOD,
   LIST_MARKER_LOWER_ALPHA_PERIOD,
   LIST_MARKER_UPPER_ALPHA_PERIOD,
@@ -323,6 +324,7 @@ static BlockType list_marker_to_block(TokenType type) {
   case LIST_MARKER_TASK_BEGIN:
     return LIST_TASK;
   case LIST_MARKER_DEFINITION:
+  case LIST_MARKER_DESCRIPTION:
     return LIST_DEFINITION;
   case LIST_MARKER_DECIMAL_PERIOD:
     return LIST_DECIMAL_PERIOD;
@@ -1126,6 +1128,45 @@ static bool scan_bullet_list_marker(Scanner *s, TSLexer *lexer, char marker) {
   return true;
 }
 
+/// Classify a COLON-led line in ONE pass: `:: ` opens a definition TERM, `:`
+/// plus two or more spaces a DESCRIPTION, anything else neither.
+///
+/// One pass, because the lexer cannot rewind and both markers begin with the
+/// same character: asking "is it a term?" and then "is it a description?"
+/// leaves the second question looking at the middle of the first answer, which
+/// is how a `:  d` line stopped being recognized after a term (#48).
+///
+/// The separator is a space and only a space - `::t` is a paragraph, and a tab
+/// in its place is one too, the rule every other marker follows. A description
+/// needs TWO spaces because ONE is what a term's own lazy continuation looks
+/// like: `:: t` / `: d` renders `<dt>t\n: d</dt>` in every engine. Spaces past
+/// the second belong to the marker, so `:  d` and `:   d` are the same item.
+static TokenType scan_definition_marker_token(Scanner *s, TSLexer *lexer) {
+  if (lexer->lookahead != ':') {
+    return IGNORED;
+  }
+  advance(s, lexer);
+  if (lexer->lookahead == ':') {
+    advance(s, lexer);
+    if (lexer->lookahead != ' ') {
+      return IGNORED;
+    }
+    advance(s, lexer);
+    return LIST_MARKER_DEFINITION;
+  }
+  if (lexer->lookahead != ' ') {
+    return IGNORED;
+  }
+  advance(s, lexer);
+  if (lexer->lookahead != ' ') {
+    return IGNORED;
+  }
+  while (lexer->lookahead == ' ') {
+    advance(s, lexer);
+  }
+  return LIST_MARKER_DESCRIPTION;
+}
+
 // Scan a `> ` or `>\n`.
 static bool scan_block_quote_marker(Scanner *s, TSLexer *lexer,
                                     bool *ending_newline) {
@@ -1537,10 +1578,7 @@ static TokenType scan_unordered_list_marker_token(Scanner *s, TSLexer *lexer) {
       return LIST_MARKER_STAR;
     }
   }
-  if (scan_bullet_list_marker(s, lexer, ':')) {
-    return LIST_MARKER_DEFINITION;
-  }
-  return IGNORED;
+  return scan_definition_marker_token(s, lexer);
 }
 
 static TokenType scan_list_marker_token(Scanner *s, TSLexer *lexer) {
@@ -1607,8 +1645,42 @@ static bool scan_containing_block_closing_marker(Scanner *s, TSLexer *lexer) {
 // consecutive "- a \n - b" stay separate items. Pinned by carve corpus
 // 76-paragraph-interruption, 77/81 lazy-continuation, and 05-lists.
 static bool scan_paragraph_closing_marker(Scanner *s, TSLexer *lexer) {
-  if (is_div_marker_next(s, lexer)) {
-    return true;
+  // A COLON-led line is classified in one pass, because every candidate starts
+  // with the same run of colons and the lexer cannot rewind: `:::`+ is a
+  // container marker, `:: ` a definition TERM, `:` plus two spaces a
+  // DESCRIPTION. Asking the container probe first consumed the colons the
+  // marker probe needed, so a sibling `:: term` was swallowed by the term above
+  // it (tree-sitter-carve#48).
+  if (lexer->lookahead == ':') {
+    uint8_t colons = consume_chars(s, lexer, ':');
+    if (colons >= 3) {
+      return true;
+    }
+    if (find_list(s) == NULL) {
+      return false;
+    }
+    // MARKER REQUIRES CONTENT applies here too: `:: ` or `:  ` with nothing
+    // after it is paragraph text, so it must not end the term or description
+    // above it either. Saying otherwise closed the item and then let the marker
+    // itself be rejected, which left an ERROR where the engines render a
+    // paragraph.
+    if (colons == 2) {
+      if (lexer->lookahead != ' ') {
+        return false;
+      }
+      advance(s, lexer);
+      return marker_line_has_content(s, lexer);
+    }
+    // One colon: a description needs a SECOND space, since one space is the
+    // term's own lazy continuation.
+    if (lexer->lookahead != ' ') {
+      return false;
+    }
+    advance(s, lexer);
+    if (lexer->lookahead != ' ') {
+      return false;
+    }
+    return marker_line_has_content(s, lexer);
   }
   return find_list(s) != NULL && scan_list_marker(s, lexer);
 }
@@ -2147,7 +2219,9 @@ static bool parse_colon(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   }
   bool can_be_div = valid_symbols[DIV_BEGIN] || valid_symbols[DIV_END] ||
                     valid_symbols[BLOCK_CLOSE];
-  if (!valid_symbols[LIST_MARKER_DEFINITION] && !can_be_div) {
+  bool can_be_definition = valid_symbols[LIST_MARKER_DEFINITION] ||
+                           valid_symbols[LIST_MARKER_DESCRIPTION];
+  if (!can_be_definition && !can_be_div) {
     return false;
   }
 #ifdef DEBUG
@@ -2155,12 +2229,20 @@ static bool parse_colon(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
 #endif
   advance(s, lexer);
 
-  if (lexer->lookahead == ' ') {
-    // Found a `: `, can only be a list.
-    if (valid_symbols[LIST_MARKER_DEFINITION]) {
+  // A definition TERM: `::` plus a literal space. Checked before the div
+  // branch, which needs THREE colons, so `:::` and deeper still open a
+  // container. A `::` with no space is neither - `::t` is a paragraph.
+  uint8_t colons_consumed = 1;
+  if (lexer->lookahead == ':') {
+    advance(s, lexer);
+    if (lexer->lookahead == ' ') {
+      if (!valid_symbols[LIST_MARKER_DEFINITION]) {
+        return false;
+      }
+      advance(s, lexer);
       // Mark the token end before the content probe (scratch advances must not
-      // extend it), then require non-empty content: a content-less `: ` line is
-      // paragraph text, not a definition item.
+      // extend it), then require non-empty content: a content-less `:: ` line
+      // is paragraph text, not a term.
       lexer->mark_end(lexer);
       if (!marker_line_has_content(s, lexer)) {
         return false;
@@ -2168,18 +2250,47 @@ static bool parse_colon(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       ensure_list_open(s, LIST_DEFINITION, s->indent + 1);
       lexer->result_symbol = LIST_MARKER_DEFINITION;
       return true;
-    } else {
-      // Can't be a div anymore.
+    }
+    // Not a term: fall through to the div branch with TWO colons already
+    // consumed, so `:::` and deeper still open a container.
+    colons_consumed = 2;
+  } else if (lexer->lookahead == ' ') {
+
+    // A definition DESCRIPTION: `:` plus TWO or more spaces. ONE space is a
+    // term's own lazy continuation (`:: t` / `: d` is `<dt>t\n: d</dt>` in
+    // every engine), so the second space is what makes this a marker at all.
+    advance(s, lexer);
+    if (lexer->lookahead != ' ') {
       return false;
     }
+    if (!valid_symbols[LIST_MARKER_DESCRIPTION]) {
+      return false;
+    }
+    // A description attaches to a TERM: with no definition list open above it,
+    // `:  d` is an ordinary paragraph, which is what all three engines render.
+    // The term marker has no such requirement - it opens the list itself.
+    Block *open_list = find_list(s);
+    if (!open_list || open_list->type != LIST_DEFINITION) {
+      return false;
+    }
+    while (lexer->lookahead == ' ') {
+      advance(s, lexer);
+    }
+    lexer->mark_end(lexer);
+    if (!marker_line_has_content(s, lexer)) {
+      return false;
+    }
+    ensure_list_open(s, LIST_DEFINITION, s->indent + 1);
+    lexer->result_symbol = LIST_MARKER_DESCRIPTION;
+    return true;
   }
 
   if (!can_be_div) {
     return false;
   }
 
-  // We consumed a colon in the start of the function.
-  uint8_t colons = consume_chars(s, lexer, ':') + 1;
+  // We consumed one or two colons in the start of the function.
+  uint8_t colons = consume_chars(s, lexer, ':') + colons_consumed;
   if (colons < 3) {
     return false;
   }
@@ -3798,6 +3909,17 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
   if (lexer->lookahead == '`' && parse_backtick(s, lexer, valid_symbols)) {
     return true;
   }
+  // A colon line that ENDS the open paragraph is decided before the colon
+  // scanner runs, because that scanner consumes as it classifies: when it gets
+  // as far as `:: ` and the term marker is not valid in this state, the lexer
+  // has already moved past the marker and the close-paragraph probe below sees
+  // the middle of a line. A sibling `:: term` was swallowed by the term above
+  // it for exactly that reason (tree-sitter-carve#48). Both probes start at the
+  // same character, and only one of them can go first.
+  if (valid_symbols[CLOSE_PARAGRAPH] && lexer->lookahead == ':' &&
+      parse_close_paragraph(s, lexer)) {
+    return true;
+  }
   if (lexer->lookahead == ':' && parse_colon(s, lexer, valid_symbols)) {
     return true;
   }
@@ -4107,6 +4229,8 @@ static char *token_type_s(TokenType t) {
     return "LIST_MARKER_TASK_BEGIN";
   case LIST_MARKER_DEFINITION:
     return "LIST_MARKER_DEFINITION";
+  case LIST_MARKER_DESCRIPTION:
+    return "LIST_MARKER_DESCRIPTION";
   case LIST_MARKER_DECIMAL_PERIOD:
     return "LIST_MARKER_DECIMAL_PERIOD";
   case LIST_MARKER_LOWER_ALPHA_PERIOD:

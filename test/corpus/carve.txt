@@ -1953,3 +1953,145 @@ A marker-line nested list with content still nests
             marker: (list_marker_dash)
             content: (list_item_content
               (paragraph))))))))
+
+===============================================================================
+A term and a description are sibling items of one definition list
+===============================================================================
+:: color
+:: colour
+:  The visual property.
+
+-------------------------------------------------------------------------------
+
+(document
+  (definition_list
+    (list_item
+      marker: (list_marker_definition)
+      term: (term))
+    (list_item
+      marker: (list_marker_definition)
+      term: (term))
+    (list_item
+      marker: (list_marker_description)
+      definition: (definition))))
+
+===============================================================================
+A term folds the line below it as lazy continuation
+===============================================================================
+:: term
+after
+
+-------------------------------------------------------------------------------
+
+(document
+  (definition_list
+    (list_item
+      marker: (list_marker_definition)
+      term: (term))))
+
+===============================================================================
+A description with no term above it is a paragraph
+===============================================================================
+:  d
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph))
+
+===============================================================================
+A single colon and one space is not a definition marker
+===============================================================================
+: def
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph))
+
+===============================================================================
+A term marker requires its separating space
+===============================================================================
+::t
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph))
+
+===============================================================================
+A description holds more than the line it starts on
+===============================================================================
+:: term
+:  A definition can now hold
+
+   more than one paragraph.
+
+-------------------------------------------------------------------------------
+
+(document
+  (definition_list
+    (list_item
+      marker: (list_marker_definition)
+      term: (term))
+    (list_item
+      marker: (list_marker_description)
+      definition: (definition)
+      (paragraph))))
+
+===============================================================================
+A description takes a continuation marker like any other item
+===============================================================================
+:: term
+:  first
++
+then
+
+-------------------------------------------------------------------------------
+
+(document
+  (definition_list
+    (list_item
+      marker: (list_marker_definition)
+      term: (term))
+    (list_item
+      marker: (list_marker_description)
+      definition: (definition)
+      (list_continuation_marker)
+      (paragraph))))
+
+===============================================================================
+A content-less definition marker does not end the item above it
+===============================================================================
+:: t
+:: 
+x
+
+-------------------------------------------------------------------------------
+
+(document
+  (definition_list
+    (list_item
+      marker: (list_marker_definition)
+      term: (term))))
+
+===============================================================================
+A definition list inside a block quote is not an error
+===============================================================================
+> :: t
+> :  d
+
+-------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (definition_list
+        (list_item
+          marker: (list_marker_definition)
+          term: (term))
+        (list_item
+          (block_quote_marker)
+          marker: (list_marker_description)
+          definition: (definition))))))

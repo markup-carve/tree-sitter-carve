@@ -464,6 +464,10 @@
           "named": true
         },
         {
+          "type": "definition_list",
+          "named": true
+        },
+        {
           "type": "delete",
           "named": true
         },
@@ -653,13 +657,32 @@
   {
     "type": "definition",
     "named": true,
-    "fields": {},
+    "fields": {
+      "attribute": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "inline_attribute",
+            "named": true
+          }
+        ]
+      }
+    },
     "children": {
       "multiple": true,
       "required": false,
       "types": [
         {
           "type": "abbreviation_definition",
+          "named": true
+        },
+        {
+          "type": "autolink",
+          "named": true
+        },
+        {
+          "type": "backslash_escape",
           "named": true
         },
         {
@@ -675,6 +698,10 @@
           "named": true
         },
         {
+          "type": "bold_italic",
+          "named": true
+        },
+        {
           "type": "callout_list",
           "named": true
         },
@@ -687,7 +714,19 @@
           "named": true
         },
         {
+          "type": "citation_group",
+          "named": true
+        },
+        {
           "type": "code_block",
+          "named": true
+        },
+        {
+          "type": "collapsed_reference_image",
+          "named": true
+        },
+        {
+          "type": "collapsed_reference_link",
           "named": true
         },
         {
@@ -695,7 +734,39 @@
           "named": true
         },
         {
+          "type": "definition_list",
+          "named": true
+        },
+        {
+          "type": "delete",
+          "named": true
+        },
+        {
           "type": "div",
+          "named": true
+        },
+        {
+          "type": "editorial_comment",
+          "named": true
+        },
+        {
+          "type": "ellipsis",
+          "named": true
+        },
+        {
+          "type": "em_dash",
+          "named": true
+        },
+        {
+          "type": "emphasis",
+          "named": true
+        },
+        {
+          "type": "en_dash",
+          "named": true
+        },
+        {
+          "type": "extension_inline",
           "named": true
         },
         {
@@ -703,11 +774,55 @@
           "named": true
         },
         {
+          "type": "fixme",
+          "named": true
+        },
+        {
           "type": "footnote",
           "named": true
         },
         {
+          "type": "footnote_reference",
+          "named": true
+        },
+        {
+          "type": "full_reference_image",
+          "named": true
+        },
+        {
+          "type": "full_reference_link",
+          "named": true
+        },
+        {
+          "type": "hard_line_break",
+          "named": true
+        },
+        {
           "type": "heading",
+          "named": true
+        },
+        {
+          "type": "highlighted",
+          "named": true
+        },
+        {
+          "type": "inline_comment",
+          "named": true
+        },
+        {
+          "type": "inline_image",
+          "named": true
+        },
+        {
+          "type": "inline_link",
+          "named": true
+        },
+        {
+          "type": "inline_literal",
+          "named": true
+        },
+        {
+          "type": "insert",
           "named": true
         },
         {
@@ -723,7 +838,19 @@
           "named": true
         },
         {
+          "type": "mention",
+          "named": true
+        },
+        {
+          "type": "note",
+          "named": true
+        },
+        {
           "type": "paragraph",
+          "named": true
+        },
+        {
+          "type": "quotation_marks",
           "named": true
         },
         {
@@ -731,11 +858,78 @@
           "named": true
         },
         {
+          "type": "raw_inline",
+          "named": true
+        },
+        {
+          "type": "span",
+          "named": true
+        },
+        {
+          "type": "strikethrough",
+          "named": true
+        },
+        {
+          "type": "strong",
+          "named": true
+        },
+        {
+          "type": "subscript",
+          "named": true
+        },
+        {
+          "type": "substitution",
+          "named": true
+        },
+        {
+          "type": "superscript",
+          "named": true
+        },
+        {
+          "type": "symbol",
+          "named": true
+        },
+        {
           "type": "table",
           "named": true
         },
         {
+          "type": "tag",
+          "named": true
+        },
+        {
           "type": "thematic_break",
+          "named": true
+        },
+        {
+          "type": "todo",
+          "named": true
+        },
+        {
+          "type": "trailing_comment",
+          "named": true
+        },
+        {
+          "type": "underline",
+          "named": true
+        },
+        {
+          "type": "verbatim",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "definition_list",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "list_item",
           "named": true
         }
       ]
@@ -899,6 +1093,10 @@
         },
         {
           "type": "comment_line",
+          "named": true
+        },
+        {
+          "type": "definition_list",
           "named": true
         },
         {
@@ -1075,6 +1273,10 @@
         },
         {
           "type": "comment_line",
+          "named": true
+        },
+        {
+          "type": "definition_list",
           "named": true
         },
         {
@@ -2191,6 +2393,10 @@
             "named": true
           },
           {
+            "type": "list_marker_description",
+            "named": true
+          },
+          {
             "type": "list_marker_lower_alpha_paren",
             "named": true
           },
@@ -2264,7 +2470,91 @@
       "required": false,
       "types": [
         {
+          "type": "abbreviation_definition",
+          "named": true
+        },
+        {
+          "type": "block_attribute",
+          "named": true
+        },
+        {
+          "type": "block_quote",
+          "named": true
+        },
+        {
           "type": "block_quote_marker",
+          "named": true
+        },
+        {
+          "type": "callout_list",
+          "named": true
+        },
+        {
+          "type": "caption",
+          "named": true
+        },
+        {
+          "type": "citation_definition",
+          "named": true
+        },
+        {
+          "type": "code_block",
+          "named": true
+        },
+        {
+          "type": "comment_line",
+          "named": true
+        },
+        {
+          "type": "definition_list",
+          "named": true
+        },
+        {
+          "type": "div",
+          "named": true
+        },
+        {
+          "type": "fenced_comment_block",
+          "named": true
+        },
+        {
+          "type": "footnote",
+          "named": true
+        },
+        {
+          "type": "heading",
+          "named": true
+        },
+        {
+          "type": "link_reference_definition",
+          "named": true
+        },
+        {
+          "type": "list",
+          "named": true
+        },
+        {
+          "type": "list_continuation_marker",
+          "named": true
+        },
+        {
+          "type": "math",
+          "named": true
+        },
+        {
+          "type": "paragraph",
+          "named": true
+        },
+        {
+          "type": "raw_block",
+          "named": true
+        },
+        {
+          "type": "table",
+          "named": true
+        },
+        {
+          "type": "thematic_break",
           "named": true
         }
       ]
@@ -2312,6 +2602,10 @@
         },
         {
           "type": "comment_line",
+          "named": true
+        },
+        {
+          "type": "definition_list",
           "named": true
         },
         {
@@ -2823,6 +3117,10 @@
         },
         {
           "type": "comment_line",
+          "named": true
+        },
+        {
+          "type": "definition_list",
           "named": true
         },
         {
@@ -3939,6 +4237,10 @@
   },
   {
     "type": "list_marker_definition",
+    "named": true
+  },
+  {
+    "type": "list_marker_description",
     "named": true
   },
   {
