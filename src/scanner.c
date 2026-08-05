@@ -2484,6 +2484,33 @@ static bool parse_list_item_end(Scanner *s, TSLexer *lexer,
     s->state &= ~STATE_LIST_CONTINUATION;
   }
 
+  // MARKER REQUIRES CONTENT applies to this LOOKAHEAD too. `scan_list_marker_token`
+  // answers "does a marker start here", and the real scan in
+  // `parse_list_marker_or_thematic_break` additionally requires content on the
+  // line. When the two disagree the parser is told the item ends, then nothing
+  // can open the next one, and a valid document lands in ERROR:
+  //
+  //     - a
+  //     -            <- `- ` with nothing after it
+  //     x
+  //
+  // parsed as three ERROR nodes, while every engine keeps the line and the one
+  // after it inside the item as lazy text (tree-sitter-carve#75). The bare `-`
+  // form never reached here, because it has no separator and so is not a marker
+  // at all - only the spaced form could produce the mismatch.
+  if (next_marker != IGNORED && !marker_line_has_content(s, lexer)) {
+    // Treated as "no sibling marker here", which ends the item the ordinary way
+    // instead of promising one that cannot open.
+    //
+    // NOT `return false`: refusing the token entirely puts the parse back in
+    // ERROR and loses the list_item as well - measured. The line therefore ends
+    // up OUTSIDE the item, as a top-level paragraph, where the engines keep it
+    // inside as lazy text. That remaining difference is recorded in #75; this
+    // takes a valid document out of ERROR, which is the half that breaks
+    // highlighting today.
+    next_marker = IGNORED;
+  }
+
   if (next_marker != IGNORED) {
     bool different_type = list_marker_to_block(next_marker) != list->type;
     bool different_indent = list->data != s->indent + 1;
