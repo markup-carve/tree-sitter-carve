@@ -46,12 +46,18 @@ const allFiles = readdirSync(corpusDir)
   .sort();
 
 const coveredFiles = [];
+// Every file a skip entry covers, so the entry can be re-checked below. A skip
+// is a statement about the grammar TODAY; nothing re-asked it.
+const skippedFilesByKey = new Map();
 let skippedCount = 0;
 for (const file of allFiles) {
   const category = slugOf(baseCategory(file));
   const stem = slugOf(path.basename(file, '.crv'));
   if (skip.has(category) || skip.has(stem)) {
     skippedCount += 1;
+    const key = skip.has(stem) ? stem : category;
+    if (!skippedFilesByKey.has(key)) skippedFilesByKey.set(key, []);
+    skippedFilesByKey.get(key).push(path.join(corpusDir, file));
     continue;
   }
   // Unknown categories are reported by the coverage-matrix check; conformance
@@ -107,6 +113,47 @@ if (failures.length) {
   console.error(
     '\nA covered category must parse cleanly. Either fix the grammar or move the ' +
       'category to the skip list in test/coverage.json with a reason.',
+  );
+  process.exit(1);
+}
+
+// ---------------------------------------------------------------------------
+// A SKIP THAT NOW PARSES IS A SKIP THAT SHOULD BE COVERED.
+//
+// The over-acceptance record below is exact in three directions - a new one
+// fails, a fixed one fails, a changed one fails - and the skip list was gated in
+// one: a category with no entry fails, and an entry whose grammar gap has since
+// been closed lives forever. That asymmetry is what turns a skip list into a
+// list of excuses: the entry keeps a category out of the conformance run, and
+// nothing re-asks the question it recorded.
+//
+// So every skipped file is re-parsed, and an entry whose files ALL parse cleanly
+// fails the run. The reasons here are precise about which files they cover
+// (`nested-containers-2` is example-level on purpose), and this is what keeps
+// them that way.
+const promotable = [];
+for (const [key, skippedFiles] of skippedFilesByKey) {
+  const check = spawnSync('npx', ['tree-sitter', 'parse', '--quiet', ...skippedFiles], {
+    cwd: repoRoot,
+    encoding: 'utf8',
+  });
+  // Same reading as above: output lines name files with an error, so no output
+  // AND a zero exit is the only clean result. A non-zero exit with no output is
+  // an invocation failure, not a clean parse, and must not read as promotable.
+  const errored = (check.stdout || '').split('\n').filter((l) => l.trim().length > 0);
+  if (errored.length === 0 && check.status === 0) {
+    promotable.push([key, skippedFiles.length]);
+  }
+}
+
+if (promotable.length) {
+  console.error('\nSkip entries whose files now parse cleanly:');
+  for (const [key, n] of promotable) {
+    console.error(`  - ${key} (${n} file${n === 1 ? '' : 's'})`);
+  }
+  console.error(
+    '\nThe grammar gap each of these records has been closed. Move the key to ' +
+      '`covered` in test/coverage.json so the category is asserted again.',
   );
   process.exit(1);
 }
