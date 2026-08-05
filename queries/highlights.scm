@@ -91,6 +91,7 @@
   (list_marker_dash)
   (list_marker_star)
   (list_marker_definition)
+  (list_marker_description)
   (list_marker_decimal_period)
   (list_marker_decimal_paren)
   (list_marker_decimal_parens)
@@ -130,6 +131,9 @@
 
 (list_item
   (term) @type.definition)
+
+(list_item
+  (definition) @markup.italic)
 
 ; Conceal { and } but leave " and '
 ((quotation_marks) @string.special

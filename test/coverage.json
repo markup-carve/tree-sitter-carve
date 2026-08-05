@@ -218,18 +218,10 @@
       "reason": "`:::note` with no space after the colons does not interrupt a paragraph; the grammar opens a container"
     }
   },
-  "batteryDisagreements": {
-    ":: term": {
-      "got": "none",
-      "why": "a definition term with no blank line above parses as a paragraph here; the engines render <dl><dt>"
-    }
-  },
+  "batteryDisagreements": {},
   "underAcceptance": {
     "a-definition-inside-a-container-is-collected-at-that-container-s-content-column-2": {
       "gaps": "block_quote: want 1 have 0"
-    },
-    "a-marker-separator-is-a-space-never-a-tab-2": {
-      "gaps": "definition_list: want 1 have 0"
     },
     "adjacent-attribute-blocks-on-one-line-merge": {
       "gaps": "heading: want 1 have 0"
@@ -243,44 +235,14 @@
     "bare-dot-ordered-markers-3": {
       "gaps": "list: want 1 have 0"
     },
-    "blockquote-lazy-continuation-5": {
-      "gaps": "definition_list: want 1 have 0"
-    },
     "blockquote-lazy-continuation-stops-at-a-fenced-block": {
       "gaps": "block_quote: want 2 have 1"
     },
     "blockquote-lazy-continuation-stops-at-a-fenced-block-3": {
       "gaps": "block_quote: want 2 have 1"
     },
-    "definition-list-as-a-first-class-block-opener": {
-      "gaps": "definition_list: want 1 have 0"
-    },
-    "definition-list-as-a-first-class-block-opener-2": {
-      "gaps": "definition_list: want 1 have 0"
-    },
-    "definition-list-as-a-first-class-block-opener-4": {
-      "gaps": "definition_list: want 1 have 0"
-    },
-    "definition-lists": {
-      "gaps": "definition_list: want 1 have 0"
-    },
-    "definition-lists-2": {
-      "gaps": "definition_list: want 1 have 0"
-    },
-    "definition-lists-3": {
-      "gaps": "definition_list: want 1 have 0"
-    },
-    "definition-lists-4": {
-      "gaps": "definition_list: want 1 have 0"
-    },
     "definition-lists-5": {
-      "gaps": "block_quote: want 1 have 0; definition_list: want 1 have 0"
-    },
-    "definition-lists-6": {
-      "gaps": "definition_list: want 1 have 0"
-    },
-    "definition-lists-7": {
-      "gaps": "definition_list: want 1 have 0"
+      "gaps": "block_quote: want 1 have 0"
     },
     "fence-opener-with-a-nested-list-body-inside-a-list-item-5": {
       "gaps": "div: want 1 have 0"
@@ -386,21 +348,6 @@
     },
     "tight-list-item-keeps-trailing-text-after-a-block-bare": {
       "gaps": "code_block: want 1 have 0"
-    },
-    "under-indented-definition-attaches-over-indented-definition-folds": {
-      "gaps": "definition_list: want 1 have 0"
-    },
-    "under-indented-definition-attaches-over-indented-definition-folds-2": {
-      "gaps": "definition_list: want 1 have 0"
-    },
-    "under-indented-definition-attaches-over-indented-definition-folds-3": {
-      "gaps": "definition_list: want 1 have 0"
-    },
-    "wrapped-definition-term-continuation-below-the-content-column-strips-leading-whitespace": {
-      "gaps": "definition_list: want 1 have 0"
-    },
-    "wrapped-definition-term-continuation-below-the-content-column-strips-leading-whitespace-2": {
-      "gaps": "definition_list: want 1 have 0"
     }
   }
 }

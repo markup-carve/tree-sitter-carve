@@ -53,6 +53,7 @@ module.exports = grammar({
     _block_element: ($) =>
       choice(
         $.list,
+        $.definition_list,
         $.table,
         $.footnote,
         $.div,
@@ -106,7 +107,6 @@ module.exports = grammar({
           $._list_dash,
           $._list_star,
           $._list_task,
-          $._list_definition,
           $._list_decimal_period,
           $._list_decimal_paren,
           $._list_decimal_parens,
@@ -169,10 +169,50 @@ module.exports = grammar({
     // want to distinguish them.
     unchecked: (_) => seq("[", choice(" ", "_", "-", ">", "?"), "]"),
 
-    _list_definition: ($) =>
-      seq(repeat1(alias($._list_item_definition, $.list_item)), $._block_close),
+    // A definition list is its own node, not a `list`: it renders `<dl>` and
+    // its items are `<dt>`/`<dd>`, so a consumer that highlights or folds lists
+    // wants to tell them apart. It holds TERMS (`:: t`) and DESCRIPTIONS
+    // (`:  d`) as sibling items, because the language lets either stand alone:
+    // a term with no description is a `<dl>` holding one `<dt>`, and a run of
+    // terms shares the description that follows them (corpus
+    // 25-definition-lists).
+    definition_list: ($) =>
+      seq(
+        repeat1(
+          alias(
+            choice($._list_item_definition, $._list_item_description),
+            $.list_item,
+          ),
+        ),
+        $._block_close,
+      ),
+    _list_item_description: ($) =>
+      seq(
+        optional($._block_quote_prefix),
+        field("marker", $.list_marker_description),
+        field("definition", alias($._paragraph_content, $.definition)),
+        choice($._eof_or_newline, $._close_paragraph),
+        // A description holds BLOCKS, not just the line it starts on: corpus
+        // 25-definition-lists-2 continues one into a second paragraph, and a
+        // `+` marker attaches a FLUSH-LEFT block the same way it does for a
+        // bullet item (PART 9 §17), which is the second branch here.
+        optional(
+          repeat(
+            choice(
+              seq(
+                optional($._block_quote_prefix),
+                $._list_item_continuation,
+                $._block_with_heading,
+              ),
+              $._list_continuation,
+            ),
+          ),
+        ),
+        $._list_item_end,
+      ),
     _list_item_definition: ($) =>
       seq(
+        optional($._block_quote_prefix),
         field("marker", $.list_marker_definition),
         field("term", alias($._paragraph_content, $.term)),
         choice($._eof_or_newline, $._close_paragraph),
@@ -1608,6 +1648,7 @@ module.exports = grammar({
     // This is done to allow the task box markers like `x` to have their own token.
     $._list_marker_task_begin,
     $.list_marker_definition,
+    $.list_marker_description,
     $.list_marker_decimal_period,
     $.list_marker_lower_alpha_period,
     $.list_marker_upper_alpha_period,
