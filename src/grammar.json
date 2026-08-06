@@ -2221,18 +2221,6 @@
                   "type": "SEQ",
                   "members": [
                     {
-                      "type": "CHOICE",
-                      "members": [
-                        {
-                          "type": "SYMBOL",
-                          "name": "_whitespace1"
-                        },
-                        {
-                          "type": "BLANK"
-                        }
-                      ]
-                    },
-                    {
                       "type": "FIELD",
                       "name": "line_block_marker",
                       "content": {
@@ -2250,18 +2238,6 @@
                 {
                   "type": "SEQ",
                   "members": [
-                    {
-                      "type": "CHOICE",
-                      "members": [
-                        {
-                          "type": "SYMBOL",
-                          "name": "_whitespace1"
-                        },
-                        {
-                          "type": "BLANK"
-                        }
-                      ]
-                    },
                     {
                       "type": "FIELD",
                       "name": "class",
@@ -2325,18 +2301,6 @@
                 {
                   "type": "SEQ",
                   "members": [
-                    {
-                      "type": "CHOICE",
-                      "members": [
-                        {
-                          "type": "SYMBOL",
-                          "name": "_whitespace1"
-                        },
-                        {
-                          "type": "BLANK"
-                        }
-                      ]
-                    },
                     {
                       "type": "FIELD",
                       "name": "label",

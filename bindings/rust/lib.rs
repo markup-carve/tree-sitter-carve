@@ -358,4 +358,122 @@ mod tests {
             );
         }
     }
+
+    /// A PADDING slot on the admonition opener admits a tab.
+    ///
+    /// `resources/grammar.ebnf` PART 7, MARKER SEPARATORS AND PADDING SLOTS
+    /// (normative since markup-carve/carve#886), splits the opener line into two
+    /// roles. The whitespace right after `:::` is a MARKER SEPARATOR, because
+    /// the token after it selects which of the four blocks the line opens; it is
+    /// spelled `space` and a tab never satisfies it. Once `admonition_type` has
+    /// been read the block is DECIDED, so the `"title"` and `[label]` slots are
+    /// ordinary padding, spelled `whitespace`, and a tab is fine there.
+    ///
+    /// THIS IS THE MUTATION GUARD, and it is the reason the two roles are spelled
+    /// differently rather than swept together. `grammar.js:1081`
+    /// `_whitespace1: token.immediate(/[ \t]+/)` feeds these padding slots.
+    /// Narrow it to `/ +/` - the blanket sweep that "fixes the tab everywhere" -
+    /// and every case below fails while `test/corpus/carve.txt`'s four separator
+    /// cases keep passing, which is exactly the direction a blanket sweep is
+    /// wrong in.
+    ///
+    /// It lives here rather than in `test/corpus/carve.txt` because the whole
+    /// meaning of each case IS the tab, and unlike the separator cases a tab
+    /// that degrades to a SPACE here rots SILENTLY: `::: note "T"` builds the
+    /// same tree, so the fixture would keep passing while testing nothing. The
+    /// separator cases fail loudly under the same degradation - `::: note` opens
+    /// a div where they expect a paragraph - which is what let them stay in the
+    /// fixture file. Same reasoning as the trailing-whitespace cases above.
+    #[test]
+    fn a_padding_slot_admits_a_tab() {
+        let mut parser = tree_sitter::Parser::new();
+        parser
+            .set_language(&super::language())
+            .expect("Error loading Carve language");
+        for (source, want_title, want_label) in [
+            ("::: note\t\"T\"\nx\n:::\n", true, false),
+            ("::: note \"T\"\t[l]\nx\n:::\n", true, true),
+            ("::: note\t[l]\nx\n:::\n", false, true),
+            ("::: note\t\"T\"\t[l]\nx\n:::\n", true, true),
+        ] {
+            let tree = parser.parse(source, None).unwrap();
+            let root = tree.root_node();
+            assert!(!root.has_error(), "unexpected ERROR for {source:?}");
+            let block = root.child(0).expect("document has no child");
+            assert_eq!(block.kind(), "div", "for {source:?}");
+            // The class alone is not enough: a narrowed padding token could end
+            // the opener at the type word and still leave a `div` behind, with
+            // the title silently demoted to body text.
+            assert!(
+                block.child_by_field_name("class").is_some(),
+                "no class for {source:?}"
+            );
+            assert_eq!(
+                block.child_by_field_name("title").is_some(),
+                want_title,
+                "title presence for {source:?}"
+            );
+            assert_eq!(
+                block.child_by_field_name("label").is_some(),
+                want_label,
+                "label presence for {source:?}"
+            );
+        }
+    }
+
+    /// A whitespace-only tail leaves a BARE fence, tab or not.
+    ///
+    /// A CONTROL for the separator rule above, in the over-narrowing direction.
+    /// `colon_fence_tail_opens_block` decides `bare` BEFORE it reads the
+    /// separator's spelling, deliberately: whitespace with nothing after it is
+    /// trailing whitespace, not a separator, so `:::` + tab + newline is the
+    /// same bare fence `:::` is - both as an opener and as the closer that ends
+    /// the block. Move the tab test ahead of the `bare` test and this document
+    /// loses its div entirely.
+    ///
+    /// A fixture cannot carry it: a tab degrading to a space keeps the same
+    /// tree, so the case would go on passing while testing nothing.
+    #[test]
+    fn a_whitespace_only_fence_tail_is_still_bare() {
+        let mut parser = tree_sitter::Parser::new();
+        parser
+            .set_language(&super::language())
+            .expect("Error loading Carve language");
+        for source in [":::\nx\n:::\n", ":::\t\nx\n:::\t\n", "::: \nx\n::: \n"] {
+            let tree = parser.parse(source, None).unwrap();
+            let root = tree.root_node();
+            assert!(!root.has_error(), "unexpected ERROR for {source:?}");
+            let block = root.child(0).expect("document has no child");
+            assert_eq!(block.kind(), "div", "for {source:?}");
+        }
+    }
+
+    /// The code fence still takes a tab before its info string.
+    ///
+    /// A CONTROL in the blast-radius direction. The code fence was deliberately
+    /// left out of the ruling that settled the colon fence: markup-carve/carve#886
+    /// says so in as many words, `code_fence_info` still spells its metadata
+    /// slots `space+`, and the implementations already split 3-1 on it. So it
+    /// keeps whatever this grammar did before, and a sweep that tightens the
+    /// colon fence must not travel here on the way past. Narrowing
+    /// `grammar.js:1080` `_whitespace` from `[ \t]*` to spaces only fails this.
+    #[test]
+    fn a_tab_before_the_code_fence_info_string_is_unchanged() {
+        let mut parser = tree_sitter::Parser::new();
+        parser
+            .set_language(&super::language())
+            .expect("Error loading Carve language");
+        for (source, want) in [
+            ("```\tjs\nx\n```\n", "code_block"),
+            ("``` js\nx\n```\n", "code_block"),
+            ("```js\t\"T\"\nx\n```\n", "code_block"),
+            ("```\t=html\nx\n```\n", "raw_block"),
+        ] {
+            let tree = parser.parse(source, None).unwrap();
+            let root = tree.root_node();
+            assert!(!root.has_error(), "unexpected ERROR for {source:?}");
+            let block = root.child(0).expect("document has no child");
+            assert_eq!(block.kind(), want, "for {source:?}");
+        }
+    }
 }

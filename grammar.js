@@ -541,11 +541,27 @@ module.exports = grammar({
         alias($._div_begin, $.div_marker_begin),
         optional(
           choice(
-            // Line block: `::: |` (whitespace required before the bar).
-            seq(
-              optional($._whitespace1),
-              field("line_block_marker", alias("|", $.line_block_marker)),
-            ),
+            // THE FENCE-ADJACENT SEPARATOR IS NOT SPELLED HERE. The external
+            // scanner owns it: `_div_begin` marks its token end PAST the
+            // separator, so by the time any of these branches is reached the
+            // whitespace is already inside `div_marker_begin` and a slot here
+            // could never match. It used to be spelled `optional($._whitespace1)`
+            // in all three branches; deleting it moved nothing across the tree-
+            // sitter corpus, the block battery, 668 conformance documents, the
+            // 2700-document no-error sweep or under-acceptance.
+            //
+            // It is deleted rather than narrowed because it also MISDESCRIBED
+            // the rule. That slot is a MARKER SEPARATOR (grammar.ebnf PART 7,
+            // MARKER SEPARATORS AND PADDING SLOTS) and takes a literal `space`,
+            // while `_whitespace1` is `/[ \t]+/` and admits a tab - so it read
+            // as permission for exactly the parse carve#886 settled against. A
+            // narrowed token would have been just as dead and no more checkable.
+            // `colon_fence_tail_opens_block` in `src/scanner.c` is the one place
+            // that answers, for both the opener and the paragraph-closing peek.
+            //
+            // Line block: `::: |` (the separator space is required before the
+            // bar, and enforced there).
+            seq(field("line_block_marker", alias("|", $.line_block_marker))),
             // Named div / admonition, with an optional quoted custom title and
             // an optional bracketed [label] (a grouping id; PART 9 §12).
             //
@@ -554,15 +570,22 @@ module.exports = grammar({
             // other marker governs this one - and accepting it coloured a
             // malformed opener as a real container. A glued [label] is a
             // different case and stays valid below: `:::[First]` does open.
+            //
+            // The `"title"` and `[label]` slots below are the OTHER role: the
+            // type word has already decided the block, so they are PADDING and
+            // `_whitespace1` (`/[ \t]+/`) is the right spelling - `::: note` +
+            // TAB + `"T"` is a legal admonition. Narrowing them to match the
+            // separator is the blanket sweep grammar.ebnf PART 7 warns against,
+            // and `a_padding_slot_admits_a_tab` in `bindings/rust/lib.rs` fails
+            // if anyone tries it.
             seq(
-              optional($._whitespace1),
               field("class", $.class_name),
               optional(seq($._whitespace1, field("title", $.div_title))),
               optional(seq($._whitespace1, field("label", $.code_block_label))),
             ),
             // Bare [label] with no type word (a typeless tab member); it may
             // sit directly against the fence (`:::[First]`) or after a space.
-            seq(optional($._whitespace1), field("label", $.code_block_label)),
+            seq(field("label", $.code_block_label)),
           ),
         ),
       ),
