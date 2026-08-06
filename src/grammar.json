@@ -2336,7 +2336,7 @@
             },
             {
               "type": "PATTERN",
-              "value": "[^\"\\n]*"
+              "value": "[^\"\\r\\n]*"
             },
             {
               "type": "STRING",
@@ -2353,7 +2353,7 @@
             },
             {
               "type": "PATTERN",
-              "value": "[^'\\n]*"
+              "value": "[^'\\r\\n]*"
             },
             {
               "type": "STRING",
@@ -2726,7 +2726,7 @@
     },
     "language": {
       "type": "PATTERN",
-      "value": "[^\\n\\t \\{\\}=\\[\"]+"
+      "value": "[^\\r\\n\\t \\{\\}=\\[\"]+"
     },
     "code_block_label": {
       "type": "SEQ",
@@ -2737,7 +2737,7 @@
         },
         {
           "type": "PATTERN",
-          "value": "[^\\]\\n]*"
+          "value": "[^\\]\\r\\n]*"
         },
         {
           "type": "STRING",
@@ -2756,7 +2756,7 @@
           },
           {
             "type": "PATTERN",
-            "value": "[^\"\\n]*"
+            "value": "[^\"\\r\\n]*"
           },
           {
             "type": "STRING",
@@ -2798,7 +2798,7 @@
       "members": [
         {
           "type": "PATTERN",
-          "value": "[^\\n]*"
+          "value": "[^\\r\\n]*"
         },
         {
           "type": "SYMBOL",
@@ -3272,7 +3272,7 @@
             },
             {
               "type": "PATTERN",
-              "value": "(?:[^\"\\\\\\n]|\\\\[^\\n])*"
+              "value": "(?:[^\"\\\\\\r\\n]|\\\\[^\\r\\n])*"
             },
             {
               "type": "STRING",
@@ -3289,7 +3289,7 @@
             },
             {
               "type": "PATTERN",
-              "value": "(?:[^'\\\\\\n]|\\\\[^\\n])*"
+              "value": "(?:[^'\\\\\\r\\n]|\\\\[^\\r\\n])*"
             },
             {
               "type": "STRING",
@@ -3361,7 +3361,7 @@
           },
           {
             "type": "PATTERN",
-            "value": "\\r?\\n"
+            "value": "\\r\\n|\\r|\\n"
           }
         ]
       }
@@ -3388,7 +3388,7 @@
                 "type": "ALIAS",
                 "content": {
                   "type": "PATTERN",
-                  "value": "[^\\n]+"
+                  "value": "[^\\r\\n]+"
                 },
                 "named": true,
                 "value": "comment_fence_info"
@@ -3831,7 +3831,7 @@
             },
             {
               "type": "PATTERN",
-              "value": "([^\"\\\\\\n]|\\\\[^\\n])*"
+              "value": "([^\"\\\\\\r\\n]|\\\\[^\\r\\n])*"
             },
             {
               "type": "STRING",
@@ -3848,7 +3848,7 @@
             },
             {
               "type": "PATTERN",
-              "value": "([^'\\\\\\n]|\\\\[^\\n])*"
+              "value": "([^'\\\\\\r\\n]|\\\\[^\\r\\n])*"
             },
             {
               "type": "STRING",
@@ -5511,7 +5511,7 @@
         "members": [
           {
             "type": "PATTERN",
-            "value": "([^\\)\\n]|\\\\\\))+"
+            "value": "([^\\)\\r\\n]|\\\\\\))+"
           },
           {
             "type": "SYMBOL",

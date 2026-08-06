@@ -108,13 +108,13 @@ mod tests {
 
     /// A CRLF document's fence closer still closes.
     ///
-    /// A CONTROL, deliberately: no mutation of the closer's own tail test
-    /// breaks it, because `advance` eats a carriage return wherever it finds
-    /// one, so the tail test never sees a `\r` at all. It is here to keep the
-    /// tail test honest if that ever changes - a CR reaching the tail test
-    /// would make every closer in a CRLF document fence body instead. There is
-    /// no CRLF fixture to carry it -- `.gitattributes` normalizes the repo to
-    /// LF -- so the line endings live in a string literal.
+    /// This was a CONTROL, on the grounds that `advance` ate a carriage return
+    /// wherever it found one so the tail test never saw a `\r`. It is not a
+    /// control any more: a `\r` IS a line terminator now
+    /// (tree-sitter-carve#143), the tail test does see it, and deleting the
+    /// `\r` arm of `at_line_end` fails this test. There is no CRLF fixture to
+    /// carry it -- `.gitattributes` normalizes the repo to LF -- so the line
+    /// endings live in a string literal.
     #[test]
     fn code_fence_closer_closes_in_a_crlf_document() {
         let mut parser = tree_sitter::Parser::new();
@@ -128,6 +128,131 @@ mod tests {
         assert_eq!(block.kind(), "code_block");
         let last = block.child(block.child_count() as u32 - 1).unwrap();
         assert_eq!(last.kind(), "code_block_marker_end");
+    }
+
+    /// A LONE CARRIAGE RETURN ENDS A LINE (tree-sitter-carve#143).
+    ///
+    /// `newline = '\n' | '\r\n' | '\r'` in the spec's
+    /// `resources/grammar.ebnf`, and PART 0's INPUT paragraph names that
+    /// production rather than restating it. The pinned `@markup-carve/carve`
+    /// devDependency renders all three spellings of this document to identical
+    /// HTML, so it is a conformance question and needed no engine build.
+    ///
+    /// These live here rather than in `test/corpus/carve.txt` for the reason
+    /// tree-sitter-carve#147 settled: choose the home by how a DEGRADED input
+    /// fails. A `\r` in a fixture file is exactly what an editor, a
+    /// `.gitattributes` sweep (`* text eol=lf` here) or a formatter rewrites to
+    /// `\n` - and the rewritten document parses to the SAME tree these cases
+    /// assert, so the corruption would be silent and the case would pass
+    /// forever having tested nothing. In a Rust string literal the terminator
+    /// is an escape, which nothing normalizes.
+    #[test]
+    fn a_lone_carriage_return_ends_a_line() {
+        let mut parser = tree_sitter::Parser::new();
+        parser
+            .set_language(&super::language())
+            .expect("Error loading Carve language");
+        let tree = parser.parse("# Title\r\ra\rb\r", None).unwrap();
+        let root = tree.root_node();
+        assert!(!root.has_error(), "unexpected ERROR: {root}");
+        let section = root.child(0).expect("document has no child");
+        assert_eq!(section.kind(), "section");
+        assert_eq!(
+            section.child(0).unwrap().kind(),
+            "heading",
+            "want a heading and a paragraph, got {section}"
+        );
+        let content = section.child(1).expect("section has no content");
+        assert_eq!(content.kind(), "section_content");
+        assert_eq!(
+            content.child(0).unwrap().kind(),
+            "paragraph",
+            "the lines below the heading folded into it: {section}"
+        );
+    }
+
+    /// A blank line spelled with lone carriage returns still separates two
+    /// paragraphs (tree-sitter-carve#143).
+    #[test]
+    fn lone_carriage_returns_separate_two_paragraphs() {
+        let mut parser = tree_sitter::Parser::new();
+        parser
+            .set_language(&super::language())
+            .expect("Error loading Carve language");
+        let tree = parser.parse("a\r\rb\r", None).unwrap();
+        let root = tree.root_node();
+        assert!(!root.has_error(), "unexpected ERROR: {root}");
+        assert_eq!(root.child_count(), 2, "want two paragraphs, got {root}");
+        assert_eq!(root.child(0).unwrap().kind(), "paragraph");
+        assert_eq!(root.child(1).unwrap().kind(), "paragraph");
+    }
+
+    /// Indentation still decides nesting in a lone-carriage-return document
+    /// (tree-sitter-carve#143).
+    ///
+    /// This is the case the terminator alone does not buy. tree-sitter advances
+    /// the row and resets the column on `\n` and on nothing else
+    /// (`lib/src/lexer.c`, `ts_lexer__do_advance`), so `get_column` in a
+    /// `\r`-terminated document counts from the start of the FILE - and this
+    /// scanner decides a line start, a marker column and a block-opener margin
+    /// by reading it. Delete `col_base` (make `line_column` return
+    /// `get_column`) and this test fails while every LF fixture in the
+    /// repository stays green.
+    #[test]
+    fn a_lone_carriage_return_document_still_nests_a_list() {
+        let mut parser = tree_sitter::Parser::new();
+        parser
+            .set_language(&super::language())
+            .expect("Error loading Carve language");
+        let tree = parser.parse("- a\r  - b\r", None).unwrap();
+        let root = tree.root_node();
+        assert!(!root.has_error(), "unexpected ERROR: {root}");
+        let list = root.child(0).expect("document has no child");
+        assert_eq!(list.kind(), "list");
+        assert_eq!(list.child_count(), 1, "want ONE outer item, got {root}");
+        let content = list
+            .child(0)
+            .unwrap()
+            .child_by_field_name("content")
+            .unwrap();
+        assert_eq!(
+            content.child(1).map(|n| n.kind()),
+            Some("list"),
+            "the indented item did not nest: {root}"
+        );
+    }
+
+    /// A CRLF document keeps a trailing block inside its list item.
+    ///
+    /// A REGRESSION GUARD, and it caught one. Making `\r` visible to the
+    /// scanner means every place that used to step over a line terminator with
+    /// one `advance` now steps over the `\r` only and stops short of the `\n`.
+    /// `parse_indented_content_spacer` was such a place, and with it left
+    /// unconverted this document's last paragraph escaped the item under CRLF
+    /// while parsing correctly under LF - no corpus fixture could see it,
+    /// because the corpus is normalized to LF.
+    #[test]
+    fn a_crlf_document_keeps_a_trailing_block_in_its_list_item() {
+        let mut parser = tree_sitter::Parser::new();
+        parser
+            .set_language(&super::language())
+            .expect("Error loading Carve language");
+        let crlf = parser
+            .parse("- a\r\n\r\n  {.c}\r\n\r\n  b\r\n", None)
+            .unwrap();
+        let lf = parser.parse("- a\n\n  {.c}\n\n  b\n", None).unwrap();
+        assert!(!crlf.root_node().has_error());
+        assert_eq!(
+            crlf.root_node().to_sexp(),
+            lf.root_node().to_sexp(),
+            "CRLF and LF disagree"
+        );
+        assert_eq!(
+            crlf.root_node().child_count(),
+            1,
+            "the trailing block escaped the item: {}",
+            crlf.root_node()
+        );
     }
 
     /// A WHITESPACE-ONLY line separates two block quotes, exactly as an empty

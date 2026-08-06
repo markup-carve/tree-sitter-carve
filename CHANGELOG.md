@@ -8,6 +8,25 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **A lone carriage return is a line ending** (spec: `resources/grammar.ebnf`,
+  `newline = '\n' | '\r\n' | '\r'`, named rather than restated by PART 0's
+  INPUT paragraph). Only two of the three spellings ended a line here: the
+  scanner's `advance` skipped a `\r` wherever it met one, which is what made
+  CRLF work, and which left a document written with lone carriage returns with
+  no terminators at all - `# Title` + CR + `a` + CR + `b` was ONE heading
+  spanning the whole file. All three spellings now parse to the same tree: over
+  the 672 corpus documents written out in each of the three, 428 parsed
+  differently before and 16 still do. Those 16 are recorded in
+  `test/coverage.json`; they are reference definitions, attribute blocks and
+  trailing blocks inside list items, whose probes read a column that tree-sitter
+  only resets on `\n`. One shape outside the corpus is in the same family and
+  named in `grammar.js`: a `%%` comment line ended by a lone carriage return
+  consumes its own terminator in the internal lexer, so an INDENTED construct
+  below it can be misread.
+- **A trailing block stays inside its list item in a CRLF document.** Found
+  while making the above safe: `- a` / blank / `  {.c}` / blank / `  b` put the
+  last paragraph outside the item under CRLF, and parsed correctly under LF.
+  Every corpus fixture is normalized to LF, so nothing could see it.
 - **A tab does not satisfy the colon-fence separator** (spec:
   `resources/grammar.ebnf`, PART 7 MARKER SEPARATORS AND PADDING SLOTS,
   normative since markup-carve/carve#886: "the whitespace that stands between a
