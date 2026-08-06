@@ -195,6 +195,7 @@
     "reference-link",
     "scheme-probe-strips-unicode-whitespace",
     "security-hardening",
+    "sibling-markers-that-reach-one-column-are-one-list",
     "single-line-headings",
     "smart-typography-arrows-and-symbols",
     "smart-typography-dashes-and-quotes",
