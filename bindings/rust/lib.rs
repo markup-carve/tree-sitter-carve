@@ -242,6 +242,68 @@ mod tests {
         }
     }
 
+    /// Two NESTED marker lines written with trailing spaces are one inner
+    /// quote, exactly as their bare spelling is (tree-sitter-carve#136).
+    ///
+    /// The bare spelling is corpus 216 and needs no help. This one lives here
+    /// for the reason tree-sitter-carve#130 established: the whole input is
+    /// distinguishable from that fixture only by its trailing spaces, which one
+    /// editor, one `.gitattributes` sweep or one formatter turns back into the
+    /// bare form - at which point the case is a byte-for-byte duplicate and
+    /// passes forever without testing anything. The two spellings reach the
+    /// deferral by different routes (the bare line's marker ends on its own
+    /// newline, the trailing-space line's on the separator arm added by #130),
+    /// so this is a real case rather than a control.
+    ///
+    /// It discriminates. Force `run_continues` to `false` in
+    /// `parse_block_quote` and every one of these documents goes back to two
+    /// inner quotes with a stray marker between them.
+    #[test]
+    fn two_nested_trailing_space_marker_lines_are_one_inner_quote() {
+        let mut parser = tree_sitter::Parser::new();
+        parser
+            .set_language(&super::language())
+            .expect("Error loading Carve language");
+        // The third is the same document with CRLF line endings, which
+        // `.gitattributes` normalization would strip out of any fixture file.
+        for source in ["> > \n> > \n", "> > \n> >\n", "> > \r\n> > \r\n"] {
+            let tree = parser.parse(source, None).unwrap();
+            let root = tree.root_node();
+            assert!(!root.has_error(), "unexpected ERROR for {:?}", source);
+            assert_eq!(
+                root.child_count(),
+                1,
+                "want ONE outer quote for {:?}, got {}",
+                source,
+                root
+            );
+            let outer = root.child(0).unwrap();
+            assert_eq!(outer.kind(), "block_quote", "for {:?}", source);
+            // Exactly one inner quote, and no stray marker beside it: the
+            // defect built a second quote for the second marker line and left
+            // the line's outer marker loose in the content between them.
+            let content = outer
+                .child_by_field_name("content")
+                .unwrap_or_else(|| panic!("no content for {:?}", source));
+            assert_eq!(
+                content.named_child_count(),
+                1,
+                "want ONE child in the outer quote for {:?}, got {}",
+                source,
+                content
+            );
+            let inner = content.named_child(0).unwrap();
+            assert_eq!(inner.kind(), "block_quote", "for {:?}", source);
+            assert_eq!(
+                inner.named_child_count(),
+                3,
+                "want both marker lines in one inner quote for {:?}, got {}",
+                source,
+                inner
+            );
+        }
+    }
+
     /// A document that does not end with a newline is still ONE paragraph
     /// (tree-sitter-carve#124).
     ///

@@ -3899,3 +3899,103 @@ sample
     (code_block_marker_begin)
     code: (code)
     (code_block_marker_end)))
+
+===============================================================================
+Two nested empty quote marker lines are one inner quote (tree-sitter-carve#136)
+===============================================================================
+> >
+> >
+
+-------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (block_quote
+        (block_quote_marker)
+        (block_quote_marker)
+        (block_quote_marker)))))
+
+===============================================================================
+A third nested marker line joins the same inner quote (tree-sitter-carve#136)
+===============================================================================
+> >
+> >
+> >
+
+-------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (block_quote
+        (block_quote_marker)
+        (block_quote_marker)
+        (block_quote_marker)
+        (block_quote_marker)
+        (block_quote_marker)))))
+
+===============================================================================
+A nested list survives the next nested marker line (tree-sitter-carve#136)
+===============================================================================
+> > - a
+> > - b
+
+-------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (block_quote
+        (block_quote_marker)
+        content: (content
+          (list
+            (list_item
+              marker: (list_marker_dash)
+              content: (list_item_content
+                (paragraph)))
+            (list_item
+              (block_quote_marker)
+              (block_quote_marker)
+              marker: (list_marker_dash)
+              content: (list_item_content
+                (paragraph)))))))))
+
+===============================================================================
+A shallower marker line still ends the nested quote (tree-sitter-carve#136)
+===============================================================================
+> >
+> a
+
+-------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (block_quote
+        (block_quote_marker))
+      (block_quote_marker)
+      (paragraph))))
+
+===============================================================================
+A nested marker run that stops short stays in the quote (tree-sitter-carve#136)
+===============================================================================
+> > a
+> >x
+
+-------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (block_quote
+        (block_quote_marker)
+        content: (content
+          (paragraph)
+          (block_quote_marker)
+          (paragraph))))))

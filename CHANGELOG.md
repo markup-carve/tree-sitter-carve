@@ -8,6 +8,23 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **A nested block quote line is decided by its whole marker run** (spec:
+  `resources/grammar.ebnf`, `blockquote = blockquote_line, {blockquote_line |
+  ...}` applied to the content the outer `>` strips). The external scanner takes
+  one marker per call and carries the count between calls, and the test that
+  dedents out of a deeper quote read that partial count as if it were the line's
+  depth. The FIRST marker of `> >` therefore decided the line at depth 1 against
+  an open depth of 2 and closed the inner quote before its own marker was seen,
+  so every nested quote line that no open paragraph absorbed opened a fresh
+  inner quote: `> >` over `> >` built two empty inner quotes with a loose marker
+  between them, `> > # h` over `> > # i` two quotes holding one heading each, and
+  `> > - a` over `> > - b` two quotes holding one list each - where carve-js
+  builds one inner quote in every case. The dedent now waits while another `>`
+  follows on the same line. Of 106 changed documents in a nested-quote sweep, 70
+  moved onto carve-js's block quote count and 2 off it (`> >` over `> >x` over
+  `> >`, and the same with a tab), with no document newly erroring; depth-1
+  shapes are untouched (#136).
+
 - **A document that does not end with a newline is one paragraph again**
   (spec: `resources/grammar.ebnf`, "A paragraph is terminated by a blank line,
   an interrupting block (§10), or end of file"). Such a document parsed into one
