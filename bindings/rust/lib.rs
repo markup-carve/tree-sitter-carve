@@ -356,7 +356,12 @@ mod tests {
         parser
             .set_language(&super::language())
             .expect("Error loading Carve language");
-        for source in [">  \n>  \n", "> \t\n> \t\n", ">   \n>   \n", "> \t \n> \t \n"] {
+        for source in [
+            ">  \n>  \n",
+            "> \t\n> \t\n",
+            ">   \n>   \n",
+            "> \t \n> \t \n",
+        ] {
             let tree = parser.parse(source, None).unwrap();
             let root = tree.root_node();
             assert!(!root.has_error(), "unexpected ERROR for {:?}", source);
