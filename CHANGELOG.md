@@ -8,6 +8,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **A lazy colon fence ends the list item a malformed one was absorbed into**
+  (spec: PART 9 §12 absorption, §24 C3 content column). The absorption a
+  malformed `:::` leaves behind belongs to the paragraph, so it reaches only as
+  far as the container that paragraph lives in. `- item` over a flush-left
+  `:::note`, `body`, `:::`, `tail` is a one-item list plus a `div` holding
+  `tail` in carve-js, carve-php and carve-rs alike: the closing fence sits
+  below the item's content column, where the outer context is offered it first
+  and nothing there is expecting a closer. The grammar folded all five lines
+  into the item, at any fence width. A fence at the item's own content column
+  is unaffected and still absorbs.
+
 - **A content-less definition marker line ends the item above it** (spec:
   `docs/examples/core.md`, MARKER REQUIRES CONTENT, settled for definition
   markers in markup-carve/carve#788). `:: t` over `:: ` over `x` is a one-term

@@ -889,18 +889,228 @@ y
       (paragraph))))
 
 ===============================================================================
+A lazy bare fence ends the item the malformed one was absorbed into
+;; The absorption is the PARAGRAPH's, and it reaches only as far as the
+;; container that paragraph lives in. `:::note` is not an opener, so it is lazy
+;; paragraph text and leaves the paragraph expecting a closer (§12) - but the
+;; `:::` below it sits at column 0, BELOW the item's content column, so the
+;; outer context is offered it first, and out there no paragraph is expecting
+;; anything. It ends the item and opens its div, which is what carve-js,
+;; carve-php and carve-rs all render (#106). The grammar used to fold every
+;; line into the item.
+===============================================================================
+- item
+:::note
+body
+:::
+tail
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph))))
+  (div
+    (div_marker_begin)
+    content: (content
+      (paragraph))))
+
+===============================================================================
+The lazy fence ends the item at any width
+;; Absorption is not width-tagged (see the top-level case above), so the margin
+;; test must not be width-sensitive either: a `::::` below the item's content
+;; column ends the item exactly as `:::` does.
+===============================================================================
+- item
+:::note
+body
+::::
+tail
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph))))
+  (div
+    (div_marker_begin)
+    content: (content
+      (paragraph))))
+
+===============================================================================
+The margin is the marker's, so a wider marker does not move it
+;; The ordered form of the case above, and the reason the test below can exist:
+;; `1. ` puts the item's content at column 3 but the escape boundary is still
+;; column 0. A flush-left fence ends the item here exactly as it does under
+;; `- `.
+===============================================================================
+1. item
+:::note
+body
+:::
+tail
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_decimal_period)
+      content: (list_item_content
+        (paragraph))))
+  (div
+    (div_marker_begin)
+    content: (content
+      (paragraph))))
+
+===============================================================================
+Below the content column but not flush left, the fence is still absorbed
+;; The boundary is the MARKER's column, not the item's content column, and the
+;; two differ under `1. `: content at column 3, marker at 0. A fence at column
+;; 2 is below the content column and yet is absorbed - one item holding all
+;; five lines in carve-js, carve-php and carve-rs alike. That is the same
+;; boundary a fence with no absorption around it obeys: below the content
+;; column but off the left margin it is lazy TEXT, not a block opener that
+;; escapes the item (spec `docs/examples/edge-cases.md`, "Colon-fence as a
+;; block opener in a list item"). Measuring the margin against `content_col`
+;; instead would pull this line, and the `- item` / ` :::` form under it, out
+;; of the item where every engine keeps them.
+===============================================================================
+1. item
+:::note
+body
+  :::
+  tail
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_decimal_period)
+      content: (list_item_content
+        (paragraph)))))
+
+===============================================================================
+Absorption set at the item's own column still does not reach a lazy fence
+;; The malformed fence here is INSIDE the item, at its content column, so the
+;; paragraph is expecting a closer by the item's own rules. The `:::` below it
+;; is still lazy, and still ends the item - the margin decides, not where the
+;; absorption was set.
+===============================================================================
+- item
+  :::note
+  body
+:::
+tail
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph))))
+  (div
+    (div_marker_begin)
+    content: (content
+      (paragraph))))
+
+===============================================================================
+Absorption set by a lazy fence still governs one at the item's own column
+;; The mirror of the test above, and the boundary the margin test must NOT
+;; cross. `:::note` is lazy, but the `  :::` under it is at the item's content
+;; column, so it is the paragraph's own line and the absorption applies: one
+;; item holding everything. All three engines render it that way, and the
+;; control below shows the same `  :::` opens a div without the `:::note`.
+===============================================================================
+- item
+:::note
+  body
+  :::
+  tail
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)))))
+
+===============================================================================
+A fence at the item's content column opens a div when nothing is absorbing
+;; The control for the test above: without a malformed fence earlier in the
+;; paragraph, `  :::` at the item's content column is a plain opener and the
+;; div nests inside the item.
+===============================================================================
+- item
+  :::
+  tail
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)
+        (div
+          (div_marker_begin)
+          content: (content
+            (paragraph)))))))
+
+===============================================================================
+A lazy fence ends the item when nothing is absorbing either
+;; The other control. Every assertion above would also hold if a lazy fence had
+;; simply stopped ending items, so this pins the plain case: with no malformed
+;; fence anywhere, `:::` below the item's content column ends the item and
+;; opens a document-level div.
+===============================================================================
+- item
+  body
+:::
+tail
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph))))
+  (div
+    (div_marker_begin)
+    content: (content
+      (paragraph))))
+
+===============================================================================
 A glued admonition type in a list item is text, not a nested div
 ;; The item holds ONE paragraph: `:::note` is not an opener, and the `:::`
-;; below it is absorbed the same way it is at the top level.
+;; below it is at the item's content column, so it is absorbed the same way it
+;; is at the top level.
 ;;
-;; KNOWN DIVERGENCE, and the reason `tail` is inside that paragraph here: every
-;; engine ends the item at the fence-shaped line and renders `tail` as a
-;; sibling paragraph, because a colon-fence-shaped line closes an item's
-;; lazy-continuation window (§17) whether or not it is a valid opener. This
-;; grammar has no such rule, so the lazy line folds in. Before #103 `tail`
-;; landed outside for the wrong reason - the bogus `div` ended the item - so
-;; the placement was right and the tree around it was not. Tracked separately;
-;; the peek fix does not reach it.
+;; KNOWN DIVERGENCE, in the last line only: all three engines end the item at
+;; the absorbed fence and render `tail` as a sibling paragraph, because a
+;; colon-fence-shaped line closes the item's lazy-continuation window. This
+;; grammar has no such rule, so the lazy line folds in. #106 fixed the case
+;; where the fence itself is lazy (above); this one, where the fence is at the
+;; item's own column and the line AFTER it is lazy, is a different mechanism
+;; and is left alone deliberately - the engines stop agreeing one line away
+;; from it. Drop the `  :::` line and carve-php ends the item while carve-js
+;; and carve-rs fold `tail` in; put a `  more` line between the fence and
+;; `tail` and they split the same way. Only this exact shape is unanimous, so
+;; there is no rule here to implement yet.
 ===============================================================================
 - item
   :::note

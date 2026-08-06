@@ -581,16 +581,29 @@ static Block *find_list(Scanner *s) {
 /// column 2 from column 3. A container opened before this field existed, or one
 /// whose column was never recorded, reads 0 and is treated as "no opinion" -
 /// the guard then behaves exactly as it did before (tree-sitter-carve#84).
+/// The innermost open container that INDENTS its content, or NULL when the
+/// margin is the document's own zero. A list item, footnote or table caption
+/// indents; a div and a block quote do not (a quote's `>` markers are consumed
+/// separately, leaving the indent at 0). Every margin question below asks this
+/// one first, so the set of indenting containers has a single spelling.
+static Block *indenting_container(Scanner *s) {
+  for (int i = s->open_blocks->size - 1; i >= 0; --i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (is_list(b->type) || b->type == FOOTNOTE || b->type == TABLE_CAPTION) {
+      return b;
+    }
+  }
+  return NULL;
+}
+
 static bool has_surplus_indent(Scanner *s) {
   // A `+` continuation attaches a FLUSH-LEFT block, so the margin is zero.
   if (s->state & STATE_LIST_CONTINUATION) {
     return s->indent > 0;
   }
-  for (int i = s->open_blocks->size - 1; i >= 0; --i) {
-    Block *b = *array_get(s->open_blocks, i);
-    if (is_list(b->type) || b->type == FOOTNOTE || b->type == TABLE_CAPTION) {
-      return b->content_col != 0 && s->indent > b->content_col;
-    }
+  Block *b = indenting_container(s);
+  if (b) {
+    return b->content_col != 0 && s->indent > b->content_col;
   }
   return s->indent > 0;
 }
@@ -603,13 +616,11 @@ static bool has_extra_indent(Scanner *s) {
   if (s->state & STATE_LIST_CONTINUATION) {
     return s->indent > 0;
   }
-  for (int i = s->open_blocks->size - 1; i >= 0; --i) {
-    Block *b = *array_get(s->open_blocks, i);
-    if (is_list(b->type) || b->type == FOOTNOTE || b->type == TABLE_CAPTION) {
-      // Inside such a container, any indent at or above its content threshold
-      // is the container's own margin, not heading-disqualifying fuzz.
-      return s->indent < b->data;
-    }
+  Block *b = indenting_container(s);
+  if (b) {
+    // Inside such a container, any indent at or above its content threshold
+    // is the container's own margin, not heading-disqualifying fuzz.
+    return s->indent < b->data;
   }
   return s->indent > 0;
 }
@@ -624,6 +635,45 @@ static uint8_t count_blocks(Scanner *s, BlockType type) {
   }
   return count;
 }
+
+/// TRUE when `column` sits SHORT of the innermost INDENTING container's
+/// content margin -- a lazy-continuation line, which belongs to the paragraph
+/// above it only because nothing in the outer context claimed it first.
+///
+/// Takes the column rather than reading `s->indent`, and that is the whole
+/// reason this is not simply `has_extra_indent`. `s->indent` is refreshed only
+/// when a scan STARTS at column 0; the paragraph-closing decision runs from
+/// the newline at the end of the PREVIOUS line, where it still holds whatever
+/// that line left behind - measured as 0 for `  :::` at a list item's own
+/// content column, which would report every fence as lazy and answer nothing.
+/// The lexer's column is correct at that moment, because the container prefix
+/// has already been consumed by the time the decision is made.
+///
+/// Also deliberately narrower than `has_extra_indent` in the no-container
+/// case: that one reports "indented past column zero", and here the absence of
+/// an indenting container has to read as NOT lazy, since at the document root
+/// every line is at its own margin.
+///
+/// SCOPED TO INDENTING CONTAINERS ON PURPOSE. A block quote continues by its
+/// `>` markers rather than by indentation, and the equivalent arm
+/// (`count_blocks(BLOCK_QUOTE) > s->block_quote_level`) was written, measured
+/// and removed: it fixed the lazy shape it was aimed at (`> para` /
+/// `:::note` / `body` / `:::` / `tail`, where every engine ends the quote and
+/// opens a div) and broke the fully-quoted one, turning `> para` / `> :::note`
+/// / `> body` / `> :::` / `> tail` -- one quoted paragraph in all three
+/// engines -- into a quote holding a div. `block_quote_level` does not report
+/// this line's markers at every route into the peek. The quoted shape is left
+/// as it is rather than guessed at.
+static bool below_container_margin(Scanner *s, uint32_t column) {
+  // A `+` continuation attaches its block flush left, so the item's margin is
+  // zero and a flush-left line under it is not lazy at all.
+  if (s->state & STATE_LIST_CONTINUATION) {
+    return false;
+  }
+  Block *b = indenting_container(s);
+  return b != NULL && column < b->data;
+}
+
 
 // Mark that we should close `count` blocks.
 // This call will only emit a single BLOCK_CLOSE token,
@@ -1924,6 +1974,9 @@ static bool scan_paragraph_closing_marker(Scanner *s, TSLexer *lexer) {
   // marker probe needed, so a sibling `:: term` was swallowed by the term above
   // it (tree-sitter-carve#48).
   if (lexer->lookahead == ':') {
+    // Read before the colons are consumed: the margin test below needs where
+    // the LINE starts, not where the fence's tail ended up.
+    uint32_t marker_column = lexer->get_column(lexer);
     uint8_t colons = consume_chars(s, lexer, ':');
     if (colons >= 3) {
       // A COLON FENCE ENDS THE PARAGRAPH ONLY WHEN IT IS REALLY A MARKER.
@@ -1956,7 +2009,24 @@ static bool scan_paragraph_closing_marker(Scanner *s, TSLexer *lexer) {
       if (number_of_blocks_from_top(s, DIV, colons) > 0) {
         return true;
       }
-      return (s->state & STATE_FENCE_ABSORBS) == 0;
+      // ...and the absorption is the PARAGRAPH's, so it reaches only as far as
+      // the container that paragraph lives in. A fence BELOW the container's
+      // content margin is a lazy-continuation line: the outer context is
+      // offered it first, and out there no paragraph is expecting a closer, so
+      // it ends the item and opens its div. `- item` / `:::note` / `body` /
+      // `:::` / `tail` is a one-item list plus a div holding `tail` in
+      // carve-js, carve-php and carve-rs alike, at any fence width
+      // (tree-sitter-carve#106).
+      //
+      // Only this consumption side needs the margin; the SETTING side is
+      // already right. A malformed fence absorbed lazily still governs a later
+      // fence at the item's own column - `- item` / `:::note` / `  body` /
+      // `  :::` / `  tail` is one item in all three engines, where the same
+      // `  :::` without the `:::note` above it opens a div inside the item.
+      if (s->state & STATE_FENCE_ABSORBS) {
+        return below_container_margin(s, marker_column);
+      }
+      return true;
     }
     Block *open_list = find_list(s);
     // Inside a DEFINITION list, a marker-shaped colon line ends the item above
