@@ -688,7 +688,19 @@ module.exports = grammar({
         // and `blockquote_line = '>', (newline | ...)` in the spec's
         // grammar.ebnf both admit the bare marker on its own, and every engine
         // renders `>` at end of input as an empty <blockquote> (#96).
-        optional(field("content", alias($._block_quote_content, $.content))),
+        optional(
+          choice(
+            field("content", alias($._block_quote_content, $.content)),
+            // An empty quote may carry FURTHER content-less marker lines:
+            // `blockquote = blockquote_line, {blockquote_line | ...}` repeats
+            // the bare line, so `>` / `>` is one empty quote, not two. Without
+            // this arm the second marker had nowhere to attach - the
+            // continuations inside `_block_quote_content` sit behind a first
+            // real block - so it errored, or folded into a paragraph that
+            // swallowed whatever followed the quote (#126).
+            $._block_quote_prefix,
+          ),
+        ),
         $._block_close,
       ),
     _block_quote_content: ($) =>

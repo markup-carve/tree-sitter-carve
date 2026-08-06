@@ -3683,3 +3683,86 @@ tail
     (list_item
       marker: (list_marker_definition)
       term: (term))))
+
+===============================================================================
+Two bare block quote markers are one empty quote (tree-sitter-carve#126)
+===============================================================================
+>
+>
+
+-------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (block_quote_marker)))
+
+===============================================================================
+A paragraph after two bare markers is a sibling, not quoted content (tree-sitter-carve#126)
+===============================================================================
+>
+>
+x
+
+-------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (block_quote_marker))
+  (paragraph))
+
+===============================================================================
+A list after two bare markers is a sibling too (tree-sitter-carve#126)
+===============================================================================
+>
+>
+- b
+
+-------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (block_quote_marker))
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)))))
+
+===============================================================================
+A third bare marker joins the same empty quote (tree-sitter-carve#126)
+===============================================================================
+>
+>
+>
+x
+
+-------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (block_quote_marker)
+    (block_quote_marker))
+  (paragraph))
+
+===============================================================================
+Bare markers after quoted content stay inside the quote (tree-sitter-carve#126)
+===============================================================================
+> a
+>
+>
+x
+
+-------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (paragraph)
+      (block_quote_marker)
+      (block_quote_marker)))
+  (paragraph))
