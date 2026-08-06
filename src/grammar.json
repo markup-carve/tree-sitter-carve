@@ -2895,17 +2895,26 @@
           "type": "CHOICE",
           "members": [
             {
-              "type": "FIELD",
-              "name": "content",
-              "content": {
-                "type": "ALIAS",
-                "content": {
-                  "type": "SYMBOL",
-                  "name": "_block_quote_content"
+              "type": "CHOICE",
+              "members": [
+                {
+                  "type": "FIELD",
+                  "name": "content",
+                  "content": {
+                    "type": "ALIAS",
+                    "content": {
+                      "type": "SYMBOL",
+                      "name": "_block_quote_content"
+                    },
+                    "named": true,
+                    "value": "content"
+                  }
                 },
-                "named": true,
-                "value": "content"
-              }
+                {
+                  "type": "SYMBOL",
+                  "name": "_block_quote_prefix"
+                }
+              ]
             },
             {
               "type": "BLANK"

@@ -358,10 +358,6 @@
     "\"-\" + \"---\"": {
       "documents": 3,
       "reason": "a `---` after a content-less marker errors; carve-js renders a paragraph then a thematic break (tree-sitter-carve#96)"
-    },
-    "\">\" + \">\"": {
-      "documents": 1,
-      "reason": "two bare `>` lines followed by a blank line error. The empty block quote itself is fixed (tree-sitter-carve#96), but a SECOND content-less marker has nowhere to attach: `_block_quote_content` holds continuation markers only inside its repeat, which needs a block first, so a quote that is empty all the way down cannot carry one. Not the shape the issue reduced - recorded rather than guessed at."
     }
   }
 }
