@@ -3865,3 +3865,37 @@ A blank line ends a nested quote a DEEPER marker follows (tree-sitter-carve#129)
         (block_quote_marker)
         content: (content
           (paragraph))))))
+
+===============================================================================
+A wider run closes a code fence
+===============================================================================
+```
+x
+````
+y
+
+-------------------------------------------------------------------------------
+
+(document
+  (code_block
+    (code_block_marker_begin)
+    code: (code)
+    (code_block_marker_end))
+  (paragraph))
+
+===============================================================================
+A narrower run inside a wider code fence is content
+===============================================================================
+````
+```
+sample
+```
+````
+
+-------------------------------------------------------------------------------
+
+(document
+  (code_block
+    (code_block_marker_begin)
+    code: (code)
+    (code_block_marker_end)))

@@ -1102,11 +1102,30 @@ static bool parse_verbatim_content(Scanner *s, TSLexer *lexer) {
   return true;
 }
 
-// Does a run of `ticks` fence characters have the width the open code block's
-// own opener had?
+// Is a run of `ticks` fence characters WIDE ENOUGH to close the open code
+// block?
+//
+// `>=`, not `==`. grammar.ebnf states the guard as
+//
+//     code_fence_close = (backtick_fence | tilde_fence):close
+//                        where char(close) = char(open) and len(close) >= len(open)
+//
+// and all three engines agree: a four-tick run closes a three-tick fence, while
+// a three-tick run inside a four-tick fence is content, because 3 < 4. The
+// second half is what the width comparison is FOR - embedding a ``` sample
+// inside a ```` fence - and `>=` gives it without a second rule.
+//
+// Testing for equality left the fence open to end of input on the first shape,
+// and nothing in this repo could see it: not the corpus, not the no-ERROR
+// sweep, not the block battery, not under-acceptance. The behaviour had never
+// been pinned in either direction (#125).
+//
+// The COMMENT fence is deliberately not this rule - `%%%%` does not close
+// `%%%`, which the corpus pins in both directions - so this stays scoped to
+// CODE_BLOCK.
 static bool code_fence_run_matches_open_block(Scanner *s, uint8_t ticks) {
   Block *top = peek_block(s);
-  return top && top->type == CODE_BLOCK && top->data == ticks;
+  return top && top->type == CODE_BLOCK && top->data <= ticks;
 }
 
 // A code fence CLOSER carries nothing after its run but optional trailing
