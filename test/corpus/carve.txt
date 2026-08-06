@@ -3766,3 +3766,77 @@ x
       (block_quote_marker)
       (block_quote_marker)))
   (paragraph))
+
+===============================================================================
+A blank line separates two block quotes (tree-sitter-carve#129)
+===============================================================================
+> a
+
+> b
+
+-------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (paragraph)))
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (paragraph))))
+
+===============================================================================
+A blank line separates two empty quotes (tree-sitter-carve#129)
+===============================================================================
+>
+
+>
+
+-------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker))
+  (block_quote
+    (block_quote_marker)))
+
+===============================================================================
+A blank line ends every open quote, not just the innermost (tree-sitter-carve#129)
+===============================================================================
+> > a
+
+> b
+
+-------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (block_quote
+        (block_quote_marker)
+        content: (content
+          (paragraph)))))
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (paragraph))))
+
+===============================================================================
+A MARKED empty line keeps one quote (tree-sitter-carve#129)
+===============================================================================
+> a
+>
+> b
+
+-------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (paragraph)
+      (block_quote_marker)
+      (block_quote_marker)
+      (paragraph))))

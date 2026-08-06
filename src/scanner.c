@@ -301,6 +301,25 @@ static const uint8_t STATE_LIST_CONTINUATION = 1 << 3;
 // admonition), and a bare fence that CLOSES a div which is actually open is
 // still that closer. Cleared when the paragraph ends.
 static const uint8_t STATE_FENCE_ABSORBS = 1 << 4;
+// Tracks that the line just crossed was BLANK, and that an open block quote has
+// not yet been ended by it. `grammar.ebnf`'s lazy-continuation note is explicit
+// that a blank line ends the blockquote, so the `>` on the next line opens a NEW
+// quote rather than continuing the open one (#129).
+//
+// This has to be scanner state, and cannot be re-derived where it is read. The
+// two lines are seen in DIFFERENT scanner calls whenever the quote holds a
+// paragraph: `_paragraph` ends with its own `_eof_or_newline` and then a second
+// one for the blank line, so by the time the `>` is scanned the blank line is
+// already a committed token and nothing about the current line records it. (In
+// the shapes whose first line is a bare `>` marker the two DO land in one call,
+// because `parse_newline` advances over the blank line's newline, marks the end,
+// and then declines when only NEWLINE_INLINE was valid - which is why the
+// continuation token there measures three bytes. Both shapes are the same defect
+// and this flag covers both.)
+//
+// Set at every line start whose line is blank; cleared by `parse_block_quote`
+// when it emits, which is the only place it is read.
+static const uint8_t STATE_AFTER_BLANK_LINE = 1 << 5;
 
 static TokenType scan_list_marker_token(Scanner *s, TSLexer *lexer);
 static uint8_t scan_block_quote_markers(Scanner *s, TSLexer *lexer,
@@ -1665,6 +1684,12 @@ static bool parse_block_quote(Scanner *s, TSLexer *lexer,
     return false;
   }
 
+  // Consumed here rather than read in place: this is the only reader, and every
+  // branch below that emits has ended whatever the blank line was supposed to
+  // end. Leaving it set would make a LATER marker line close a quote that no
+  // blank line separates.
+  bool after_blank_line = (s->state & STATE_AFTER_BLANK_LINE) != 0;
+
   bool ending_newline = false;
   // A valid marker is a '> ' or '>\n'.
   bool has_marker = scan_block_quote_marker(s, lexer, &ending_newline);
@@ -1687,6 +1712,30 @@ static bool parse_block_quote(Scanner *s, TSLexer *lexer,
       number_of_blocks_from_top(s, BLOCK_QUOTE, marker_count);
   Block *highest_block_quote = find_block(s, BLOCK_QUOTE);
 
+  // A blank line ENDS the quote, so a marker after one begins a NEW quote
+  // instead of continuing the open one (#129). Decided before the dedent branch
+  // below, because EVERY open quote goes, not just the ones the marker count
+  // dedents out of: `> > a` / blank / `> b` is a nested pair and then a sibling
+  // depth-1 quote in carve-js, never one quote holding both. Left to the dedent
+  // branch, the depth-2 quote would close and the depth-1 one would carry on.
+  //
+  // The BLOCK_CLOSE returned here is re-entered as a `block_quote_begin` for the
+  // same marker, which is how the already-correct `> a` / blank / blank / `> b`
+  // shape reaches two quotes.
+  if (after_blank_line && has_marker && highest_block_quote &&
+      !any_open_inline) {
+    if (valid_symbols[CLOSE_PARAGRAPH]) {
+      lexer->result_symbol = CLOSE_PARAGRAPH;
+      return true;
+    }
+    if (valid_symbols[BLOCK_CLOSE]) {
+      size_t close_pos = number_of_blocks_from_top(s, BLOCK_QUOTE, 1);
+      s->state &= ~STATE_AFTER_BLANK_LINE;
+      close_blocks(s, lexer, close_pos);
+      return true;
+    }
+  }
+
   // There's an open block quote with a higher nesting level.
   if (highest_block_quote && marker_count < highest_block_quote->data &&
       !any_open_inline) {
@@ -1700,6 +1749,7 @@ static bool parse_block_quote(Scanner *s, TSLexer *lexer,
       // divs, etc).
       size_t close_pos =
           number_of_blocks_from_top(s, BLOCK_QUOTE, marker_count + 1);
+      s->state &= ~STATE_AFTER_BLANK_LINE;
       close_blocks(s, lexer, close_pos);
       return true;
     }
@@ -1708,6 +1758,7 @@ static bool parse_block_quote(Scanner *s, TSLexer *lexer,
   // If we should continue an open block quote.
   if (valid_symbols[BLOCK_QUOTE_CONTINUATION] && has_marker &&
       matching_block_pos != 0) {
+    s->state &= ~STATE_AFTER_BLANK_LINE;
     lexer->mark_end(lexer);
     output_block_quote_continuation(s, lexer, marker_count, ending_newline);
     return true;
@@ -1715,6 +1766,7 @@ static bool parse_block_quote(Scanner *s, TSLexer *lexer,
 
   // Finally, start a new block quote if there's any marker.
   if (valid_symbols[BLOCK_QUOTE_BEGIN] && has_marker) {
+    s->state &= ~STATE_AFTER_BLANK_LINE;
     push_block(s, BLOCK_QUOTE, marker_count);
     lexer->mark_end(lexer);
     // It's important to always clear the stored level on newlines.
@@ -4703,7 +4755,8 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
   if (lexer->lookahead == '\r') {
     advance(s, lexer);
   }
-  if (lexer->get_column(lexer) == 0) {
+  bool at_line_start = lexer->get_column(lexer) == 0;
+  if (at_line_start) {
     s->indent = consume_whitespace(s, lexer);
     // A new line starts a new marker chain (see `marker_end_col`).
     s->marker_end_col = 0;
@@ -4726,6 +4779,15 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
 
   if (is_newline) {
     s->block_quote_level = 0;
+  }
+
+  // A line holding nothing but its newline (leading whitespace was consumed
+  // above, so a whitespace-only line counts) ends any open block quote. Recorded
+  // here, at the line's own start, because the `>` that the rule is about is on
+  // the NEXT line - see STATE_AFTER_BLANK_LINE. Setting it is idempotent, so the
+  // repeated scanner calls tree-sitter makes at one position agree.
+  if (at_line_start && is_newline) {
+    s->state |= STATE_AFTER_BLANK_LINE;
   }
 
 #ifdef DEBUG
