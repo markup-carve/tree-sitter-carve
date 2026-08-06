@@ -733,8 +733,20 @@ static bool escapes_open_block_quote(Scanner *s, uint32_t column) {
   }
   for (--i; i >= 0; --i) {
     Block *b = *array_get(s->open_blocks, i);
-    if (is_list(b->type) || b->type == FOOTNOTE || b->type == TABLE_CAPTION) {
+    if (is_list(b->type)) {
+      // A list keeps its content column in a field of its own, because `data`
+      // is the marker's column plus one and cannot tell `- ` from `1. `. A
+      // container opened before that field existed reads 0 and gets no opinion,
+      // exactly as in `has_surplus_indent`.
       return b->content_col != 0 && column == b->content_col;
+    }
+    if (b->type == FOOTNOTE || b->type == TABLE_CAPTION) {
+      // Both push `s->indent + 2`, which IS their content column - the margin
+      // does not follow the label's width. `[^a]: > para` and
+      // `[^abcd]: > para` behave identically in all three engines: a fence at
+      // column 2 ends the quote and opens a div in the footnote, one at column
+      // 3 is indented and folds back into the quoted paragraph.
+      return column == b->data;
     }
   }
   // Nothing indenting outside the quote: the document root holds it.

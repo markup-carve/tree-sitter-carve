@@ -1317,6 +1317,76 @@ A list inside the quote does not move the quote's escape boundary
               (block_quote_marker))))))))
 
 ===============================================================================
+A footnote holding the quote sets the margin from its own indent
+;; A footnote records no content column - it pushes `s->indent + 2`, which IS
+;; its content column, and does not move with the label's width. All three
+;; engines end the quote at a column-2 fence and open the div inside the
+;; footnote, for `[^a]:` and `[^abcd]:` alike.
+===============================================================================
+x[^a]
+
+[^a]: > para
+  :::note
+  body
+  :::
+  tail
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (footnote_reference
+      (footnote_marker_begin)
+      (reference_label)
+      (footnote_marker_end)))
+  (footnote
+    (footnote_marker_begin)
+    label: (reference_label)
+    (footnote_marker_end)
+    content: (footnote_content
+      (block_quote
+        (block_quote_marker)
+        content: (content
+          (paragraph)))
+      (div
+        (div_marker_begin)
+        content: (content
+          (paragraph))))))
+
+===============================================================================
+The footnote margin does not follow the label's width
+;; The control for the case above, and the reason the margin is the footnote's
+;; own `data` rather than anything derived from the marker line: widen the label
+;; and column 2 is still the margin, so the column-3 fence here is indented and
+;; folds back into the quoted paragraph - as it does in all three engines.
+===============================================================================
+x[^abcd]
+
+[^abcd]: > para
+   :::note
+   body
+   :::
+   tail
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (footnote_reference
+      (footnote_marker_begin)
+      (reference_label)
+      (footnote_marker_end)))
+  (footnote
+    (footnote_marker_begin)
+    label: (reference_label)
+    (footnote_marker_end)
+    content: (footnote_content
+      (block_quote
+        (block_quote_marker)
+        content: (content
+          (paragraph))))))
+
+===============================================================================
 A lazy fence ends the quote when nothing is absorbing either
 ;; The control. Every assertion above would also hold if an unmarked fence had
 ;; simply stopped ending quotes, so this pins the plain case: with no malformed
