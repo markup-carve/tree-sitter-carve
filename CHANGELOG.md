@@ -8,6 +8,39 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **A tab does not satisfy the colon-fence separator** (spec:
+  `resources/grammar.ebnf`, PART 7 MARKER SEPARATORS AND PADDING SLOTS,
+  normative since markup-carve/carve#886: "the whitespace that stands between a
+  marker and the token that SELECTS which construct the line opens ... is
+  spelled `space`, and a tab never satisfies it"). The colon fence has ONE
+  separator slot and all four openers share it, so `:::` followed by a tab now
+  opens nothing at all: `:::` + TAB + `note` is the same paragraph `:::note`
+  already was, and so are the line block's `|`, the local hard-break block's
+  backslash, a custom type word, and the labelled div's `[label]` - `div_open`
+  merely makes the slot OPTIONAL, which is a different property from a different
+  role, so `:::[First]` still opens glued and `::: [First]` still opens spaced.
+  A mixed run counts as a tab: `::: ` + TAB + `note` opens nothing either. How
+  MANY separator characters the slot takes is a separate question and is
+  unchanged. The `"title"` and `[label]` slots on the admonition opener are the
+  other role - the type word has already decided the block, so they are PADDING
+  and a tab is still legal there: `::: note` + TAB + `"T"` is an admonition with
+  a title, and narrowing them along with the separator is the blanket sweep the
+  spec section warns against. A whitespace-only tail is trailing whitespace
+  rather than a separator, so a fence with a trailing tab is still the bare
+  fence it was and still opens and still closes. The CODE fence is untouched:
+  markup-carve/carve#886 leaves it out by name, `code_fence_info` still spells
+  its metadata slots `space+`, and a tab before the info string still opens a
+  code block. Of 455 colon-fence and code-fence shapes across five container
+  contexts, 144 changed and every one of them is a tab-separated opener becoming
+  the paragraph the spec says it is; no shape gained a block, none newly errored,
+  no code-fence shape moved, and no shape whose separator holds no tab moved. The
+  largest single swing is a tab-separated opener after a paragraph, which used to
+  be paragraph + div and is now one paragraph, because a malformed fence leaves
+  the paragraph expecting a closer (PART 9 §12). An indented fence inside a list
+  item is unchanged, for the unrelated reason that it opens nothing at any indent
+  already. The four implementations still accept the tab and are being corrected
+  separately (markup-carve/carve-js#786, markup-carve/carve-php#941,
+  markup-carve/carve-rs#712), so this grammar is ahead of them until they land.
 - **A heading or a fenced code block interrupts an open paragraph** (spec:
   `resources/grammar.ebnf`, PART 9 §10 I1: "a heading, a fenced code opener WITH
   a matching closer ahead ... interrupts", "at the document top level AND inside

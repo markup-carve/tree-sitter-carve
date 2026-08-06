@@ -1003,7 +1003,8 @@ static bool try_close_different_typed_list(Scanner *s, TSLexer *lexer,
 ///
 /// Call with the lexer already past the colons and their separating
 /// whitespace: `bare` is true when the line ends there, `spaced` when any
-/// separator was consumed, `c` is the first character of the tail.
+/// separator was consumed, `tabbed` when that separator run held a TAB, `c` is
+/// the first character of the tail.
 ///
 /// A bare fence, a `[label]` (glued or not), and a line-block bar, hard-break
 /// backslash or class name AFTER a separator are openers. A `{` attribute
@@ -1014,8 +1015,46 @@ static bool try_close_different_typed_list(Scanner *s, TSLexer *lexer,
 /// character, so this takes the lexer and reads past it. Both callers scan
 /// ahead only; neither has committed a token end at the point it asks.
 static bool colon_fence_tail_opens_block(Scanner *s, TSLexer *lexer, bool bare,
-                                         bool spaced, int32_t c) {
-  if (bare || c == '[') {
+                                         bool spaced, bool tabbed, int32_t c) {
+  // A BARE fence is decided before the separator's SPELLING is read, and
+  // deliberately: a whitespace-only tail is trailing whitespace, not a
+  // separator, so `:::` + tab + newline is the same bare fence as `:::` and
+  // still opens (the same reading `code_fence_closer_tail_is_blank` gives a
+  // closer's tail, #96).
+  if (bare) {
+    return true;
+  }
+  // THE SEPARATOR IS A MARKER SEPARATOR, SO IT IS A LITERAL SPACE.
+  // grammar.ebnf PART 7, MARKER SEPARATORS AND PADDING SLOTS (normative, added
+  // by carve#886 to settle carve#878): the whitespace between a marker and the
+  // token that SELECTS which construct the line opens is spelled `space`, and a
+  // tab never satisfies it. The colon fence has ONE separator slot and all four
+  // openers share it - `:::` + separator + (`note` | `|` | `\` | `[label]`)
+  // decides between an admonition, a line block, a local hard-break block and a
+  // div - so the answer is the same for every tail, and `div_open` making the
+  // slot OPTIONAL is a different property from a different role: `:::[First]`
+  // opens glued and `::: [First]` opens spaced, but `:::` + tab + `[First]` is
+  // paragraph text.
+  //
+  // A tab is meaningful ONLY as indentation, and indentation is at the START of
+  // a line (PART 9 §24 C1); a tab after a marker is neither (carve#692,
+  // carve#698). This is what the heading marker, the bullet and ordered
+  // markers, the definition-list term marker and the three definition markers
+  // already do here.
+  //
+  // A mixed run falls here too: `::: ` + tab + `note` is not a run of spaces.
+  // How MANY separator characters the slot takes is a separate question
+  // (tree-sitter-carve#135) that this does not answer.
+  //
+  // The PADDING slots - the admonition opener's `"title"` and `[label]`, which
+  // the type word has already decided ahead of - are the other role and DO
+  // admit a tab. They are spelled `_whitespace1` in `grammar.js`, and this is
+  // the only place the two roles differ, so narrowing that token to match this
+  // one would break `::: note` + tab + `"T"`, which stays legal.
+  if (tabbed) {
+    return false;
+  }
+  if (c == '[') {
     return true;
   }
   // The local hard-break block, `::: \` (grammar.ebnf
@@ -2252,13 +2291,15 @@ static bool scan_paragraph_closing_marker(Scanner *s, TSLexer *lexer) {
       // lines down was then read as a fresh opener (#103). The tail test is
       // the opener's own, shared rather than restated.
       bool spaced = false;
+      bool tabbed = false;
       while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+        tabbed = tabbed || lexer->lookahead == '\t';
         advance(s, lexer);
         spaced = true;
       }
       int32_t c = lexer->lookahead;
       bool bare = c == '\n' || lexer->eof(lexer);
-      if (!colon_fence_tail_opens_block(s, lexer, bare, spaced, c)) {
+      if (!colon_fence_tail_opens_block(s, lexer, bare, spaced, tabbed, c)) {
         // Paragraph text - and from here the paragraph is "expecting a
         // closer": a later BARE fence is text too (PART 9 §12).
         s->state |= STATE_FENCE_ABSORBS;
@@ -3224,7 +3265,9 @@ static bool parse_colon(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   // whitespace is consumed here rather than inside the opener branch, because
   // the answer is needed before the branch is chosen.
   bool spaced = false;
+  bool tabbed = false;
   while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+    tabbed = tabbed || lexer->lookahead == '\t';
     advance(s, lexer);
     spaced = true;
   }
@@ -3257,7 +3300,9 @@ static bool parse_colon(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     // space: `:::note`, `:::|` and `:::\` are paragraphs in every engine, the
     // same rule every other marker follows. A bare fence and a glued `[label]`
     // do not - `:::` alone opens a div and `:::[First]` opens a labelled one,
-    // both checked against the engine. The test lives in
+    // both checked against the engine. And the separator has to be a LITERAL
+    // space in all four: a tab there opens nothing (carve#886), which is why
+    // `tabbed` is tracked alongside `spaced`. The test lives in
     // `colon_fence_tail_opens_block` so the paragraph-closing peek applies the
     // SAME one.
     //
@@ -3266,7 +3311,7 @@ static bool parse_colon(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     // line to answer at all and the lexer cannot rewind. `div_marker_begin`
     // therefore covers the whole `::: \` opener; the other spaced forms keep
     // their tail token (`line_block_marker`, `class_name`) outside it.
-    bool ok = colon_fence_tail_opens_block(s, lexer, bare, spaced, c);
+    bool ok = colon_fence_tail_opens_block(s, lexer, bare, spaced, tabbed, c);
     // ...and a bare fence is not an opener at all while the open paragraph is
     // absorbing: after a malformed `::: {.x}` the trailing `:::` is text, at
     // any width (PART 9 §12). The peek above normally keeps the parser inside

@@ -854,6 +854,84 @@ body
   (paragraph))
 
 ===============================================================================
+A tab after the fence opens no admonition
+;; The colon fence has ONE separator slot and it is a MARKER SEPARATOR
+;; (grammar.ebnf PART 7, normative since markup-carve/carve#886): the token
+;; after it selects which of the four blocks the line opens, so it is
+;; spelled `space` and a tab never satisfies it. `:::` + TAB + `note` is
+;; therefore the same paragraph `:::note` is, and the trailing `:::` is
+;; text with it because a malformed fence leaves the paragraph expecting a
+;; closer (PART 9 §12).
+;;
+;; If the tab in the input below ever degrades to a SPACE, this case fails
+;; loudly rather than rotting: `::: note` opens a div and the expected tree
+;; here says paragraph. That asymmetry is why the four separator shapes can
+;; live in a fixture file at all, where the PADDING shapes cannot - a tab
+;; degrading to a space there keeps the same tree and stops testing
+;; anything, so they are pinned in `bindings/rust/lib.rs` instead.
+===============================================================================
+:::	note
+body
+:::
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph))
+
+===============================================================================
+A tab after the fence opens no labelled div
+;; `div_open` is the odd opener: its separator is OPTIONAL, so `:::[First]`
+;; opens glued and `::: [First]` opens spaced. Optional is a different
+;; property from a different ROLE - it is the same one separator slot the
+;; other three openers use - so a tab does not stand in for the optional
+;; space either.
+===============================================================================
+:::	[First]
+body
+:::
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph))
+
+===============================================================================
+A tab after the fence opens no line block
+;; `line_block_open = colon_fence:open, space, "|"`. The bar is one of the
+;; four selector tokens, so it takes the separator on the same terms as the
+;; class name: `:::|` glued opens nothing and neither does `:::` + TAB.
+===============================================================================
+:::	|
+a
+:::
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph))
+
+===============================================================================
+A tab after the fence opens no local hard-break block
+;; `local_hard_break_block_open = colon_fence:open, space, backslash`. This
+;; is the shape tree-sitter-carve#121 recorded as opening with a tab, back
+;; when every implementation agreed it did; markup-carve/carve#886 settled
+;; it the other way. The `hard_line_break` below is ordinary INLINE
+;; behavior of a trailing backslash inside the resulting paragraph, not a
+;; surviving trace of the block.
+===============================================================================
+:::	\
+a
+b
+:::
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (hard_line_break)))
+
+===============================================================================
 An attribute block after the div fence is a paragraph, not a div
 ;; `::: {.sidebar}` is one paragraph in every engine - `{` is not a valid div
 ;; type, so the fence opens nothing. The scanner used to refuse the opener
