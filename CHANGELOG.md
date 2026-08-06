@@ -8,6 +8,22 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **A document that does not end with a newline is one paragraph again**
+  (spec: `resources/grammar.ebnf`, "A paragraph is terminated by a blank line,
+  an interrupting block (§10), or end of file"). Such a document parsed into one
+  paragraph per character - `abcdef` with no trailing newline produced six
+  `paragraph` nodes, ` x` over `tail` produced four - where every engine renders
+  a single paragraph. The external scanner's end-of-input test sat at the bottom
+  of the scan, after every probe had run, and read the lexer's live position; a
+  probe that scanned to the end of its line and then declined leaves the lexer
+  where it stopped, which in a newline-less document is end-of-input. The test
+  then closed the paragraph mid-line with a zero-width token and restarted the
+  run on the next character, so the split column tracked whichever probe had
+  read furthest. End-of-input is now recorded at the top of the call, beside the
+  newline snapshot already taken there. 33 of 125 probed newline-less shapes
+  changed, every one of them by merging nodes the old scanner had split; no
+  document gained a node and none newly errored (#124).
+
 - **A block quote marker line ending in a trailing space is content-less**
   (spec: `resources/grammar.ebnf`, `blockquote_line = '>', (newline | (space,
   inline_content, newline))`). A separator space with no inline content after it
