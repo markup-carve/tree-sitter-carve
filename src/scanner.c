@@ -1084,9 +1084,7 @@ static bool parse_verbatim_content(Scanner *s, TSLexer *lexer) {
 }
 
 // Does a run of `ticks` fence characters have the width the open code block's
-// own opener had? The single width test behind every closer decision, so the
-// three call sites below cannot drift apart the way an opener test and a peek
-// test once did (#104).
+// own opener had?
 static bool code_fence_run_matches_open_block(Scanner *s, uint8_t ticks) {
   Block *top = peek_block(s);
   return top && top->type == CODE_BLOCK && top->data == ticks;
@@ -1107,33 +1105,6 @@ static bool code_fence_closer_tail_is_blank(Scanner *s, TSLexer *lexer) {
   }
   return lexer->lookahead == '\n' || lexer->lookahead == '\r' ||
          lexer->eof(lexer);
-}
-
-static bool try_end_code_block(Scanner *s, TSLexer *lexer, uint8_t ticks) {
-  if (!code_fence_run_matches_open_block(s, ticks)) {
-    return false;
-  }
-  // Pin the token at the run BEFORE the tail peek advances the lexer.
-  lexer->mark_end(lexer);
-  if (!code_fence_closer_tail_is_blank(s, lexer)) {
-    return false;
-  }
-  remove_block(s);
-  lexer->result_symbol = CODE_BLOCK_END;
-  return true;
-}
-
-static bool try_close_code_block(Scanner *s, TSLexer *lexer, uint8_t ticks) {
-  if (!code_fence_run_matches_open_block(s, ticks)) {
-    return false;
-  }
-  // BLOCK_CLOSE is zero width: the scan-entry `mark_end` already pinned it at
-  // the run's start, and nothing here may move it.
-  if (!code_fence_closer_tail_is_blank(s, lexer)) {
-    return false;
-  }
-  lexer->result_symbol = BLOCK_CLOSE;
-  return true;
 }
 
 // Validate the info string that follows a backtick code fence (the rest of the
@@ -1477,20 +1448,33 @@ static bool parse_backtick(Scanner *s, TSLexer *lexer,
   }
 
   if (ticks >= 3) {
-    if (valid_symbols[CODE_BLOCK_END] && try_end_code_block(s, lexer, ticks)) {
-      return true;
-    }
-    if (valid_symbols[BLOCK_CLOSE] && try_close_code_block(s, lexer, ticks)) {
-      return true;
-    }
-    // Both closer paths peek past the run to see whether the rest of the line
-    // is blank, and that peek advances the lexer. When the run had the open
-    // fence's own width but the tail disqualified it, this line is fence BODY:
-    // stop here rather than fall through to the opener path below, whose
-    // `mark_end` would pin the begin token past the whitespace the peek ate.
+    // Does this line CLOSE the open fence? One question, asked once, for both
+    // tokens a closer line yields: the zero-width BLOCK_CLOSE the grammar takes
+    // first, then CODE_BLOCK_END. Asking it separately in each emitter left the
+    // second copy unreachable - BLOCK_CLOSE always runs first, so no input
+    // could reach a CODE_BLOCK_END whose tail was not already blank, and the
+    // duplicate check was a clause no mutation could break. This is the same
+    // collapse #104 made for the colon fence's opener and peek.
     if ((valid_symbols[CODE_BLOCK_END] || valid_symbols[BLOCK_CLOSE]) &&
         code_fence_run_matches_open_block(s, ticks)) {
-      return false;
+      // CODE_BLOCK_END spans the run, so pin it BEFORE the tail peek advances
+      // the lexer; BLOCK_CLOSE is zero width and keeps the scan-entry mark.
+      if (valid_symbols[CODE_BLOCK_END]) {
+        lexer->mark_end(lexer);
+      }
+      if (!code_fence_closer_tail_is_blank(s, lexer)) {
+        // Fence BODY (``` js inside an open fence). The peek moved the lexer,
+        // so this line must not fall through to the opener path below, whose
+        // `mark_end` would pin the begin token past the whitespace it ate.
+        return false;
+      }
+      if (valid_symbols[CODE_BLOCK_END]) {
+        remove_block(s);
+        lexer->result_symbol = CODE_BLOCK_END;
+      } else {
+        lexer->result_symbol = BLOCK_CLOSE;
+      }
+      return true;
     }
     // Pin the token end at the ticks before `try_begin_code_block` peeks past
     // them to validate the fence info string: that validation may advance the
@@ -3129,10 +3113,10 @@ static bool parse_colon(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       // then read as the start of a line, so `::: {.c}` built a block
       // attribute where every engine renders a paragraph.
       //
-      // Emitting a zero-width token is the handoff `try_close_code_block`
-      // uses for its ticks: `return true` with the end still at the scan
-      // start, so the run is offered again and the line falls through to a
-      // paragraph. `BLOCK_CLOSE` cannot be borrowed here because there is no
+      // Emitting a zero-width token is the handoff `parse_backtick` uses when
+      // it answers BLOCK_CLOSE for its ticks: `return true` with the end still
+      // at the scan start, so the run is offered again and the line falls
+      // through to a paragraph. `BLOCK_CLOSE` cannot be borrowed here because there is no
       // block to close, hence a token of its own that produces no node.
       if (valid_symbols[NOT_A_CONTAINER_OPENER]) {
         // The line starts a paragraph that is now expecting a closer, so a
