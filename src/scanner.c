@@ -1632,6 +1632,32 @@ static bool scan_block_quote_marker(Scanner *s, TSLexer *lexer,
   }
   if (lexer->lookahead == ' ') {
     advance(s, lexer);
+    // `blockquote_line = '>', (newline | (space, inline_content, newline))`
+    // (spec grammar.ebnf): the separator space with NO inline_content after it
+    // is not the second arm, it is the bare `'>' newline` line wearing a
+    // separator. carve-js renders `> ` and `>` identically, so the marker line
+    // ends HERE, and it reports that through the same `ending_newline` flag the
+    // bare arm below already sets - the fact has a carrier, it needed no second
+    // one.
+    //
+    // Left unreported, the marker token stopped at column 2 with the newline
+    // still unread, the scanner's next call ran mid-line, and the quote closed
+    // before the following line's marker was ever seen: `> ` / `> ` built two
+    // quotes where the engine builds one (#130).
+    //
+    // Only the newline directly after the separator is taken. A run of further
+    // spaces or a tab cannot be classified without consuming it, and consuming
+    // it would move the marker's end over the indentation that a nested list or
+    // quote inside the line still needs (`>   - b`).
+    //
+    // No carriage-return skip is needed for the CRLF spelling: `advance` eats a
+    // `\r` wherever it lands on one, so the advance over the separator has
+    // already taken it and the lookahead here is the `\n` itself. One was
+    // written and then removed - no mutation of it could change any parse.
+    if (lexer->lookahead == '\n') {
+      advance(s, lexer);
+      *ending_newline = true;
+    }
     return true;
   } else if (lexer->lookahead == '\n') {
     advance(s, lexer);

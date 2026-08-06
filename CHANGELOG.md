@@ -8,6 +8,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **A block quote marker line ending in a trailing space is content-less**
+  (spec: `resources/grammar.ebnf`, `blockquote_line = '>', (newline | (space,
+  inline_content, newline))`). A separator space with no inline content after it
+  is the bare `'>' newline` line wearing a separator, and carve-js renders `> `
+  and `>` identically. The scanner read only the space and left the newline
+  unread, so the marker token stopped mid-line and the quote closed before the
+  next line was seen: `> ` over `> ` built two `block_quote` nodes where the
+  engine builds one. Every trailing-space shape now matches its bare spelling
+  exactly, including the tail rule - `> ` over `> ` over `x` is a quote and a
+  sibling paragraph, `> ` over `> ` over `- b` a quote and a sibling list - and
+  the same holds for CRLF line endings. A marker followed by MORE whitespace
+  (`>  `, `> ` and a tab) is a separate input class and is unchanged (#130).
+
 - **A blank line separates two block quotes** (spec:
   `resources/grammar.ebnf`, whose lazy-continuation note states that a lazy line
   continues the quote only while it is "not blank (a blank line ends the
