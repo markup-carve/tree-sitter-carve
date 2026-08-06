@@ -93,6 +93,15 @@ mod tests {
             assert_eq!(block.kind(), "code_block");
             let last = block.child(block.child_count() as u32 - 1).unwrap();
             assert_eq!(last.kind(), "code_block_marker_end", "for {source:?}");
+            // The marker ends at the run. The tail peek walks past the
+            // whitespace, so the scanner has to pin the token before it looks;
+            // pinning after would stretch the marker over the trailing run, and
+            // an S-expression corpus fixture records no byte ranges to notice.
+            assert_eq!(
+                last.end_byte() - last.start_byte(),
+                3,
+                "marker spans more than its run for {source:?}"
+            );
         }
     }
 
