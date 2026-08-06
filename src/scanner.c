@@ -1828,6 +1828,75 @@ static bool parse_block_quote(Scanner *s, TSLexer *lexer,
   // A valid marker is a '> ' or '>\n'.
   bool has_marker = scan_block_quote_marker(s, lexer, &ending_newline);
 
+  // The marker run is not over: another `>` follows this marker on the same
+  // line, so `marker_count` below is this line's depth SO FAR, not its depth.
+  // The dedent test has to see the whole line, and this scan sees one marker
+  // per call - `scan_block_quote_marker` takes exactly one and the count is
+  // carried between calls in `block_quote_level`. The lexer cannot rewind, so
+  // the fact is read where the probe stopped: one character of lookahead, no
+  // advance, which leaves the token end pinned where every branch below still
+  // expects it.
+  //
+  // Left unread, the FIRST marker of `> >` decided the line at depth 1 against
+  // an open depth of 2 and closed the inner quote before its own marker was
+  // seen, so every nested quote line that is not absorbed by an open paragraph
+  // opened a fresh inner quote: `> >` / `> >` built two empty inner quotes with
+  // a stray marker between them, and `> > # h` / `> > # i` two quotes holding
+  // one heading each, where carve-js builds one inner quote in both (#136).
+  // `> > a` / `> > b` was already right, and for a different reason - a lazily
+  // continued paragraph is absorbed by the paragraph path, which scans the
+  // whole marker run before it decides.
+  //
+  // Read HERE, before the whitespace probe below, because that probe advances.
+  // A marker run is spelled with exactly one separator space per marker, so the
+  // `>` this looks for is the one directly after the separator; `>   >` is not a
+  // run, and nothing the probe walks over can be this character.
+  bool run_continues = has_marker && !ending_newline && lexer->lookahead == '>';
+
+  // A marker followed by only whitespace is content-less whatever that
+  // whitespace is: carve-js renders `>`, `> `, `>  ` and `> <TAB>` as the same
+  // empty `<blockquote>`. #130 could only report the newline DIRECTLY after the
+  // separator, because a longer run cannot be classified without reading past
+  // it and the lexer has no rewind - so `>  ` kept its run as a paragraph (#135).
+  //
+  // `mark_end` IS the rewind. It pins the token where the lexer stands now, and
+  // tree-sitter resumes the next token from that pin however far this call
+  // reads afterwards, which is the same technique `code_fence_closer_tail_is_blank`
+  // already uses for a fence closer's trailing run. The pin has to be taken HERE
+  // rather than inside `scan_block_quote_marker`: that function is called in a
+  // loop by `scan_block_quote_markers`, and a pin taken mid-loop is a pin every
+  // caller that marks its own end afterwards silently overrides.
+  //
+  // Only the two outcomes are committed. Whitespace then a newline: take the
+  // newline and re-pin past it, so the token is exactly what `> ` already
+  // produces. Whitespace then anything else: leave the pin at the separator and
+  // set `marker_end_pinned`, which suppresses the two `mark_end` calls further
+  // down - without that the token would stretch over the run and swallow the
+  // indentation `>   - b` still needs.
+  //
+  // A tab is read here as trailing whitespace on a line whose separator was
+  // already satisfied by a literal space, which is neither indentation nor a
+  // separator. `>` followed directly by a tab never reaches this probe:
+  // `scan_block_quote_marker` refuses it, so `>\t` stays a paragraph, matching
+  // carve-js and the rule that a marker separator is a literal space.
+  bool marker_end_pinned = false;
+  if (has_marker && !ending_newline &&
+      (lexer->lookahead == ' ' || lexer->lookahead == '\t')) {
+    lexer->mark_end(lexer);
+    while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+      advance(s, lexer);
+    }
+    if (lexer->lookahead == '\n') {
+      advance(s, lexer);
+      lexer->mark_end(lexer);
+      ending_newline = true;
+    } else {
+      // Includes end of input: `> ` at end of input reports no ending newline
+      // either, and `>  ` there is the same line without one.
+      marker_end_pinned = true;
+    }
+  }
+
   // No open inline at block boundary.
   bool any_open_inline = s->open_inline->size > 0;
 
@@ -1876,26 +1945,6 @@ static bool parse_block_quote(Scanner *s, TSLexer *lexer,
     }
   }
 
-  // The marker run is not over: another `>` follows this marker on the same
-  // line, so `marker_count` is this line's depth SO FAR, not its depth. The
-  // dedent test below has to see the whole line, and this scan sees one marker
-  // per call - `scan_block_quote_marker` takes exactly one and the count is
-  // carried between calls in `block_quote_level`. The lexer cannot rewind, so
-  // the fact is read where the probe stopped: one character of lookahead, no
-  // advance, which leaves the token end pinned where every branch below still
-  // expects it.
-  //
-  // Left unread, the FIRST marker of `> >` decided the line at depth 1 against
-  // an open depth of 2 and closed the inner quote before its own marker was
-  // seen, so every nested quote line that is not absorbed by an open paragraph
-  // opened a fresh inner quote: `> >` / `> >` built two empty inner quotes with
-  // a stray marker between them, and `> > # h` / `> > # i` two quotes holding
-  // one heading each, where carve-js builds one inner quote in both (#136).
-  // `> > a` / `> > b` was already right, and for a different reason - a lazily
-  // continued paragraph is absorbed by the paragraph path, which scans the
-  // whole marker run before it decides.
-  bool run_continues = has_marker && !ending_newline && lexer->lookahead == '>';
-
   // The deferral above is taken on that one `>` alone, and `> >x` looks exactly
   // like `> >` one character in. Telling them apart needs the character AFTER
   // the `>`, and only an advance reaches it - an advance that would stretch the
@@ -1938,7 +1987,11 @@ static bool parse_block_quote(Scanner *s, TSLexer *lexer,
   if (valid_symbols[BLOCK_QUOTE_CONTINUATION] && has_marker &&
       matching_block_pos != 0) {
     s->state &= ~STATE_AFTER_BLANK_LINE;
-    lexer->mark_end(lexer);
+    // Not when the whitespace probe pinned the end at the separator: re-marking
+    // here would stretch the token over the run it deliberately read past.
+    if (!marker_end_pinned) {
+      lexer->mark_end(lexer);
+    }
     output_block_quote_continuation(s, lexer, marker_count, ending_newline);
     return true;
   }
@@ -1947,7 +2000,10 @@ static bool parse_block_quote(Scanner *s, TSLexer *lexer,
   if (valid_symbols[BLOCK_QUOTE_BEGIN] && has_marker) {
     s->state &= ~STATE_AFTER_BLANK_LINE;
     push_block(s, BLOCK_QUOTE, marker_count);
-    lexer->mark_end(lexer);
+    // Same as the continuation branch: the probe's pin is authoritative.
+    if (!marker_end_pinned) {
+      lexer->mark_end(lexer);
+    }
     // It's important to always clear the stored level on newlines.
     if (ending_newline) {
       s->block_quote_level = 0;
