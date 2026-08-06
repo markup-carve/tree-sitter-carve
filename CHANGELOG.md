@@ -27,9 +27,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `   ``` ` at the same column is paragraph text. Of 1188 generated shapes
   across twelve container contexts, 80 moved onto carve-js's block count and
   none off it, with no document newly erroring; seven recorded
-  under-acceptances are resolved. A block quote is
-  deliberately untouched: this grammar builds no heading inside one even with a
-  blank line before it, which is tracked separately as
+  under-acceptances are resolved. A LAZY line under a block quote gains from
+  the same rule - `> intro` over `# H` is now a quote followed by an `<h1>`, as
+  in carve-js, where it used to be one quoted paragraph - while a MARKED line
+  inside a quote is unchanged: this grammar builds no heading there even with a
+  blank line before it, tracked separately as
   `headings-inside-containers-are-not-wrapped`. A seven-hash line stays
   paragraph text, matching carve-js rather than this grammar's own uncapped
   opener (#112).

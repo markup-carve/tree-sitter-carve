@@ -4251,3 +4251,62 @@ see[^a]
       (footnote_marker_begin)
       (reference_label)
       (footnote_marker_end))))
+
+===============================================================================
+A heading on a lazy line ends the block quote above it (tree-sitter-carve#112)
+===============================================================================
+
+> intro
+# H
+
+-------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (paragraph)))
+  (section
+    heading: (heading
+      marker: (marker)
+      content: (content))))
+
+===============================================================================
+A heading at a list item's column ends a quote inside that item (tree-sitter-carve#112)
+===============================================================================
+
+- item
+  > q
+  # H
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)
+        (block_quote
+          (block_quote_marker)
+          content: (content
+            (paragraph)))
+        (heading
+          marker: (marker)
+          content: (content))))))
+
+===============================================================================
+A MARKED heading line inside a quote is still not a heading (tree-sitter-carve#112)
+===============================================================================
+
+> intro
+> # H
+
+-------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (paragraph
+        (block_quote_marker)))))

@@ -4105,14 +4105,20 @@ static bool scan_continuation_marker_at_paragraph_end(Scanner *s,
 /// ways over 1188 generated shapes; the threshold form agrees with carve-js on
 /// 20 more of them than the exact one and on none fewer.
 ///
-/// A BLOCK QUOTE declines outright, and a TABLE CAPTION with it. Neither is a
-/// missing column test: this grammar builds no heading inside a quote even with
-/// a blank line before it (`> a` / `>` / `> # H` is two quoted paragraphs,
-/// recorded as `headings-inside-containers-are-not-wrapped`), and a caption
-/// holds inline content in every engine (`^ cap` / `  # H` is one paragraph in
-/// carve-js). A peek that ends a paragraph where no opener can follow is how a
-/// stricter-than-the-opener test produced an ERROR tree in #108, run the other
-/// way round.
+/// A BLOCK QUOTE AND A TABLE CAPTION GET NO CASE OF THEIR OWN, and the walk
+/// passes straight over them. One was written - both refusing outright, on the
+/// argument that this grammar builds no heading inside a quote even with a
+/// blank line before it (recorded as
+/// `headings-inside-containers-are-not-wrapped`) - and it turned out to cost
+/// conformance rather than buy safety. The MARKED shapes it was meant to guard
+/// are refused by the column test alone: the quote probes above have consumed
+/// the `> ` prefix by then, so `> a` / `> # H` asks about column 2 against a
+/// root margin of zero and is declined either way, and `^ cap` / `  # H` asks
+/// about column 2 the same way. What the clause DID reach was the LAZY line -
+/// `> intro` / `# H`, which carve-js renders as a quote followed by an `<h1>`
+/// and the clause kept as one quoted paragraph. Removing it moved 3 of 63
+/// lazy-shape documents onto carve-js and none off it, with no document newly
+/// erroring.
 static bool at_block_opener_margin(Scanner *s, uint32_t column) {
   // A `+` continuation attaches its block FLUSH LEFT (PART 9 §17), so the
   // margin is the document's zero rather than the item's content column.
@@ -4121,9 +4127,6 @@ static bool at_block_opener_margin(Scanner *s, uint32_t column) {
   }
   for (int i = s->open_blocks->size - 1; i >= 0; --i) {
     Block *b = *array_get(s->open_blocks, i);
-    if (b->type == BLOCK_QUOTE || b->type == TABLE_CAPTION) {
-      return false;
-    }
     if (is_list(b->type)) {
       return b->content_col != 0 && column == b->content_col;
     }
