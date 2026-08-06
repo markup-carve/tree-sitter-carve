@@ -241,4 +241,59 @@ mod tests {
             assert_eq!(root.child(1).unwrap().kind(), sibling, "for {:?}", source);
         }
     }
+
+    /// A document that does not end with a newline is still ONE paragraph
+    /// (tree-sitter-carve#124).
+    ///
+    /// This lives here rather than in `test/corpus/carve.txt` because the whole
+    /// meaning of the case is a byte that is NOT there. A corpus fixture can
+    /// carry it - omitting the blank line before the `---` divider hands the
+    /// parser a document with no trailing newline, and that case does fail
+    /// against the unfixed grammar with the shredded tree. It is still the
+    /// wrong home: putting one blank line back before the divider, which is the
+    /// shape every other case in the file already has, makes the very same case
+    /// pass against the unfixed grammar. Measured both ways. The property the
+    /// check turns on is invisible to anyone reading the fixture, so in a string
+    /// literal it survives edits that a fixture file would not.
+    ///
+    /// It discriminates. Read `lexer->eof(lexer)` live in the final
+    /// EOF_OR_NEWLINE branch of `tree_sitter_carve_external_scanner_scan`
+    /// instead of the `at_eof` recorded at the top of the call, and every one of
+    /// these documents shreds into one paragraph per character while `npm test`,
+    /// the conformance sweep, the no-error sweep, the under-acceptance sweep and
+    /// the block battery all stay green - every input any of them feeds ends
+    /// with a newline.
+    #[test]
+    fn a_document_with_no_trailing_newline_is_one_paragraph() {
+        let mut parser = tree_sitter::Parser::new();
+        parser
+            .set_language(&super::language())
+            .expect("Error loading Carve language");
+        // The first is the shape the ticket reports. The rest are the same
+        // defect without the indent: it was never about the leading space, only
+        // about how far some probe had read when the document ran out.
+        for source in [" x\ntail", "abcdef", "hello world", " x", "x\nabcdef"] {
+            let tree = parser.parse(source, None).unwrap();
+            let root = tree.root_node();
+            assert!(!root.has_error(), "unexpected ERROR for {:?}", source);
+            assert_eq!(
+                root.child_count(),
+                1,
+                "want ONE paragraph for {:?}, got {}",
+                source,
+                root
+            );
+            let paragraph = root.child(0).unwrap();
+            assert_eq!(paragraph.kind(), "paragraph", "for {:?}", source);
+            // Ranges, not just the count: a split that happened to leave one
+            // child would otherwise pass while dropping most of the document.
+            assert_eq!(paragraph.start_byte(), 0, "for {:?}", source);
+            assert_eq!(
+                paragraph.end_byte(),
+                source.len(),
+                "paragraph does not reach the end of {:?}",
+                source
+            );
+        }
+    }
 }

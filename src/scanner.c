@@ -4827,6 +4827,19 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
     s->block_quote_level = 0;
   }
   bool is_newline = lexer->lookahead == '\n';
+  // End-of-input, recorded HERE and not where it is read. The read is at the
+  // very bottom of this function, after every probe has had its turn, and a
+  // probe that advanced and then declined leaves the lexer wherever it stopped
+  // - it cannot rewind. In a document that does not end in a newline, any probe
+  // that scans to the end of its line lands on end-of-input, so a live
+  // `lexer->eof` down there answers for the probe's position rather than for
+  // this call's own. It then emits a zero-width EOF_OR_NEWLINE in the middle of
+  // a line, which closes the paragraph there and restarts the run on the next
+  // character: `abcdef` with no trailing newline parsed as six paragraphs
+  // (tree-sitter-carve#124). Taken after the carriage-return skip and the
+  // line-start whitespace consumption above, so a line holding only whitespace
+  // before end-of-input still counts as end-of-input, exactly as before.
+  bool at_eof = lexer->eof(lexer);
 
   if (is_newline) {
     s->block_quote_level = 0;
@@ -5085,7 +5098,9 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
     return true;
   }
 
-  if (valid_symbols[EOF_OR_NEWLINE] && lexer->eof(lexer)) {
+  // `at_eof`, not `lexer->eof(lexer)`: see where it is recorded, at the top of
+  // this function. Everything between there and here may have advanced.
+  if (valid_symbols[EOF_OR_NEWLINE] && at_eof) {
     lexer->result_symbol = EOF_OR_NEWLINE;
     return true;
   }
