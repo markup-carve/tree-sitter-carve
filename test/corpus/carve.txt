@@ -4194,3 +4194,60 @@ code
       begin_marker: (verbatim_marker_begin)
       content: (content)
       end_marker: (verbatim_marker_end))))
+
+===============================================================================
+A fence past a footnote's content column still opens a code block (tree-sitter-carve#112)
+===============================================================================
+
+[^a]: note
+   ```
+   code
+   ```
+
+see[^a]
+
+-------------------------------------------------------------------------------
+
+(document
+  (footnote
+    (footnote_marker_begin)
+    label: (reference_label)
+    (footnote_marker_end)
+    content: (footnote_content
+      (paragraph)
+      (code_block
+        (code_block_marker_begin)
+        code: (code)
+        (code_block_marker_end))))
+  (paragraph
+    (footnote_reference
+      (footnote_marker_begin)
+      (reference_label)
+      (footnote_marker_end))))
+
+===============================================================================
+A heading past a footnote's content column still opens a heading (tree-sitter-carve#112)
+===============================================================================
+
+[^a]: note
+   # H
+
+see[^a]
+
+-------------------------------------------------------------------------------
+
+(document
+  (footnote
+    (footnote_marker_begin)
+    label: (reference_label)
+    (footnote_marker_end)
+    content: (footnote_content
+      (paragraph)
+      (heading
+        marker: (marker)
+        content: (content))))
+  (paragraph
+    (footnote_reference
+      (footnote_marker_begin)
+      (reference_label)
+      (footnote_marker_end))))

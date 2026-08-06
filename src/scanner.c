@@ -4089,17 +4089,21 @@ static bool scan_continuation_marker_at_paragraph_end(Scanner *s,
 /// this is not simply `!has_extra_indent`. The lexer's column is correct at
 /// that moment because the container prefix has already been consumed.
 ///
-/// EXACT, not "at or past". Inside `- item` the language opens a block at
-/// column 2 and keeps `   # H` (column 3) as paragraph text, so a `>=` test
-/// would claim a heading carve-js does not build. The list's own `content_col`
-/// is what answers that - `data` is the marker's column plus one and cannot
-/// tell `- ` from `1. ` - and a container that never recorded one reads 0 and
-/// gets no opinion, exactly as in `has_surplus_indent`.
+/// A LIST ITEM'S MARGIN IS AN EXACT COLUMN. Inside `- item` the language opens
+/// a block at column 2 and keeps `   # H` (column 3) as paragraph text, so a
+/// `>=` test would claim a heading carve-js does not build. The list's own
+/// `content_col` is what answers that - `data` is the marker's column plus one
+/// and cannot tell `- ` from `1. ` - and a container that never recorded one
+/// reads 0 and gets no opinion, exactly as in `has_surplus_indent`.
 ///
-/// A FOOTNOTE keeps no `content_col`; its margin is the `s->indent + 2` it
-/// pushed as `data`, which IS its content column and does not follow the
-/// label's width. That distinction is the one the recorded gap in
-/// tree-sitter-carve#112 sat behind.
+/// A FOOTNOTE'S IS A THRESHOLD, and the asymmetry is the engines', not this
+/// grammar's. A footnote keeps no `content_col`; it pushes `s->indent + 2` as
+/// `data`, and everything at or past that column is its content - which is
+/// exactly what `has_extra_indent` already tells the OPENERS, and what carve-js
+/// does: `[^a]: note` over `   ``` ` at column 3 is a `<pre>` inside the note,
+/// where `- item` over `   ``` ` at column 3 is paragraph text. Measured both
+/// ways over 1188 generated shapes; the threshold form agrees with carve-js on
+/// 20 more of them than the exact one and on none fewer.
 ///
 /// A BLOCK QUOTE declines outright, and a TABLE CAPTION with it. Neither is a
 /// missing column test: this grammar builds no heading inside a quote even with
@@ -4124,7 +4128,7 @@ static bool at_block_opener_margin(Scanner *s, uint32_t column) {
       return b->content_col != 0 && column == b->content_col;
     }
     if (b->type == FOOTNOTE) {
-      return column == b->data;
+      return column >= b->data;
     }
   }
   // Nothing indenting: the document root, or a `:::` div, whose content is
