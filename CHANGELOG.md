@@ -8,6 +8,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **The colon-fence opener accepts the hard-break form** (spec:
+  `resources/grammar.ebnf`, `local_hard_break_block_open = colon_fence:open,
+  space, backslash`). `::: \` is the local hard-break block and renders as
+  `<div class="hardbreaks">`, but the opener accepted only a bare fence, a
+  `[label]`, or a line-block bar / class name after a separator, so the
+  backslash reached no route to a `div` and the whole block folded into a
+  paragraph. The separator is required (`:::\` glued is still paragraph text)
+  and the backslash must be the last thing on the line apart from trailing
+  spaces (`::: \ x` and `::: \\` are still paragraph text), matching carve-js.
+  Because the opener and the paragraph-closing peek share one tail test, a
+  hard-break fence now also interrupts an open paragraph.
+
 - **A lazy colon fence ends the list item a malformed one was absorbed into**
   (spec: PART 9 §12 absorption, §24 C3 content column). The absorption a
   malformed `:::` leaves behind belongs to the paragraph, so it reaches only as
