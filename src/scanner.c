@@ -986,13 +986,34 @@ static bool try_close_different_typed_list(Scanner *s, TSLexer *lexer,
 /// whitespace: `bare` is true when the line ends there, `spaced` when any
 /// separator was consumed, `c` is the first character of the tail.
 ///
-/// A bare fence, a `[label]` (glued or not), and a line-block bar or class name
-/// AFTER a separator are openers. A `{` attribute block, a digit-leading class
-/// and a glued class name are not - those lines are paragraph text per PART 9
-/// §12.
-static bool colon_fence_tail_opens_block(bool bare, bool spaced, int32_t c) {
+/// A bare fence, a `[label]` (glued or not), and a line-block bar, hard-break
+/// backslash or class name AFTER a separator are openers. A `{` attribute
+/// block, a digit-leading class and a glued class name are not - those lines
+/// are paragraph text per PART 9 §12.
+///
+/// The backslash form is the one tail that cannot be answered from its first
+/// character, so this takes the lexer and reads past it. Both callers scan
+/// ahead only; neither has committed a token end at the point it asks.
+static bool colon_fence_tail_opens_block(Scanner *s, TSLexer *lexer, bool bare,
+                                         bool spaced, int32_t c) {
   if (bare || c == '[') {
     return true;
+  }
+  // The local hard-break block, `::: \` (grammar.ebnf
+  // `local_hard_break_block_open = colon_fence:open, space, backslash`). It
+  // takes the separator like every other type token, and the backslash must be
+  // the LAST thing on the line: `::: \ x` is an escaped space and `::: \\` an
+  // escaped backslash, and carve-js renders both as ordinary paragraph text
+  // where `::: \` and `::: \` plus trailing spaces open a `hardbreaks` div.
+  if (c == '\\') {
+    if (!spaced) {
+      return false;
+    }
+    advance(s, lexer);
+    while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+      advance(s, lexer);
+    }
+    return lexer->lookahead == '\n' || lexer->eof(lexer);
   }
   bool named = c == '|' || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
                c == '_';
@@ -2071,7 +2092,7 @@ static bool scan_paragraph_closing_marker(Scanner *s, TSLexer *lexer) {
       }
       int32_t c = lexer->lookahead;
       bool bare = c == '\n' || lexer->eof(lexer);
-      if (!colon_fence_tail_opens_block(bare, spaced, c)) {
+      if (!colon_fence_tail_opens_block(s, lexer, bare, spaced, c)) {
         // Paragraph text - and from here the paragraph is "expecting a
         // closer": a later BARE fence is text too (PART 9 §12).
         s->state |= STATE_FENCE_ABSORBS;
@@ -3039,19 +3060,26 @@ static bool parse_colon(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       return false;
     }
     // Validate what follows the `:::` fence. A bare fence (newline/EOF), a
-    // line-block bar (`|`), a class name (letter or `_`), or a bare grouping
-    // label (`[...]`, a typeless tab member; PART 9 §12) is fine. A `{`
-    // attribute block (`::: {.x}`), a digit-leading class (`::: 123`), or any
-    // other lead char makes the line a literal paragraph per the spec, so
-    // refuse the div opener there.
+    // line-block bar (`|`), a hard-break backslash (`\`), a class name (letter
+    // or `_`), or a bare grouping label (`[...]`, a typeless tab member; PART 9
+    // §12) is fine. A `{` attribute block (`::: {.x}`), a digit-leading class
+    // (`::: 123`), or any other lead char makes the line a literal paragraph
+    // per the spec, so refuse the div opener there.
     //
-    // A CLASS or a line-block bar needs the separator space: `:::note` and
-    // `:::|` are paragraphs in every engine, the same rule every other marker
-    // follows. A bare fence and a glued `[label]` do not - `:::` alone opens a
-    // div and `:::[First]` opens a labelled one, both checked against the
-    // engine. The test lives in `colon_fence_tail_opens_block` so the
-    // paragraph-closing peek applies the SAME one.
-    bool ok = colon_fence_tail_opens_block(bare, spaced, c);
+    // A CLASS, a line-block bar or a hard-break backslash needs the separator
+    // space: `:::note`, `:::|` and `:::\` are paragraphs in every engine, the
+    // same rule every other marker follows. A bare fence and a glued `[label]`
+    // do not - `:::` alone opens a div and `:::[First]` opens a labelled one,
+    // both checked against the engine. The test lives in
+    // `colon_fence_tail_opens_block` so the paragraph-closing peek applies the
+    // SAME one.
+    //
+    // For the backslash form the token END lands past the backslash rather
+    // than at the separator, because the tail test has to read the rest of the
+    // line to answer at all and the lexer cannot rewind. `div_marker_begin`
+    // therefore covers the whole `::: \` opener; the other spaced forms keep
+    // their tail token (`line_block_marker`, `class_name`) outside it.
+    bool ok = colon_fence_tail_opens_block(s, lexer, bare, spaced, c);
     // ...and a bare fence is not an opener at all while the open paragraph is
     // absorbing: after a malformed `::: {.x}` the trailing `:::` is text, at
     // any width (PART 9 §12). The peek above normally keeps the parser inside

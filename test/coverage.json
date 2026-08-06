@@ -293,10 +293,6 @@
     "line-blocks-5": {
       "gaps": "line_block: want 1 have 0"
     },
-    "line-blocks-7": {
-      "gaps": "div: want 1 have 0",
-      "reason": "`::: \\` is the hard-break block form and a real opener, but the opener branch in `parse_colon` only accepts a bare fence, a `[label]`, or a line-block bar / class name after a space - a backslash reaches no route to DIV_BEGIN. This gap was masked until #103: the grammar built no div for the opener and a bogus one for the trailing `:::`, so the COUNT matched at 1 and nothing reported it. Closing the over-acceptance removed the bogus div and left the real gap visible. Closing it for real is a different change - widening the opener - so it is recorded here rather than folded into the peek fix."
-    },
     "line-blocks-9": {
       "gaps": "line_block: want 1 have 0"
     },

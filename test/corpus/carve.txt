@@ -729,6 +729,94 @@ Violets are blue.
     (div_marker_end)))
 
 ===============================================================================
+Local hard-break block
+;; `::: \` is the second recognized `:::` type token (grammar.ebnf
+;; `local_hard_break_block_open = colon_fence:open, space, backslash`) and it
+;; renders as `<div class="hardbreaks">`. The opener used to accept only a bare
+;; fence, a `[label]` or a line-block bar / class name, so the backslash reached
+;; no route to `DIV_BEGIN` and the whole thing folded into a paragraph - the
+;; recorded under-acceptance `line-blocks-7` (#105).
+;;
+;; `div_marker_begin` covers the backslash here, unlike the line-block bar
+;; above: the tail test has to read to the end of the line to answer at all,
+;; and the lexer cannot rewind to put the token end back at the separator.
+===============================================================================
+::: \
+one
+two
+:::
+
+-------------------------------------------------------------------------------
+
+(document
+  (div
+    (div_marker_begin)
+    content: (content
+      (paragraph))
+    (div_marker_end)))
+
+===============================================================================
+A hard-break backslash glued to the fence is paragraph text
+;; The separator rule every other type token follows: `:::` with the backslash
+;; glued to it opens nothing, the same way `:::note` and `:::|` open nothing.
+;; carve-js renders one paragraph whose first line is `:::` with a hard break
+;; after it.
+===============================================================================
+:::\
+one
+two
+:::
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (hard_line_break)))
+
+===============================================================================
+A hard-break fence with anything after the backslash is paragraph text
+;; The backslash has to be the LAST thing on the line. `::: \ x` is an escaped
+;; space inside an ordinary paragraph in carve-js, not an opener, so the tail
+;; test reads past the backslash rather than deciding on it alone. Trailing
+;; WHITESPACE is not "anything": carve-js opens the div for a backslash followed
+;; by spaces too, which is measured against the engine rather than pinned here -
+;; a fixture whose meaning lives in a trailing space stops discriminating the
+;; moment anything normalizes the file, and then it passes for the wrong reason.
+===============================================================================
+::: \ x
+one
+:::
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (backslash_escape)))
+
+===============================================================================
+A hard-break fence interrupts an open paragraph
+;; The paragraph-closing peek asks the opener's own question, so widening the
+;; opener widens the peek by construction. Without that, the peek would keep
+;; `text` and `::: \` in one paragraph and the opener would never be offered
+;; the line - the "one rule spelled twice" shape that produced four recorded
+;; over-acceptances (#103).
+===============================================================================
+text
+::: \
+one
+:::
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph)
+  (div
+    (div_marker_begin)
+    content: (content
+      (paragraph))
+    (div_marker_end)))
+
+===============================================================================
 Admonition with a quoted custom title
 ===============================================================================
 ::: tip "Pro Tip"
