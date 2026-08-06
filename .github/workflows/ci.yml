@@ -71,5 +71,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      # The JS half of this file has gated formatting since it was written
+      # (`npm run check-formatted`); the Rust half never has, and the bindings
+      # are hand-edited, so the drift only went one way. It had drifted, at
+      # bindings/rust/lib.rs:356, and nothing could say so: a gate that runs on
+      # a contributor's machine but not here reads as "main is broken for a
+      # reason nobody wrote down", which is worse than no gate.
+      - name: Check Rust binding formatting
+        run: cargo fmt --check
+
       - name: Run Rust binding tests
         run: cargo test
