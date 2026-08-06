@@ -88,11 +88,11 @@ mod tests {
         for source in ["```\nx\n```   \n", "```\nx\n```\t\n"] {
             let tree = parser.parse(source, None).unwrap();
             let root = tree.root_node();
-            assert!(!root.has_error(), "unexpected ERROR for {source:?}");
+            assert!(!root.has_error(), "unexpected ERROR for {:?}", source);
             let block = root.child(0).expect("document has no child");
             assert_eq!(block.kind(), "code_block");
             let last = block.child(block.child_count() as u32 - 1).unwrap();
-            assert_eq!(last.kind(), "code_block_marker_end", "for {source:?}");
+            assert_eq!(last.kind(), "code_block_marker_end", "for {:?}", source);
             // The marker ends at the run. The tail peek walks past the
             // whitespace, so the scanner has to pin the token before it looks;
             // pinning after would stretch the marker over the trailing run, and
@@ -100,7 +100,8 @@ mod tests {
             assert_eq!(
                 last.end_byte() - last.start_byte(),
                 3,
-                "marker spans more than its run for {source:?}"
+                "marker spans more than its run for {:?}",
+                source
             );
         }
     }
