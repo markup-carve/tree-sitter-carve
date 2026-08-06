@@ -1601,19 +1601,22 @@ A fully marked fence opens a div inside the quote when nothing is absorbing
 A glued admonition type in a list item is text, not a nested div
 ;; The item holds ONE paragraph: `:::note` is not an opener, and the `:::`
 ;; below it is at the item's content column, so it is absorbed the same way it
-;; is at the top level.
+;; is at the top level. `tail` then folds into that paragraph, which is PART 1
+;; S4 read straight: a container in the open stack holds an OPEN paragraph
+;; (absorbed text is prose, and prose leaves the paragraph open), and `tail` is
+;; not an interrupting line, because §12 makes a colon fence that fails the
+;; opener test paragraph text which absorbs the next fence-shaped line
+;; "INSTEAD of being interrupted by it". Both conditions hold, so S4 says fold.
 ;;
-;; KNOWN DIVERGENCE, in the last line only: all three engines end the item at
-;; the absorbed fence and render `tail` as a sibling paragraph, because a
-;; colon-fence-shaped line closes the item's lazy-continuation window. This
-;; grammar has no such rule, so the lazy line folds in. #106 fixed the case
-;; where the fence itself is lazy (above); this one, where the fence is at the
-;; item's own column and the line AFTER it is lazy, is a different mechanism
-;; and is left alone deliberately - the engines stop agreeing one line away
-;; from it. Drop the `  :::` line and carve-php ends the item while carve-js
-;; and carve-rs fold `tail` in; put a `  more` line between the fence and
-;; `tail` and they split the same way. Only this exact shape is unanimous, so
-;; there is no rule here to implement yet.
+;; This case carried a KNOWN DIVERGENCE note claiming all three engines end the
+;; item here and that only this exact shape was unanimous. That reading was a
+;; mixed-revision measurement - carve-php read before markup-carve/carve-php#949
+;; and carve-rs before markup-carve/carve-rs#718 - and markup-carve/carve#902
+;; retired it. Re-measured against carve-js, carve-php and carve-rs built from
+;; their own current mains, all three fold `tail` into the item, which is what
+;; the tree below already said. The three cases under this one are the
+;; neighbours the old note called divergent: two of them fold as well, and the
+;; blank-line one is where the item genuinely ends.
 ===============================================================================
 - item
   :::note
@@ -1629,6 +1632,75 @@ tail
       marker: (list_marker_dash)
       content: (list_item_content
         (paragraph)))))
+
+===============================================================================
+The absorbed fence needs no closer for the lazy line to fold
+;; Drop the `  :::` and nothing changes. What holds the item open is the
+;; paragraph the absorbed `:::note` left open, not a closer under it, so S4's
+;; first condition is met with or without one. carve-js, carve-php and carve-rs
+;; all fold `tail` in.
+===============================================================================
+- item
+  :::note
+  body
+tail
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)))))
+
+===============================================================================
+A line between the absorbed closer and the lazy line changes nothing
+;; The other neighbour: `  more` at the item's content column is more of the
+;; same paragraph, so the paragraph is still open one line further down and
+;; `tail` still folds. carve-js, carve-php and carve-rs all render one item
+;; holding all six lines.
+===============================================================================
+- item
+  :::note
+  body
+  :::
+  more
+tail
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)))))
+
+===============================================================================
+A blank line after the absorbed fence ends the item
+;; The boundary, and the reason the three cases above are not "everything after
+;; an absorbed fence folds". S4's first condition is an OPEN paragraph; a blank
+;; line closes it, so nothing is left to fold into and `tail` is a sibling.
+;; carve-js, carve-php and carve-rs all end the item here. Without this case the
+;; three above would also hold if the item had simply stopped closing.
+===============================================================================
+- item
+  :::note
+  body
+  :::
+
+tail
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph))))
+  (paragraph))
 
 ===============================================================================
 A space after the list marker makes a brace literal, not an item attribute
