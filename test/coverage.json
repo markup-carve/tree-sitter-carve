@@ -16,6 +16,7 @@
     "a-comment-fence-under-a-nested-item-does-not-close-it-either",
     "a-comment-is-recognized-at-any-column",
     "a-comment-under-a-nested-item-does-not-close-it",
+    "a-continuation-marker-after-a-blank-line-in-a-loose-item",
     "a-continuation-marker-after-a-blank-line-in-the-item",
     "a-continuation-row-carries-no-trailing-text",
     "a-continuation-row-needs-a-body-row",
