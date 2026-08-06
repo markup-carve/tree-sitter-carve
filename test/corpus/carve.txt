@@ -3999,3 +3999,358 @@ A nested marker run that stops short stays in the quote (tree-sitter-carve#136)
           (paragraph)
           (block_quote_marker)
           (paragraph))))))
+
+===============================================================================
+A fence on a footnote's first continuation line opens a code block (tree-sitter-carve#112)
+===============================================================================
+
+[^a]: note
+  ```
+  code
+  ```
+
+see[^a]
+
+-------------------------------------------------------------------------------
+
+(document
+  (footnote
+    (footnote_marker_begin)
+    label: (reference_label)
+    (footnote_marker_end)
+    content: (footnote_content
+      (paragraph)
+      (code_block
+        (code_block_marker_begin)
+        code: (code)
+        (code_block_marker_end))))
+  (paragraph
+    (footnote_reference
+      (footnote_marker_begin)
+      (reference_label)
+      (footnote_marker_end))))
+
+===============================================================================
+A heading on a footnote's first continuation line opens a heading (tree-sitter-carve#112)
+===============================================================================
+
+[^a]: note
+  # H
+
+see[^a]
+
+-------------------------------------------------------------------------------
+
+(document
+  (footnote
+    (footnote_marker_begin)
+    label: (reference_label)
+    (footnote_marker_end)
+    content: (footnote_content
+      (paragraph)
+      (heading
+        marker: (marker)
+        content: (content))))
+  (paragraph
+    (footnote_reference
+      (footnote_marker_begin)
+      (reference_label)
+      (footnote_marker_end))))
+
+===============================================================================
+A fence on a list item's first continuation line opens a code block (tree-sitter-carve#112)
+===============================================================================
+
+- item
+  ```
+  code
+  ```
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)
+        (code_block
+          (code_block_marker_begin)
+          code: (code)
+          (code_block_marker_end))))))
+
+===============================================================================
+A heading on a list item's first continuation line opens a heading (tree-sitter-carve#112)
+===============================================================================
+
+- item
+  # H
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)
+        (heading
+          marker: (marker)
+          content: (content))))))
+
+===============================================================================
+An unterminated fence on a continuation line stays inline verbatim (tree-sitter-carve#112)
+===============================================================================
+
+- item
+  ```
+  code
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph
+          (verbatim
+            begin_marker: (verbatim_marker_begin)
+            content: (content)
+            end_marker: (verbatim_marker_end)))))))
+
+===============================================================================
+A fence short of the footnote's content column folds into the paragraph (tree-sitter-carve#112)
+===============================================================================
+
+[^a]: note
+ ```
+ code
+ ```
+
+see[^a]
+
+-------------------------------------------------------------------------------
+
+(document
+  (footnote
+    (footnote_marker_begin)
+    label: (reference_label)
+    (footnote_marker_end)
+    content: (footnote_content
+      (paragraph
+        (verbatim
+          begin_marker: (verbatim_marker_begin)
+          content: (content)
+          end_marker: (verbatim_marker_end)))))
+  (paragraph
+    (footnote_reference
+      (footnote_marker_begin)
+      (reference_label)
+      (footnote_marker_end))))
+
+===============================================================================
+A seven-hash line does not interrupt a paragraph (tree-sitter-carve#112)
+===============================================================================
+
+intro
+####### H
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph))
+
+===============================================================================
+A heading past a list item's content column stays paragraph text (tree-sitter-carve#112)
+===============================================================================
+
+- item
+   # H
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)))))
+
+===============================================================================
+An unmodeled info string does not interrupt a paragraph (tree-sitter-carve#112)
+===============================================================================
+
+intro
+```js title="x"
+code
+```
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (verbatim
+      begin_marker: (verbatim_marker_begin)
+      content: (content)
+      end_marker: (verbatim_marker_end))))
+
+===============================================================================
+A fence past a footnote's content column still opens a code block (tree-sitter-carve#112)
+===============================================================================
+
+[^a]: note
+   ```
+   code
+   ```
+
+see[^a]
+
+-------------------------------------------------------------------------------
+
+(document
+  (footnote
+    (footnote_marker_begin)
+    label: (reference_label)
+    (footnote_marker_end)
+    content: (footnote_content
+      (paragraph)
+      (code_block
+        (code_block_marker_begin)
+        code: (code)
+        (code_block_marker_end))))
+  (paragraph
+    (footnote_reference
+      (footnote_marker_begin)
+      (reference_label)
+      (footnote_marker_end))))
+
+===============================================================================
+A heading past a footnote's content column still opens a heading (tree-sitter-carve#112)
+===============================================================================
+
+[^a]: note
+   # H
+
+see[^a]
+
+-------------------------------------------------------------------------------
+
+(document
+  (footnote
+    (footnote_marker_begin)
+    label: (reference_label)
+    (footnote_marker_end)
+    content: (footnote_content
+      (paragraph)
+      (heading
+        marker: (marker)
+        content: (content))))
+  (paragraph
+    (footnote_reference
+      (footnote_marker_begin)
+      (reference_label)
+      (footnote_marker_end))))
+
+===============================================================================
+A heading on a lazy line ends the block quote above it (tree-sitter-carve#112)
+===============================================================================
+
+> intro
+# H
+
+-------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (paragraph)))
+  (section
+    heading: (heading
+      marker: (marker)
+      content: (content))))
+
+===============================================================================
+A heading at a list item's column ends a quote inside that item (tree-sitter-carve#112)
+===============================================================================
+
+- item
+  > q
+  # H
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)
+        (block_quote
+          (block_quote_marker)
+          content: (content
+            (paragraph)))
+        (heading
+          marker: (marker)
+          content: (content))))))
+
+===============================================================================
+A MARKED heading line inside a quote is still not a heading (tree-sitter-carve#112)
+===============================================================================
+
+> intro
+> # H
+
+-------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (paragraph
+        (block_quote_marker)))))
+
+===============================================================================
+A fence whose only closer is outdented does not interrupt (tree-sitter-carve#112)
+===============================================================================
+
+- item
+  ```
+  code
+```
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph
+          (verbatim
+            begin_marker: (verbatim_marker_begin)
+            content: (content)
+            end_marker: (verbatim_marker_end)))))))
+
+===============================================================================
+A fence whose only closer is over-indented does not interrupt (tree-sitter-carve#112)
+===============================================================================
+
+- item
+  ```
+  code
+   ```
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph
+          (verbatim
+            begin_marker: (verbatim_marker_begin)
+            content: (content)
+            end_marker: (verbatim_marker_end)))))))

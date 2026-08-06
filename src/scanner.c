@@ -4080,6 +4080,194 @@ static bool scan_continuation_marker_at_paragraph_end(Scanner *s,
   return lexer->eof(lexer) || lexer->lookahead == '\n' || lexer->lookahead == '\r';
 }
 
+/// TRUE when `column` is EXACTLY the margin a block opener must sit at to open
+/// where the paragraph-closing peek currently stands.
+///
+/// TAKES THE COLUMN, never `s->indent`. The peek runs from the newline at the
+/// END of the previous line, so `s->indent` still holds whatever that line left
+/// behind - the same trap `below_container_margin` documents, and the reason
+/// this is not simply `!has_extra_indent`. The lexer's column is correct at
+/// that moment because the container prefix has already been consumed.
+///
+/// A LIST ITEM'S MARGIN IS AN EXACT COLUMN. Inside `- item` the language opens
+/// a block at column 2 and keeps `   # H` (column 3) as paragraph text, so a
+/// `>=` test would claim a heading carve-js does not build. The list's own
+/// `content_col` is what answers that - `data` is the marker's column plus one
+/// and cannot tell `- ` from `1. ` - and a container that never recorded one
+/// reads 0 and gets no opinion, exactly as in `has_surplus_indent`.
+///
+/// A FOOTNOTE'S IS A THRESHOLD, and the asymmetry is the engines', not this
+/// grammar's. A footnote keeps no `content_col`; it pushes `s->indent + 2` as
+/// `data`, and everything at or past that column is its content - which is
+/// exactly what `has_extra_indent` already tells the OPENERS, and what carve-js
+/// does: `[^a]: note` over `   ``` ` at column 3 is a `<pre>` inside the note,
+/// where `- item` over `   ``` ` at column 3 is paragraph text. Measured both
+/// ways over 1188 generated shapes; the threshold form agrees with carve-js on
+/// 20 more of them than the exact one and on none fewer.
+///
+/// A BLOCK QUOTE AND A TABLE CAPTION GET NO CASE OF THEIR OWN, and the walk
+/// passes straight over them. One was written - both refusing outright, on the
+/// argument that this grammar builds no heading inside a quote even with a
+/// blank line before it (recorded as
+/// `headings-inside-containers-are-not-wrapped`) - and it turned out to cost
+/// conformance rather than buy safety. The MARKED shapes it was meant to guard
+/// are refused by the column test alone: the quote probes above have consumed
+/// the `> ` prefix by then, so `> a` / `> # H` asks about column 2 against a
+/// root margin of zero and is declined either way, and `^ cap` / `  # H` asks
+/// about column 2 the same way. What the clause DID reach was the LAZY line -
+/// `> intro` / `# H`, which carve-js renders as a quote followed by an `<h1>`
+/// and the clause kept as one quoted paragraph. Removing it moved 3 of 63
+/// lazy-shape documents onto carve-js and none off it, with no document newly
+/// erroring.
+static bool at_block_opener_margin(Scanner *s, uint32_t column) {
+  // A `+` continuation attaches its block FLUSH LEFT (PART 9 §17), so the
+  // margin is the document's zero rather than the item's content column.
+  if (s->state & STATE_LIST_CONTINUATION) {
+    return column == 0;
+  }
+  for (int i = s->open_blocks->size - 1; i >= 0; --i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (is_list(b->type)) {
+      return b->content_col != 0 && column == b->content_col;
+    }
+    if (b->type == FOOTNOTE) {
+      return column >= b->data;
+    }
+  }
+  // Nothing indenting: the document root, or a `:::` div, whose content is
+  // flush left.
+  return column == 0;
+}
+
+/// A HEADING interrupts an open paragraph with no blank line before it
+/// (PART 9 §10 I1: `#`..`######` + space).
+///
+/// Answers exactly what `parse_heading` answers, and no more: a marker at the
+/// margin, a separating space, and content after it. `#H`, `# ` and a marker
+/// short of the margin are paragraph text in carve-js and open nothing here.
+///
+/// SIX IS THE CAP, deliberately unlike the opener, which has none and builds a
+/// `<h7>` for `####### H` at a block start. Ending the paragraph on a
+/// seven-hash line would turn a document carve-js renders as ONE paragraph
+/// into a heading - a new over-acceptance in exchange for nothing. Refusing it
+/// is safe in the other direction because the line stays inline content, where
+/// `HEADING_BEGIN` is not valid and the opener cannot fire behind the peek's
+/// back. The opener's own laxity is pre-existing and tracked separately.
+static bool scan_heading_at_paragraph_end(Scanner *s, TSLexer *lexer) {
+  if (lexer->lookahead != '#') {
+    return false;
+  }
+  if (!at_block_opener_margin(s, lexer->get_column(lexer))) {
+    return false;
+  }
+  uint8_t hashes = consume_chars(s, lexer, '#');
+  if (hashes > 6) {
+    return false;
+  }
+  if (lexer->lookahead != ' ') {
+    return false;
+  }
+  advance(s, lexer);
+  // MARKER REQUIRES CONTENT, the same rule the list markers follow: `# ` with
+  // nothing after it renders as `<p>#</p>` in every engine.
+  return marker_line_has_content(s, lexer);
+}
+
+/// Does a fence opening HERE have a matching closer AHEAD?
+///
+/// PART 9 §10 I4, stated normatively: "an UNTERMINATED ``` or ~~~ opener does
+/// not interrupt; the line stays paragraph text, and a stray ``` in prose then
+/// opens an unclosed inline verbatim run rendering as `<code>` to the end of
+/// the block". Measured against carve-js: `intro` / ` ``` ` / `code` is one
+/// paragraph holding a `<code>` span, and the same document with a closing
+/// fence is a paragraph plus a `<pre>`.
+///
+/// Call with the lexer sitting just past the opener's run. Every advance here
+/// is scratch - `mark_end` was committed before the peek began - so the scan
+/// may read as far ahead as it needs without stretching a token.
+///
+/// A closer is a line at the OPENER'S OWN COLUMN whose first non-blank run is
+/// `width` or more of the same character with nothing but blanks after it.
+/// Width is `>=`, not exact: a three-tick fence is closed by four (measured),
+/// and a four-tick fence is not closed by three.
+///
+/// THE COLUMN IS EXACT, and it is the opener's rather than the container's.
+/// Measured over a run at every offset from 0 to 5: inside `- item` a fence
+/// opened at column 2 is closed by a run at column 2 and by nothing else -
+/// column 0, 1, 3 and 5 all leave carve-js rendering an inline `<code>` - and
+/// the same holds in a footnote and at the document root. Without the test the
+/// lookahead accepted an OUTDENTED run, so `- item` / `  ``` ` / `  code` /
+/// ``` ``` ``` at column 0 opened a `code_block` with no end marker where
+/// carve-js builds no block at all.
+static bool code_fence_has_closer_ahead(Scanner *s, TSLexer *lexer, int32_t c,
+                                        uint8_t width, uint32_t column) {
+  for (;;) {
+    // Skip the rest of the current line (the opener's info string, or a body
+    // line that was not a closer).
+    while (!lexer->eof(lexer) && lexer->lookahead != '\n') {
+      advance(s, lexer);
+    }
+    if (lexer->eof(lexer)) {
+      return false;
+    }
+    advance(s, lexer); // over the newline
+    while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+      advance(s, lexer);
+    }
+    if (lexer->get_column(lexer) != column) {
+      // Not at the opener's column: whatever it is, it is fence body. Fall
+      // round to the top, which skips the rest of the line.
+      continue;
+    }
+    uint8_t run = 0;
+    while (lexer->lookahead == c) {
+      advance(s, lexer);
+      ++run;
+    }
+    if (run >= width) {
+      while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+        advance(s, lexer);
+      }
+      if (lexer->eof(lexer) || lexer->lookahead == '\n') {
+        return true;
+      }
+    }
+  }
+}
+
+/// A FENCED CODE opener with a closer ahead interrupts an open paragraph
+/// (PART 9 §10 I1 + I4).
+///
+/// BACKTICKS ONLY. `~~~` is not a code fence in this grammar at any position -
+/// `intro` / blank / `~~~` / `code` / `~~~` is two paragraphs - so ending the
+/// paragraph on one would split a document in two and build no block for it.
+/// The peek stays with what the opener can actually produce.
+///
+/// THE INFO STRING IS THE OPENER'S OWN TEST, shared rather than restated, for
+/// the same reason `colon_fence_tail_opens_block` is shared: an info string the
+/// grammar cannot model (```` ```js title="x" ````) is not a fence at all, so
+/// ending the paragraph on it split `intro` / ```` ```js title="x" ```` /
+/// `code` / ```` ``` ```` into two paragraphs where carve-js keeps one holding
+/// an inline run. A peek that closes a paragraph no opener follows is the same
+/// defect #103 recorded four times over for the colon fence.
+static bool scan_code_fence_at_paragraph_end(Scanner *s, TSLexer *lexer) {
+  if (lexer->lookahead != '`') {
+    return false;
+  }
+  uint32_t column = lexer->get_column(lexer);
+  if (!at_block_opener_margin(s, column)) {
+    return false;
+  }
+  uint8_t width = consume_chars(s, lexer, '`');
+  if (width < 3) {
+    return false;
+  }
+  if (!code_fence_info_is_modeled(s, lexer)) {
+    return false;
+  }
+  return code_fence_has_closer_ahead(s, lexer, '`', width, column);
+}
+
 /// A block quote that goes DEEPER than the one we are in interrupts an open
 /// paragraph (PART 9 §10: a visible block opener interrupts; only a list does
 /// not).
@@ -4117,6 +4305,17 @@ static bool close_paragraph(Scanner *s, TSLexer *lexer) {
   }
 
   if (scan_deeper_block_quote_at_paragraph_end(s, lexer)) {
+    return true;
+  }
+
+  // Both dispatch on a first character no probe above claims, and both are
+  // asked BEFORE the marker probe, which consumes as it classifies. The quote
+  // probes have to come first: inside a quote they are what consumes the `> `
+  // prefix, so the column these two read is the one the opener would see.
+  if (scan_heading_at_paragraph_end(s, lexer)) {
+    return true;
+  }
+  if (scan_code_fence_at_paragraph_end(s, lexer)) {
     return true;
   }
 
