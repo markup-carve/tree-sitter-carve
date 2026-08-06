@@ -3840,3 +3840,28 @@ A MARKED empty line keeps one quote (tree-sitter-carve#129)
       (block_quote_marker)
       (block_quote_marker)
       (paragraph))))
+
+===============================================================================
+A blank line ends a nested quote a DEEPER marker follows (tree-sitter-carve#129)
+===============================================================================
+> > a
+
+> > b
+
+-------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (block_quote
+        (block_quote_marker)
+        content: (content
+          (paragraph)))))
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (block_quote
+        (block_quote_marker)
+        content: (content
+          (paragraph))))))
