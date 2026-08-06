@@ -140,6 +140,31 @@
       "why": "a tab does not separate the bullet from its checkbox either - the engines render this as a paragraph"
     },
     {
+      "src": "*\ta",
+      "want": "none",
+      "why": "same rule on the OTHER bullet - the battery had only the dash spelling"
+    },
+    {
+      "src": ".\ta",
+      "want": "none",
+      "why": "same rule on the bare-dot ordered marker"
+    },
+    {
+      "src": "a.\ta",
+      "want": "none",
+      "why": "same rule on the alpha ordered marker"
+    },
+    {
+      "src": "iv.\ta",
+      "want": "none",
+      "why": "same rule on the roman ordered marker"
+    },
+    {
+      "src": "1)\ta",
+      "want": "none",
+      "why": "same rule on the paren ordered marker - only the `1.` spelling was pinned"
+    },
+    {
       "src": "- - ",
       "want": "list"
     },
