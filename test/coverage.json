@@ -1,5 +1,5 @@
 {
-  "_comment": "Coverage matrix for the shared Carve spec corpus (spec/tests/corpus/*.crv). Every NN-slug base category must appear in covered or skip; the coverage-matrix test fails otherwise so a new spec category forces a classify decision. covered = grammar parses every file in the category with no ERROR/MISSING node. skip = at least one file currently produces an ERROR/MISSING node; reason records the unmodeled construct (a grammar gap to surface, not to hack around). A skip key is a CATEGORY (NN-slug) or a single EXAMPLE (NN-slug-2) — use the example form when the rest of the category parses cleanly, so one gap does not drop assertion for its siblings. A key equal to a category name is read as the CATEGORY, so the first example of a category cannot be skipped on its own.",
+  "_comment": "Coverage matrix for the shared Carve spec corpus (spec/tests/corpus/*.crv). Every NN-slug base category must appear in covered or skip; the coverage-matrix test fails otherwise so a new spec category forces a classify decision. covered = grammar parses every file in the category with no ERROR/MISSING node. skip = at least one file currently produces an ERROR/MISSING node; reason records the unmodeled construct (a grammar gap to surface, not to hack around). A skip key is a CATEGORY (NN-slug) or a single EXAMPLE (NN-slug-2) \u2014 use the example form when the rest of the category parses cleanly, so one gap does not drop assertion for its siblings. A key equal to a category name is read as the CATEGORY, so the first example of a category cannot be skipped on its own.",
   "covered": [
     "a-backslash-in-a-link-destination-is-a-literal-character",
     "a-bare-attribute-block-on-its-own-line-is-literal",
@@ -349,129 +349,13 @@
     }
   },
   "errorFamilies": {
-    "\"   x\" + \">\"": {
-      "documents": 1,
-      "reason": "a bare `>` with nothing after it - EOF or a blank line - errors; every engine renders an empty blockquote (tree-sitter-carve#96)"
-    },
-    "\"  - n\" + \">\"": {
-      "documents": 1,
-      "reason": "a bare `>` with nothing after it - EOF or a blank line - errors; every engine renders an empty blockquote (tree-sitter-carve#96)"
-    },
-    "\"  {.c}\" + \">\"": {
-      "documents": 1,
-      "reason": "a bare `>` with nothing after it - EOF or a blank line - errors; every engine renders an empty blockquote (tree-sitter-carve#96)"
-    },
-    "\"\" + \">\"": {
-      "documents": 1,
-      "reason": "a bare `>` with nothing after it - EOF or a blank line - errors; every engine renders an empty blockquote (tree-sitter-carve#96)"
-    },
-    "\"%%\" + \">\"": {
-      "documents": 1,
-      "reason": "a bare `>` with nothing after it - EOF or a blank line - errors; every engine renders an empty blockquote (tree-sitter-carve#96)"
-    },
-    "\"%%%\" + \">\"": {
-      "documents": 1,
-      "reason": "a bare `>` with nothing after it - EOF or a blank line - errors; every engine renders an empty blockquote (tree-sitter-carve#96)"
-    },
-    "\"***\" + \">\"": {
-      "documents": 1,
-      "reason": "a bare `>` with nothing after it - EOF or a blank line - errors; every engine renders an empty blockquote (tree-sitter-carve#96)"
-    },
-    "\"- \" + \">\"": {
-      "documents": 1,
-      "reason": "a bare `>` with nothing after it - EOF or a blank line - errors; every engine renders an empty blockquote (tree-sitter-carve#96)"
-    },
-    "\"- [x] t\" + \">\"": {
-      "documents": 1,
-      "reason": "a bare `>` with nothing after it - EOF or a blank line - errors; every engine renders an empty blockquote (tree-sitter-carve#96)"
-    },
-    "\"- a\" + \">\"": {
-      "documents": 1,
-      "reason": "a bare `>` with nothing after it - EOF or a blank line - errors; every engine renders an empty blockquote (tree-sitter-carve#96)"
-    },
     "\"-\" + \"---\"": {
       "documents": 3,
       "reason": "a `---` after a content-less marker errors; carve-js renders a paragraph then a thematic break (tree-sitter-carve#96)"
     },
-    "\"-\" + \">\"": {
-      "documents": 1,
-      "reason": "a bare `>` with nothing after it - EOF or a blank line - errors; every engine renders an empty blockquote (tree-sitter-carve#96)"
-    },
-    "\"---\" + \">\"": {
-      "documents": 1,
-      "reason": "the `---` opener itself is fixed (tree-sitter-carve#95): 2 of 3 documents in this family now parse clean. The 1 remaining is a bare `>` with nothing after it before EOF, the separate tree-sitter-carve#96 family."
-    },
-    "\"-{.x} a\" + \">\"": {
-      "documents": 1,
-      "reason": "a bare `>` with nothing after it - EOF or a blank line - errors; every engine renders an empty blockquote (tree-sitter-carve#96)"
-    },
-    "\"1. \" + \">\"": {
-      "documents": 1,
-      "reason": "a bare `>` with nothing after it - EOF or a blank line - errors; every engine renders an empty blockquote (tree-sitter-carve#96)"
-    },
-    "\"1. a\" + \">\"": {
-      "documents": 1,
-      "reason": "a bare `>` with nothing after it - EOF or a blank line - errors; every engine renders an empty blockquote (tree-sitter-carve#96)"
-    },
-    "\"1.\" + \">\"": {
-      "documents": 1,
-      "reason": "a bare `>` with nothing after it - EOF or a blank line - errors; every engine renders an empty blockquote (tree-sitter-carve#96)"
-    },
-    "\":  d\" + \">\"": {
-      "documents": 1,
-      "reason": "a bare `>` with nothing after it - EOF or a blank line - errors; every engine renders an empty blockquote (tree-sitter-carve#96)"
-    },
-    "\": d\" + \">\"": {
-      "documents": 1,
-      "reason": "a bare `>` with nothing after it - EOF or a blank line - errors; every engine renders an empty blockquote (tree-sitter-carve#96)"
-    },
-    "\":: t\" + \">\"": {
-      "documents": 1,
-      "reason": "a bare `>` with nothing after it - EOF or a blank line - errors; every engine renders an empty blockquote (tree-sitter-carve#96)"
-    },
-    "\"::: note\" + \">\"": {
-      "documents": 1,
-      "reason": "a bare `>` with nothing after it - EOF or a blank line - errors; every engine renders an empty blockquote (tree-sitter-carve#96)"
-    },
-    "\":::\" + \">\"": {
-      "documents": 1,
-      "reason": "a bare `>` with nothing after it - EOF or a blank line - errors; every engine renders an empty blockquote (tree-sitter-carve#96)"
-    },
-    "\">\" + \"\"": {
-      "documents": 2,
-      "reason": "ERROR on a valid document, not yet reduced to a minimal case (tree-sitter-carve#96)"
-    },
     "\">\" + \">\"": {
       "documents": 1,
-      "reason": "a bare `>` with nothing after it - EOF or a blank line - errors; every engine renders an empty blockquote (tree-sitter-carve#96)"
-    },
-    "\"^ cap\" + \">\"": {
-      "documents": 1,
-      "reason": "a bare `>` with nothing after it - EOF or a blank line - errors; every engine renders an empty blockquote (tree-sitter-carve#96)"
-    },
-    "\"``` js\" + \"``` js\"": {
-      "documents": 3,
-      "reason": "an unclosed fence whose body opens with another fence line errors; carve-js puts the second line inside the code block (tree-sitter-carve#96)"
-    },
-    "\"```\" + \"``` js\"": {
-      "documents": 3,
-      "reason": "an unclosed fence whose body opens with another fence line errors; carve-js puts the second line inside the code block (tree-sitter-carve#96)"
-    },
-    "\"a) x\" + \">\"": {
-      "documents": 1,
-      "reason": "a bare `>` with nothing after it - EOF or a blank line - errors; every engine renders an empty blockquote (tree-sitter-carve#96)"
-    },
-    "\"x\" + \">\"": {
-      "documents": 1,
-      "reason": "a bare `>` with nothing after it - EOF or a blank line - errors; every engine renders an empty blockquote (tree-sitter-carve#96)"
-    },
-    "\"{.c}\" + \">\"": {
-      "documents": 1,
-      "reason": "a bare `>` with nothing after it - EOF or a blank line - errors; every engine renders an empty blockquote (tree-sitter-carve#96)"
-    },
-    "\"| a |\" + \">\"": {
-      "documents": 1,
-      "reason": "a bare `>` with nothing after it - EOF or a blank line - errors; every engine renders an empty blockquote (tree-sitter-carve#96)"
+      "reason": "two bare `>` lines followed by a blank line error. The empty block quote itself is fixed (tree-sitter-carve#96), but a SECOND content-less marker has nowhere to attach: `_block_quote_content` holds continuation markers only inside its repeat, which needs a block first, so a quote that is empty all the way down cannot carry one. Not the shape the issue reduced - recorded rather than guessed at."
     }
   }
 }
