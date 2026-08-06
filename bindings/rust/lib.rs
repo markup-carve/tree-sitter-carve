@@ -332,6 +332,84 @@ mod tests {
         }
     }
 
+    /// A marker line stays content-less however WIDE its whitespace run is
+    /// (tree-sitter-carve#135).
+    ///
+    /// tree-sitter-carve#130 fixed the single trailing space by taking the
+    /// newline directly after the separator. A wider run - two spaces, or a
+    /// space and a tab - fell past that arm and became a paragraph, so the same
+    /// document parsed as `(paragraph) (block_quote_marker) (paragraph)` where
+    /// carve-js returns the one empty blockquote it returns for `>` and `> `.
+    ///
+    /// Here rather than in `test/corpus/carve.txt` for the reason
+    /// tree-sitter-carve#121 established and tree-sitter-carve#130 followed:
+    /// the whole input IS the trailing whitespace, and one formatter or
+    /// `.gitattributes` sweep turns these into `>` - at which point the case is
+    /// a duplicate of corpus 204 and passes forever without testing anything.
+    ///
+    /// The tab row is not decoration. A run of spaces and a run containing a
+    /// tab reach the probe differently, and an implementation that scanned for
+    /// spaces alone would pass the first row and fail the second.
+    #[test]
+    fn a_wider_whitespace_run_is_still_a_content_less_marker_line() {
+        let mut parser = tree_sitter::Parser::new();
+        parser
+            .set_language(&super::language())
+            .expect("Error loading Carve language");
+        for source in [">  \n>  \n", "> \t\n> \t\n", ">   \n>   \n", "> \t \n> \t \n"] {
+            let tree = parser.parse(source, None).unwrap();
+            let root = tree.root_node();
+            assert!(!root.has_error(), "unexpected ERROR for {:?}", source);
+            assert_eq!(
+                root.child_count(),
+                1,
+                "want ONE quote for {:?}, got {}",
+                source,
+                root
+            );
+            let quote = root.child(0).unwrap();
+            assert_eq!(quote.kind(), "block_quote", "for {:?}", source);
+            let markers = (0..quote.child_count() as u32)
+                .filter(|i| quote.child(*i).unwrap().kind() == "block_quote_marker")
+                .count();
+            assert_eq!(
+                markers, 2,
+                "want both marker lines in one quote for {:?}, got {}",
+                source, quote
+            );
+            assert!(
+                !quote.to_sexp().contains("paragraph"),
+                "the whitespace became a paragraph for {:?}: {}",
+                source,
+                quote
+            );
+        }
+    }
+
+    /// Indentation AFTER the separator still belongs to what follows, which is
+    /// the constraint that kept tree-sitter-carve#135 out of #130.
+    ///
+    /// The probe reads the rest of the line to decide whether it is blank, so
+    /// the risk is that the marker token swallows indentation a nested
+    /// construct still needs. This is the control for that: it must keep
+    /// parsing as a nested list inside the quote, not as one flat list.
+    #[test]
+    fn indentation_after_the_separator_still_nests() {
+        let mut parser = tree_sitter::Parser::new();
+        parser
+            .set_language(&super::language())
+            .expect("Error loading Carve language");
+        let tree = parser.parse("> - a\n>   - b\n", None).unwrap();
+        let root = tree.root_node();
+        assert!(!root.has_error(), "unexpected ERROR: {}", root);
+        let sexp = root.to_sexp();
+        assert!(sexp.contains("block_quote"), "want a quote, got {sexp}");
+        assert!(
+            sexp.matches("list").count() >= 2,
+            "want a nested list inside the quote, got {sexp}"
+        );
+    }
+
     /// An empty quote written with trailing spaces continues nothing after it,
     /// the same rule the bare form follows (tree-sitter-carve#96 / #126).
     ///
