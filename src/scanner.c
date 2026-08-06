@@ -1729,6 +1729,12 @@ static bool parse_block_quote(Scanner *s, TSLexer *lexer,
       return true;
     }
     if (valid_symbols[BLOCK_CLOSE]) {
+      // Down to the OUTERMOST quote (`data == 1`), whatever this line's own
+      // marker count is. Today the two coincide - `scan_block_quote_marker`
+      // takes one marker per call and `block_quote_level` is zeroed at every
+      // line start, so `marker_count` is 1 wherever this branch is reachable -
+      // but the literal is what the rule means, and it stays correct if either
+      // of those ever changes.
       size_t close_pos = number_of_blocks_from_top(s, BLOCK_QUOTE, 1);
       s->state &= ~STATE_AFTER_BLANK_LINE;
       close_blocks(s, lexer, close_pos);
