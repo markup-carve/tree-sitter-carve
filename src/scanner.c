@@ -268,6 +268,16 @@ typedef struct {
   // its list opens at the marker's own column instead of the line indent.
   uint8_t marker_end_col;
 
+  // Where the CURRENT line starts, in tree-sitter's column units.
+  //
+  // tree-sitter's own lexer advances the row and resets the column on '\n' and
+  // on nothing else (`lexer.c`, `ts_lexer__do_advance`), so after a line ended
+  // by a LONE '\r' its `get_column` keeps counting from the last '\n' - it is
+  // an offset, not a column. Every column this scanner reasons about is
+  // therefore `get_column` MINUS this base. It is 0 in a document with no lone
+  // '\r' in it, which is every document that parsed correctly before (#143).
+  uint32_t col_base;
+
   // Parser state flags.
   uint8_t state;
 } Scanner;
@@ -428,9 +438,63 @@ static bool is_alpha_list(BlockType type) {
 
 static void advance(Scanner *s, TSLexer *lexer) {
   lexer->advance(lexer, false);
-  // Carriage returns should simply be ignored.
+}
+
+// `newline = '\n' | '\r\n' | '\r'` (spec `resources/grammar.ebnf`). All three
+// spellings end a line, so every test for "is the line over here" asks this
+// rather than comparing against '\n' alone. `advance` used to swallow a '\r'
+// wherever it landed on one, which made the CRLF spelling work - the '\n'
+// behind it still terminated the line - and made a LONE '\r' vanish, leaving a
+// file written with it with no terminators at all (#143).
+static bool at_line_end(TSLexer *lexer) {
+  return lexer->lookahead == '\n' || lexer->lookahead == '\r';
+}
+
+// The column of the lexer's current position on ITS OWN LINE. See `col_base`.
+static uint32_t line_column(Scanner *s, TSLexer *lexer) {
+  uint32_t col = lexer->get_column(lexer);
+  if (s->col_base == 0) {
+    // No lone '\r' has been passed, so tree-sitter's column IS the column.
+    // This is the whole of every LF and CRLF document, byte for byte what this
+    // scanner did before the base existed.
+    return col;
+  }
+  // A '\n' anywhere - including inside a token the internal lexer matched
+  // without consulting this scanner - resets tree-sitter's counter, which
+  // strands the base above it. A column can never be smaller than its own
+  // line's start, so that is the signal, and it needs no cooperation from
+  // whoever consumed the '\n'.
+  if (col < s->col_base) {
+    s->col_base = 0;
+    return col;
+  }
+  return col - s->col_base;
+}
+
+// Consume exactly one line terminator, whichever of the three it is, and record
+// where the line it starts begins.
+static void consume_line_end(Scanner *s, TSLexer *lexer) {
   if (lexer->lookahead == '\r') {
-    lexer->advance(lexer, false);
+    // READ THE COLUMN FIRST. `ts_lexer__get_column` rewinds to the start of the
+    // line and re-advances, and the rewind resets the lexer's marked token end
+    // (`ts_lexer_goto`), so a read placed after the terminator was taken emits
+    // a token whose end precedes its start. Reading it here, before anything
+    // moves, keeps the marked end intact.
+    uint32_t column = lexer->get_column(lexer);
+    advance(s, lexer);
+    if (lexer->lookahead == '\n') {
+      advance(s, lexer);
+      s->col_base = 0;
+      return;
+    }
+    // A LONE '\r': tree-sitter advances the row on '\n' alone, so it did not
+    // reset its column and the next line starts one past this one's end.
+    s->col_base = column + 1;
+    return;
+  }
+  if (lexer->lookahead == '\n') {
+    advance(s, lexer);
+    s->col_base = 0;
   }
 }
 
@@ -449,8 +513,6 @@ static uint8_t consume_whitespace(Scanner *s, TSLexer *lexer) {
     if (lexer->lookahead == ' ') {
       advance(s, lexer);
       ++indent;
-    } else if (lexer->lookahead == '\r') {
-      advance(s, lexer);
     } else if (lexer->lookahead == '\t') {
       advance(s, lexer);
       // PART 9 §24 C1: a tab advances to the NEXT MULTIPLE OF 4 from wherever
@@ -848,7 +910,7 @@ static bool scan_until_unescaped(Scanner *s, TSLexer *lexer, char c) {
 static bool parse_indented_content_spacer(Scanner *s, TSLexer *lexer,
                                           bool is_newline) {
   if (is_newline) {
-    advance(s, lexer);
+    consume_line_end(s, lexer);
     lexer->mark_end(lexer);
   }
   lexer->result_symbol = INDENTED_CONTENT_SPACER;
@@ -888,16 +950,11 @@ static bool parse_continuation_marker(Scanner *s, TSLexer *lexer) {
   while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
     advance(s, lexer);
   }
-  if (!lexer->eof(lexer) && lexer->lookahead != '\n' && lexer->lookahead != '\r') {
+  if (!lexer->eof(lexer) && !at_line_end(lexer)) {
     // `+ text` (or any trailing content) is not a marker.
     return false;
   }
-  if (lexer->lookahead == '\r') {
-    advance(s, lexer);
-  }
-  if (lexer->lookahead == '\n') {
-    advance(s, lexer);
-  }
+  consume_line_end(s, lexer);
   lexer->mark_end(lexer);
   // Only a LIST imposes a content margin that the attached flush-left block
   // would otherwise be dedented out of; a block quote's content already sits at
@@ -1071,7 +1128,7 @@ static bool colon_fence_tail_opens_block(Scanner *s, TSLexer *lexer, bool bare,
     while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
       advance(s, lexer);
     }
-    return lexer->lookahead == '\n' || lexer->eof(lexer);
+    return at_line_end(lexer) || lexer->eof(lexer);
   }
   bool named = c == '|' || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
                c == '_';
@@ -1102,15 +1159,15 @@ static bool parse_verbatim_content(Scanner *s, TSLexer *lexer) {
   }
 
   while (!lexer->eof(lexer)) {
-    if (lexer->lookahead == '\n') {
+    if (at_line_end(lexer)) {
       // We should only end verbatim if the paragraph is ended by a
       // blankline.
 
       // Advance over the first newline.
-      advance(s, lexer);
+      consume_line_end(s, lexer);
       // Remove any whitespace on the next line.
       consume_whitespace(s, lexer);
-      if (lexer->eof(lexer) || lexer->lookahead == '\n') {
+      if (lexer->eof(lexer) || at_line_end(lexer)) {
         // Found a blankline, meaning the paragraph containing the varbatim
         // should be closed. So now we can close the verbatim.
         break;
@@ -1179,13 +1236,12 @@ static bool code_fence_run_matches_open_block(Scanner *s, uint8_t ticks) {
 //
 // A carriage return needs no case of its own: `advance` eats one wherever it
 // finds it, so a CRLF document's run and its trailing whitespace both leave
-// the lookahead on the newline. Testing for '\r' here would be a branch no
-// input can take.
+// the lookahead on the newline, whichever of the three spellings it is.
 static bool code_fence_closer_tail_is_blank(Scanner *s, TSLexer *lexer) {
   while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
     advance(s, lexer);
   }
-  return lexer->lookahead == '\n' || lexer->eof(lexer);
+  return at_line_end(lexer) || lexer->eof(lexer);
 }
 
 // Validate the info string that follows a backtick code fence (the rest of the
@@ -1204,7 +1260,7 @@ static bool code_fence_info_is_modeled(Scanner *s, TSLexer *lexer) {
     advance(s, lexer);
   }
   // Empty info string: just a newline / EOF.
-  if (lexer->lookahead == '\n' || lexer->eof(lexer)) {
+  if (at_line_end(lexer) || lexer->eof(lexer)) {
     return true;
   }
   // The raw-block `=FORMAT` form (`raw_block_info` in the grammar) needs a
@@ -1212,7 +1268,7 @@ static bool code_fence_info_is_modeled(Scanner *s, TSLexer *lexer) {
   if (lexer->lookahead == '=') {
     advance(s, lexer);
     uint8_t fmt_len = 0;
-    while (lexer->lookahead != '\n' && !lexer->eof(lexer) &&
+    while (!at_line_end(lexer) && !lexer->eof(lexer) &&
            lexer->lookahead != ' ' && lexer->lookahead != '\t' &&
            lexer->lookahead != '{' && lexer->lookahead != '}' &&
            lexer->lookahead != '=' && lexer->lookahead != '[' &&
@@ -1226,7 +1282,7 @@ static bool code_fence_info_is_modeled(Scanner *s, TSLexer *lexer) {
     while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
       advance(s, lexer);
     }
-    return lexer->lookahead == '\n' || lexer->eof(lexer);
+    return at_line_end(lexer) || lexer->eof(lexer);
   }
   // A `{` glued to the fence is never a code fence.
   if (lexer->lookahead == '{') {
@@ -1245,7 +1301,7 @@ static bool code_fence_info_is_modeled(Scanner *s, TSLexer *lexer) {
   if (lexer->lookahead != '"' && lexer->lookahead != '[') {
     char word[4] = {0};
     uint8_t word_len = 0;
-    while (lexer->lookahead != '\n' && !lexer->eof(lexer) &&
+    while (!at_line_end(lexer) && !lexer->eof(lexer) &&
            lexer->lookahead != ' ' && lexer->lookahead != '\t' &&
            lexer->lookahead != '{' && lexer->lookahead != '}' &&
            lexer->lookahead != '=' && lexer->lookahead != '[' &&
@@ -1267,7 +1323,7 @@ static bool code_fence_info_is_modeled(Scanner *s, TSLexer *lexer) {
       saw_ws = true;
       advance(s, lexer);
     }
-    if (lexer->lookahead == '\n' || lexer->eof(lexer)) {
+    if (at_line_end(lexer) || lexer->eof(lexer)) {
       return true;
     }
     // The carve raw-block form `raw FORMAT` (`raw_block_info` in the grammar):
@@ -1276,7 +1332,7 @@ static bool code_fence_info_is_modeled(Scanner *s, TSLexer *lexer) {
     // falls back to inline verbatim rather than opening a fence.)
     if (is_raw) {
       uint8_t fmt_len = 0;
-      while (lexer->lookahead != '\n' && !lexer->eof(lexer) &&
+      while (!at_line_end(lexer) && !lexer->eof(lexer) &&
              lexer->lookahead != ' ' && lexer->lookahead != '\t' &&
              lexer->lookahead != '{' && lexer->lookahead != '}' &&
              lexer->lookahead != '=' && lexer->lookahead != '[' &&
@@ -1290,7 +1346,7 @@ static bool code_fence_info_is_modeled(Scanner *s, TSLexer *lexer) {
       while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
         advance(s, lexer);
       }
-      return lexer->lookahead == '\n' || lexer->eof(lexer);
+      return at_line_end(lexer) || lexer->eof(lexer);
     }
   }
 
@@ -1300,7 +1356,7 @@ static bool code_fence_info_is_modeled(Scanner *s, TSLexer *lexer) {
       return false; // glued to the language token
     }
     advance(s, lexer);
-    while (lexer->lookahead != '"' && lexer->lookahead != '\n' &&
+    while (lexer->lookahead != '"' && !at_line_end(lexer) &&
            !lexer->eof(lexer)) {
       advance(s, lexer);
     }
@@ -1314,7 +1370,7 @@ static bool code_fence_info_is_modeled(Scanner *s, TSLexer *lexer) {
       saw_ws = true;
       advance(s, lexer);
     }
-    if (lexer->lookahead == '\n' || lexer->eof(lexer)) {
+    if (at_line_end(lexer) || lexer->eof(lexer)) {
       return true;
     }
   }
@@ -1325,7 +1381,7 @@ static bool code_fence_info_is_modeled(Scanner *s, TSLexer *lexer) {
       return false; // glued to a preceding token
     }
     advance(s, lexer);
-    while (lexer->lookahead != ']' && lexer->lookahead != '\n' &&
+    while (lexer->lookahead != ']' && !at_line_end(lexer) &&
            !lexer->eof(lexer)) {
       advance(s, lexer);
     }
@@ -1336,7 +1392,7 @@ static bool code_fence_info_is_modeled(Scanner *s, TSLexer *lexer) {
     while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
       advance(s, lexer);
     }
-    return lexer->lookahead == '\n' || lexer->eof(lexer);
+    return at_line_end(lexer) || lexer->eof(lexer);
   }
 
   // Anything else (e.g. `key="x"`, a bare second word) is not a fence.
@@ -1401,7 +1457,7 @@ static uint8_t scan_comment_fence_line_width(Scanner *s, TSLexer *lexer) {
 
 /// Consume the rest of the line, leaving the lexer ON its newline.
 static void scan_to_line_end(Scanner *s, TSLexer *lexer) {
-  while (!lexer->eof(lexer) && lexer->lookahead != '\n') {
+  while (!lexer->eof(lexer) && !at_line_end(lexer)) {
     advance(s, lexer);
   }
 }
@@ -1462,7 +1518,7 @@ static bool parse_comment_fence(Scanner *s, TSLexer *lexer,
     if (lexer->eof(lexer)) {
       break;
     }
-    advance(s, lexer);
+    consume_line_end(s, lexer);
     consumed = true;
     lexer->mark_end(lexer);
     if (lexer->eof(lexer)) {
@@ -1501,7 +1557,7 @@ static bool parse_comment_fence_begin(Scanner *s, TSLexer *lexer,
   // pinned at the opener.
   scan_to_line_end(s, lexer);
   while (!lexer->eof(lexer)) {
-    advance(s, lexer);
+    consume_line_end(s, lexer);
     if (lexer->eof(lexer)) {
       return false;
     }
@@ -1684,10 +1740,6 @@ static bool scan_block_quote_marker(Scanner *s, TSLexer *lexer,
   }
   advance(s, lexer);
 
-  // Carriage returns should be ignored.
-  if (lexer->lookahead == '\r') {
-    advance(s, lexer);
-  }
   if (lexer->lookahead == ' ') {
     advance(s, lexer);
     // `blockquote_line = '>', (newline | (space, inline_content, newline))`
@@ -1708,17 +1760,15 @@ static bool scan_block_quote_marker(Scanner *s, TSLexer *lexer,
     // it would move the marker's end over the indentation that a nested list or
     // quote inside the line still needs (`>   - b`).
     //
-    // No carriage-return skip is needed for the CRLF spelling: `advance` eats a
-    // `\r` wherever it lands on one, so the advance over the separator has
-    // already taken it and the lookahead here is the `\n` itself. One was
-    // written and then removed - no mutation of it could change any parse.
-    if (lexer->lookahead == '\n') {
-      advance(s, lexer);
+    // Every spelling of the terminator ends it, CRLF and a lone `\r` included:
+    // `at_line_end` is the single place that knows which bytes those are.
+    if (at_line_end(lexer)) {
+      consume_line_end(s, lexer);
       *ending_newline = true;
     }
     return true;
-  } else if (lexer->lookahead == '\n') {
-    advance(s, lexer);
+  } else if (at_line_end(lexer)) {
+    consume_line_end(s, lexer);
     *ending_newline = true;
     return true;
   } else {
@@ -2223,8 +2273,7 @@ static bool marker_line_has_content(Scanner *s, TSLexer *lexer) {
   while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
     advance(s, lexer);
   }
-  return !lexer->eof(lexer) && lexer->lookahead != '\n' &&
-         lexer->lookahead != '\r';
+  return !lexer->eof(lexer) && !at_line_end(lexer);
 }
 
 static bool scan_eof_or_blankline(Scanner *s, TSLexer *lexer) {
@@ -2232,8 +2281,8 @@ static bool scan_eof_or_blankline(Scanner *s, TSLexer *lexer) {
     return true;
     // We've already parsed any leading whitespace in the beginning of the
     // scan function.
-  } else if (lexer->lookahead == '\n') {
-    advance(s, lexer);
+  } else if (at_line_end(lexer)) {
+    consume_line_end(s, lexer);
     return true;
   } else {
     return false;
@@ -2281,7 +2330,7 @@ static bool scan_paragraph_closing_marker(Scanner *s, TSLexer *lexer) {
   if (lexer->lookahead == ':') {
     // Read before the colons are consumed: the margin test below needs where
     // the LINE starts, not where the fence's tail ended up.
-    uint32_t marker_column = lexer->get_column(lexer);
+    uint32_t marker_column = line_column(s, lexer);
     uint8_t colons = consume_chars(s, lexer, ':');
     if (colons >= 3) {
       // A COLON FENCE ENDS THE PARAGRAPH ONLY WHEN IT IS REALLY A MARKER.
@@ -2298,7 +2347,7 @@ static bool scan_paragraph_closing_marker(Scanner *s, TSLexer *lexer) {
         spaced = true;
       }
       int32_t c = lexer->lookahead;
-      bool bare = c == '\n' || lexer->eof(lexer);
+      bool bare = c == '\n' || c == '\r' || lexer->eof(lexer);
       if (!colon_fence_tail_opens_block(s, lexer, bare, spaced, tabbed, c)) {
         // Paragraph text - and from here the paragraph is "expecting a
         // closer": a later BARE fence is text too (PART 9 §12).
@@ -2457,7 +2506,7 @@ static bool handle_ordered_list_marker(Scanner *s, TSLexer *lexer,
     ensure_list_open(s, list_marker_to_block(marker), s->indent + 1);
     // The lexer sits just past the marker's separator here (mark_end above), so
     // this is the content column for every marker WIDTH - `1. `, `a) `, `iv. `.
-    set_content_col(s, (uint8_t)lexer->get_column(lexer));
+    set_content_col(s, (uint8_t)line_column(s, lexer));
     lexer->result_symbol = marker;
     return true;
   } else {
@@ -2477,9 +2526,7 @@ static uint8_t consume_line_with_char_or_whitespace(Scanner *s, TSLexer *lexer,
       advance(s, lexer);
     } else if (lexer->lookahead == ' ') {
       advance(s, lexer);
-    } else if (lexer->lookahead == '\r') {
-      advance(s, lexer);
-    } else if (lexer->lookahead == '\n') {
+    } else if (at_line_end(lexer)) {
       return seen;
     } else {
       return 0;
@@ -2511,13 +2558,18 @@ static uint8_t consume_line_with_char_or_whitespace(Scanner *s, TSLexer *lexer,
 static bool frontmatter_has_closer(TSLexer *lexer) {
   // Skip whatever remains of the OPENER line (optional whitespace and/or a
   // language tag per the grammar) without caring about its shape.
-  while (!lexer->eof(lexer) && lexer->lookahead != '\n') {
+  while (!lexer->eof(lexer) && !at_line_end(lexer)) {
     lexer->advance(lexer, false);
   }
   if (lexer->eof(lexer)) {
     return false;
   }
-  lexer->advance(lexer, false); // the opener line's own newline
+  if (lexer->lookahead == '\r') {
+    lexer->advance(lexer, false);
+  }
+  if (lexer->lookahead == '\n') {
+    lexer->advance(lexer, false); // the opener line's own newline
+  }
 
   // `frontmatter_content` is `repeat1($._line)`: at least ONE content line is
   // grammatically required between the opener and the closer, so the very
@@ -2529,13 +2581,18 @@ static bool frontmatter_has_closer(TSLexer *lexer) {
   if (lexer->eof(lexer)) {
     return false;
   }
-  while (!lexer->eof(lexer) && lexer->lookahead != '\n') {
+  while (!lexer->eof(lexer) && !at_line_end(lexer)) {
     lexer->advance(lexer, false);
   }
   if (lexer->eof(lexer)) {
     return false;
   }
-  lexer->advance(lexer, false); // the mandatory content line's newline
+  if (lexer->lookahead == '\r') {
+    lexer->advance(lexer, false);
+  }
+  if (lexer->lookahead == '\n') {
+    lexer->advance(lexer, false); // the mandatory content line's newline
+  }
 
   while (!lexer->eof(lexer)) {
     uint32_t dashes = 0;
@@ -2544,22 +2601,26 @@ static bool frontmatter_has_closer(TSLexer *lexer) {
       lexer->advance(lexer, false);
     }
     if (dashes >= 3) {
-      while (lexer->lookahead == ' ' || lexer->lookahead == '\t' ||
-             lexer->lookahead == '\r') {
+      while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
         lexer->advance(lexer, false);
       }
-      if (lexer->eof(lexer) || lexer->lookahead == '\n') {
+      if (lexer->eof(lexer) || at_line_end(lexer)) {
         return true;
       }
     }
     // Not a closer: skip to the end of this line and try the next one.
-    while (!lexer->eof(lexer) && lexer->lookahead != '\n') {
+    while (!lexer->eof(lexer) && !at_line_end(lexer)) {
       lexer->advance(lexer, false);
     }
     if (lexer->eof(lexer)) {
       return false;
     }
-    lexer->advance(lexer, false);
+    if (lexer->lookahead == '\r') {
+      lexer->advance(lexer, false);
+    }
+    if (lexer->lookahead == '\n') {
+      lexer->advance(lexer, false);
+    }
   }
   return false;
 }
@@ -2585,7 +2646,7 @@ static bool parse_list_marker_or_thematic_break(
   // this line ended is a marker-line nested list (`- - A`, corpus
   // 103-marker-line-nested-lists): its list nests at the marker's own column
   // instead of continuing the outer list at the line indent.
-  uint32_t start_col = lexer->get_column(lexer);
+  uint32_t start_col = line_column(s, lexer);
   uint8_t list_indent = s->indent;
   if (start_col > s->indent && s->marker_end_col != 0 &&
       start_col == s->marker_end_col) {
@@ -2642,7 +2703,7 @@ static bool parse_list_marker_or_thematic_break(
   // probe below advances the lexer as scratch - reading the column after it
   // returns wherever that probe stopped, which broke `- - A` (corpus
   // 103-marker-line-nested-lists) while this was being written.
-  uint8_t marker_content_col = (uint8_t)lexer->get_column(lexer);
+  uint8_t marker_content_col = (uint8_t)line_column(s, lexer);
 
   // Whether the probes below have consumed marker characters from the rest of
   // the line. The lexer cannot rewind, so what they eat decides the CONTENT
@@ -2759,6 +2820,7 @@ static bool scan_verbatim_to_end_no_newline(Scanner *s, TSLexer *lexer) {
         return true;
       }
       break;
+    case '\r':
     case '\n':
       return false;
     default:
@@ -2776,6 +2838,7 @@ static bool scan_ref_def(Scanner *s, TSLexer *lexer) {
       advance(s, lexer);
       advance(s, lexer);
       break;
+    case '\r':
     case '\n':
       return false;
     case '`':
@@ -2887,7 +2950,7 @@ static bool scan_footnote_after_caret(Scanner *s, TSLexer *lexer) {
     return false;
   }
   consume_whitespace(s, lexer);
-  if (lexer->eof(lexer) || lexer->lookahead == '\n') {
+  if (lexer->eof(lexer) || at_line_end(lexer)) {
     return false;
   }
 
@@ -3272,7 +3335,7 @@ static bool parse_colon(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     spaced = true;
   }
   int32_t c = lexer->lookahead;
-  bool bare = c == '\n' || lexer->eof(lexer);
+  bool bare = c == '\n' || c == '\r' || lexer->eof(lexer);
 
   size_t from_top = bare ? number_of_blocks_from_top(s, DIV, colons) : 0;
 
@@ -3537,6 +3600,7 @@ static bool scan_table_cell(Scanner *s, TSLexer *lexer, bool *separator,
       advance(s, lexer);
       advance(s, lexer);
       break;
+    case '\r':
     case '\n':
       *unterminated = !first_char;
       return false;
@@ -3615,7 +3679,7 @@ static bool scan_separator_row(Scanner *s, TSLexer *lexer) {
 
   // Nothing but whitespace and then a newline may follow a table row.
   consume_whitespace(s, lexer);
-  return lexer->lookahead == '\n';
+  return at_line_end(lexer);
 }
 
 static bool scan_table_row(Scanner *s, TSLexer *lexer, TokenType *row_type) {
@@ -3671,12 +3735,12 @@ static bool scan_table_row(Scanner *s, TSLexer *lexer, TokenType *row_type) {
 
   // Nothing but whitespace and then a newline may follow a table row.
   consume_whitespace(s, lexer);
-  if (lexer->lookahead != '\n') {
+  if (!at_line_end(lexer)) {
     return false;
   }
 
   // Consume newline.
-  advance(s, lexer);
+  consume_line_end(s, lexer);
   if (all_separators) {
     *row_type = TABLE_SEPARATOR_BEGIN;
   } else {
@@ -3746,12 +3810,12 @@ static bool parse_table_end_newline(Scanner *s, TSLexer *lexer) {
     }
   }
 
-  if (lexer->lookahead != '\n') {
+  if (!at_line_end(lexer)) {
     return false;
   }
 
   remove_block(s);
-  advance(s, lexer);
+  consume_line_end(s, lexer);
   lexer->result_symbol = TABLE_ROW_END_NEWLINE;
   lexer->mark_end(lexer);
   return true;
@@ -3834,15 +3898,16 @@ static bool scan_comment(Scanner *s, TSLexer *lexer, uint8_t indent,
     case '\\':
       advance(s, lexer);
       break;
+    case '\r':
     case '\n':
-      advance(s, lexer);
+      consume_line_end(s, lexer);
       // Need to match indent for comments inside attributes
       // but not for inline comments.
       if (indent != consume_whitespace(s, lexer)) {
         *must_be_inline_comment = true;
       }
       // Can only have one newline in a row for a valid attribute.
-      if (lexer->lookahead == '\n') {
+      if (at_line_end(lexer)) {
         return false;
       }
       break;
@@ -3927,7 +3992,7 @@ static bool parse_open_curly_bracket(Scanner *s, TSLexer *lexer,
         while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
           advance(s, lexer);
         }
-        if (lexer->lookahead == '\n' || lexer->eof(lexer)) {
+        if (at_line_end(lexer) || lexer->eof(lexer)) {
           lexer->result_symbol = BLOCK_ATTRIBUTE_BEGIN;
           return true;
         }
@@ -3955,15 +4020,16 @@ static bool parse_open_curly_bracket(Scanner *s, TSLexer *lexer,
         return false;
       }
       break;
+    case '\r':
     case '\n':
       can_be_inline_comment = false;
-      advance(s, lexer);
+      consume_line_end(s, lexer);
       // Need to match indent!
       if (indent != consume_whitespace(s, lexer)) {
         return false;
       }
       // Can only have one newline in a row for a valid attribute.
-      if (lexer->lookahead == '\n') {
+      if (at_line_end(lexer)) {
         return false;
       }
       break;
@@ -3981,7 +4047,7 @@ static bool parse_open_curly_bracket(Scanner *s, TSLexer *lexer,
       // — `}`, whitespace, or newline.
       if (lexer->lookahead != '=') {
         if (lexer->lookahead == '}' || lexer->lookahead == ' ' ||
-            lexer->lookahead == '\t' || lexer->lookahead == '\n') {
+            lexer->lookahead == '\t' || at_line_end(lexer)) {
           break;
         }
         return false;
@@ -4003,7 +4069,7 @@ static bool parse_hard_line_break(Scanner *s, TSLexer *lexer) {
   }
   advance(s, lexer);
   lexer->mark_end(lexer);
-  if (lexer->lookahead != '\n') {
+  if (!at_line_end(lexer)) {
     return false;
   }
   lexer->result_symbol = HARD_LINE_BREAK;
@@ -4047,7 +4113,7 @@ static bool end_paragraph_in_block_quote(Scanner *s, TSLexer *lexer) {
 
   // Check if there's a blankline following the blockquote marker.
   consume_whitespace(s, lexer);
-  return lexer->lookahead == '\n';
+  return at_line_end(lexer);
 }
 
 static bool scan_block_math_marker(Scanner *s, TSLexer *lexer) {
@@ -4122,7 +4188,7 @@ static bool scan_continuation_marker_at_paragraph_end(Scanner *s,
   while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
     advance(s, lexer);
   }
-  return lexer->eof(lexer) || lexer->lookahead == '\n' || lexer->lookahead == '\r';
+  return lexer->eof(lexer) || at_line_end(lexer);
 }
 
 /// TRUE when `column` is EXACTLY the margin a block opener must sit at to open
@@ -4202,7 +4268,7 @@ static bool scan_heading_at_paragraph_end(Scanner *s, TSLexer *lexer) {
   if (lexer->lookahead != '#') {
     return false;
   }
-  if (!at_block_opener_margin(s, lexer->get_column(lexer))) {
+  if (!at_block_opener_margin(s, line_column(s, lexer))) {
     return false;
   }
   uint8_t hashes = consume_chars(s, lexer, '#');
@@ -4249,17 +4315,17 @@ static bool code_fence_has_closer_ahead(Scanner *s, TSLexer *lexer, int32_t c,
   for (;;) {
     // Skip the rest of the current line (the opener's info string, or a body
     // line that was not a closer).
-    while (!lexer->eof(lexer) && lexer->lookahead != '\n') {
+    while (!lexer->eof(lexer) && !at_line_end(lexer)) {
       advance(s, lexer);
     }
     if (lexer->eof(lexer)) {
       return false;
     }
-    advance(s, lexer); // over the newline
+    consume_line_end(s, lexer); // over the newline
     while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
       advance(s, lexer);
     }
-    if (lexer->get_column(lexer) != column) {
+    if (line_column(s, lexer) != column) {
       // Not at the opener's column: whatever it is, it is fence body. Fall
       // round to the top, which skips the rest of the line.
       continue;
@@ -4273,7 +4339,7 @@ static bool code_fence_has_closer_ahead(Scanner *s, TSLexer *lexer, int32_t c,
       while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
         advance(s, lexer);
       }
-      if (lexer->eof(lexer) || lexer->lookahead == '\n') {
+      if (lexer->eof(lexer) || at_line_end(lexer)) {
         return true;
       }
     }
@@ -4299,7 +4365,7 @@ static bool scan_code_fence_at_paragraph_end(Scanner *s, TSLexer *lexer) {
   if (lexer->lookahead != '`') {
     return false;
   }
-  uint32_t column = lexer->get_column(lexer);
+  uint32_t column = line_column(s, lexer);
   if (!at_block_opener_margin(s, column)) {
     return false;
   }
@@ -4341,7 +4407,7 @@ static bool close_paragraph(Scanner *s, TSLexer *lexer) {
   // Workaround for not including the following blankline when closing a
   // paragraph inside a block.
   Block *top = peek_block(s);
-  if (top && top->type == BLOCK_QUOTE && lexer->lookahead == '\n') {
+  if (top && top->type == BLOCK_QUOTE && at_line_end(lexer)) {
     return true;
   }
 
@@ -4438,7 +4504,7 @@ static bool emit_newline_inline(Scanner *s, TSLexer *lexer,
   // there's a blankline ending the paragraph or not (in which case we
   // shouldn't emit a `NEWLINE_INLINE`).
   uint8_t next_line_whitespace = consume_whitespace(s, lexer);
-  if (lexer->lookahead == '\n') {
+  if (at_line_end(lexer)) {
     return false;
   }
 
@@ -4478,10 +4544,10 @@ static bool parse_newline(Scanner *s, TSLexer *lexer,
     return false;
   }
 
-  uint32_t newline_column = lexer->get_column(lexer);
+  uint32_t newline_column = line_column(s, lexer);
 
-  if (lexer->lookahead == '\n') {
-    advance(s, lexer);
+  if (at_line_end(lexer)) {
+    consume_line_end(s, lexer);
   }
   lexer->mark_end(lexer);
 
@@ -4772,11 +4838,11 @@ static bool scan_until(Scanner *s, TSLexer *lexer, char c, InlineType *top) {
     } else if (lexer->lookahead == '\\') {
       advance(s, lexer);
       advance(s, lexer);
-    } else if (lexer->lookahead == '\n') {
+    } else if (at_line_end(lexer)) {
       // One newline is ok in inline spans, but not several in a row.
-      advance(s, lexer);
+      consume_line_end(s, lexer);
       consume_whitespace(s, lexer);
-      if (lexer->lookahead == '\n') {
+      if (at_line_end(lexer)) {
         return false;
       }
     } else {
@@ -4830,13 +4896,14 @@ static bool scan_valid_inline_attribute(Scanner *s, TSLexer *lexer) {
       }
       break;
     }
+    case '\r':
     case '\n':
       // A single embedded newline is allowed, but not a blank line.
       if (seen_newline) {
         return false;
       }
       seen_newline = true;
-      advance(s, lexer);
+      consume_line_end(s, lexer);
       break;
     default: {
       // An attribute key must not start with a digit (`12=v` is not a key).
@@ -4847,7 +4914,7 @@ static bool scan_valid_inline_attribute(Scanner *s, TSLexer *lexer) {
         // Bare boolean attribute: a key (already known non-digit-leading)
         // followed by a valid boundary (`}`, whitespace, newline).
         if (lexer->lookahead == '}' || lexer->lookahead == ' ' ||
-            lexer->lookahead == '\t' || lexer->lookahead == '\n') {
+            lexer->lookahead == '\t' || at_line_end(lexer)) {
           break;
         }
         return false;
@@ -5085,11 +5152,7 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
   // we mark it again to make it consume.
   // I found it easier to opt-in to consume tokens.
   lexer->mark_end(lexer);
-  // Important to remember to skip all carriage returns.
-  if (lexer->lookahead == '\r') {
-    advance(s, lexer);
-  }
-  bool at_line_start = lexer->get_column(lexer) == 0;
+  bool at_line_start = line_column(s, lexer) == 0;
   if (at_line_start) {
     s->indent = consume_whitespace(s, lexer);
     // A new line starts a new marker chain (see `marker_end_col`).
@@ -5109,7 +5172,7 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
     // to be shaped.
     s->block_quote_level = 0;
   }
-  bool is_newline = lexer->lookahead == '\n';
+  bool is_newline = at_line_end(lexer);
   // End-of-input, recorded HERE and not where it is read. The read is at the
   // very bottom of this function, after every probe has had its turn, and a
   // probe that advanced and then declined leaves the lexer wherever it stopped
@@ -5406,6 +5469,7 @@ static void init(Scanner *s) {
   s->block_quote_level = 0;
   s->indent = 0;
   s->marker_end_col = 0;
+  s->col_base = 0;
   s->state = 0;
 }
 
@@ -5439,6 +5503,10 @@ unsigned tree_sitter_carve_external_scanner_serialize(void *payload,
   buffer[size++] = (char)s->indent;
   buffer[size++] = (char)s->marker_end_col;
   buffer[size++] = (char)s->state;
+  buffer[size++] = (char)(s->col_base & 0xff);
+  buffer[size++] = (char)((s->col_base >> 8) & 0xff);
+  buffer[size++] = (char)((s->col_base >> 16) & 0xff);
+  buffer[size++] = (char)((s->col_base >> 24) & 0xff);
 
   buffer[size++] = (char)s->open_blocks->size;
   for (size_t i = 0; i < s->open_blocks->size; ++i) {
@@ -5468,6 +5536,10 @@ void tree_sitter_carve_external_scanner_deserialize(void *payload, char *buffer,
     s->indent = (uint8_t)buffer[size++];
     s->marker_end_col = (uint8_t)buffer[size++];
     s->state = (uint8_t)buffer[size++];
+    s->col_base = (uint32_t)(uint8_t)buffer[size++];
+    s->col_base |= (uint32_t)(uint8_t)buffer[size++] << 8;
+    s->col_base |= (uint32_t)(uint8_t)buffer[size++] << 16;
+    s->col_base |= (uint32_t)(uint8_t)buffer[size++] << 24;
 
     uint8_t open_blocks = (uint8_t)buffer[size++];
     while (open_blocks-- > 0) {

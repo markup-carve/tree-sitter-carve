@@ -3,6 +3,15 @@ const ELEMENT_PRECEDENCE = 100;
 module.exports = grammar({
   name: "carve",
 
+  // A carriage return stays an EXTRA. It reads like the other half of the
+  // "carriage returns should simply be ignored" model `advance` used to carry,
+  // and dropping it was tried: it costs 45 SECONDS on
+  // `248-an-attribute-name-admits-no-colon-3`, a document whose ERROR is
+  // recorded and pre-existing, because error recovery then has nothing it may
+  // skip. That is reproducible with main's own scanner and an empty list, so it
+  // is the extras entry alone and not the scanner (#143). The external scanner
+  // sees the terminators it needs to: every regex here stops at a '\r' now, and
+  // an extra is only ever taken where no token can start.
   extras: (_) => ["\r"],
 
   conflicts: ($) => [
@@ -591,7 +600,7 @@ module.exports = grammar({
       ),
     class_name: ($) => $._id_no_digit_start,
     div_title: (_) =>
-      choice(seq('"', /[^"\n]*/, '"'), seq("'", /[^'\n]*/, "'")),
+      choice(seq('"', /[^"\r\n]*/, '"'), seq("'", /[^'\r\n]*/, "'")),
 
     code_block: ($) =>
       seq(
@@ -675,16 +684,16 @@ module.exports = grammar({
     // Excludes `"` and `[` so a glued header/label (```php"x", ```php[x]) is
     // not swallowed into the language token -- the info string then needs the
     // space the spec requires, and a glued form falls back (matches the impls).
-    language: (_) => /[^\n\t \{\}=\["]+/,
-    code_block_label: (_) => seq("[", /[^\]\n]*/, "]"),
+    language: (_) => /[^\r\n\t \{\}=\["]+/,
+    code_block_label: (_) => seq("[", /[^\]\r\n]*/, "]"),
     // Quoted "header" on a code fence opener (PART 9 §2). A single token so it
     // lexes cleanly right after the immediate inter-token whitespace.
     // Double-quoted only, matching the carve impls' code-fence header (the
     // `language` token excludes `"` and the external scanner gates on `"`).
-    code_block_header: (_) => token(seq('"', /[^"\n]*/, '"')),
+    code_block_header: (_) => token(seq('"', /[^"\r\n]*/, '"')),
     code: ($) =>
       prec.left(repeat1(seq(optional($._block_quote_prefix), $._line))),
-    _line: ($) => seq(/[^\n]*/, $._newline),
+    _line: ($) => seq(/[^\r\n]*/, $._newline),
 
     thematic_break: ($) =>
       seq(
@@ -828,8 +837,8 @@ module.exports = grammar({
     // `"a\"b\"c"` is one title (corpus 34-reference-link-7).
     link_title: (_) =>
       choice(
-        seq('"', /(?:[^"\\\n]|\\[^\n])*/, '"'),
-        seq("'", /(?:[^'\\\n]|\\[^\n])*/, "'"),
+        seq('"', /(?:[^"\\\r\n]|\\[^\r\n])*/, '"'),
+        seq("'", /(?:[^'\\\r\n]|\\[^\r\n])*/, "'"),
       ),
 
     // carve-php caption block: `^ caption text` on its own line.
@@ -857,7 +866,18 @@ module.exports = grammar({
         $._newline,
       ),
 
-    comment_line: (_) => token(seq(/[ \t]*/, "%%", /[^\r\n]*/, /\r?\n/)),
+    // THE ONE LINE ENDING THE EXTERNAL SCANNER DOES NOT CONSUME. Every other
+    // terminator reaches `consume_line_end`, which is where `col_base` - the
+    // column tree-sitter believes the current line starts at, see `scanner.c` -
+    // is maintained. This token takes its own, so after a comment line ended by
+    // a LONE '\r' the base is stale and an INDENTED construct on a following
+    // line can be misread. Excluding the lone '\r' here is worse, not better:
+    // the comment line then degrades to a paragraph in every '\r'-terminated
+    // document, and `%% c` CR `- a` CR `  - b` collapses into one paragraph
+    // instead of only the one shape that fails now. Closing it properly means
+    // handing the terminator back to `$._newline`, which several call sites in
+    // `scanner.c` are written around (#143).
+    comment_line: (_) => token(seq(/[ \t]*/, "%%", /[^\r\n]*/, /\r\n|\r|\n/)),
 
     // Carve fenced comment block.
     // semantics — opener is N `%` (N >= 3), closer is a run of EXACTLY N `%`,
@@ -905,7 +925,7 @@ module.exports = grammar({
     fenced_comment_block: ($) =>
       seq(
         alias($._comment_fence_begin, $.comment_fence_marker_begin),
-        optional(field("info", alias(/[^\n]+/, $.comment_fence_info))),
+        optional(field("info", alias(/[^\r\n]+/, $.comment_fence_info))),
         $._newline,
         optional(field("content", alias($._comment_fence_content, $.content))),
         $._block_close,
@@ -1060,9 +1080,9 @@ module.exports = grammar({
       choice(
         // Double-quoted: allow escaped quotes (`\"`) and any other char,
         // including braces (`"{y}"`).
-        seq('"', /([^"\\\n]|\\[^\n])*/, '"'),
+        seq('"', /([^"\\\r\n]|\\[^\r\n])*/, '"'),
         // Single-quoted: same, with `'` as the delimiter.
-        seq("'", /([^'\\\n]|\\[^\n])*/, "'"),
+        seq("'", /([^'\\\r\n]|\\[^\r\n])*/, "'"),
         /\w+/,
       ),
 
@@ -1456,7 +1476,7 @@ module.exports = grammar({
       ),
     _inline_link_url: ($) =>
       // Can escape `)`, but shouldn't capture it.
-      repeat1(choice(/([^\)\n]|\\\))+/, $._newline_inline)),
+      repeat1(choice(/([^\)\r\n]|\\\))+/, $._newline_inline)),
     _parens_span_begin: (_) => "(",
 
     _comment: ($) =>
