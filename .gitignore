@@ -9,3 +9,13 @@ build
 /target/
 log.html
 *.wasm
+
+# `tree-sitter build` writes the compiled parser next to the grammar as
+# `carve.so` (`carve.dylib` on macOS), the same way `build --wasm` writes
+# `carve.wasm` above. One of those got committed once and sat in the tree for
+# three weeks; a compiled parser in the repository is a third copy that goes
+# stale on its own schedule, alongside the shared `tree-sitter` libdir cache and
+# the `bindings/node` addon, and a stale parser produces a plausible wrong tree
+# rather than an error. `make` writes `lib*.so`/`lib*.dylib` here too.
+*.so
+*.dylib
