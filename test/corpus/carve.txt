@@ -1095,6 +1095,343 @@ tail
       (paragraph))))
 
 ===============================================================================
+A lazy bare fence ends the block quote the malformed one was absorbed into
+;; The block quote form of the case above, and the same mechanism: `:::note` is
+;; not an opener, so it is paragraph text and leaves the paragraph expecting a
+;; closer (PART 9 §12), but the `:::` below it carries no `>` marker and sits at
+;; the document's own margin, so the context OUTSIDE the quote is offered it
+;; first - and out there nothing is expecting a closer. It ends the quote and
+;; opens its div, which is what carve-js, carve-php and carve-rs all render
+;; (#114). The grammar used to fold every line into the quote.
+===============================================================================
+> para
+:::note
+body
+:::
+tail
+
+-------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (paragraph)))
+  (div
+    (div_marker_begin)
+    content: (content
+      (paragraph))))
+
+===============================================================================
+The lazy fence ends the quote at any width
+;; Absorption is not width-tagged, so the escape test must not be either: a
+;; `::::` with no `>` marker ends the quote exactly as `:::` does.
+===============================================================================
+> para
+:::note
+body
+::::
+tail
+
+-------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (paragraph)))
+  (div
+    (div_marker_begin)
+    content: (content
+      (paragraph))))
+
+===============================================================================
+A fully marked fence stays inside the quote that absorbed the malformed one
+;; THE REGRESSION GUARD, and it has been observed failing. Mark every line and
+;; the fence is the paragraph's own line rather than a lazy one, so the
+;; absorption applies and the whole thing is a single quoted paragraph in all
+;; three engines. The first attempt at the case above decided laziness from
+;; `block_quote_level`, which does not describe the current line at every route
+;; into the paragraph-closing peek, and broke exactly this document into a quote
+;; holding a div.
+===============================================================================
+> para
+> :::note
+> body
+> :::
+> tail
+
+-------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (paragraph
+        (block_quote_marker)
+        (block_quote_marker)
+        (block_quote_marker)
+        (block_quote_marker)))))
+
+===============================================================================
+An indented lazy fence is absorbed, because outside the quote it opens nothing
+;; The escape boundary is EXACTLY the holding context's margin, not "at or left
+;; of it". `  :::` carries no `>` marker, but at the document root an indented
+;; colon fence is not an opener at all (corpus
+;; 158-indented-colon-fence-blocks-stay-literal), so nothing out there claims
+;; the line and it folds back into the paragraph above. One quoted paragraph in
+;; carve-js, carve-php and carve-rs alike.
+===============================================================================
+> para
+:::note
+body
+  :::
+tail
+
+-------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (paragraph))))
+
+===============================================================================
+Inside a list item the quote's escape boundary is the item's content column
+;; The margin belongs to whatever context HOLDS the quote, which here is the
+;; item rather than the document. `  :::` is at the item's content column, so
+;; the item is offered it and opens a div there, while the quote ends - a quote
+;; and a sibling div inside one item in all three engines. Note the div stays
+;; INSIDE the item: escaping the quote is not escaping the item, and
+;; `below_container_margin` still answers that second question separately.
+===============================================================================
+- item
+  > para
+  :::note
+  body
+  :::
+  tail
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)
+        (block_quote
+          (block_quote_marker)
+          content: (content
+            (paragraph)))
+        (div
+          (div_marker_begin)
+          content: (content
+            (paragraph)))))))
+
+===============================================================================
+One column short of the content column, the fence stays inside the quote
+;; The ordered form, and the reason the escape boundary is the container's
+;; CONTENT column and not the `data` that `below_container_margin` measures
+;; against. Under `1. ` the marker sits at column 0 and the content at column 3,
+;; so a column-2 fence is short of the margin: every engine keeps it inside the
+;; quote, where measuring against `data` (the marker's column plus one) would
+;; pull it out.
+===============================================================================
+1. item
+   > para
+   :::note
+   body
+  :::
+  tail
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_decimal_period)
+      content: (list_item_content
+        (paragraph)
+        (block_quote
+          (block_quote_marker)
+          content: (content
+            (paragraph)))))))
+
+===============================================================================
+One column past the content column, the fence stays inside the quote too
+;; The other side of the same boundary, and the reason the test is an equality.
+;; `    :::` is indented past the item's content column, so out in the item it
+;; opens nothing, nothing claims the line, and it folds back into the quote's
+;; paragraph - one quote holding all five lines in all three engines.
+===============================================================================
+- item
+  > para
+  :::note
+  body
+    :::
+    tail
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)
+        (block_quote
+          (block_quote_marker)
+          content: (content
+            (paragraph)))))))
+
+===============================================================================
+A list inside the quote does not move the quote's escape boundary
+;; The margin belongs to whatever holds the QUOTE, and here the list item is
+;; inside it: the item's content column already includes the `> ` prefix, so a
+;; fully marked closer lands exactly on it. Anchoring the margin search on the
+;; innermost open quote and looking only outside that quote keeps this document
+;; whole - one quoted list item holding all five lines, as in all three engines.
+;; Reusing `indenting_container` here instead splits the item at the closer.
+===============================================================================
+> - item
+>   :::note
+>   body
+>   :::
+>   tail
+
+-------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (paragraph
+              (block_quote_marker)
+              (block_quote_marker)
+              (block_quote_marker)
+              (block_quote_marker))))))))
+
+===============================================================================
+A footnote holding the quote sets the margin from its own indent
+;; A footnote records no content column - it pushes `s->indent + 2`, which IS
+;; its content column, and does not move with the label's width. All three
+;; engines end the quote at a column-2 fence and open the div inside the
+;; footnote, for `[^a]:` and `[^abcd]:` alike.
+===============================================================================
+x[^a]
+
+[^a]: > para
+  :::note
+  body
+  :::
+  tail
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (footnote_reference
+      (footnote_marker_begin)
+      (reference_label)
+      (footnote_marker_end)))
+  (footnote
+    (footnote_marker_begin)
+    label: (reference_label)
+    (footnote_marker_end)
+    content: (footnote_content
+      (block_quote
+        (block_quote_marker)
+        content: (content
+          (paragraph)))
+      (div
+        (div_marker_begin)
+        content: (content
+          (paragraph))))))
+
+===============================================================================
+The footnote margin does not follow the label's width
+;; The control for the case above, and the reason the margin is the footnote's
+;; own `data` rather than anything derived from the marker line: widen the label
+;; and column 2 is still the margin, so the column-3 fence here is indented and
+;; folds back into the quoted paragraph - as it does in all three engines.
+===============================================================================
+x[^abcd]
+
+[^abcd]: > para
+   :::note
+   body
+   :::
+   tail
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (footnote_reference
+      (footnote_marker_begin)
+      (reference_label)
+      (footnote_marker_end)))
+  (footnote
+    (footnote_marker_begin)
+    label: (reference_label)
+    (footnote_marker_end)
+    content: (footnote_content
+      (block_quote
+        (block_quote_marker)
+        content: (content
+          (paragraph))))))
+
+===============================================================================
+A lazy fence ends the quote when nothing is absorbing either
+;; The control. Every assertion above would also hold if an unmarked fence had
+;; simply stopped ending quotes, so this pins the plain case: with no malformed
+;; fence anywhere, `:::` under a quote ends it and opens a document-level div.
+===============================================================================
+> para
+:::
+tail
+
+-------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (paragraph)))
+  (div
+    (div_marker_begin)
+    content: (content
+      (paragraph))))
+
+===============================================================================
+A fully marked fence opens a div inside the quote when nothing is absorbing
+;; The other control: mark the fence and it is an ordinary opener, so the div
+;; nests inside the quote instead of ending it.
+===============================================================================
+> para
+> :::
+> tail
+
+-------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (paragraph)
+      (block_quote_marker)
+      (div
+        (div_marker_begin)
+        content: (content
+          (paragraph
+            (block_quote_marker)))))))
+
+===============================================================================
 A glued admonition type in a list item is text, not a nested div
 ;; The item holds ONE paragraph: `:::note` is not an opener, and the `:::`
 ;; below it is at the item's content column, so it is absorbed the same way it

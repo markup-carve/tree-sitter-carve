@@ -655,15 +655,9 @@ static uint8_t count_blocks(Scanner *s, BlockType type) {
 /// every line is at its own margin.
 ///
 /// SCOPED TO INDENTING CONTAINERS ON PURPOSE. A block quote continues by its
-/// `>` markers rather than by indentation, and the equivalent arm
-/// (`count_blocks(BLOCK_QUOTE) > s->block_quote_level`) was written, measured
-/// and removed: it fixed the lazy shape it was aimed at (`> para` /
-/// `:::note` / `body` / `:::` / `tail`, where every engine ends the quote and
-/// opens a div) and broke the fully-quoted one, turning `> para` / `> :::note`
-/// / `> body` / `> :::` / `> tail` -- one quoted paragraph in all three
-/// engines -- into a quote holding a div. `block_quote_level` does not report
-/// this line's markers at every route into the peek. The quoted shape is left
-/// as it is rather than guessed at.
+/// `>` markers rather than by indentation, so it never appears in
+/// `indenting_container` and never moves this margin. A quote has an escape
+/// boundary of its own, and `escapes_open_block_quote` below answers that one.
 static bool below_container_margin(Scanner *s, uint32_t column) {
   // A `+` continuation attaches its block flush left, so the item's margin is
   // zero and a flush-left line under it is not lazy at all.
@@ -672,6 +666,91 @@ static bool below_container_margin(Scanner *s, uint32_t column) {
   }
   Block *b = indenting_container(s);
   return b != NULL && column < b->data;
+}
+
+/// TRUE when a colon fence at `column` steps OUT of an open block quote: a
+/// quote is open, and the column is EXACTLY the margin of the context that
+/// holds it -- zero at the document root, the content column of the innermost
+/// indenting container OUTSIDE the quote inside one.
+///
+/// THE COLUMN IS THE WHOLE ANSWER, and that is why this needs no plumbing. The
+/// obvious spelling is a marker count (`count_blocks(BLOCK_QUOTE) >
+/// s->block_quote_level`), and it was written, measured and reverted once
+/// already: `block_quote_level` does not describe the current line at every
+/// route into the paragraph-closing peek -- one of them runs after
+/// `end_paragraph_in_block_quote` has consumed the markers -- so it turned the
+/// fully-marked `> para` / `> :::note` / `> body` / `> :::` / `> tail`, one
+/// quoted paragraph in all three engines, into a quote holding a div. The
+/// column does not have that problem: the quote's own `> ` prefix occupies
+/// columns, so a marked line's fence can never land ON the enclosing margin,
+/// and the fully-marked shape fails this test for the same reason it is not
+/// lazy (tree-sitter-carve#114, and #113 for the same lesson about `s->indent`).
+///
+/// THE MARGIN COMES FROM OUTSIDE THE QUOTE, which is why this walks the block
+/// stack itself instead of reusing `indenting_container`. That helper answers
+/// "the innermost container of any kind", and inside `> - item` / `>   :::note`
+/// / `>   body` / `>   :::` / `>   tail` that is the list item WITHIN the quote,
+/// whose content column already includes the `> ` prefix -- so the fully-marked
+/// closer lands exactly on it and the argument above stops holding. All three
+/// engines keep that document as one quoted list item. Anchoring on the
+/// innermost open quote and looking only BELOW it restores the invariant: a
+/// margin measured outside the quote is always at least two columns left of any
+/// marked line's content.
+///
+/// EXACTLY at the margin, not "at or left of" and not "at or right of". Out in
+/// the holding context a colon fence is a block opener only at that context's
+/// own content column; one space either way is literal text (see
+/// `Block::content_col`), so nothing claims the line and it folds back into the
+/// paragraph above. All three engines agree in both directions: `> para` /
+/// `:::note` / `body` / `  :::` / `tail` is a single quoted paragraph
+/// (over-indented, corpus 158-indented-colon-fence-blocks-stay-literal is the
+/// same rule), and so is the `- item` / `  > para` / `  :::note` / `  body` /
+/// ` :::` / ` tail` form one column short of the item's content column.
+///
+/// The margin is `content_col`, NOT the `data` that `below_container_margin`
+/// uses. The two questions differ: that one asks whether a line escapes a LIST
+/// ITEM, whose boundary is the MARKER's column, and this one asks whether the
+/// line would be a block OPENER outside the quote, which is a content column.
+/// The ordered form separates them - under `1. ` the marker is at 0 and the
+/// content at 3 - and all three engines keep a column-2 fence inside the quote
+/// while a column-3 one ends it.
+///
+/// A container whose content column was never recorded reads 0 and gets no
+/// opinion here, exactly as in `has_surplus_indent`.
+static bool escapes_open_block_quote(Scanner *s, uint32_t column) {
+  int i = s->open_blocks->size - 1;
+  while (i >= 0 && (*array_get(s->open_blocks, i))->type != BLOCK_QUOTE) {
+    --i;
+  }
+  if (i < 0) {
+    // No quote is open, so there is none to step out of.
+    return false;
+  }
+  // A `+` continuation attaches its block flush left, so the holding margin is
+  // the document's zero rather than the item's content column.
+  if (s->state & STATE_LIST_CONTINUATION) {
+    return column == 0;
+  }
+  for (--i; i >= 0; --i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (is_list(b->type)) {
+      // A list keeps its content column in a field of its own, because `data`
+      // is the marker's column plus one and cannot tell `- ` from `1. `. A
+      // container opened before that field existed reads 0 and gets no opinion,
+      // exactly as in `has_surplus_indent`.
+      return b->content_col != 0 && column == b->content_col;
+    }
+    if (b->type == FOOTNOTE || b->type == TABLE_CAPTION) {
+      // Both push `s->indent + 2`, which IS their content column - the margin
+      // does not follow the label's width. `[^a]: > para` and
+      // `[^abcd]: > para` behave identically in all three engines: a fence at
+      // column 2 ends the quote and opens a div in the footnote, one at column
+      // 3 is indented and folds back into the quoted paragraph.
+      return column == b->data;
+    }
+  }
+  // Nothing indenting outside the quote: the document root holds it.
+  return column == 0;
 }
 
 
@@ -2023,8 +2102,18 @@ static bool scan_paragraph_closing_marker(Scanner *s, TSLexer *lexer) {
       // fence at the item's own column - `- item` / `:::note` / `  body` /
       // `  :::` / `  tail` is one item in all three engines, where the same
       // `  :::` without the `:::note` above it opens a div inside the item.
+      //
+      // A block quote reaches only as far too, and because it continues by its
+      // `>` markers rather than by indentation its boundary is asked
+      // separately: an unmarked fence at the margin of the context HOLDING the
+      // quote is offered to that context first, and out there nothing is
+      // expecting a closer. `> para` / `:::note` / `body` / `:::` / `tail` is a
+      // quote holding one paragraph plus a document-level div in carve-js,
+      // carve-php and carve-rs alike, while the same document with every line
+      // marked is a single quoted paragraph (tree-sitter-carve#114).
       if (s->state & STATE_FENCE_ABSORBS) {
-        return below_container_margin(s, marker_column);
+        return escapes_open_block_quote(s, marker_column) ||
+               below_container_margin(s, marker_column);
       }
       return true;
     }
