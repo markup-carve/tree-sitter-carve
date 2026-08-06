@@ -2993,6 +2993,27 @@ static bool parse_colon(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
         return false;
       }
       advance(s, lexer);
+      // COLUMN ZERO, the rule the div branch below already names as "the same
+      // rule the heading marker and the definition markers follow" - except
+      // this branch never asked. An indented `:: t` opened a definition list
+      // here while all three engines keep the line as paragraph text, at the
+      // top level, inside a div, and one column past a list item's content
+      // column alike (#109).
+      //
+      // A term that CONTINUES an open definition list is measured against that
+      // list's own marker column instead. `has_extra_indent` reads the open
+      // list as an indenting container whose threshold is `data`
+      // (= marker column + 1), so every sibling term at the list's own column
+      // looked indented and the second `:: ` of a two-term entry was refused.
+      Block *open_definition_list = find_list(s);
+      if (open_definition_list &&
+          open_definition_list->type == LIST_DEFINITION) {
+        if (s->indent + 1 != open_definition_list->data) {
+          return false;
+        }
+      } else if (has_extra_indent(s)) {
+        return false;
+      }
       // Mark the token end before the content probe (scratch advances must not
       // extend it), then require non-empty content: a content-less `:: ` line
       // is paragraph text, not a term.

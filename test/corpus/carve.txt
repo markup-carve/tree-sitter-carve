@@ -3640,3 +3640,46 @@ y
     code: (code)
     (code_block_marker_end))
   (paragraph))
+
+===============================================================================
+An indented definition term marker is paragraph text (tree-sitter-carve#109)
+===============================================================================
+ :: t
+tail
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph))
+
+===============================================================================
+An indented term inside a div is paragraph text too (tree-sitter-carve#109)
+===============================================================================
+::: note
+ :: t
+tail
+:::
+
+-------------------------------------------------------------------------------
+
+(document
+  (div
+    (div_marker_begin)
+    class: (class_name)
+    content: (content
+      (paragraph))
+    (div_marker_end)))
+
+===============================================================================
+A term at column zero still opens the list (tree-sitter-carve#109)
+===============================================================================
+:: t
+tail
+
+-------------------------------------------------------------------------------
+
+(document
+  (definition_list
+    (list_item
+      marker: (list_marker_definition)
+      term: (term))))
