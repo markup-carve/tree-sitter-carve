@@ -1,5 +1,5 @@
 {
-  "_comment": "Coverage matrix for the shared Carve spec corpus (spec/tests/corpus/*.crv). Every NN-slug base category must appear in covered or skip; the coverage-matrix test fails otherwise so a new spec category forces a classify decision. covered = grammar parses every file in the category with no ERROR/MISSING node. skip = at least one file currently produces an ERROR/MISSING node; reason records the unmodeled construct (a grammar gap to surface, not to hack around). A skip key is a CATEGORY (NN-slug) or a single EXAMPLE (NN-slug-2) \u2014 use the example form when the rest of the category parses cleanly, so one gap does not drop assertion for its siblings. A key equal to a category name is read as the CATEGORY, so the first example of a category cannot be skipped on its own.",
+  "_comment": "Coverage matrix for the shared Carve spec corpus (spec/tests/corpus/*.crv). Every NN-slug base category must appear in covered or skip; the coverage-matrix test fails otherwise so a new spec category forces a classify decision. covered = grammar parses every file in the category with no ERROR/MISSING node. skip = at least one file currently produces an ERROR/MISSING node; reason records the unmodeled construct (a grammar gap to surface, not to hack around). A skip key is a CATEGORY (NN-slug) or a single EXAMPLE (NN-slug-2) — use the example form when the rest of the category parses cleanly, so one gap does not drop assertion for its siblings. A key equal to a category name is read as the CATEGORY, so the first example of a category cannot be skipped on its own.",
   "covered": [
     "a-backslash-in-a-link-destination-is-a-literal-character",
     "a-bare-attribute-block-on-its-own-line-is-literal",
@@ -16,6 +16,7 @@
     "a-comment-fence-under-a-nested-item-does-not-close-it-either",
     "a-comment-is-recognized-at-any-column",
     "a-comment-under-a-nested-item-does-not-close-it",
+    "a-continuation-marker-after-a-blank-line-in-the-item",
     "a-continuation-row-carries-no-trailing-text",
     "a-continuation-row-needs-a-body-row",
     "a-definition-attached-by-a-continuation-marker-is-collected-and-the-item-keeps-no-trace",
@@ -71,6 +72,7 @@
     "an-abbreviation-term-is-one-ascii-alphanumeric-word",
     "an-at-sign-is-a-reference-label-character-everywhere-but-the-first-position",
     "an-attribute-line-inside-a-footnote-body-attaches-inside-it",
+    "an-attribute-name-admits-no-colon",
     "an-empty-abbreviation-term-is-not-a-definition",
     "an-image-takes-a-reference-the-way-a-link-does",
     "an-invisible-line-does-not-cancel-a-blank-line-separation",
@@ -225,12 +227,14 @@
     "tables-with-rowspan-and-colspan",
     "tag-requires-a-word-boundary",
     "task-lists",
+    "the-continuation-marker-at-an-item-s-own-column-and-what-follows-it",
     "the-same-column-written-with-four-spaces",
     "thematic-break-requires-contiguous-markers",
     "thematic-breaks",
     "tight-list-item-keeps-trailing-text-after-a-block-bare",
     "trailing-attribute-block-edge-cases",
     "trailing-attributes-on-a-link-reference-definition",
+    "trailing-whitespace-after-a-block-marker",
     "trailing-whitespace-boundaries",
     "trojan-source-heading-ids-are-nfc-normalized-and-strip-invisible-controls",
     "trojan-source-rendered-text-and-code-strip-bidi-override-controls",
@@ -247,7 +251,9 @@
     "widened-verbatim-fences",
     "wrapped-definition-term-continuation-below-the-content-column-strips-leading-whitespace"
   ],
-  "skip": {},
+  "skip": {
+    "an-attribute-name-admits-no-colon-3": "a table row whose trailing attribute block carries an INVALID name (`| a | b |{.a:b}` - a class may not contain a colon) parses to ERROR. The engines make the whole line a paragraph, because the block is not an attribute block at all; this grammar commits to the row on the pipes and has no route back. The category's other two examples parse cleanly, so only this one is skipped."
+  },
   "overAcceptance": {
     "an-unresolved-reference-image-takes-no-caption": {
       "nodes": "caption",
