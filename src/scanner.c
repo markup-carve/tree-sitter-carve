@@ -1787,9 +1787,48 @@ static bool parse_block_quote(Scanner *s, TSLexer *lexer,
     }
   }
 
+  // The marker run is not over: another `>` follows this marker on the same
+  // line, so `marker_count` is this line's depth SO FAR, not its depth. The
+  // dedent test below has to see the whole line, and this scan sees one marker
+  // per call - `scan_block_quote_marker` takes exactly one and the count is
+  // carried between calls in `block_quote_level`. The lexer cannot rewind, so
+  // the fact is read where the probe stopped: one character of lookahead, no
+  // advance, which leaves the token end pinned where every branch below still
+  // expects it.
+  //
+  // Left unread, the FIRST marker of `> >` decided the line at depth 1 against
+  // an open depth of 2 and closed the inner quote before its own marker was
+  // seen, so every nested quote line that is not absorbed by an open paragraph
+  // opened a fresh inner quote: `> >` / `> >` built two empty inner quotes with
+  // a stray marker between them, and `> > # h` / `> > # i` two quotes holding
+  // one heading each, where carve-js builds one inner quote in both (#136).
+  // `> > a` / `> > b` was already right, and for a different reason - a lazily
+  // continued paragraph is absorbed by the paragraph path, which scans the
+  // whole marker run before it decides.
+  bool run_continues = has_marker && !ending_newline && lexer->lookahead == '>';
+
+  // The deferral above is taken on that one `>` alone, and `> >x` looks exactly
+  // like `> >` one character in. Telling them apart needs the character AFTER
+  // the `>`, and only an advance reaches it - an advance that would stretch the
+  // marker token over it, because the token end is pinned wherever the lexer
+  // stands when a branch below commits. So a run that turns out to stop at a
+  // character that is not a marker is caught HERE instead, on the next call:
+  // `block_quote_level` is non-zero only once an earlier call on this line took
+  // a marker, so this call is mid-line, past a marker, on something that is not
+  // one.
+  //
+  // The line then stays in the quote the deferral put it in. Dedenting from
+  // here cannot work: the deferred marker has already been consumed as that
+  // quote's own prefix, and the container it would dedent into needs a prefix
+  // of its own before it can hold a block - so `> > a` / `> >x` went to ERROR
+  // recovery with the tail line dropped. Held in the deeper quote it is a
+  // paragraph there, one line off carve-js, which continues the paragraph above
+  // it (`a\n>x`) rather than starting a second one.
+  bool run_stopped_short = !has_marker && s->block_quote_level > 0;
+
   // There's an open block quote with a higher nesting level.
   if (highest_block_quote && marker_count < highest_block_quote->data &&
-      !any_open_inline) {
+      !run_continues && !run_stopped_short && !any_open_inline) {
     // Close the paragraph, but allow lazy continuation (without any `>`).
     if (valid_symbols[CLOSE_PARAGRAPH] && has_marker) {
       lexer->result_symbol = CLOSE_PARAGRAPH;
