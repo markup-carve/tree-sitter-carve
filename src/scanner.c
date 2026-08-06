@@ -4186,12 +4186,21 @@ static bool scan_heading_at_paragraph_end(Scanner *s, TSLexer *lexer) {
 /// is scratch - `mark_end` was committed before the peek began - so the scan
 /// may read as far ahead as it needs without stretching a token.
 ///
-/// A closer is a line whose first non-blank run is `width` or more of the same
-/// character with nothing but blanks after it. Width is `>=`, not exact: a
-/// three-tick fence is closed by four (measured), and a four-tick fence is not
-/// closed by three.
+/// A closer is a line at the OPENER'S OWN COLUMN whose first non-blank run is
+/// `width` or more of the same character with nothing but blanks after it.
+/// Width is `>=`, not exact: a three-tick fence is closed by four (measured),
+/// and a four-tick fence is not closed by three.
+///
+/// THE COLUMN IS EXACT, and it is the opener's rather than the container's.
+/// Measured over a run at every offset from 0 to 5: inside `- item` a fence
+/// opened at column 2 is closed by a run at column 2 and by nothing else -
+/// column 0, 1, 3 and 5 all leave carve-js rendering an inline `<code>` - and
+/// the same holds in a footnote and at the document root. Without the test the
+/// lookahead accepted an OUTDENTED run, so `- item` / `  ``` ` / `  code` /
+/// ``` ``` ``` at column 0 opened a `code_block` with no end marker where
+/// carve-js builds no block at all.
 static bool code_fence_has_closer_ahead(Scanner *s, TSLexer *lexer, int32_t c,
-                                        uint8_t width) {
+                                        uint8_t width, uint32_t column) {
   for (;;) {
     // Skip the rest of the current line (the opener's info string, or a body
     // line that was not a closer).
@@ -4204,6 +4213,11 @@ static bool code_fence_has_closer_ahead(Scanner *s, TSLexer *lexer, int32_t c,
     advance(s, lexer); // over the newline
     while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
       advance(s, lexer);
+    }
+    if (lexer->get_column(lexer) != column) {
+      // Not at the opener's column: whatever it is, it is fence body. Fall
+      // round to the top, which skips the rest of the line.
+      continue;
     }
     uint8_t run = 0;
     while (lexer->lookahead == c) {
@@ -4240,7 +4254,8 @@ static bool scan_code_fence_at_paragraph_end(Scanner *s, TSLexer *lexer) {
   if (lexer->lookahead != '`') {
     return false;
   }
-  if (!at_block_opener_margin(s, lexer->get_column(lexer))) {
+  uint32_t column = lexer->get_column(lexer);
+  if (!at_block_opener_margin(s, column)) {
     return false;
   }
   uint8_t width = consume_chars(s, lexer, '`');
@@ -4250,7 +4265,7 @@ static bool scan_code_fence_at_paragraph_end(Scanner *s, TSLexer *lexer) {
   if (!code_fence_info_is_modeled(s, lexer)) {
     return false;
   }
-  return code_fence_has_closer_ahead(s, lexer, '`', width);
+  return code_fence_has_closer_ahead(s, lexer, '`', width, column);
 }
 
 /// A block quote that goes DEEPER than the one we are in interrupts an open

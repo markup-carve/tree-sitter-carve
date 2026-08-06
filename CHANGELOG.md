@@ -20,8 +20,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the top level and inside a `:::` div. Both openers now end the paragraph when
   the line sits exactly at its container's content margin - a list item's
   recorded content column, a footnote's `indent + 2`, or the document's zero -
-  and a fence only when a closer follows, so an unterminated one still stays an
-  inline run. A footnote's margin is a threshold rather than an exact column,
+  and a fence only when a closer follows at the opener's own column, so an
+  unterminated one - and one whose only closing run is outdented or
+  over-indented - still stays an inline run. A footnote's margin is a threshold rather than an exact column,
   matching both the openers' own indent test and carve-js: `[^a]: note` over
   `   ``` ` at column 3 is a `<pre>` inside the note, where `- item` over
   `   ``` ` at the same column is paragraph text. Of 1188 generated shapes

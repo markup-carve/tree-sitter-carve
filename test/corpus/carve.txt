@@ -4310,3 +4310,47 @@ A MARKED heading line inside a quote is still not a heading (tree-sitter-carve#1
     content: (content
       (paragraph
         (block_quote_marker)))))
+
+===============================================================================
+A fence whose only closer is outdented does not interrupt (tree-sitter-carve#112)
+===============================================================================
+
+- item
+  ```
+  code
+```
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph
+          (verbatim
+            begin_marker: (verbatim_marker_begin)
+            content: (content)
+            end_marker: (verbatim_marker_end)))))))
+
+===============================================================================
+A fence whose only closer is over-indented does not interrupt (tree-sitter-carve#112)
+===============================================================================
+
+- item
+  ```
+  code
+   ```
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph
+          (verbatim
+            begin_marker: (verbatim_marker_begin)
+            content: (content)
+            end_marker: (verbatim_marker_end)))))))
