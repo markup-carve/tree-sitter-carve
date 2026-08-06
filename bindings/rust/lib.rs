@@ -69,4 +69,52 @@ mod tests {
         let first = tree.root_node().child(0).expect("document has no child");
         assert_eq!(first.kind(), "div");
     }
+
+    /// A code fence closer may carry trailing whitespace and still close.
+    ///
+    /// Same reason as the case above: the whole meaning here IS the trailing
+    /// run of spaces. In `test/corpus/carve.txt` it would be one editor or one
+    /// `.gitattributes` sweep away from becoming a silent duplicate of the
+    /// no-trailing-space closer, and the clause it guards -- the whitespace
+    /// skip in `code_fence_closer_tail_is_blank` -- would then have no check
+    /// that can fail. Delete that skip and this test reports a fence that
+    /// never closed.
+    #[test]
+    fn code_fence_closer_may_carry_trailing_whitespace() {
+        let mut parser = tree_sitter::Parser::new();
+        parser
+            .set_language(&super::language())
+            .expect("Error loading Carve language");
+        for source in ["```\nx\n```   \n", "```\nx\n```\t\n"] {
+            let tree = parser.parse(source, None).unwrap();
+            let root = tree.root_node();
+            assert!(!root.has_error(), "unexpected ERROR for {source:?}");
+            let block = root.child(0).expect("document has no child");
+            assert_eq!(block.kind(), "code_block");
+            let last = block.child(block.child_count() as u32 - 1).unwrap();
+            assert_eq!(last.kind(), "code_block_marker_end", "for {source:?}");
+        }
+    }
+
+    /// A CRLF document's fence closer still closes.
+    ///
+    /// The tail test that decides whether a fence run is a closer accepts a
+    /// `\r` as end of line; without that, every closer in a CRLF document
+    /// becomes fence body and the block runs to end of input. There is no CRLF
+    /// fixture to pin it with -- `.gitattributes` normalizes `test/corpus` to
+    /// LF -- so the line endings live in a string literal here.
+    #[test]
+    fn code_fence_closer_closes_in_a_crlf_document() {
+        let mut parser = tree_sitter::Parser::new();
+        parser
+            .set_language(&super::language())
+            .expect("Error loading Carve language");
+        let tree = parser.parse("```\r\nx\r\n```\r\n", None).unwrap();
+        let root = tree.root_node();
+        assert!(!root.has_error());
+        let block = root.child(0).expect("document has no child");
+        assert_eq!(block.kind(), "code_block");
+        let last = block.child(block.child_count() as u32 - 1).unwrap();
+        assert_eq!(last.kind(), "code_block_marker_end");
+    }
 }

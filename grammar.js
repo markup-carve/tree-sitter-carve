@@ -608,7 +608,14 @@ module.exports = grammar({
         optional(field("code", $.code)),
         $._block_close,
         optional(
-          seq(alias($._code_block_end, $.code_block_marker_end), $._newline),
+          seq(
+            alias($._code_block_end, $.code_block_marker_end),
+            // A closer may carry trailing whitespace: the scanner's own closer
+            // test treats a whitespace-only tail as blank (#96), and every
+            // engine closes `\u0060\u0060\u0060   ` as a fence.
+            $._whitespace,
+            $._newline,
+          ),
         ),
       ),
     raw_block: ($) =>
@@ -620,7 +627,11 @@ module.exports = grammar({
         field("content", optional(alias($.code, $.content))),
         $._block_close,
         optional(
-          seq(alias($._code_block_end, $.raw_block_marker_end), $._newline),
+          seq(
+            alias($._code_block_end, $.raw_block_marker_end),
+            $._whitespace,
+            $._newline,
+          ),
         ),
       ),
     raw_block_info: ($) =>
@@ -672,7 +683,12 @@ module.exports = grammar({
     block_quote: ($) =>
       seq(
         alias($._block_quote_begin, $.block_quote_marker),
-        field("content", alias($._block_quote_content, $.content)),
+        // A quote whose marker line carries nothing, and which nothing
+        // continues, is an EMPTY quote: `blockquote = blockquote_line, {...}`
+        // and `blockquote_line = '>', (newline | ...)` in the spec's
+        // grammar.ebnf both admit the bare marker on its own, and every engine
+        // renders `>` at end of input as an empty <blockquote> (#96).
+        optional(field("content", alias($._block_quote_content, $.content))),
         $._block_close,
       ),
     _block_quote_content: ($) =>

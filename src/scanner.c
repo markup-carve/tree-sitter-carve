@@ -1083,26 +1083,53 @@ static bool parse_verbatim_content(Scanner *s, TSLexer *lexer) {
   return true;
 }
 
-static bool try_end_code_block(Scanner *s, TSLexer *lexer, uint8_t ticks) {
+// Does a run of `ticks` fence characters have the width the open code block's
+// own opener had? The single width test behind every closer decision, so the
+// three call sites below cannot drift apart the way an opener test and a peek
+// test once did (#104).
+static bool code_fence_run_matches_open_block(Scanner *s, uint8_t ticks) {
   Block *top = peek_block(s);
-  if (!top || top->type != CODE_BLOCK) {
+  return top && top->type == CODE_BLOCK && top->data == ticks;
+}
+
+// A code fence CLOSER carries nothing after its run but optional trailing
+// whitespace: `fenced_code_block = ..., code_fence_close, newline` in the
+// spec's grammar.ebnf, where `code_fence_close` is the run alone. A run that
+// carries anything else -- ``` js -- is fence BODY, and the fence stays open
+// (PART 9 §12 closes it at end of input).
+//
+// Call with the lexer positioned right after the run. It ADVANCES over the
+// trailing whitespace, so a caller whose token must end at the run has to
+// `mark_end` first, and no caller may fall through to an opener path after it.
+static bool code_fence_closer_tail_is_blank(Scanner *s, TSLexer *lexer) {
+  while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+    advance(s, lexer);
+  }
+  return lexer->lookahead == '\n' || lexer->lookahead == '\r' ||
+         lexer->eof(lexer);
+}
+
+static bool try_end_code_block(Scanner *s, TSLexer *lexer, uint8_t ticks) {
+  if (!code_fence_run_matches_open_block(s, ticks)) {
     return false;
   }
-  if (top->data != ticks) {
+  // Pin the token at the run BEFORE the tail peek advances the lexer.
+  lexer->mark_end(lexer);
+  if (!code_fence_closer_tail_is_blank(s, lexer)) {
     return false;
   }
   remove_block(s);
-  lexer->mark_end(lexer);
   lexer->result_symbol = CODE_BLOCK_END;
   return true;
 }
 
 static bool try_close_code_block(Scanner *s, TSLexer *lexer, uint8_t ticks) {
-  Block *top = peek_block(s);
-  if (!top || top->type != CODE_BLOCK) {
+  if (!code_fence_run_matches_open_block(s, ticks)) {
     return false;
   }
-  if (top->data != ticks) {
+  // BLOCK_CLOSE is zero width: the scan-entry `mark_end` already pinned it at
+  // the run's start, and nothing here may move it.
+  if (!code_fence_closer_tail_is_blank(s, lexer)) {
     return false;
   }
   lexer->result_symbol = BLOCK_CLOSE;
@@ -1455,6 +1482,15 @@ static bool parse_backtick(Scanner *s, TSLexer *lexer,
     }
     if (valid_symbols[BLOCK_CLOSE] && try_close_code_block(s, lexer, ticks)) {
       return true;
+    }
+    // Both closer paths peek past the run to see whether the rest of the line
+    // is blank, and that peek advances the lexer. When the run had the open
+    // fence's own width but the tail disqualified it, this line is fence BODY:
+    // stop here rather than fall through to the opener path below, whose
+    // `mark_end` would pin the begin token past the whitespace the peek ate.
+    if ((valid_symbols[CODE_BLOCK_END] || valid_symbols[BLOCK_CLOSE]) &&
+        code_fence_run_matches_open_block(s, ticks)) {
+      return false;
     }
     // Pin the token end at the ticks before `try_begin_code_block` peeks past
     // them to validate the fence info string: that validation may advance the
