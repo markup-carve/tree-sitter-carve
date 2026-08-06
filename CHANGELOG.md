@@ -8,6 +8,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **A second content-less block quote marker joins the same empty quote**
+  (spec: `resources/grammar.ebnf`, `blockquote = blockquote_line,
+  {blockquote_line | ...}` over `blockquote_line = '>', (newline | ...)`). The
+  bare marker line repeats, so `>` over `>` is one empty quote, and carve-js
+  renders a single empty `<blockquote>` for it. The grammar had nowhere to put
+  the second marker - the continuation markers live inside
+  `_block_quote_content`'s repeat, behind a first real block - so a paragraph's
+  own leading prefix took it instead: an ERROR when nothing followed, and a
+  swallowed sibling when something did. `>` over `>` over `x` is now a quote and
+  a sibling paragraph, `>` over `>` over `- b` a quote and a sibling list, the
+  same rule #96 applied to the single marker (#126).
+
 - **An indented definition term marker is paragraph text.** `:: t` written at
   column 1 opened a definition list, at the top level and inside a div alike,
   where all three engines keep the line as prose. The term branch of the scanner
