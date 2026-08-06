@@ -268,7 +268,7 @@
       "gaps": "heading: want 1 have 0"
     },
     "attribute-order-on-an-unwrapped-heading": {
-      "gaps": "block_quote: want 2 have 1; heading: want 3 have 1"
+      "gaps": "heading: want 3 have 1"
     },
     "fence-opener-with-a-nested-list-body-inside-a-list-item-5": {
       "gaps": "div: want 1 have 0"

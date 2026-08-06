@@ -8,6 +8,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **A blank line separates two block quotes** (spec:
+  `resources/grammar.ebnf`, whose lazy-continuation note states that a lazy line
+  continues the quote only while it is "not blank (a blank line ends the
+  blockquote)"). `> a` over a blank line over `> b` parsed as ONE quote holding
+  both paragraphs, where carve-js renders two `<blockquote>` elements; the same
+  merge applied to every shape of the family, including the empty forms `>` over
+  blank over `>` and a nested `> > a` over blank over `> b`, where every open
+  quote ends and not just the innermost. A whitespace-only line separates the
+  same way an empty one does. A MARKED empty line is unaffected: `> a` over `>`
+  over `> b` is still one quote, since that line is not blank (#129).
+
 - **A second content-less block quote marker joins the same empty quote**
   (spec: `resources/grammar.ebnf`, `blockquote = blockquote_line,
   {blockquote_line | ...}` over `blockquote_line = '>', (newline | ...)`). The

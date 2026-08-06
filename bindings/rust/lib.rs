@@ -129,4 +129,33 @@ mod tests {
         let last = block.child(block.child_count() as u32 - 1).unwrap();
         assert_eq!(last.kind(), "code_block_marker_end");
     }
+
+    /// A WHITESPACE-ONLY line separates two block quotes, exactly as an empty
+    /// one does (tree-sitter-carve#129).
+    ///
+    /// This lives here rather than in `test/corpus/carve.txt` because the whole
+    /// meaning of the case IS the run of spaces on the middle line. A fixture
+    /// file carrying it is one editor, one `.gitattributes` sweep or one
+    /// formatter away from having that run trimmed, at which point the case
+    /// becomes a duplicate of the empty-line one and keeps passing for the
+    /// wrong reason.
+    ///
+    /// It discriminates: the blank-line flag is set after the entry block has
+    /// consumed the line's leading whitespace, so it reads a whitespace-only
+    /// line as blank. Set it before that consumption instead and this document
+    /// goes back to one merged quote while every fixture in the corpus stays
+    /// green.
+    #[test]
+    fn a_whitespace_only_line_separates_two_block_quotes() {
+        let mut parser = tree_sitter::Parser::new();
+        parser
+            .set_language(&super::language())
+            .expect("Error loading Carve language");
+        let tree = parser.parse("> a\n   \n> b\n", None).unwrap();
+        let root = tree.root_node();
+        assert!(!root.has_error());
+        assert_eq!(root.child_count(), 2, "want two siblings, got {}", root);
+        assert_eq!(root.child(0).unwrap().kind(), "block_quote");
+        assert_eq!(root.child(1).unwrap().kind(), "block_quote");
+    }
 }
