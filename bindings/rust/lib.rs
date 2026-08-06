@@ -158,4 +158,87 @@ mod tests {
         assert_eq!(root.child(0).unwrap().kind(), "block_quote");
         assert_eq!(root.child(1).unwrap().kind(), "block_quote");
     }
+
+    /// A marker line ending in a TRAILING SPACE is a content-less quote line,
+    /// exactly as the bare `>` is (tree-sitter-carve#130).
+    ///
+    /// This lives here rather than in `test/corpus/carve.txt` for the reason
+    /// tree-sitter-carve#121 established: the whole input IS the trailing
+    /// space. In a fixture file one editor, one `.gitattributes` sweep or one
+    /// formatter turns `> ` into `>`, at which point the case is a byte-for-byte
+    /// duplicate of corpus 204 and passes forever without testing anything.
+    ///
+    /// It discriminates. Drop the newline arm from the separator branch of
+    /// `scan_block_quote_marker` and every one of these documents goes back to
+    /// two quotes, while `npm test` stays green - no corpus fixture can carry
+    /// the input that tells them apart.
+    #[test]
+    fn a_trailing_space_marker_line_is_the_same_empty_quote() {
+        let mut parser = tree_sitter::Parser::new();
+        parser
+            .set_language(&super::language())
+            .expect("Error loading Carve language");
+        // The third is the same document with CRLF line endings, which
+        // `.gitattributes` normalization would strip out of any fixture file.
+        // It needs no carriage-return handling of its own - `advance` eats a
+        // `\r` wherever it lands on one - but it fails with the rest under the
+        // mutation above, so it is a real case rather than a control.
+        for source in ["> \n> \n", "> \n> ", "> \r\n> \r\n"] {
+            let tree = parser.parse(source, None).unwrap();
+            let root = tree.root_node();
+            assert!(!root.has_error(), "unexpected ERROR for {:?}", source);
+            assert_eq!(
+                root.child_count(),
+                1,
+                "want ONE quote for {:?}, got {}",
+                source,
+                root
+            );
+            let quote = root.child(0).unwrap();
+            assert_eq!(quote.kind(), "block_quote", "for {:?}", source);
+            let markers = (0..quote.child_count() as u32)
+                .filter(|i| quote.child(*i).unwrap().kind() == "block_quote_marker")
+                .count();
+            assert_eq!(
+                markers, 2,
+                "want both marker lines in one quote for {:?}, got {}",
+                source, quote
+            );
+        }
+    }
+
+    /// An empty quote written with trailing spaces continues nothing after it,
+    /// the same rule the bare form follows (tree-sitter-carve#96 / #126).
+    ///
+    /// Here for the same reason as the case above - the input is only
+    /// distinguishable from corpus 205 and 206 by its trailing spaces - and it
+    /// is the half of tree-sitter-carve#130 a reader is most likely to check by
+    /// hand: before the fix the tail landed INSIDE a second quote instead of
+    /// beside the first.
+    #[test]
+    fn a_trailing_space_empty_quote_continues_nothing() {
+        let mut parser = tree_sitter::Parser::new();
+        parser
+            .set_language(&super::language())
+            .expect("Error loading Carve language");
+        for (source, sibling) in [("> \n> \nx\n", "paragraph"), ("> \n> \n- b\n", "list")] {
+            let tree = parser.parse(source, None).unwrap();
+            let root = tree.root_node();
+            assert!(!root.has_error(), "unexpected ERROR for {:?}", source);
+            assert_eq!(
+                root.child_count(),
+                2,
+                "want a quote and a sibling for {:?}, got {}",
+                source,
+                root
+            );
+            assert_eq!(
+                root.child(0).unwrap().kind(),
+                "block_quote",
+                "for {:?}",
+                source
+            );
+            assert_eq!(root.child(1).unwrap().kind(), sibling, "for {:?}", source);
+        }
+    }
 }
