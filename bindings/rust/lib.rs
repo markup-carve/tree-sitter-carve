@@ -49,4 +49,24 @@ mod tests {
             .set_language(&super::language())
             .expect("Error loading Carve language");
     }
+
+    /// The hard-break fence `::: \` still opens with trailing whitespace after
+    /// the backslash, exactly as carve-js does.
+    ///
+    /// This lives here rather than in `test/corpus/carve.txt` because the whole
+    /// meaning of the case IS a trailing space. In a fixture file that space is
+    /// one stray normalization away from disappearing, and the case would then
+    /// silently become a duplicate of the no-trailing-space one and keep
+    /// passing - a check that can no longer fail. Inside a string literal it
+    /// survives `cargo fmt` and any editor that trims line ends.
+    #[test]
+    fn hard_break_fence_opens_with_trailing_whitespace() {
+        let mut parser = tree_sitter::Parser::new();
+        parser
+            .set_language(&super::language())
+            .expect("Error loading Carve language");
+        let tree = parser.parse("::: \\ \none\n:::\n", None).unwrap();
+        let first = tree.root_node().child(0).expect("document has no child");
+        assert_eq!(first.kind(), "div");
+    }
 }
