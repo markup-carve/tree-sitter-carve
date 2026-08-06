@@ -1,5 +1,5 @@
 {
-  "_comment": "Coverage matrix for the shared Carve spec corpus (spec/tests/corpus/*.crv). Every NN-slug base category must appear in covered or skip; the coverage-matrix test fails otherwise so a new spec category forces a classify decision. covered = grammar parses every file in the category with no ERROR/MISSING node. skip = at least one file currently produces an ERROR/MISSING node; reason records the unmodeled construct (a grammar gap to surface, not to hack around). A skip key is a CATEGORY (NN-slug) or a single EXAMPLE (NN-slug-2) — use the example form when the rest of the category parses cleanly, so one gap does not drop assertion for its siblings. A key equal to a category name is read as the CATEGORY, so the first example of a category cannot be skipped on its own.",
+  "_comment": "Coverage matrix for the shared Carve spec corpus (spec/tests/corpus/*.crv). Every NN-slug base category must appear in covered or skip; the coverage-matrix test fails otherwise so a new spec category forces a classify decision. covered = grammar parses every file in the category with no ERROR/MISSING node. skip = at least one file currently produces an ERROR/MISSING node; reason records the unmodeled construct (a grammar gap to surface, not to hack around). A skip key is a CATEGORY (NN-slug) or a single EXAMPLE (NN-slug-2) \u2014 use the example form when the rest of the category parses cleanly, so one gap does not drop assertion for its siblings. A key equal to a category name is read as the CATEGORY, so the first example of a category cannot be skipped on its own.",
   "covered": [
     "a-backslash-in-a-link-destination-is-a-literal-character",
     "a-bare-attribute-block-on-its-own-line-is-literal",
@@ -258,12 +258,6 @@
   "invisibleOverAcceptance": {},
   "batteryDisagreements": {},
   "underAcceptance": {
-    "a-footnote-body-s-last-block-when-it-is-not-a-paragraph-gets-a-synthesized-paragraph-for-the-backlink": {
-      "gaps": "code_block: want 1 have 0"
-    },
-    "adjacent-attribute-blocks-on-one-line-merge": {
-      "gaps": "heading: want 1 have 0"
-    },
     "attribute-braces-on-a-list-item-marker-line": {
       "gaps": "heading: want 1 have 0"
     },
@@ -306,14 +300,8 @@
     "list-lazy-continuation-2": {
       "gaps": "heading: want 1 have 0"
     },
-    "list-lazy-continuation-7": {
-      "gaps": "code_block: want 1 have 0"
-    },
     "list-lazy-continuation-8": {
       "gaps": "table: want 1 have 0"
-    },
-    "list-nesting-and-looseness-4": {
-      "gaps": "heading: want 1 have 0"
     },
     "list-nesting-and-looseness-5": {
       "gaps": "code_block: want 1 have 0"
@@ -325,12 +313,6 @@
       "gaps": "heading: want 1 have 0"
     },
     "opaque-spans-inside-a-container-2": {
-      "gaps": "code_block: want 1 have 0"
-    },
-    "paragraph-interruption": {
-      "gaps": "heading: want 1 have 0"
-    },
-    "paragraph-interruption-2": {
       "gaps": "code_block: want 1 have 0"
     },
     "paragraph-interruption-3": {
@@ -350,9 +332,6 @@
     },
     "thematic-break-requires-contiguous-markers": {
       "gaps": "list: want 2 have 0"
-    },
-    "tight-list-item-keeps-trailing-text-after-a-block-bare": {
-      "gaps": "code_block: want 1 have 0"
     }
   },
   "errorFamilies": {

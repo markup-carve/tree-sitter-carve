@@ -8,6 +8,28 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **A heading or a fenced code block interrupts an open paragraph** (spec:
+  `resources/grammar.ebnf`, PART 9 §10 I1: "a heading, a fenced code opener WITH
+  a matching closer ahead ... interrupts", "at the document top level AND inside
+  nested content"). The paragraph-closing test recognized a block quote, a
+  `:::` fence, block math, a caption and a comment fence, but never a `#` marker
+  or a ``` run, so a heading or a fence with no blank line before it folded into
+  the paragraph above: `[^a]: note` over `  ``` ` over `  code` over `  ``` `
+  put an inline `verbatim` span inside the footnote's paragraph where carve-js
+  builds a `<pre>`, `- item` over `  # H` built no heading, and the same held at
+  the top level and inside a `:::` div. Both openers now end the paragraph when
+  the line sits exactly at its container's content margin - a list item's
+  recorded content column, a footnote's `indent + 2`, or the document's zero -
+  and a fence only when a closer follows, so an unterminated one still stays an
+  inline run. Of 1188 generated shapes across twelve container contexts, 60
+  moved onto carve-js's block count and none off it, with no document newly
+  erroring; seven recorded under-acceptances are resolved. A block quote is
+  deliberately untouched: this grammar builds no heading inside one even with a
+  blank line before it, which is tracked separately as
+  `headings-inside-containers-are-not-wrapped`. A seven-hash line stays
+  paragraph text, matching carve-js rather than this grammar's own uncapped
+  opener (#112).
+
 - **A nested block quote line is decided by its whole marker run** (spec:
   `resources/grammar.ebnf`, `blockquote = blockquote_line, {blockquote_line |
   ...}` applied to the content the outer `>` strips). The external scanner takes
