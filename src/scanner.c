@@ -1099,12 +1099,16 @@ static bool code_fence_run_matches_open_block(Scanner *s, uint8_t ticks) {
 // Call with the lexer positioned right after the run. It ADVANCES over the
 // trailing whitespace, so a caller whose token must end at the run has to
 // `mark_end` first, and no caller may fall through to an opener path after it.
+//
+// A carriage return needs no case of its own: `advance` eats one wherever it
+// finds it, so a CRLF document's run and its trailing whitespace both leave
+// the lookahead on the newline. Testing for '\r' here would be a branch no
+// input can take.
 static bool code_fence_closer_tail_is_blank(Scanner *s, TSLexer *lexer) {
   while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
     advance(s, lexer);
   }
-  return lexer->lookahead == '\n' || lexer->lookahead == '\r' ||
-         lexer->eof(lexer);
+  return lexer->lookahead == '\n' || lexer->eof(lexer);
 }
 
 // Validate the info string that follows a backtick code fence (the rest of the

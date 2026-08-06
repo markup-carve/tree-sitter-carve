@@ -108,11 +108,13 @@ mod tests {
 
     /// A CRLF document's fence closer still closes.
     ///
-    /// The tail test that decides whether a fence run is a closer accepts a
-    /// `\r` as end of line; without that, every closer in a CRLF document
-    /// becomes fence body and the block runs to end of input. There is no CRLF
-    /// fixture to pin it with -- `.gitattributes` normalizes `test/corpus` to
-    /// LF -- so the line endings live in a string literal here.
+    /// A CONTROL, deliberately: no mutation of the closer's own tail test
+    /// breaks it, because `advance` eats a carriage return wherever it finds
+    /// one, so the tail test never sees a `\r` at all. It is here to keep the
+    /// tail test honest if that ever changes - a CR reaching the tail test
+    /// would make every closer in a CRLF document fence body instead. There is
+    /// no CRLF fixture to carry it -- `.gitattributes` normalizes the repo to
+    /// LF -- so the line endings live in a string literal.
     #[test]
     fn code_fence_closer_closes_in_a_crlf_document() {
         let mut parser = tree_sitter::Parser::new();
