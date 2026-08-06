@@ -77,6 +77,7 @@
     "an-attribute-name-admits-no-colon",
     "an-empty-abbreviation-term-is-not-a-definition",
     "an-image-takes-a-reference-the-way-a-link-does",
+    "an-inline-attribute-block-does-not-span-lines-but-an-attribute-line-does",
     "an-invisible-line-does-not-cancel-a-blank-line-separation",
     "an-unresolved-image-reference-stays-literal",
     "an-unresolved-reference-image-takes-no-caption",
