@@ -1895,6 +1895,12 @@ static bool scan_eof_or_blankline(Scanner *s, TSLexer *lexer) {
 // the full helper in parse_heading). The `+` continuation marker (corpus 100)
 // is the way to attach a REAL list to a quote.
 //
+// The DEFINITION TERM marker is the single exception, and it is the engines'
+// exception, not this grammar's: `x` / `:: t` is a paragraph plus a `<dl>` in
+// carve-js, carve-php and carve-rs (tree-sitter-carve#108). It is scoped to
+// the term marker alone -- a DESCRIPTION marker attaches to a term, so with no
+// definition list open `x` / `:  d` stays one paragraph in all three.
+//
 // When a list IS already open, a marker WITH CONTENT is a list operation, not
 // a fold: it continues the list with a sibling item (or, for a different
 // type/indent, closes it and opens a new one), so it still ends the item's
@@ -1953,9 +1959,6 @@ static bool scan_paragraph_closing_marker(Scanner *s, TSLexer *lexer) {
       return (s->state & STATE_FENCE_ABSORBS) == 0;
     }
     Block *open_list = find_list(s);
-    if (open_list == NULL) {
-      return false;
-    }
     // Inside a DEFINITION list, a marker-shaped colon line ends the item above
     // it on its SHAPE alone - deliberately unlike every other list, where the
     // marker must carry content. MARKER REQUIRES CONTENT still applies to the
@@ -1976,16 +1979,39 @@ static bool scan_paragraph_closing_marker(Scanner *s, TSLexer *lexer) {
     // like the content-less bullet line #98 fixed. Only a colon marker WITH
     // content ends a bullet item (`- a` / `:: b` is a `<ul>` plus a `<dl>`),
     // which is what the content test below still answers.
-    bool in_definition_list = open_list->type == LIST_DEFINITION;
+    bool in_definition_list =
+        open_list != NULL && open_list->type == LIST_DEFINITION;
     if (colons == 2) {
+      // A definition TERM marker is the ONE list marker that interrupts a
+      // standalone paragraph, which is why no open list is required here: it
+      // OPENS the list rather than continuing one, exactly as the opener in
+      // `parse_colon` already models it. `x` / `:: t` is a paragraph plus a
+      // one-term `<dl>` in carve-js, carve-php and carve-rs alike
+      // (tree-sitter-carve#108). MARKER REQUIRES CONTENT is what keeps `x` /
+      // `:: ` a single paragraph, and the separator test keeps `x` / `::` one
+      // too - both measured against all three engines.
+      //
+      // No indent test here on purpose: the opener has none either, and this
+      // peek must answer exactly the question the opener answers. An INDENTED
+      // term marker opens a `<dl>` in this grammar where every engine keeps
+      // paragraph text (` :: t` on its own already does, with no paragraph
+      // above it), and a peek that refused an indented marker the opener still
+      // accepts produced an ERROR tree. That laxity is the opener's, it is
+      // pre-existing, and it is tracked separately.
       if (lexer->lookahead != ' ') {
         return false;
       }
       advance(s, lexer);
       return in_definition_list || marker_line_has_content(s, lexer);
     }
-    // One colon: a description needs a SECOND space, since one space is the
-    // term's own lazy continuation.
+    // One colon: a DESCRIPTION attaches to a TERM, so with no list open at all
+    // it is not a marker and cannot interrupt anything - `x` / `:  d` is one
+    // paragraph in every engine. Same requirement the opener states.
+    if (open_list == NULL) {
+      return false;
+    }
+    // A description needs a SECOND space, since one space is the term's own
+    // lazy continuation.
     if (lexer->lookahead != ' ') {
       return false;
     }

@@ -2329,6 +2329,111 @@ x
       term: (term))))
 
 ===============================================================================
+A definition term marker interrupts an open paragraph
+===============================================================================
+x
+:: t
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph)
+  (definition_list
+    (list_item
+      marker: (list_marker_definition)
+      term: (term))))
+
+===============================================================================
+A content-less definition marker does not interrupt a paragraph
+===============================================================================
+x
+:: 
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph))
+
+===============================================================================
+A bare definition marker does not interrupt a paragraph
+===============================================================================
+x
+::
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph))
+
+===============================================================================
+A description marker does not interrupt a paragraph
+===============================================================================
+x
+:  d
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph))
+
+===============================================================================
+A definition term marker interrupts a lazily continued block quote
+===============================================================================
+> x
+:: t
+
+-------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (paragraph)))
+  (definition_list
+    (list_item
+      marker: (list_marker_definition)
+      term: (term))))
+
+===============================================================================
+A description marker after an interrupting term attaches to that term
+===============================================================================
+x
+:: t
+:  d
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph)
+  (definition_list
+    (list_item
+      marker: (list_marker_definition)
+      term: (term))
+    (list_item
+      marker: (list_marker_description)
+      definition: (definition))))
+
+===============================================================================
+A content-less definition marker line splits a definition list into two
+===============================================================================
+:: t
+:: 
+:: u
+
+-------------------------------------------------------------------------------
+
+(document
+  (definition_list
+    (list_item
+      marker: (list_marker_definition)
+      term: (term)))
+  (paragraph)
+  (definition_list
+    (list_item
+      marker: (list_marker_definition)
+      term: (term))))
+
+===============================================================================
 A definition list inside a block quote is not an error
 ===============================================================================
 > :: t
