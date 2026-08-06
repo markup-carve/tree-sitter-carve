@@ -158,6 +158,7 @@
     "inline-span",
     "leading-attribute-brace-before-an-inline-span-stays-literal",
     "line-blocks",
+    "line-endings-and-a-byte-order-mark",
     "link-destination-parentheses-balance",
     "link-reference-definition-separator-must-be-a-space",
     "links",
@@ -344,6 +345,12 @@
     "\"-\" + \"---\"": {
       "documents": 3,
       "reason": "a `---` after a content-less marker errors; carve-js renders a paragraph then a thematic break (tree-sitter-carve#96)"
+    }
+  },
+  "lineTerminatorGaps": {
+    "line-endings-and-a-byte-order-mark-2": {
+      "fold": "source has 5 line(s), tree ends on row 0",
+      "reason": "a LONE carriage return is not a line ending here. `advance` in src/scanner.c skips a `\\r` wherever it meets one, which is what makes the CRLF spelling work - the `\\n` behind it still terminates the line - and which leaves a file written with `\\r` alone without any terminator at all, so `# Title\\ra\\rb\\r` is one heading spanning the whole document. The spec grammar says `newline = '\\n' | '\\r\\n' | '\\r'` and all three engines build a heading and a paragraph. tree-sitter-carve#143. The category's other three documents - CRLF, a BOM, and the LF control - parse correctly."
     }
   }
 }

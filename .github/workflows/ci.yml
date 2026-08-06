@@ -46,6 +46,13 @@ jobs:
       - name: No-ERROR sweep
         run: npm run test:no-error
 
+      # The third blind spot in the same family: a construct that swallows the
+      # lines below it into one block. No ERROR, the block count is right, and
+      # `paragraph` is unmapped in the under-acceptance sweep by design - so a
+      # whole line-ending spelling went unmodeled with every check green.
+      - name: Line terminators
+        run: npm run test:line-terminators
+
       - name: The vendored battery is still carve-grammars' copy
         run: npm run test:battery-drift
       - name: Build WASM grammar
