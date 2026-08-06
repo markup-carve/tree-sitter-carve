@@ -8,6 +8,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **An indented definition term marker is paragraph text.** `:: t` written at
+  column 1 opened a definition list, at the top level and inside a div alike,
+  where all three engines keep the line as prose. The term branch of the scanner
+  never asked what column it was on, while the div branch beside it already
+  documented the rule as one "the heading marker and the definition markers
+  follow". A term at a container's content column still opens the list, and a
+  term continuing an open list is measured against that list's own marker column
+  (#109).
+
 - **The colon-fence opener accepts the hard-break form** (spec:
   `resources/grammar.ebnf`, `local_hard_break_block_open = colon_fence:open,
   space, backslash`). `::: \` is the local hard-break block and renders as
