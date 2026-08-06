@@ -56,6 +56,7 @@
     "a-tab-as-the-first-character-of-a-definition-term",
     "a-tab-indent-is-the-column-it-reaches-whatever-the-line-holds",
     "a-tab-reaches-a-footnote-body-s-column-just-as-two-spaces-do",
+    "a-tab-separates-two-attributes-and-pads-a-block-as-a-space-does",
     "a-table-delimiter-cell-needs-at-least-one-dash",
     "a-tag-inside-a-literal-brace-run-is-still-a-tag",
     "a-zero-width-character-in-a-reference-definition-destination",
