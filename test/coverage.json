@@ -290,26 +290,6 @@
       "nodes": "caption",
       "lines": "2",
       "reason": "`![a][nope]` + `^ cap` is one paragraph: the reference does not resolve, so the image is literal text and the `^` line is literal with it. Whether it resolves depends on the DEFINITIONS in the document, which a context-free grammar does not have - so the caption is built here and cannot be declined without a symbol table. The renderer decides correctly; highlighting a caption that the language declines is the cost."
-    },
-    "colon-fence-metadata-slots-must-be-a-space-too-2": {
-      "nodes": "div",
-      "lines": "1",
-      "reason": "the fence opener's metadata slots take exactly one space, so a TAB anywhere in them (after the type word, before or after a quoted title, before a label) makes the whole line prose and the block never opens. This grammar's scanner still opens the fence: its separator test admits a whitespace RUN rather than one literal space. Unlike the other entry here this IS declinable - it needs no symbol table, only a narrower separator - so it is a scanner fix waiting on tree-sitter-carve#160, not a permanent cost. Recorded rather than fixed in the corpus bump that surfaced it, so the bump is not blocked on a scanner change. Spec side: markup-carve/carve#907 and markup-carve/carve#905."
-    },
-    "colon-fence-metadata-slots-must-be-a-space-too-3": {
-      "nodes": "div",
-      "lines": "1",
-      "reason": "the fence opener's metadata slots take exactly one space, so a TAB anywhere in them (after the type word, before or after a quoted title, before a label) makes the whole line prose and the block never opens. This grammar's scanner still opens the fence: its separator test admits a whitespace RUN rather than one literal space. Unlike the other entry here this IS declinable - it needs no symbol table, only a narrower separator - so it is a scanner fix waiting on tree-sitter-carve#160, not a permanent cost. Recorded rather than fixed in the corpus bump that surfaced it, so the bump is not blocked on a scanner change. Spec side: markup-carve/carve#907 and markup-carve/carve#905."
-    },
-    "colon-fence-metadata-slots-must-be-a-space-too-4": {
-      "nodes": "div",
-      "lines": "1",
-      "reason": "the fence opener's metadata slots take exactly one space, so a TAB anywhere in them (after the type word, before or after a quoted title, before a label) makes the whole line prose and the block never opens. This grammar's scanner still opens the fence: its separator test admits a whitespace RUN rather than one literal space. Unlike the other entry here this IS declinable - it needs no symbol table, only a narrower separator - so it is a scanner fix waiting on tree-sitter-carve#160, not a permanent cost. Recorded rather than fixed in the corpus bump that surfaced it, so the bump is not blocked on a scanner change. Spec side: markup-carve/carve#907 and markup-carve/carve#905."
-    },
-    "colon-fence-metadata-slots-must-be-a-space-too": {
-      "nodes": "div",
-      "lines": "1",
-      "reason": "the fence opener's metadata slots take exactly one space, so a TAB anywhere in them (after the type word, before or after a quoted title, before a label) makes the whole line prose and the block never opens. This grammar's scanner still opens the fence: its separator test admits a whitespace RUN rather than one literal space. Unlike the other entry here this IS declinable - it needs no symbol table, only a narrower separator - so it is a scanner fix waiting on tree-sitter-carve#160, not a permanent cost. Recorded rather than fixed in the corpus bump that surfaced it, so the bump is not blocked on a scanner change. Spec side: markup-carve/carve#907 and markup-carve/carve#905."
     }
   },
   "invisibleOverAcceptance": {

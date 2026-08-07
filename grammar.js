@@ -581,16 +581,24 @@ module.exports = grammar({
             // different case and stays valid below: `:::[First]` does open.
             //
             // The `"title"` and `[label]` slots below are the OTHER role: the
-            // type word has already decided the block, so they are PADDING and
-            // `_whitespace1` (`/[ \t]+/`) is the right spelling - `::: note` +
-            // TAB + `"T"` is a legal admonition. Narrowing them to match the
-            // separator is the blanket sweep grammar.ebnf PART 7 warns against,
-            // and `a_padding_slot_admits_a_tab` in `bindings/rust/lib.rs` fails
-            // if anyone tries it.
+            // type word has already decided the block, so they are PADDING. The
+            // ROLES differ, the terminal does not - a padding slot sits after
+            // the first non-whitespace character of the line, where a tab is not
+            // syntax - so all three slots are spelled `space` and only the
+            // cardinality differs: `space` at the separator, `space+` here
+            // (`::: note` + two spaces + `"T"` opens). carve#907 settled it;
+            // corpus category 255 carries the four tab cases.
+            //
+            // Whether the line OPENS at all is `colon_fence_named_tail_is_modeled`
+            // in `src/scanner.c`, because a slot that rejects its separator has
+            // to leave the line as PROSE and a rule here can only fail into an
+            // ERROR. These tokens are the same rule at the shape level.
             seq(
               field("class", $.class_name),
-              optional(seq($._whitespace1, field("title", $.div_title))),
-              optional(seq($._whitespace1, field("label", $.code_block_label))),
+              optional(seq($._padding_spaces, field("title", $.div_title))),
+              optional(
+                seq($._padding_spaces, field("label", $.code_block_label)),
+              ),
             ),
             // Bare [label] with no type word (a typeless tab member); it may
             // sit directly against the fence (`:::[First]`) or after a space.

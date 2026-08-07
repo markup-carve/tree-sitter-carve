@@ -2254,7 +2254,7 @@
                           "members": [
                             {
                               "type": "SYMBOL",
-                              "name": "_whitespace1"
+                              "name": "_padding_spaces"
                             },
                             {
                               "type": "FIELD",
@@ -2279,7 +2279,7 @@
                           "members": [
                             {
                               "type": "SYMBOL",
-                              "name": "_whitespace1"
+                              "name": "_padding_spaces"
                             },
                             {
                               "type": "FIELD",

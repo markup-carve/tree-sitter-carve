@@ -1048,6 +1048,129 @@ static bool try_close_different_typed_list(Scanner *s, TSLexer *lexer,
   return false;
 }
 
+/// Consumes the whitespace run at the lexer and reports its SPELLING, which is
+/// what every slot on a fence opener line has to decide on. Returns how many
+/// literal spaces the run held; `*tabbed` is set when it held a tab anywhere.
+///
+/// A caller distinguishes three outcomes from one call: the run is TRAILING
+/// whitespace when the line ends after it (any spelling, dropped), it is a
+/// SEPARATOR when a token follows (spaces only, cardinality per slot), and a
+/// zero-length run means the next token is glued to the one before it.
+static uint16_t consume_ws_run(Scanner *s, TSLexer *lexer, bool *tabbed) {
+  uint16_t spaces = 0;
+  *tabbed = false;
+  while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+    if (lexer->lookahead == '\t') {
+      *tabbed = true;
+    } else {
+      spaces++;
+    }
+    advance(s, lexer);
+  }
+  return spaces;
+}
+
+/// A colon-fence opener line ends at its last modeled token. Everything after
+/// it is trailing whitespace, which takes BOTH spellings (PART 1): `::: note`
+/// plus a space and `::: note` plus a tab are both admonition openers, and both
+/// are the same opener as `::: note`.
+static bool colon_fence_tail_is_only_trailing_whitespace(Scanner *s,
+                                                         TSLexer *lexer) {
+  bool tabbed = false;
+  consume_ws_run(s, lexer, &tabbed);
+  return at_line_end(lexer) || lexer->eof(lexer);
+}
+
+/// The `[label]` slot: `label = '[', { character - ']' }, ']'`. Consumes it and
+/// requires the line to end there.
+static bool colon_fence_label_slot_closes_the_line(Scanner *s, TSLexer *lexer) {
+  advance(s, lexer); // the '['
+  while (lexer->lookahead != ']' && !at_line_end(lexer) && !lexer->eof(lexer)) {
+    advance(s, lexer);
+  }
+  if (lexer->lookahead != ']') {
+    return false;
+  }
+  advance(s, lexer);
+  return colon_fence_tail_is_only_trailing_whitespace(s, lexer);
+}
+
+/// The metadata slot between two tokens on a colon-fence opener. Returns
+/// `MODELED_SLOT_END` when the run turned out to be trailing whitespace and the
+/// line is over, `MODELED_SLOT_OK` when it is a separator this grammar accepts,
+/// and `MODELED_SLOT_NO` when the line is not an opener at all.
+///
+/// grammar.ebnf `admonition_open = colon_fence:open, space, admonition_type,
+/// [space+, quoted_title], [space+, label]`: a RUN of spaces, and no tab. The
+/// slot after `admonition_type` differs from the fence's own separator only in
+/// cardinality - `::: note` + two spaces + `"T"` is an admonition and
+/// `:::` + two spaces + `note` is one too, while a tab at either is prose.
+typedef enum {
+  MODELED_SLOT_NO,
+  MODELED_SLOT_OK,
+  MODELED_SLOT_END,
+} ModeledSlot;
+
+static ModeledSlot colon_fence_metadata_slot(Scanner *s, TSLexer *lexer) {
+  bool tabbed = false;
+  uint16_t spaces = consume_ws_run(s, lexer, &tabbed);
+  if (at_line_end(lexer) || lexer->eof(lexer)) {
+    return MODELED_SLOT_END;
+  }
+  if (tabbed || spaces == 0) {
+    return MODELED_SLOT_NO;
+  }
+  return MODELED_SLOT_OK;
+}
+
+/// The tail of a TYPE-WORD opener: `admonition_type`, then an optional quoted
+/// "title", then an optional `[label]`, then the end of the line.
+///
+/// WHY THE WHOLE TAIL IS READ HERE AND NOT LEFT TO `grammar.js`. A slot that
+/// rejects its separator has to leave the LINE as prose (grammar.ebnf PART 7),
+/// and a grammar rule can only fail into an ERROR - which is what `::: note zzz`
+/// and `::: note {.x}` have always produced here. The scanner is the only place
+/// that can decline to open the block at all, so it is where the opener's shape
+/// is decided, exactly as `code_fence_info_is_modeled` decides the code fence's.
+static bool colon_fence_named_tail_is_modeled(Scanner *s, TSLexer *lexer) {
+  // `class_name` is `/[A-Za-z_][\w_-]*/`; the first character has already been
+  // checked by the caller. The word ends at whitespace or at the character that
+  // opens the next slot.
+  while (!at_line_end(lexer) && !lexer->eof(lexer) && lexer->lookahead != ' ' &&
+         lexer->lookahead != '\t' && lexer->lookahead != '"' &&
+         lexer->lookahead != '[' && lexer->lookahead != '{' &&
+         lexer->lookahead != '}' && lexer->lookahead != '=') {
+    advance(s, lexer);
+  }
+  ModeledSlot slot = colon_fence_metadata_slot(s, lexer);
+  if (slot != MODELED_SLOT_OK) {
+    return slot == MODELED_SLOT_END;
+  }
+  // Optional quoted "title". `quoted_title = '"', {character - '"'}, '"'` -
+  // there is no escape inside it, so an unterminated one makes the line prose.
+  if (lexer->lookahead == '"') {
+    advance(s, lexer);
+    while (lexer->lookahead != '"' && !at_line_end(lexer) &&
+           !lexer->eof(lexer)) {
+      advance(s, lexer);
+    }
+    if (lexer->lookahead != '"') {
+      return false;
+    }
+    advance(s, lexer);
+    slot = colon_fence_metadata_slot(s, lexer);
+    if (slot != MODELED_SLOT_OK) {
+      return slot == MODELED_SLOT_END;
+    }
+  }
+  // Optional `[label]`, and nothing after it. The order is fixed, so a title
+  // AFTER a label (`::: note [L] "T"`) is prose.
+  if (lexer->lookahead == '[') {
+    return colon_fence_label_slot_closes_the_line(s, lexer);
+  }
+  return false;
+}
+
 /// Does the text AFTER a `:::` run open a block?
 ///
 /// The one place that answers it. The opener branch in `parse_colon` and the
@@ -1112,7 +1235,7 @@ static bool colon_fence_tail_opens_block(Scanner *s, TSLexer *lexer, bool bare,
     return false;
   }
   if (c == '[') {
-    return true;
+    return colon_fence_label_slot_closes_the_line(s, lexer);
   }
   // The local hard-break block, `::: \` (grammar.ebnf
   // `local_hard_break_block_open = colon_fence:open, space, backslash`). It
@@ -1132,7 +1255,16 @@ static bool colon_fence_tail_opens_block(Scanner *s, TSLexer *lexer, bool bare,
   }
   bool named = c == '|' || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
                c == '_';
-  return named && spaced;
+  if (!named || !spaced) {
+    return false;
+  }
+  // The line block takes its bar and nothing else: `::: | x` is a paragraph in
+  // every engine (`line_block_open = colon_fence:open, space, "|"`).
+  if (c == '|') {
+    advance(s, lexer);
+    return colon_fence_tail_is_only_trailing_whitespace(s, lexer);
+  }
+  return colon_fence_named_tail_is_modeled(s, lexer);
 }
 
 // Try to close an open verbatim implicitly
@@ -1242,28 +1374,6 @@ static bool code_fence_closer_tail_is_blank(Scanner *s, TSLexer *lexer) {
     advance(s, lexer);
   }
   return at_line_end(lexer) || lexer->eof(lexer);
-}
-
-/// Consumes the whitespace run at the lexer and reports its SPELLING, which is
-/// what every slot on a fence opener line has to decide on. Returns how many
-/// literal spaces the run held; `*tabbed` is set when it held a tab anywhere.
-///
-/// A caller distinguishes three outcomes from one call: the run is TRAILING
-/// whitespace when the line ends after it (any spelling, dropped), it is a
-/// SEPARATOR when a token follows (spaces only, cardinality per slot), and a
-/// zero-length run means the next token is glued to the one before it.
-static uint16_t consume_ws_run(Scanner *s, TSLexer *lexer, bool *tabbed) {
-  uint16_t spaces = 0;
-  *tabbed = false;
-  while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
-    if (lexer->lookahead == '\t') {
-      *tabbed = true;
-    } else {
-      spaces++;
-    }
-    advance(s, lexer);
-  }
-  return spaces;
 }
 
 // Validate the info string that follows a backtick code fence (the rest of the
@@ -3513,11 +3623,21 @@ static bool parse_colon(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     // `colon_fence_tail_opens_block` so the paragraph-closing peek applies the
     // SAME one.
     //
-    // For the backslash form the token END lands past the backslash rather
-    // than at the separator, because the tail test has to read the rest of the
-    // line to answer at all and the lexer cannot rewind. `div_marker_begin`
-    // therefore covers the whole `::: \` opener; the other spaced forms keep
-    // their tail token (`line_block_marker`, `class_name`) outside it.
+    // THE TOKEN END IS PINNED HERE, BEFORE THE TAIL TEST READS PAST IT. The
+    // test now reads the WHOLE line for the named, bar and label forms - the
+    // opener's `"title"` and `[label]` slots are part of what decides whether
+    // this is an opener at all - and the lexer cannot rewind, so a mark taken
+    // afterwards would swallow `line_block_marker` and `class_name` into
+    // `div_marker_begin`. It also has to be taken on the path where the answer
+    // is NO: the handoff below emits a token at the end as it stands, and
+    // without this it would cover the rest of the line instead of the fence.
+    //
+    // The backslash form is the exception, and the only one: `grammar.js` has
+    // no branch for it, so `div_marker_begin` has to cover the whole `::: \`
+    // opener. Its end is marked after the test instead.
+    if (c != '\\') {
+      lexer->mark_end(lexer);
+    }
     bool ok = colon_fence_tail_opens_block(s, lexer, bare, spaced, tabbed, c);
     // ...and a bare fence is not an opener at all while the open paragraph is
     // absorbing: after a malformed `::: {.x}` the trailing `:::` is text, at
@@ -3558,7 +3678,11 @@ static bool parse_colon(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     // the `:::` the engine renders as text. A marker node one space wider on
     // VALID openers is the smaller loss than three characters of source
     // uncovered on invalid ones.
-    lexer->mark_end(lexer);
+    //
+    // Only the backslash form still marks HERE; see the note at the tail test.
+    if (c == '\\') {
+      lexer->mark_end(lexer);
+    }
     push_block(s, DIV, colons);
     lexer->result_symbol = DIV_BEGIN;
     return true;
