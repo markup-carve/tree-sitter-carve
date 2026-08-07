@@ -124,10 +124,56 @@ for (const key of [
   }
 }
 
+// 5. SHARED REASONS. One grammar gap usually spans a whole category, and the
+// reason was copied per document: 52 entries carried 12 distinct texts, 27 kB
+// of it duplicated. That is not just bulk. Editing one copy and not the other
+// fifteen is silent, and the copies are the only record of WHY a gap is
+// tolerated - so they drift into disagreeing with each other about the same
+// defect.
+//
+// An entry may therefore write `"reason": "ref:<key>"` and put the text once in
+// the top-level `reasons` map. Gated in both directions, like every other
+// ledger here: a ref with no entry fails, and an entry nothing references fails
+// (a reason nobody points at is a gap that was closed without anyone deleting
+// its excuse - carve#755's class).
+const reasons = coverage.reasons ?? {};
+const referenced = new Set();
+for (const [ledgerName, ledger] of Object.entries({
+  skip: coverage.skip ?? {},
+  overAcceptance: coverage.overAcceptance ?? {},
+  invisibleOverAcceptance: coverage.invisibleOverAcceptance ?? {},
+  underAcceptance: coverage.underAcceptance ?? {},
+  lineTerminatorGaps: coverage.lineTerminatorGaps ?? {},
+})) {
+  for (const [key, entry] of Object.entries(ledger)) {
+    const text = typeof entry === 'string' ? entry : (entry.reason ?? '');
+    if (!text.startsWith('ref:')) continue;
+    const refKey = text.slice(4);
+    referenced.add(refKey);
+    if (!(refKey in reasons)) {
+      errors.push(
+        `${ledgerName}["${key}"] cites reason "${refKey}", which is not in ` +
+          `\`reasons\`. Add the text there, or write the reason inline.`,
+      );
+    }
+  }
+}
+for (const key of Object.keys(reasons)) {
+  if (!referenced.has(key)) {
+    errors.push(
+      `reasons["${key}"] is referenced by no entry. The gap it explains was ` +
+        `closed without its explanation being removed - delete it.`,
+    );
+  }
+}
+
 if (errors.length) {
   console.error('\nCoverage-matrix failures:');
   for (const e of errors) console.error(`  - ${e}`);
   process.exit(1);
 }
 
-console.log('coverage-matrix: OK (every corpus category is classified).');
+console.log(
+  `coverage-matrix: OK (every corpus category is classified; ` +
+    `${Object.keys(reasons).length} shared reason(s), all referenced).`,
+);
