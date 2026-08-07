@@ -465,42 +465,6 @@
     "thematic-break-requires-contiguous-markers": {
       "gaps": "list: want 2 have 0"
     },
-    "colon-fence-separator-must-be-a-space-2": {
-      "gaps": "div: want 1 have 0",
-      "reason": "a colon fence whose separator is a single space opens a div, and this grammar declines it here: its opener test was written against the older whitespace-run spelling and the fixtures in this category sit on the exact boundary the new rule draws. Under-acceptance rather than over-acceptance, so nothing is mis-highlighted - the construct is simply not built. Tracked in tree-sitter-carve#160. Spec side: markup-carve/carve#905."
-    },
-    "colon-fence-separator-must-be-a-space-3": {
-      "gaps": "div: want 1 have 0",
-      "reason": "a colon fence whose separator is a single space opens a div, and this grammar declines it here: its opener test was written against the older whitespace-run spelling and the fixtures in this category sit on the exact boundary the new rule draws. Under-acceptance rather than over-acceptance, so nothing is mis-highlighted - the construct is simply not built. Tracked in tree-sitter-carve#160. Spec side: markup-carve/carve#905."
-    },
-    "colon-fence-separator-must-be-a-space-4": {
-      "gaps": "div: want 1 have 0",
-      "reason": "a colon fence whose separator is a single space opens a div, and this grammar declines it here: its opener test was written against the older whitespace-run spelling and the fixtures in this category sit on the exact boundary the new rule draws. Under-acceptance rather than over-acceptance, so nothing is mis-highlighted - the construct is simply not built. Tracked in tree-sitter-carve#160. Spec side: markup-carve/carve#905."
-    },
-    "colon-fence-separator-must-be-a-space-5": {
-      "gaps": "div: want 1 have 0",
-      "reason": "a colon fence whose separator is a single space opens a div, and this grammar declines it here: its opener test was written against the older whitespace-run spelling and the fixtures in this category sit on the exact boundary the new rule draws. Under-acceptance rather than over-acceptance, so nothing is mis-highlighted - the construct is simply not built. Tracked in tree-sitter-carve#160. Spec side: markup-carve/carve#905."
-    },
-    "colon-fence-separator-must-be-a-space-6": {
-      "gaps": "line_block: want 1 have 0",
-      "reason": "the language builds a line_block here and this grammar does not: the fixture's opener sits one column off the shape the line_block rule anchors, which the new trailing-whitespace and separator rules made reachable. Tracked in tree-sitter-carve#160."
-    },
-    "colon-fence-separator-must-be-a-space-7": {
-      "gaps": "line_block: want 1 have 0",
-      "reason": "the language builds a line_block here and this grammar does not: the fixture's opener sits one column off the shape the line_block rule anchors, which the new trailing-whitespace and separator rules made reachable. Tracked in tree-sitter-carve#160."
-    },
-    "colon-fence-separator-must-be-a-space-8": {
-      "gaps": "div: want 1 have 0",
-      "reason": "a colon fence whose separator is a single space opens a div, and this grammar declines it here: its opener test was written against the older whitespace-run spelling and the fixtures in this category sit on the exact boundary the new rule draws. Under-acceptance rather than over-acceptance, so nothing is mis-highlighted - the construct is simply not built. Tracked in tree-sitter-carve#160. Spec side: markup-carve/carve#905."
-    },
-    "colon-fence-separator-must-be-a-space-9": {
-      "gaps": "div: want 1 have 0",
-      "reason": "a colon fence whose separator is a single space opens a div, and this grammar declines it here: its opener test was written against the older whitespace-run spelling and the fixtures in this category sit on the exact boundary the new rule draws. Under-acceptance rather than over-acceptance, so nothing is mis-highlighted - the construct is simply not built. Tracked in tree-sitter-carve#160. Spec side: markup-carve/carve#905."
-    },
-    "colon-fence-separator-must-be-a-space": {
-      "gaps": "div: want 1 have 0",
-      "reason": "a colon fence whose separator is a single space opens a div, and this grammar declines it here: its opener test was written against the older whitespace-run spelling and the fixtures in this category sit on the exact boundary the new rule draws. Under-acceptance rather than over-acceptance, so nothing is mis-highlighted - the construct is simply not built. Tracked in tree-sitter-carve#160. Spec side: markup-carve/carve#905."
-    },
     "trailing-whitespace-on-a-content-line-is-dropped-12": {
       "gaps": "line_block: want 1 have 0",
       "reason": "the language builds a line_block here and this grammar does not: the fixture's opener sits one column off the shape the line_block rule anchors, which the new trailing-whitespace and separator rules made reachable. Tracked in tree-sitter-carve#160."
@@ -524,6 +488,10 @@
     "a-fence-opened-on-a-list-marker-line-body-below-the-content-column": {
       "gaps": "code_block: want 1 have 0",
       "reason": "a code fence opened on a list MARKER line with its body BELOW the item's content column: the item closes with an EMPTY code block and the residue re-parses at document level (markup-carve/carve#646). This grammar builds no code_block for the shape at all. Its scanner commits the fence to the item and has no route to close it at the container boundary. Tracked in tree-sitter-carve#160."
+    },
+    "a-frontmatter-opener-takes-exactly-one-space": {
+      "gaps": "thematic_break: want 1 have 0",
+      "reason": "the OPENER half of this document is fixed: `---  yaml` is no longer read as frontmatter, because the separator is exactly one space. What remains is a different, pre-existing defect that this document happens to also contain - the `---` line BELOW the paragraph is a thematic break in every engine and folds into the paragraph as an em dash here. That is the same gap already recorded for paragraph-interruption-3, so it is one defect with two documents rather than a frontmatter question."
     }
   },
   "errorFamilies": {

@@ -2611,9 +2611,47 @@ static uint8_t consume_line_with_char_or_whitespace(Scanner *s, TSLexer *lexer,
 // left `Scanner *s` mid-document for the NEXT token - this function is
 // written to make that class of mistake impossible by construction rather
 // than by care.
+// The separator between an opening `---` and a language tag is EXACTLY ONE
+// SPACE (markup-carve/carve#905), so three outcomes have to be told apart at
+// the opening position rather than two: a real opener, an opener with
+// no closer (a thematic break, tree-sitter-carve#95), and a line that is not an
+// opener at all because its separator is the wrong width or the wrong
+// character. That third one must fall through to ordinary paragraph text -
+// `---  yaml` renders as `<p>—  yaml …</p>`, an em dash and its text, and it is
+// NOT a thematic break either, because a thematic break needs a line of nothing
+// but markers and whitespace.
+// Is what follows the marker run a valid opener separator? Measured against
+// carve-js, which is this repository's oracle:
+//
+//   `---json`      frontmatter   a language glued to the marker is fine
+//   `--- json`     frontmatter   the one space the clause permits
+//   `---`          frontmatter   a bare opener, no language
+//   `--- `         frontmatter   one trailing space, still no language
+//   `---  json`    PARAGRAPH     a second space widens a one-space slot
+//   `---\tjson`    PARAGRAPH     a tab is not the space the clause names
+//   `--- \tjson`   PARAGRAPH     same, one character later
+//
+// So the slot admits AT MOST ONE SPACE and never a tab. At most one character
+// is consumed here, and only when it is that permitted space.
+static bool frontmatter_separator_ok(TSLexer *lexer) {
+  if (lexer->eof(lexer) || at_line_end(lexer)) {
+    return true; // a bare `---` opener carries no language and needs no space
+  }
+  if (lexer->lookahead == '\t') {
+    return false;
+  }
+  if (lexer->lookahead != ' ') {
+    return true; // the language starts immediately, which is a zero-width slot
+  }
+  lexer->advance(lexer, false);
+  // A second space or a tab widens a slot the clause pins at one space.
+  return !(lexer->lookahead == ' ' || lexer->lookahead == '\t');
+}
+
 static bool frontmatter_has_closer(TSLexer *lexer) {
-  // Skip whatever remains of the OPENER line (optional whitespace and/or a
-  // language tag per the grammar) without caring about its shape.
+  // Skip whatever remains of the OPENER line (a language tag per the grammar)
+  // without caring about its shape. The separator itself was already validated
+  // by the caller, which is the one part of this line that does have a shape.
   while (!lexer->eof(lexer) && !at_line_end(lexer)) {
     lexer->advance(lexer, false);
   }
@@ -2794,6 +2832,13 @@ static bool parse_list_marker_or_thematic_break(
         // code fence. An unclosed `---` at document start is the same shape,
         // and every engine reads it as a thematic break instead
         // (tree-sitter-carve#95).
+        // The separator test comes FIRST and consumes at most the one space it
+        // permits, so the closer search below still starts on the opener line.
+        if (!frontmatter_separator_ok(lexer)) {
+          // Not an opener, and not a thematic break either: decline the token
+          // entirely and let the line lex as the paragraph it is.
+          return false;
+        }
         if (frontmatter_has_closer(lexer)) {
           lexer->result_symbol = FRONTMATTER_MARKER;
           return true;

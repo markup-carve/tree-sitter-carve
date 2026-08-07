@@ -39,10 +39,19 @@ module.exports = grammar({
     document: ($) =>
       seq(optional($.frontmatter), repeat($._block_with_section)),
 
+    // The opener's separator admits AT MOST ONE SPACE and never a tab
+    // (markup-carve/carve#905), so `---  yaml` and `---<TAB>yaml` are prose -
+    // a paragraph whose `---` renders as an em dash, not frontmatter with a
+    // language of `yaml`. `$._whitespace` is `/[ \t]*/`, which accepted every
+    // width and both characters. The space is optional in BOTH directions: a
+    // bare `---` opener has no language, and `---json` glues the language
+    // straight to the marker, which every engine accepts. The scanner enforces
+    // the width, since only it can decline the opener without leaving an ERROR
+    // node behind.
     frontmatter: ($) =>
       seq(
         $.frontmatter_marker,
-        $._whitespace,
+        optional($._frontmatter_space),
         optional(field("language", $.language)),
         $._newline,
         field("content", $.frontmatter_content),
@@ -1121,6 +1130,8 @@ module.exports = grammar({
       ),
 
     _whitespace: (_) => token.immediate(/[ \t]*/),
+    // The single space the frontmatter opener may carry. See `frontmatter`.
+    _frontmatter_space: (_) => token.immediate(" "),
     _whitespace1: (_) => token.immediate(/[ \t]+/),
 
     _inline: ($) =>

@@ -64,6 +64,13 @@ const NODE_FOR = {
   footnote: null,
   abbreviation_def: null,
   comment: null,
+  // Same family, and new in the engine this repo pins: a link reference
+  // definition renders nothing, so an under-acceptance count would compare a
+  // node against no visible output. The direction that matters for it is the
+  // other one, and corpus-conformance's INVISIBLE over-acceptance check already
+  // owns it - that check is what catches the grammar building this node for a
+  // line the language reads as a paragraph.
+  link_reference_definition: null,
   admonition: 'div',
   list_item: null,
   definition_term: null,

@@ -33,8 +33,16 @@
           "name": "frontmatter_marker"
         },
         {
-          "type": "SYMBOL",
-          "name": "_whitespace"
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "_frontmatter_space"
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
         },
         {
           "type": "CHOICE",
@@ -3959,6 +3967,13 @@
       "content": {
         "type": "PATTERN",
         "value": "[ \\t]*"
+      }
+    },
+    "_frontmatter_space": {
+      "type": "IMMEDIATE_TOKEN",
+      "content": {
+        "type": "STRING",
+        "value": " "
       }
     },
     "_whitespace1": {
