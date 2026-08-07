@@ -39,6 +39,7 @@ import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { refuseShortRun } from './participants.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const corpusDir = path.join(repoRoot, 'spec', 'tests', 'corpus');
@@ -51,15 +52,18 @@ const files = readdirSync(corpusDir)
   .filter((f) => f.endsWith('.crv'))
   .sort();
 
-// The same wiring guard the other sweeps carry: an empty or moved corpus would
-// find no gaps and report a clean run having measured nothing.
-if (files.length < 400) {
-  console.error(
-    `Only ${files.length} corpus document(s) under ${corpusDir}; the corpus has ~650, ` +
-      'so this is a wiring problem, not a clean run.',
-  );
-  process.exit(2);
-}
+// The wiring guard: an empty or moved corpus would find no gaps and report a
+// clean run having measured nothing. This was the FIRST copy of it, and its
+// comment used to say "the same guard the other sweeps carry" - they did not,
+// and three of them exited 0 over an empty corpus until markup-carve/carve#755
+// measured it. One spelling now, in scripts/participants.mjs.
+refuseShortRun({
+  label: 'CORPUS',
+  actual: files.length,
+  atLeast: 400,
+  of: `document(s) under ${corpusDir}`,
+  hint: 'the spec corpus has ~650; run `git submodule update --init`.',
+});
 
 const SPELLINGS = { lf: '\n', crlf: '\r\n', cr: '\r' };
 const work = mkdtempSync(path.join(tmpdir(), 'line-terminators-'));

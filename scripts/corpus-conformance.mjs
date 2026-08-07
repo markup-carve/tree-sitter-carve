@@ -19,6 +19,7 @@
 // failure.
 
 import { readFileSync, readdirSync } from 'node:fs';
+import { refuseShortRun } from './participants.mjs';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -44,6 +45,20 @@ function baseCategory(file) {
 const allFiles = readdirSync(corpusDir)
   .filter((f) => f.endsWith('.crv'))
   .sort();
+
+// The wiring guard scripts/line-terminators.mjs describes as "the same guard the
+// other sweeps carry" - which they did not. Without it an empty corpus reaches
+// the CLI with zero paths, and the run dies on `Must provide one or more paths`
+// while reporting that the parse invocation failed. That is a true statement
+// about the wrong thing: the invocation is fine, the population is missing
+// (markup-carve/carve#755).
+refuseShortRun({
+  label: 'CORPUS',
+  actual: allFiles.length,
+  atLeast: 400,
+  of: `document(s) under ${corpusDir}`,
+  hint: 'the spec corpus has ~650; run `git submodule update --init`.',
+});
 
 const coveredFiles = [];
 // Every file a skip entry covers, so the entry can be re-checked below. A skip
