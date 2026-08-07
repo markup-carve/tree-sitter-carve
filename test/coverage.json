@@ -310,56 +310,6 @@
       "nodes": "div",
       "lines": "1",
       "reason": "the fence opener's metadata slots take exactly one space, so a TAB anywhere in them (after the type word, before or after a quoted title, before a label) makes the whole line prose and the block never opens. This grammar's scanner still opens the fence: its separator test admits a whitespace RUN rather than one literal space. Unlike the other entry here this IS declinable - it needs no symbol table, only a narrower separator - so it is a scanner fix waiting on tree-sitter-carve#160, not a permanent cost. Recorded rather than fixed in the corpus bump that surfaced it, so the bump is not blocked on a scanner change. Spec side: markup-carve/carve#907 and markup-carve/carve#905."
-    },
-    "code-fence-metadata-slots-must-be-a-space-too-2": {
-      "nodes": "code_block",
-      "lines": "1",
-      "reason": "the fence opener's metadata slots take exactly one space, so a TAB anywhere in them (after the type word, before or after a quoted title, before a label) makes the whole line prose and the block never opens. This grammar's scanner still opens the fence: its separator test admits a whitespace RUN rather than one literal space. Unlike the other entry here this IS declinable - it needs no symbol table, only a narrower separator - so it is a scanner fix waiting on tree-sitter-carve#160, not a permanent cost. Recorded rather than fixed in the corpus bump that surfaced it, so the bump is not blocked on a scanner change. Spec side: markup-carve/carve#907 and markup-carve/carve#905."
-    },
-    "code-fence-metadata-slots-must-be-a-space-too-3": {
-      "nodes": "code_block",
-      "lines": "1",
-      "reason": "the fence opener's metadata slots take exactly one space, so a TAB anywhere in them (after the type word, before or after a quoted title, before a label) makes the whole line prose and the block never opens. This grammar's scanner still opens the fence: its separator test admits a whitespace RUN rather than one literal space. Unlike the other entry here this IS declinable - it needs no symbol table, only a narrower separator - so it is a scanner fix waiting on tree-sitter-carve#160, not a permanent cost. Recorded rather than fixed in the corpus bump that surfaced it, so the bump is not blocked on a scanner change. Spec side: markup-carve/carve#907 and markup-carve/carve#905."
-    },
-    "code-fence-metadata-slots-must-be-a-space-too-4": {
-      "nodes": "code_block",
-      "lines": "1",
-      "reason": "the fence opener's metadata slots take exactly one space, so a TAB anywhere in them (after the type word, before or after a quoted title, before a label) makes the whole line prose and the block never opens. This grammar's scanner still opens the fence: its separator test admits a whitespace RUN rather than one literal space. Unlike the other entry here this IS declinable - it needs no symbol table, only a narrower separator - so it is a scanner fix waiting on tree-sitter-carve#160, not a permanent cost. Recorded rather than fixed in the corpus bump that surfaced it, so the bump is not blocked on a scanner change. Spec side: markup-carve/carve#907 and markup-carve/carve#905."
-    },
-    "code-fence-metadata-slots-must-be-a-space-too-5": {
-      "nodes": "code_block",
-      "lines": "1",
-      "reason": "the fence opener's metadata slots take exactly one space, so a TAB anywhere in them (after the type word, before or after a quoted title, before a label) makes the whole line prose and the block never opens. This grammar's scanner still opens the fence: its separator test admits a whitespace RUN rather than one literal space. Unlike the other entry here this IS declinable - it needs no symbol table, only a narrower separator - so it is a scanner fix waiting on tree-sitter-carve#160, not a permanent cost. Recorded rather than fixed in the corpus bump that surfaced it, so the bump is not blocked on a scanner change. Spec side: markup-carve/carve#907 and markup-carve/carve#905."
-    },
-    "code-fence-metadata-slots-must-be-a-space-too-6": {
-      "nodes": "code_block",
-      "lines": "1",
-      "reason": "the fence opener's metadata slots take exactly one space, so a TAB anywhere in them (after the type word, before or after a quoted title, before a label) makes the whole line prose and the block never opens. This grammar's scanner still opens the fence: its separator test admits a whitespace RUN rather than one literal space. Unlike the other entry here this IS declinable - it needs no symbol table, only a narrower separator - so it is a scanner fix waiting on tree-sitter-carve#160, not a permanent cost. Recorded rather than fixed in the corpus bump that surfaced it, so the bump is not blocked on a scanner change. Spec side: markup-carve/carve#907 and markup-carve/carve#905."
-    },
-    "code-fence-metadata-slots-must-be-a-space-too-7": {
-      "nodes": "code_block",
-      "lines": "1",
-      "reason": "the fence opener's metadata slots take exactly one space, so a TAB anywhere in them (after the type word, before or after a quoted title, before a label) makes the whole line prose and the block never opens. This grammar's scanner still opens the fence: its separator test admits a whitespace RUN rather than one literal space. Unlike the other entry here this IS declinable - it needs no symbol table, only a narrower separator - so it is a scanner fix waiting on tree-sitter-carve#160, not a permanent cost. Recorded rather than fixed in the corpus bump that surfaced it, so the bump is not blocked on a scanner change. Spec side: markup-carve/carve#907 and markup-carve/carve#905."
-    },
-    "code-fence-metadata-slots-must-be-a-space-too-8": {
-      "nodes": "code_block",
-      "lines": "1",
-      "reason": "the fence opener's metadata slots take exactly one space, so a TAB anywhere in them (after the type word, before or after a quoted title, before a label) makes the whole line prose and the block never opens. This grammar's scanner still opens the fence: its separator test admits a whitespace RUN rather than one literal space. Unlike the other entry here this IS declinable - it needs no symbol table, only a narrower separator - so it is a scanner fix waiting on tree-sitter-carve#160, not a permanent cost. Recorded rather than fixed in the corpus bump that surfaced it, so the bump is not blocked on a scanner change. Spec side: markup-carve/carve#907 and markup-carve/carve#905."
-    },
-    "code-fence-metadata-slots-must-be-a-space-too-9": {
-      "nodes": "code_block",
-      "lines": "1",
-      "reason": "the fence opener's metadata slots take exactly one space, so a TAB anywhere in them (after the type word, before or after a quoted title, before a label) makes the whole line prose and the block never opens. This grammar's scanner still opens the fence: its separator test admits a whitespace RUN rather than one literal space. Unlike the other entry here this IS declinable - it needs no symbol table, only a narrower separator - so it is a scanner fix waiting on tree-sitter-carve#160, not a permanent cost. Recorded rather than fixed in the corpus bump that surfaced it, so the bump is not blocked on a scanner change. Spec side: markup-carve/carve#907 and markup-carve/carve#905."
-    },
-    "code-fence-metadata-slots-must-be-a-space-too": {
-      "nodes": "code_block",
-      "lines": "1",
-      "reason": "the fence opener's metadata slots take exactly one space, so a TAB anywhere in them (after the type word, before or after a quoted title, before a label) makes the whole line prose and the block never opens. This grammar's scanner still opens the fence: its separator test admits a whitespace RUN rather than one literal space. Unlike the other entry here this IS declinable - it needs no symbol table, only a narrower separator - so it is a scanner fix waiting on tree-sitter-carve#160, not a permanent cost. Recorded rather than fixed in the corpus bump that surfaced it, so the bump is not blocked on a scanner change. Spec side: markup-carve/carve#907 and markup-carve/carve#905."
-    },
-    "a-code-fence-opener-takes-exactly-one-space": {
-      "nodes": "code_block",
-      "lines": "1",
-      "reason": "the fence opener's metadata slots take exactly one space, so a TAB anywhere in them (after the type word, before or after a quoted title, before a label) makes the whole line prose and the block never opens. This grammar's scanner still opens the fence: its separator test admits a whitespace RUN rather than one literal space. Unlike the other entry here this IS declinable - it needs no symbol table, only a narrower separator - so it is a scanner fix waiting on tree-sitter-carve#160, not a permanent cost. Recorded rather than fixed in the corpus bump that surfaced it, so the bump is not blocked on a scanner change. Spec side: markup-carve/carve#907 and markup-carve/carve#905."
     }
   },
   "invisibleOverAcceptance": {
@@ -390,6 +340,10 @@
   },
   "batteryDisagreements": {},
   "underAcceptance": {
+    "a-frontmatter-opener-takes-exactly-one-space": {
+      "gaps": "thematic_break: want 1 have 0",
+      "reason": "`---<SP><SP>yaml` is no longer read as a frontmatter opener - the opener's `[space]` slot takes exactly one space and the line is prose - but the `---` three lines below it, which the language turns into a thematic break, is folded into that prose instead. A thematic break does not interrupt an open paragraph in this grammar; `paragraph-interruption-3` records the same gap on a document with no frontmatter in it, and the two close together."
+    },
     "attribute-braces-on-a-list-item-marker-line": {
       "gaps": "heading: want 1 have 0"
     },
@@ -464,42 +418,6 @@
     },
     "thematic-break-requires-contiguous-markers": {
       "gaps": "list: want 2 have 0"
-    },
-    "colon-fence-separator-must-be-a-space-2": {
-      "gaps": "div: want 1 have 0",
-      "reason": "a colon fence whose separator is a single space opens a div, and this grammar declines it here: its opener test was written against the older whitespace-run spelling and the fixtures in this category sit on the exact boundary the new rule draws. Under-acceptance rather than over-acceptance, so nothing is mis-highlighted - the construct is simply not built. Tracked in tree-sitter-carve#160. Spec side: markup-carve/carve#905."
-    },
-    "colon-fence-separator-must-be-a-space-3": {
-      "gaps": "div: want 1 have 0",
-      "reason": "a colon fence whose separator is a single space opens a div, and this grammar declines it here: its opener test was written against the older whitespace-run spelling and the fixtures in this category sit on the exact boundary the new rule draws. Under-acceptance rather than over-acceptance, so nothing is mis-highlighted - the construct is simply not built. Tracked in tree-sitter-carve#160. Spec side: markup-carve/carve#905."
-    },
-    "colon-fence-separator-must-be-a-space-4": {
-      "gaps": "div: want 1 have 0",
-      "reason": "a colon fence whose separator is a single space opens a div, and this grammar declines it here: its opener test was written against the older whitespace-run spelling and the fixtures in this category sit on the exact boundary the new rule draws. Under-acceptance rather than over-acceptance, so nothing is mis-highlighted - the construct is simply not built. Tracked in tree-sitter-carve#160. Spec side: markup-carve/carve#905."
-    },
-    "colon-fence-separator-must-be-a-space-5": {
-      "gaps": "div: want 1 have 0",
-      "reason": "a colon fence whose separator is a single space opens a div, and this grammar declines it here: its opener test was written against the older whitespace-run spelling and the fixtures in this category sit on the exact boundary the new rule draws. Under-acceptance rather than over-acceptance, so nothing is mis-highlighted - the construct is simply not built. Tracked in tree-sitter-carve#160. Spec side: markup-carve/carve#905."
-    },
-    "colon-fence-separator-must-be-a-space-6": {
-      "gaps": "line_block: want 1 have 0",
-      "reason": "the language builds a line_block here and this grammar does not: the fixture's opener sits one column off the shape the line_block rule anchors, which the new trailing-whitespace and separator rules made reachable. Tracked in tree-sitter-carve#160."
-    },
-    "colon-fence-separator-must-be-a-space-7": {
-      "gaps": "line_block: want 1 have 0",
-      "reason": "the language builds a line_block here and this grammar does not: the fixture's opener sits one column off the shape the line_block rule anchors, which the new trailing-whitespace and separator rules made reachable. Tracked in tree-sitter-carve#160."
-    },
-    "colon-fence-separator-must-be-a-space-8": {
-      "gaps": "div: want 1 have 0",
-      "reason": "a colon fence whose separator is a single space opens a div, and this grammar declines it here: its opener test was written against the older whitespace-run spelling and the fixtures in this category sit on the exact boundary the new rule draws. Under-acceptance rather than over-acceptance, so nothing is mis-highlighted - the construct is simply not built. Tracked in tree-sitter-carve#160. Spec side: markup-carve/carve#905."
-    },
-    "colon-fence-separator-must-be-a-space-9": {
-      "gaps": "div: want 1 have 0",
-      "reason": "a colon fence whose separator is a single space opens a div, and this grammar declines it here: its opener test was written against the older whitespace-run spelling and the fixtures in this category sit on the exact boundary the new rule draws. Under-acceptance rather than over-acceptance, so nothing is mis-highlighted - the construct is simply not built. Tracked in tree-sitter-carve#160. Spec side: markup-carve/carve#905."
-    },
-    "colon-fence-separator-must-be-a-space": {
-      "gaps": "div: want 1 have 0",
-      "reason": "a colon fence whose separator is a single space opens a div, and this grammar declines it here: its opener test was written against the older whitespace-run spelling and the fixtures in this category sit on the exact boundary the new rule draws. Under-acceptance rather than over-acceptance, so nothing is mis-highlighted - the construct is simply not built. Tracked in tree-sitter-carve#160. Spec side: markup-carve/carve#905."
     },
     "trailing-whitespace-on-a-content-line-is-dropped-12": {
       "gaps": "line_block: want 1 have 0",

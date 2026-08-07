@@ -2376,8 +2376,16 @@
           "value": "code_block_marker_begin"
         },
         {
-          "type": "SYMBOL",
-          "name": "_whitespace"
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "_one_space"
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
         },
         {
           "type": "CHOICE",
@@ -2404,7 +2412,7 @@
                           "members": [
                             {
                               "type": "SYMBOL",
-                              "name": "_whitespace1"
+                              "name": "_padding_spaces"
                             },
                             {
                               "type": "CHOICE",
@@ -2428,7 +2436,7 @@
                                           "members": [
                                             {
                                               "type": "SYMBOL",
-                                              "name": "_whitespace1"
+                                              "name": "_padding_spaces"
                                             },
                                             {
                                               "type": "FIELD",
@@ -2485,7 +2493,7 @@
                           "members": [
                             {
                               "type": "SYMBOL",
-                              "name": "_whitespace1"
+                              "name": "_padding_spaces"
                             },
                             {
                               "type": "FIELD",
@@ -2588,8 +2596,16 @@
           "value": "raw_block_marker_begin"
         },
         {
-          "type": "SYMBOL",
-          "name": "_whitespace"
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "_one_space"
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
         },
         {
           "type": "FIELD",
@@ -3966,6 +3982,20 @@
       "content": {
         "type": "PATTERN",
         "value": "[ \\t]+"
+      }
+    },
+    "_one_space": {
+      "type": "IMMEDIATE_TOKEN",
+      "content": {
+        "type": "STRING",
+        "value": " "
+      }
+    },
+    "_padding_spaces": {
+      "type": "IMMEDIATE_TOKEN",
+      "content": {
+        "type": "PATTERN",
+        "value": " +"
       }
     },
     "_inline": {

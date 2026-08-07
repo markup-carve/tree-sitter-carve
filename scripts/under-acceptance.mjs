@@ -64,6 +64,14 @@ const NODE_FOR = {
   footnote: null,
   abbreviation_def: null,
   comment: null,
+  // Same family, and it joined the engine's block vocabulary with the pin bump
+  // that fixed the oracle (carve-js #839 anchored the definition at end of
+  // line, which is what put the node in `CANONICAL_BLOCK_TYPES`). Counting it
+  // here would double-report what the RENDERS_NOTHING scan already asks, and
+  // ask it worse: that scan checks whether the definition's own source text
+  // survived into the render, which is the question that matters for a node
+  // producing no output of its own.
+  link_reference_definition: null,
   admonition: 'div',
   list_item: null,
   definition_term: null,

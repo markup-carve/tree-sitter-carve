@@ -1244,6 +1244,28 @@ static bool code_fence_closer_tail_is_blank(Scanner *s, TSLexer *lexer) {
   return at_line_end(lexer) || lexer->eof(lexer);
 }
 
+/// Consumes the whitespace run at the lexer and reports its SPELLING, which is
+/// what every slot on a fence opener line has to decide on. Returns how many
+/// literal spaces the run held; `*tabbed` is set when it held a tab anywhere.
+///
+/// A caller distinguishes three outcomes from one call: the run is TRAILING
+/// whitespace when the line ends after it (any spelling, dropped), it is a
+/// SEPARATOR when a token follows (spaces only, cardinality per slot), and a
+/// zero-length run means the next token is glued to the one before it.
+static uint16_t consume_ws_run(Scanner *s, TSLexer *lexer, bool *tabbed) {
+  uint16_t spaces = 0;
+  *tabbed = false;
+  while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+    if (lexer->lookahead == '\t') {
+      *tabbed = true;
+    } else {
+      spaces++;
+    }
+    advance(s, lexer);
+  }
+  return spaces;
+}
+
 // Validate the info string that follows a backtick code fence (the rest of the
 // opening line, after the ticks). The fence is opened only for an info string
 // the grammar can model: empty, or a single language word optionally followed
@@ -1252,16 +1274,35 @@ static bool code_fence_closer_tail_is_blank(Scanner *s, TSLexer *lexer) {
 // backticks fall back to inline verbatim. The `=FORMAT` raw-block form is
 // allowed (it is handled by the `raw_block` rule in the grammar).
 //
+// THE SLOTS ARE SPELLED `space`, AND THE TWO ROLES DIFFER ONLY IN CARDINALITY.
+// grammar.ebnf: `fenced_code_block = code_fence_open, [space], [code_fence_info]`
+// and `code_fence_info = language_info, [space+, quoted_title], [space+, label]`.
+// The slot between the fence run and the info string is exactly ONE space
+// (carve#912) - ``` ```<SP><SP>php ``` is not a fence opener, because the second
+// space reaches `language_info`, whose class holds no space - while the two
+// slots INSIDE the info string take a run. Neither admits a tab: a tab is
+// syntax only in a line's leading indentation run (PART 7, MARKER SEPARATORS AND
+// PADDING SLOTS), and every one of these slots sits after the first
+// non-whitespace character of the line.
+//
+// TRAILING whitespace is a different thing at the same characters and keeps
+// taking both spellings: a run with nothing after it on the line is dropped
+// (PART 1), so ``` ```js<TAB> ``` is still a fence while ``` ```js<TAB>"T" ```
+// is prose. That is why each run below is measured once and classified by what
+// FOLLOWS it, rather than being consumed by a bare `while`.
+//
 // Must be called with the lexer positioned right after the ticks, before
 // `mark_end` is committed for the begin token.
 static bool code_fence_info_is_modeled(Scanner *s, TSLexer *lexer) {
-  // Optional leading whitespace.
-  while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
-    advance(s, lexer);
-  }
-  // Empty info string: just a newline / EOF.
+  // The `[space]` slot between the fence run and the info string.
+  bool lead_tabbed = false;
+  uint16_t lead_spaces = consume_ws_run(s, lexer, &lead_tabbed);
+  // Empty info string: just a newline / EOF. The run was trailing whitespace.
   if (at_line_end(lexer) || lexer->eof(lexer)) {
     return true;
+  }
+  if (lead_tabbed || lead_spaces > 1) {
+    return false;
   }
   // The raw-block `=FORMAT` form (`raw_block_info` in the grammar) needs a
   // non-empty single-word format and nothing but trailing whitespace after it.
@@ -1318,14 +1359,15 @@ static bool code_fence_info_is_modeled(Scanner *s, TSLexer *lexer) {
     had_token = true;
     bool is_raw =
         word_len == 3 && word[0] == 'r' && word[1] == 'a' && word[2] == 'w';
-    saw_ws = false;
-    while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
-      saw_ws = true;
-      advance(s, lexer);
-    }
+    bool after_word_tabbed = false;
+    uint16_t after_word_spaces = consume_ws_run(s, lexer, &after_word_tabbed);
     if (at_line_end(lexer) || lexer->eof(lexer)) {
       return true;
     }
+    if (after_word_tabbed) {
+      return false;
+    }
+    saw_ws = after_word_spaces > 0;
     // The carve raw-block form `raw FORMAT` (`raw_block_info` in the grammar):
     // exactly one more single-word format follows the `raw` marker. (A `raw`
     // language with a quoted header is not modeled as a code block here -- it
@@ -1365,14 +1407,15 @@ static bool code_fence_info_is_modeled(Scanner *s, TSLexer *lexer) {
     }
     advance(s, lexer);
     had_token = true;
-    saw_ws = false;
-    while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
-      saw_ws = true;
-      advance(s, lexer);
-    }
+    bool after_header_tabbed = false;
+    uint16_t after_header_spaces = consume_ws_run(s, lexer, &after_header_tabbed);
     if (at_line_end(lexer) || lexer->eof(lexer)) {
       return true;
     }
+    if (after_header_tabbed) {
+      return false;
+    }
+    saw_ws = after_header_spaces > 0;
   }
 
   // Optional bracketed [label].
@@ -2611,6 +2654,43 @@ static uint8_t consume_line_with_char_or_whitespace(Scanner *s, TSLexer *lexer,
 // left `Scanner *s` mid-document for the NEXT token - this function is
 // written to make that class of mistake impossible by construction rather
 // than by care.
+/// Is the rest of the OPENER line a frontmatter opener at all?
+///
+/// `frontmatter` in `grammar.js` is `frontmatter_marker`, a `[space]` slot and
+/// an optional `language` token - the same one-space slot the code fence takes
+/// (grammar.ebnf PART 7; carve-js #800 narrowed the code fence, the frontmatter
+/// opener and the raw block together). `---<SP><SP>yaml` is NOT an opener: the
+/// second space reaches `language`, whose class holds no space.
+///
+/// The caller must not reach for a thematic break when this says no. The line
+/// carries a word, so it is not a run of markers either - it is ordinary prose,
+/// and the `---` further down is what becomes the break (corpus 264).
+///
+/// Call with the lexer sitting right after the opening run of `-`, and only
+/// where a frontmatter OPENER is what is being decided; the closing marker
+/// inside `frontmatter_content` has no tail to model.
+static bool frontmatter_opener_tail_is_modeled(Scanner *s, TSLexer *lexer) {
+  bool tabbed = false;
+  uint16_t spaces = consume_ws_run(s, lexer, &tabbed);
+  if (at_line_end(lexer) || lexer->eof(lexer)) {
+    return true; // a bare `---`, or one with trailing whitespace
+  }
+  if (tabbed || spaces > 1) {
+    return false;
+  }
+  // `language: /[^\r\n\t \{\}=\["]+/` in grammar.js - one token, then nothing
+  // but trailing whitespace.
+  while (!at_line_end(lexer) && !lexer->eof(lexer) && lexer->lookahead != ' ' &&
+         lexer->lookahead != '\t' && lexer->lookahead != '{' &&
+         lexer->lookahead != '}' && lexer->lookahead != '=' &&
+         lexer->lookahead != '[' && lexer->lookahead != '"') {
+    advance(s, lexer);
+  }
+  bool trailing_tabbed = false;
+  consume_ws_run(s, lexer, &trailing_tabbed);
+  return at_line_end(lexer) || lexer->eof(lexer);
+}
+
 static bool frontmatter_has_closer(TSLexer *lexer) {
   // Skip whatever remains of the OPENER line (optional whitespace and/or a
   // language tag per the grammar) without caring about its shape.
@@ -2789,6 +2869,14 @@ static bool parse_list_marker_or_thematic_break(
       // from the CLOSING one without needing any extra state: the closer
       // keeps committing unconditionally below, exactly as before.
       if (can_be_thematic_break) {
+        // The opener's own slot, read before the closer search below moves the
+        // lexer off this line. A tail this grammar cannot model leaves the line
+        // as PROSE, so neither symbol is produced here - returning the thematic
+        // break instead would be wrong for the same reason the frontmatter is:
+        // the line carries a word, and a break is a run of markers.
+        if (!frontmatter_opener_tail_is_modeled(s, lexer)) {
+          return false;
+        }
         // PART 9 section 12: "an opener with no exact closer ahead opens
         // nothing" - already the rule for the `%%%` comment block and the
         // code fence. An unclosed `---` at document start is the same shape,

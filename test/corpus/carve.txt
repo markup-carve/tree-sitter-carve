@@ -711,6 +711,92 @@ code
       end_marker: (verbatim_marker_end))))
 
 ===============================================================================
+A code fence separator wider than one space is not a code fence
+===============================================================================
+```  php
+x
+```
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (verbatim
+      begin_marker: (verbatim_marker_begin)
+      content: (content)
+      end_marker: (verbatim_marker_end))))
+
+===============================================================================
+A tab in a code fence metadata slot is not a code fence
+===============================================================================
+```js	"T"
+x
+```
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (verbatim
+      begin_marker: (verbatim_marker_begin)
+      content: (content)
+      end_marker: (verbatim_marker_end))))
+
+===============================================================================
+A code fence opener takes one space at every slot
+===============================================================================
+```js "T" [L]
+x
+```
+
+-------------------------------------------------------------------------------
+
+(document
+  (code_block
+    (code_block_marker_begin)
+    language: (language)
+    header: (code_block_header)
+    label: (code_block_label)
+    code: (code)
+    (code_block_marker_end)))
+
+===============================================================================
+A frontmatter separator wider than one space is not frontmatter
+===============================================================================
+---  yaml
+title: T
+---
+
+body
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (em_dash)
+    (em_dash))
+  (paragraph))
+
+===============================================================================
+A frontmatter opener takes one space
+===============================================================================
+--- yaml
+title: T
+---
+
+body
+
+-------------------------------------------------------------------------------
+
+(document
+  (frontmatter
+    (frontmatter_marker)
+    language: (language)
+    content: (frontmatter_content)
+    (frontmatter_marker))
+  (paragraph))
+
+===============================================================================
 Line block
 ===============================================================================
 ::: |

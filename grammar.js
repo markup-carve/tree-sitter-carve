@@ -605,7 +605,11 @@ module.exports = grammar({
     code_block: ($) =>
       seq(
         alias($._code_block_begin, $.code_block_marker_begin),
-        $._whitespace,
+        // `fenced_code_block = code_fence_open, [space], [code_fence_info]`:
+        // exactly one space, never a tab and never a run. The scanner declines
+        // the fence outright for anything else, so this token never has to
+        // reject - it states the same rule at the shape level.
+        optional($._one_space),
         // Info string (PART 9 §2): an optional language, then an optional
         // quoted "header", then an optional bracketed [label] -- in that order,
         // each whitespace-separated from the preceding token. The first token
@@ -614,14 +618,20 @@ module.exports = grammar({
           choice(
             seq(
               field("language", $.language),
+              // `code_fence_info = language_info, [space+, quoted_title],
+              // [space+, label]`: the two metadata slots take a RUN, and still
+              // no tab.
               optional(
                 seq(
-                  $._whitespace1,
+                  $._padding_spaces,
                   choice(
                     seq(
                       field("header", $.code_block_header),
                       optional(
-                        seq($._whitespace1, field("label", $.code_block_label)),
+                        seq(
+                          $._padding_spaces,
+                          field("label", $.code_block_label),
+                        ),
                       ),
                     ),
                     field("label", $.code_block_label),
@@ -631,7 +641,9 @@ module.exports = grammar({
             ),
             seq(
               field("header", $.code_block_header),
-              optional(seq($._whitespace1, field("label", $.code_block_label))),
+              optional(
+                seq($._padding_spaces, field("label", $.code_block_label)),
+              ),
             ),
             field("label", $.code_block_label),
           ),
@@ -653,7 +665,9 @@ module.exports = grammar({
     raw_block: ($) =>
       seq(
         alias($._code_block_begin, $.raw_block_marker_begin),
-        $._whitespace,
+        // `raw_block = code_fence_open, [space], "=", format_name`: the same
+        // one-space slot the code fence takes, spelled the same way.
+        optional($._one_space),
         field("info", $.raw_block_info),
         $._newline,
         field("content", optional(alias($.code, $.content))),
@@ -1122,6 +1136,23 @@ module.exports = grammar({
 
     _whitespace: (_) => token.immediate(/[ \t]*/),
     _whitespace1: (_) => token.immediate(/[ \t]+/),
+
+    // A SLOT SPELLED `space`, in its two cardinalities. grammar.ebnf PART 7
+    // (MARKER SEPARATORS AND PADDING SLOTS) spells every separator and every
+    // padding slot with the literal space terminal; a tab is syntax only in a
+    // line's leading indentation run, and each of these slots sits after the
+    // first non-whitespace character of its line. `_whitespace`/`_whitespace1`
+    // stay for the places that really do take both spellings - trailing
+    // whitespace, and inline text.
+    //
+    // Kept distinct from the scanner's own answer rather than duplicating it:
+    // `code_fence_info_is_modeled` in `src/scanner.c` decides whether the fence
+    // OPENS at all, because a slot that rejects its separator has to leave the
+    // line as prose, and a grammar rule can only fail into an ERROR. These
+    // tokens are the same rule at the SHAPE level, so the two spellings agree
+    // instead of the looser one silently authorizing what the scanner declines.
+    _one_space: (_) => token.immediate(" "),
+    _padding_spaces: (_) => token.immediate(/ +/),
 
     _inline: ($) =>
       prec.left(
