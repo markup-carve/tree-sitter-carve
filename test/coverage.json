@@ -320,24 +320,6 @@
     "implicit-heading-references-with-no-definition": {
       "gaps": "heading: want 4 have 3"
     },
-    "line-blocks": {
-      "gaps": "line_block: want 1 have 0"
-    },
-    "line-blocks-2": {
-      "gaps": "line_block: want 1 have 0"
-    },
-    "line-blocks-3": {
-      "gaps": "line_block: want 1 have 0"
-    },
-    "line-blocks-4": {
-      "gaps": "line_block: want 1 have 0"
-    },
-    "line-blocks-5": {
-      "gaps": "line_block: want 1 have 0"
-    },
-    "line-blocks-9": {
-      "gaps": "line_block: want 1 have 0"
-    },
     "list-lazy-continuation-2": {
       "gaps": "heading: want 1 have 0"
     },
@@ -373,10 +355,6 @@
     },
     "thematic-break-requires-contiguous-markers": {
       "gaps": "list: want 2 have 0"
-    },
-    "trailing-whitespace-on-a-content-line-is-dropped-12": {
-      "gaps": "line_block: want 1 have 0",
-      "reason": "the language builds a line_block here and this grammar does not: the fixture's opener sits one column off the shape the line_block rule anchors, which the new trailing-whitespace and separator rules made reachable. Tracked in tree-sitter-carve#160."
     },
     "a-fence-opened-on-a-list-marker-line-body-below-the-content-column-2": {
       "gaps": "code_block: want 1 have 0",

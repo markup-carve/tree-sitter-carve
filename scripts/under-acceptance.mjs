@@ -47,7 +47,18 @@ const NODE_FOR = {
   code_block: 'code_block',
   list: 'list',
   definition_list: 'definition_list',
-  line_block: 'line_block',
+  // A line block is a `div` carrying a `line_block_marker` here, not a node of
+  // its own: `src/node-types.json` has no `line_block`, so mapping it to that
+  // name was a target no document could ever hit and EVERY line block in the
+  // corpus was reported as a gap. That is the exact failure the note at the top
+  // of this map describes - a count-based check reporting a missing node for a
+  // concept the two models spell differently - and six `line-blocks` entries
+  // sat in the ledger because of it.
+  //
+  // The MARKER rather than the `div`, which would be the `admonition` mapping:
+  // a line block that degraded to a plain div would still be a gap, and naming
+  // the marker is what keeps this able to see it.
+  line_block: 'line_block_marker',
   div: 'div',
   raw_block: 'raw_block',
   // No `figure` node: an image with a caption is an image plus a caption here,
