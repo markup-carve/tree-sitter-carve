@@ -732,6 +732,41 @@ mod tests {
         }
     }
 
+    /// A whitespace-only tail leaves a BARE code fence, tab or not.
+    ///
+    /// A CONTROL for the rule above, in the over-narrowing direction, and the
+    /// counterpart of `a_whitespace_only_fence_tail_is_still_bare` for the colon
+    /// fence. `code_fence_info_is_modeled` measures the run after the ticks and
+    /// asks what FOLLOWS it: with nothing after it on the line the run is
+    /// TRAILING whitespace, which takes both spellings and any width, so the
+    /// spelling and cardinality rules must not be reached. Move either test
+    /// ahead of the end-of-line test and every case here loses its code block
+    /// while the whole corpus, the block battery and the 2700-document no-error
+    /// sweep stay green - measured.
+    ///
+    /// A fixture cannot carry it: a tab or a second space degrading away keeps
+    /// the same tree, so the case would go on passing while testing nothing.
+    #[test]
+    fn a_whitespace_only_code_fence_tail_is_still_bare() {
+        let mut parser = tree_sitter::Parser::new();
+        parser
+            .set_language(&super::language())
+            .expect("Error loading Carve language");
+        for source in [
+            "```\nx\n```\n",
+            "```\t\nx\n```\n",
+            "``` \nx\n```\n",
+            "```  \nx\n```\n",
+            "``` \t \nx\n```\n",
+        ] {
+            let tree = parser.parse(source, None).unwrap();
+            let root = tree.root_node();
+            assert!(!root.has_error(), "unexpected ERROR for {source:?}");
+            let block = root.child(0).expect("document has no child");
+            assert_eq!(block.kind(), "code_block", "for {source:?}");
+        }
+    }
+
     /// The frontmatter opener is the third site of the fence's `[space]` slot.
     ///
     /// `---<SP><SP>yaml` is not an opener: the second space reaches the language

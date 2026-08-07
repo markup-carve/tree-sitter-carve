@@ -614,10 +614,17 @@ module.exports = grammar({
       seq(
         alias($._code_block_begin, $.code_block_marker_begin),
         // `fenced_code_block = code_fence_open, [space], [code_fence_info]`:
-        // exactly one space, never a tab and never a run. The scanner declines
-        // the fence outright for anything else, so this token never has to
-        // reject - it states the same rule at the shape level.
-        optional($._one_space),
+        // exactly one space, never a tab and never a run, which
+        // `code_fence_info_is_modeled` in `src/scanner.c` is what enforces.
+        //
+        // THIS TOKEN CANNOT SAY SO, because the same characters are TRAILING
+        // whitespace on a bare fence - `[ \t]*` here is the two roles at once,
+        // and only lookahead tells them apart. Narrowing it to the separator
+        // alone turned ``` ```<TAB> ```, ``` ```<SP><SP> ``` and
+        // ``` ```<SP><TAB><SP> ``` from code blocks into ERRORs, which no corpus
+        // document, sweep or battery could see; `a_whitespace_only_code_fence_tail_is_still_bare`
+        // in `bindings/rust/lib.rs` is what sees it now.
+        $._whitespace,
         // Info string (PART 9 §2): an optional language, then an optional
         // quoted "header", then an optional bracketed [label] -- in that order,
         // each whitespace-separated from the preceding token. The first token
@@ -673,9 +680,9 @@ module.exports = grammar({
     raw_block: ($) =>
       seq(
         alias($._code_block_begin, $.raw_block_marker_begin),
-        // `raw_block = code_fence_open, [space], "=", format_name`: the same
-        // one-space slot the code fence takes, spelled the same way.
-        optional($._one_space),
+        // The same slot the code fence takes, in both its roles; the scanner
+        // is the one that narrows it. See the note there.
+        $._whitespace,
         field("info", $.raw_block_info),
         $._newline,
         field("content", optional(alias($.code, $.content))),
@@ -817,10 +824,18 @@ module.exports = grammar({
             // carve-js both do (tree-sitter-carve#83).
             $._whitespace1,
             field("destination", $.link_destination),
-            optional(seq($._one_space, field("title", $.link_title))),
+            // `_whitespace1` rather than a one-space token, for the reason the
+            // code fence's opener slot carries: the same characters are also
+            // TRAILING whitespace, and a token cannot tell the two apart
+            // without lookahead. Spelling the separator here made `[a]: /u`
+            // with ONE trailing space an ERROR. `ref_def_tail_is_modeled` in
+            // `src/scanner.c` is what applies the cardinality, and it is the
+            // only place that can, because refusing has to leave the line as
+            // prose.
+            optional(seq($._whitespace1, field("title", $.link_title))),
             optional(
               seq(
-                $._one_space,
+                $._whitespace1,
                 alias(
                   token(prec(-1, /\{[^\r\n}]*\}/)),
                   $.link_reference_attributes,
@@ -1178,7 +1193,6 @@ module.exports = grammar({
     // line as prose, and a grammar rule can only fail into an ERROR. These
     // tokens are the same rule at the SHAPE level, so the two spellings agree
     // instead of the looser one silently authorizing what the scanner declines.
-    _one_space: (_) => token.immediate(" "),
     _padding_spaces: (_) => token.immediate(/ +/),
 
     _inline: ($) =>

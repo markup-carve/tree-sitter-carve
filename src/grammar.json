@@ -2376,16 +2376,8 @@
           "value": "code_block_marker_begin"
         },
         {
-          "type": "CHOICE",
-          "members": [
-            {
-              "type": "SYMBOL",
-              "name": "_one_space"
-            },
-            {
-              "type": "BLANK"
-            }
-          ]
+          "type": "SYMBOL",
+          "name": "_whitespace"
         },
         {
           "type": "CHOICE",
@@ -2596,16 +2588,8 @@
           "value": "raw_block_marker_begin"
         },
         {
-          "type": "CHOICE",
-          "members": [
-            {
-              "type": "SYMBOL",
-              "name": "_one_space"
-            },
-            {
-              "type": "BLANK"
-            }
-          ]
+          "type": "SYMBOL",
+          "name": "_whitespace"
         },
         {
           "type": "FIELD",
@@ -3110,7 +3094,7 @@
                       "members": [
                         {
                           "type": "SYMBOL",
-                          "name": "_one_space"
+                          "name": "_whitespace1"
                         },
                         {
                           "type": "FIELD",
@@ -3135,7 +3119,7 @@
                       "members": [
                         {
                           "type": "SYMBOL",
-                          "name": "_one_space"
+                          "name": "_whitespace1"
                         },
                         {
                           "type": "ALIAS",
@@ -3982,13 +3966,6 @@
       "content": {
         "type": "PATTERN",
         "value": "[ \\t]+"
-      }
-    },
-    "_one_space": {
-      "type": "IMMEDIATE_TOKEN",
-      "content": {
-        "type": "STRING",
-        "value": " "
       }
     },
     "_padding_spaces": {
