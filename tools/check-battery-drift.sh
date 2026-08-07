@@ -34,5 +34,19 @@ if ! diff -q "$local_file" "$remote_file" >/dev/null; then
   echo "Re-copy tests/lib/block-battery.json, then fix whatever the new shapes catch."
   exit 1
 fi
-printf 'check-battery-drift: %s shape(s) match carve-grammars.\n' \
-  "$(python3 -c "import json,sys; print(len(json.load(open(sys.argv[1]))['shapes']))" "$local_file")"
+shapes="$(python3 -c "import json,sys; print(len(json.load(open(sys.argv[1]))['shapes']))" "$local_file")"
+
+# Equality is not presence. Two empty tables are identical, and this script's
+# whole claim - "still the same copy" - holds over them: emptied on BOTH sides it
+# printed "0 shape(s) match carve-grammars" and exited 0
+# (markup-carve/carve#755). A shallow clone that half-fetched, a renamed `shapes`
+# key upstream, or a table genuinely emptied there all arrive at the same place,
+# and the copy this repository runs would be empty with nothing saying so.
+if [[ "$shapes" -lt 30 ]]; then
+  echo "BATTERY: compared $shapes shape(s) but expected at least 30. A run over" >&2
+  echo "fewer than it should have is not a pass - it is a smaller question answered." >&2
+  echo "Both copies agreeing on an empty table is not agreement about anything." >&2
+  exit 2
+fi
+
+printf 'check-battery-drift: %s shape(s) match carve-grammars.\n' "$shapes"

@@ -13,6 +13,7 @@
 // exists in the corpus) and on a category listed in both lists.
 
 import { readFileSync, readdirSync } from 'node:fs';
+import { refuseShortRun } from './participants.mjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -39,6 +40,18 @@ const skip = new Set(Object.keys(coverage.skip).map(slugOf));
 function baseCategory(file) {
   return path.basename(file, '.crv').replace(/-[0-9]+$/, '');
 }
+
+// Every finding below is a reconciliation between the corpus and the matrix, so
+// an empty corpus produces findings only while the matrix is non-empty. Both
+// emptied, this printed "0 corpus categories; 0 covered, 0 skipped. OK" and
+// exited 0 (markup-carve/carve#755).
+refuseShortRun({
+  label: 'CORPUS',
+  actual: readdirSync(corpusDir).filter((f) => f.endsWith('.crv')).length,
+  atLeast: 400,
+  of: `document(s) under ${corpusDir}`,
+  hint: 'the spec corpus has ~650; run `git submodule update --init`.',
+});
 
 const corpusStems = new Set(
   readdirSync(corpusDir)

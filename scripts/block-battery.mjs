@@ -19,11 +19,31 @@ import { mkdtempSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { refuseShortRun } from './participants.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const battery = JSON.parse(
   readFileSync(path.join(repoRoot, 'tests', 'lib', 'block-battery.json'), 'utf8'),
 ).shapes;
+
+// An empty table checks nothing and says "0 shapes checked, 0 recorded
+// disagreement(s)" on the way out, which is the same sentence a clean run ends
+// with. Measured, not reasoned: `shapes: []` exits 0 here
+// (markup-carve/carve#755).
+//
+// Nothing else covers it. The reconciliation below is the usual three-direction
+// one, but its record - `batteryDisagreements` - is at ZERO today, so an empty
+// battery produces no NEW disagreement and no recorded one to go stale. That is
+// the ticket's fourth variant in its realized form: a gate that stopped working
+// the moment its subject became healthy. tools/check-battery-drift.sh does not
+// close it either, because a table emptied UPSTREAM matches an emptied copy.
+refuseShortRun({
+  label: 'BATTERY',
+  actual: battery.length,
+  atLeast: 30,
+  of: 'shape(s) in tests/lib/block-battery.json',
+  hint: 'the vendored copy is the population; re-copy it from carve-grammars.',
+});
 
 // The battery's vocabulary is the RENDERED shape, not this grammar's node
 // names, so the map is here rather than in the shared table: every consumer
