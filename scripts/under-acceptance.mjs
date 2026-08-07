@@ -23,6 +23,7 @@
 // below is exhaustive by construction and a new spec node kind fails the run
 // until someone classifies it.
 import { readFileSync, readdirSync } from 'node:fs';
+import { refuseShortRun } from './participants.mjs';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -77,6 +78,21 @@ const slugOf = (stem) => stem.replace(/^[0-9]+-/, '').replace(/-[0-9]+$/, '');
 const covered = new Set(coverage.covered);
 const skip = coverage.skip ?? {};
 const recorded = coverage.underAcceptance ?? {};
+
+// Measured before this line existed: with the corpus emptied AND
+// `underAcceptance` emptied, this printed "checked 0 document(s); 0 with gaps,
+// 0 recorded" and exited 0. The reconciliation against the record is the only
+// thing that catches an empty corpus today, and an empty record is the state
+// this ledger is trying to reach - 25 gaps now, zero being the goal. A gate that
+// stops working once its subject is healthy is not a gate
+// (markup-carve/carve#755).
+refuseShortRun({
+  label: 'CORPUS',
+  actual: readdirSync(corpusDir).filter((f) => f.endsWith('.crv')).length,
+  atLeast: 400,
+  of: `document(s) under ${corpusDir}`,
+  hint: 'the spec corpus has ~650; run `git submodule update --init`.',
+});
 
 const files = readdirSync(corpusDir)
   .filter((f) => f.endsWith('.crv'))
