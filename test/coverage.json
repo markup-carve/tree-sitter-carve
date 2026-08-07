@@ -292,32 +292,7 @@
       "reason": "`![a][nope]` + `^ cap` is one paragraph: the reference does not resolve, so the image is literal text and the `^` line is literal with it. Whether it resolves depends on the DEFINITIONS in the document, which a context-free grammar does not have - so the caption is built here and cannot be declined without a symbol table. The renderer decides correctly; highlighting a caption that the language declines is the cost."
     }
   },
-  "invisibleOverAcceptance": {
-    "reference-link-5": {
-      "nodes": "link_reference_definition: [r]: a b c",
-      "reason": "the reference definition is anchored at end of line and its metadata slots take exactly one space, so `[a]: /u zzz`, `[a]: /u<TAB>{.c}` and `[r]: a b c` are PARAGRAPHS - the line is not a definition at all and every character of it is visible. This grammar still builds a link_reference_definition, which renders nothing, so the fixture's visible text has no node behind it. Declinable without a symbol table: it needs the trailing-content and separator tests the spec now states. Tracked in tree-sitter-carve#160. Spec side: markup-carve/carve#905 and markup-carve/carve#907."
-    },
-    "a-reference-definition-s-metadata-slots-take-exactly-one-space-2": {
-      "nodes": "link_reference_definition: [a]: /u {.c}",
-      "reason": "the reference definition is anchored at end of line and its metadata slots take exactly one space, so `[a]: /u zzz`, `[a]: /u<TAB>{.c}` and `[r]: a b c` are PARAGRAPHS - the line is not a definition at all and every character of it is visible. This grammar still builds a link_reference_definition, which renders nothing, so the fixture's visible text has no node behind it. Declinable without a symbol table: it needs the trailing-content and separator tests the spec now states. Tracked in tree-sitter-carve#160. Spec side: markup-carve/carve#905 and markup-carve/carve#907."
-    },
-    "a-reference-definition-is-anchored-at-end-of-line-6": {
-      "nodes": "link_reference_definition: [a]: /u {.c}",
-      "reason": "the reference definition is anchored at end of line and its metadata slots take exactly one space, so `[a]: /u zzz`, `[a]: /u<TAB>{.c}` and `[r]: a b c` are PARAGRAPHS - the line is not a definition at all and every character of it is visible. This grammar still builds a link_reference_definition, which renders nothing, so the fixture's visible text has no node behind it. Declinable without a symbol table: it needs the trailing-content and separator tests the spec now states. Tracked in tree-sitter-carve#160. Spec side: markup-carve/carve#905 and markup-carve/carve#907."
-    },
-    "a-reference-definition-is-anchored-at-end-of-line-7": {
-      "nodes": "link_reference_definition: [a]: /u {.c}",
-      "reason": "the reference definition is anchored at end of line and its metadata slots take exactly one space, so `[a]: /u zzz`, `[a]: /u<TAB>{.c}` and `[r]: a b c` are PARAGRAPHS - the line is not a definition at all and every character of it is visible. This grammar still builds a link_reference_definition, which renders nothing, so the fixture's visible text has no node behind it. Declinable without a symbol table: it needs the trailing-content and separator tests the spec now states. Tracked in tree-sitter-carve#160. Spec side: markup-carve/carve#905 and markup-carve/carve#907."
-    },
-    "a-reference-definition-is-anchored-at-end-of-line-8": {
-      "nodes": "link_reference_definition: [a]: /u {.c}",
-      "reason": "the reference definition is anchored at end of line and its metadata slots take exactly one space, so `[a]: /u zzz`, `[a]: /u<TAB>{.c}` and `[r]: a b c` are PARAGRAPHS - the line is not a definition at all and every character of it is visible. This grammar still builds a link_reference_definition, which renders nothing, so the fixture's visible text has no node behind it. Declinable without a symbol table: it needs the trailing-content and separator tests the spec now states. Tracked in tree-sitter-carve#160. Spec side: markup-carve/carve#905 and markup-carve/carve#907."
-    },
-    "a-reference-definition-is-anchored-at-end-of-line": {
-      "nodes": "link_reference_definition: [a]: /u zzz",
-      "reason": "the reference definition is anchored at end of line and its metadata slots take exactly one space, so `[a]: /u zzz`, `[a]: /u<TAB>{.c}` and `[r]: a b c` are PARAGRAPHS - the line is not a definition at all and every character of it is visible. This grammar still builds a link_reference_definition, which renders nothing, so the fixture's visible text has no node behind it. Declinable without a symbol table: it needs the trailing-content and separator tests the spec now states. Tracked in tree-sitter-carve#160. Spec side: markup-carve/carve#905 and markup-carve/carve#907."
-    }
-  },
+  "invisibleOverAcceptance": {},
   "batteryDisagreements": {},
   "underAcceptance": {
     "a-frontmatter-opener-takes-exactly-one-space": {
@@ -494,14 +469,6 @@
     "trailing-attributes-on-a-link-reference-definition": {
       "spellings": "the cr spelling(s) parse to a different tree than lf",
       "reason": "a lone carriage return still changes this document's tree. The scanner now treats all three spellings of `newline` as terminators, and 428 of 672 corpus documents that diverged before this do not any more, but these are the remainder: every one of them is a REFERENCE DEFINITION, an ATTRIBUTE BLOCK or a trailing block inside a list item - constructs whose probes read a column, and tree-sitter advances the row and resets the column on '\\n' and on nothing else (`lib/src/lexer.c`), so a scanner-maintained base carries them and does not carry every probe that reads one. tree-sitter-carve#143. The same mechanism has one reachable shape outside the corpus: `comment_line` in grammar.js consumes its own terminator in the internal lexer, so a comment line ended by a lone '\\r' strands the base for an indented construct below it."
-    },
-    "a-blank-line-holds-spaces-and-tabs-and-nothing-else-3": {
-      "spellings": "the cr spelling(s) parse to a different tree than lf",
-      "reason": "the cr spelling parses to a different tree because the LF spelling already parses to ERROR - this document is one of the three example-level skips added with the same corpus bump (a line holding only a vertical tab, form feed, NEL, LS or PS; a content line ending in NBSP, ZWSP, BOM or U+2000; a quoted attribute value carrying a newline). The terminator is not the defect here, the unmodeled construct is, and the divergence goes away with it. Tracked in tree-sitter-carve#160."
-    },
-    "trailing-whitespace-on-a-content-line-is-dropped-7": {
-      "spellings": "the cr spelling(s) parse to a different tree than lf",
-      "reason": "the cr spelling parses to a different tree because the LF spelling already parses to ERROR - this document is one of the three example-level skips added with the same corpus bump (a line holding only a vertical tab, form feed, NEL, LS or PS; a content line ending in NBSP, ZWSP, BOM or U+2000; a quoted attribute value carrying a newline). The terminator is not the defect here, the unmodeled construct is, and the divergence goes away with it. Tracked in tree-sitter-carve#160."
     },
     "a-quoted-attribute-value-stops-at-the-newline-3": {
       "spellings": "the cr spelling(s) parse to a different tree than lf",

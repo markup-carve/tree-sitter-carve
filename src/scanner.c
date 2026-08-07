@@ -3084,7 +3084,93 @@ static bool scan_verbatim_to_end_no_newline(Scanner *s, TSLexer *lexer) {
   return false;
 }
 
+/// The rest of a reference-definition line, AFTER the space that follows `]:`.
+///
+/// `reference_definition = '[', reference_label, ']', ':', space,
+/// link_destination, [link_title], [space, attributes], newline` (grammar.ebnf).
+/// ANCHORED AT END OF LINE, normatively: what follows the destination and the
+/// optional title is not ignored, it makes the production FAIL, and the line is
+/// then an ordinary paragraph (carve#911). Both metadata slots take exactly one
+/// space (carve#912).
+///
+/// Refusing HERE rather than in `grammar.js` is what puts the line back on the
+/// paragraph path - the same note the separator check below already carries.
+/// The rule failing in the grammar leaves an ERROR instead, which is what an
+/// `ignored_text` slot was there to avoid; that slot is what made PART 7's
+/// promised fallback unreachable at this line, so the tail is modeled here and
+/// the slot is gone.
+static bool ref_def_tail_is_modeled(Scanner *s, TSLexer *lexer) {
+  // The run after the colon. Its FIRST character was already required to be a
+  // space; the rest is free, which is what carve-js does (`[a]:` + two spaces +
+  // `/u` and `[a]:` + space + TAB + `/u` are both definitions).
+  bool tabbed = false;
+  consume_ws_run(s, lexer, &tabbed);
+  if (at_line_end(lexer) || lexer->eof(lexer)) {
+    // `[r]:` and `[r]:   ` stay definition-shaped with no destination - corpus
+    // 16-reference-link-8 and -9 pin them, and a destination-less reference is
+    // never usable, so unlike a complete definition it still renders its own
+    // source text.
+    return true;
+  }
+  // `link_destination = /\S+/`, so a glued `{...}` is part of it: `[a]: /u{.c}`
+  // gives the href `/u{.c}` and carries no attributes.
+  while (!at_line_end(lexer) && !lexer->eof(lexer) && lexer->lookahead != ' ' &&
+         lexer->lookahead != '\t') {
+    advance(s, lexer);
+  }
+  uint16_t spaces = consume_ws_run(s, lexer, &tabbed);
+  if (at_line_end(lexer) || lexer->eof(lexer)) {
+    return true; // trailing whitespace, both spellings (PART 1; carve#890)
+  }
+  if (tabbed || spaces != 1) {
+    return false;
+  }
+  // The optional title, which `grammar.js` spells with either quote.
+  if (lexer->lookahead == '"' || lexer->lookahead == '\'') {
+    int32_t quote = lexer->lookahead;
+    advance(s, lexer);
+    while (!at_line_end(lexer) && !lexer->eof(lexer) &&
+           lexer->lookahead != quote) {
+      if (lexer->lookahead == '\\') {
+        advance(s, lexer);
+        if (at_line_end(lexer) || lexer->eof(lexer)) {
+          return false;
+        }
+      }
+      advance(s, lexer);
+    }
+    if (lexer->lookahead != quote) {
+      return false;
+    }
+    advance(s, lexer);
+    spaces = consume_ws_run(s, lexer, &tabbed);
+    if (at_line_end(lexer) || lexer->eof(lexer)) {
+      return true;
+    }
+    if (tabbed || spaces != 1) {
+      return false;
+    }
+  }
+  // The optional trailing attribute block, and nothing after it.
+  if (lexer->lookahead != '{') {
+    return false;
+  }
+  while (!at_line_end(lexer) && !lexer->eof(lexer) && lexer->lookahead != '}') {
+    advance(s, lexer);
+  }
+  if (lexer->lookahead != '}') {
+    return false;
+  }
+  advance(s, lexer);
+  consume_ws_run(s, lexer, &tabbed);
+  return at_line_end(lexer) || lexer->eof(lexer);
+}
+
 static bool scan_ref_def(Scanner *s, TSLexer *lexer) {
+  // A CITATION definition (`[@key]: entry text`, PART 9 section 22) shares this
+  // opener and is NOT anchored: its entry runs free-form to end of line, so a
+  // multi-word entry is kept whole. Recorded before the label is consumed.
+  bool citation = lexer->lookahead == '@';
   // Link label in a definition can be any inline except newlines.
   while (!lexer->eof(lexer) && lexer->lookahead != ']') {
     switch (lexer->lookahead) {
@@ -3136,7 +3222,10 @@ static bool scan_ref_def(Scanner *s, TSLexer *lexer) {
     return false;
   }
 
-  return true;
+  if (citation) {
+    return true;
+  }
+  return ref_def_tail_is_modeled(s, lexer);
 }
 
 static bool parse_ref_def_begin(Scanner *s, TSLexer *lexer,

@@ -852,6 +852,87 @@ x
     (div_marker_end)))
 
 ===============================================================================
+A reference definition is anchored at end of line
+===============================================================================
+[a]: /u zzz
+
+[a][]
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph)
+  (paragraph
+    (collapsed_reference_link
+      text: (link_text))))
+
+===============================================================================
+A tab before a reference definition's attribute block is not a definition
+===============================================================================
+[a]: /u	{.c}
+
+[a][]
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph)
+  (paragraph
+    (collapsed_reference_link
+      text: (link_text))))
+
+===============================================================================
+A reference definition's metadata slots take exactly one space
+===============================================================================
+[a]: /u  {.c}
+
+[a][]
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph)
+  (paragraph
+    (collapsed_reference_link
+      text: (link_text))))
+
+===============================================================================
+A reference definition takes a title and an attribute block
+===============================================================================
+[a]: /u "T" {.c}
+
+[a][]
+
+-------------------------------------------------------------------------------
+
+(document
+  (link_reference_definition
+    label: (link_label)
+    destination: (link_destination)
+    title: (link_title)
+    (link_reference_attributes))
+  (paragraph
+    (collapsed_reference_link
+      text: (link_text))))
+
+===============================================================================
+A glued brace is part of a reference definition's destination
+===============================================================================
+[a]: /u{.c}
+
+[a][]
+
+-------------------------------------------------------------------------------
+
+(document
+  (link_reference_definition
+    label: (link_label)
+    destination: (link_destination))
+  (paragraph
+    (collapsed_reference_link
+      text: (link_text))))
+
+===============================================================================
 Line block
 ===============================================================================
 ::: |

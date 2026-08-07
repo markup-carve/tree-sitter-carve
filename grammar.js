@@ -793,27 +793,46 @@ module.exports = grammar({
         $._link_ref_def_label_end,
         "]",
         ":",
+        // ANCHORED AT END OF LINE, and every slot on it takes ONE space.
+        // `reference_definition = '[', reference_label, ']', ':', space,
+        // link_destination, [link_title], [space, attributes], newline`
+        // (grammar.ebnf; carve#911 anchored it, carve#912 pinned the
+        // cardinality). What follows the modeled tokens does not get dropped -
+        // it makes the production FAIL, and the line is an ordinary paragraph.
+        //
+        // There used to be an `ignored_text` slot here that swallowed the tail
+        // "so the definition still parses without ERROR". That is the outcome
+        // PART 7 names as the one to avoid: with the tail eating anything, a
+        // title or attribute slot that REJECTED its separator had its metadata
+        // quietly dropped instead of falling back to prose, so `[a]: /u zzz`
+        // and `[a]: /u` + TAB + `{.c}` built a definition that renders nothing
+        // over source text the fixture still shows. Six recorded invisible
+        // over-acceptances.
         optional(
           seq(
+            // The separator after `]:` is a space and then a free run: `[a]:`
+            // plus two spaces plus `/u` is a definition, and so is `[a]:` plus
+            // a space and a TAB. `scan_ref_def` in `src/scanner.c` requires the
+            // FIRST character to be a space, which is what carve-rs and
+            // carve-js both do (tree-sitter-carve#83).
             $._whitespace1,
             field("destination", $.link_destination),
-            optional(seq($._whitespace1, field("title", $.link_title))),
-            // Unquoted trailing text after the destination (or title) is
-            // dropped by the renderer (corpus 34-reference-link-5:
-            // `[r]: a b c` resolves to href="a"). Consume it so the
-            // definition still parses without ERROR; the low lexical
-            // precedence keeps a quoted `link_title` winning when present.
+            optional(seq($._one_space, field("title", $.link_title))),
             optional(
               seq(
-                $._whitespace1,
-                alias(token(prec(-1, /[^ \t\r\n][^\r\n]*/)), $.ignored_text),
+                $._one_space,
+                alias(
+                  token(prec(-1, /\{[^\r\n}]*\}/)),
+                  $.link_reference_attributes,
+                ),
               ),
             ),
           ),
         ),
-        // Trailing whitespace after the `:` (or the destination) is allowed:
-        // `[r]:   ` stays a definition-shaped line with no destination
-        // (corpus 34-reference-link-9).
+        // The line ENDING is `whitespace` - space and tab both - the same
+        // terminal `blank_line` takes (PART 1; carve#890). So `[r]:   ` stays a
+        // definition-shaped line with no destination (corpus 16-reference-link-9)
+        // and `[a]: /u` + TAB is still a definition.
         optional($._whitespace1),
         $._newline,
       ),

@@ -3110,7 +3110,7 @@
                       "members": [
                         {
                           "type": "SYMBOL",
-                          "name": "_whitespace1"
+                          "name": "_one_space"
                         },
                         {
                           "type": "FIELD",
@@ -3135,7 +3135,7 @@
                       "members": [
                         {
                           "type": "SYMBOL",
-                          "name": "_whitespace1"
+                          "name": "_one_space"
                         },
                         {
                           "type": "ALIAS",
@@ -3146,12 +3146,12 @@
                               "value": -1,
                               "content": {
                                 "type": "PATTERN",
-                                "value": "[^ \\t\\r\\n][^\\r\\n]*"
+                                "value": "\\{[^\\r\\n}]*\\}"
                               }
                             }
                           },
                           "named": true,
-                          "value": "ignored_text"
+                          "value": "link_reference_attributes"
                         }
                       ]
                     },
