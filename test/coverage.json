@@ -3,12 +3,16 @@
   "covered": [
     "a-backslash-in-a-link-destination-is-a-literal-character",
     "a-bare-attribute-block-on-its-own-line-is-literal",
+    "a-below-column-marker-after-a-comment-where-no-paragraph-is-open",
     "a-blank-after-a-comment-still-ends-the-item",
+    "a-blank-line-holds-spaces-and-tabs-and-nothing-else",
     "a-block-attribute-line-inside-a-quote-ends-the-paragraph-above-it",
     "a-block-image-is-separated-from-the-block-after-it-on-every-target",
     "a-caret-is-a-reference-label-not-an-empty-footnote",
+    "a-code-fence-opener-takes-exactly-one-space",
     "a-collapsed-image-reference-uses-its-alt-text-as-the-label",
     "a-collapsed-reference-is-matched-by-the-label-the-author-wrote",
+    "a-collapsed-reference-reaches-a-heading-by-the-heading-s-rendered-text",
     "a-combined-bold-italic-span-may-cross-a-line",
     "a-comment-ends-the-paragraph-it-sits-under",
     "a-comment-fence-at-column-0-ends-the-item-a-line-does-not",
@@ -23,13 +27,16 @@
     "a-definition-attached-by-a-continuation-marker-is-collected-and-the-item-keeps-no-trace",
     "a-definition-below-a-footnote-body-s-column-is-the-document-s-own-text",
     "a-definition-below-every-content-column-folds-as-text",
+    "a-definition-body-continuation-indented-past-its-column-is-lazy-text",
     "a-definition-inside-a-comment-registers-nothing",
     "a-definition-inside-a-container-is-collected-at-that-container-s-content-column",
     "a-definition-inside-a-definition-list-dd-is-collected-and-the-entry-keeps-no-trace",
+    "a-definition-marker-s-separator-is-a-space-and-it-is-a-run",
     "a-definition-on-a-footnote-body-s-continuation-line-is-collected",
     "a-definition-past-a-footnote-body-s-column-is-the-body-s-own-text",
     "a-description-line-needs-a-term-above-it",
     "a-div-does-not-define-an-abbreviation-either",
+    "a-fence-opened-on-a-list-marker-line-body-below-the-content-column",
     "a-floating-attribute-stops-at-the-item-boundary",
     "a-flush-left-line-after-a-footnote-definition-belongs-to-the-document",
     "a-flush-left-line-needs-an-open-paragraph-to-fold-into",
@@ -37,11 +44,13 @@
     "a-footnote-body-s-last-block-when-it-is-not-a-paragraph-gets-a-synthesized-paragraph-for-the-backlink",
     "a-footnote-body-s-own-column-is-two-and-a-third-column-is-its-text",
     "a-format-character-before-a-scheme-is-not-stripped-and-is-inert",
+    "a-frontmatter-opener-takes-exactly-one-space",
     "a-heading-id-keeps-a-non-ascii-space",
     "a-heading-in-a-footnote-body-takes-an-id-but-no-section-wrapper",
     "a-heading-reference-folds-unicode-normalization-but-not-compatibility",
     "a-line-at-a-footnote-definition-s-own-column-followed-by-non-blank-text-forms-its-own-tight-block",
     "a-link-definition-written-before-a-footnote-stays-before-it",
+    "a-link-title-takes-exactly-one-space",
     "a-list-item-does-not-define-an-abbreviation-either",
     "a-marker-attribute-may-hold-a-quoted-brace",
     "a-marker-separator-is-a-space-never-a-tab",
@@ -49,11 +58,16 @@
     "a-nested-list-in-a-footnote-body-stays-nested",
     "a-pipe-pair-with-no-cell-is-not-a-table",
     "a-quote-marker-is-plus-a-space-and-a-lazy-line-keeps-its-own-text",
+    "a-quoted-attribute-value-stops-at-the-newline",
+    "a-real-div-in-a-container-and-the-flush-left-line-after-it",
+    "a-reference-definition-is-anchored-at-end-of-line",
+    "a-reference-definition-s-metadata-slots-take-exactly-one-space",
     "a-reference-image-takes-a-caption",
     "a-repeated-definition-which-one-wins",
     "a-single-percent-is-not-a-comment",
     "a-tab-after-a-heading-quote-or-caption-marker-leaves-the-line-as-prose",
     "a-tab-as-the-first-character-of-a-definition-term",
+    "a-tab-continues-a-list-item-just-as-two-spaces-do",
     "a-tab-indent-is-the-column-it-reaches-whatever-the-line-holds",
     "a-tab-reaches-a-footnote-body-s-column-just-as-two-spaces-do",
     "a-tab-separates-two-attributes-and-pads-a-block-as-a-space-does",
@@ -72,9 +86,11 @@
     "an-abbreviation-at-a-list-item-s-content-column-is-still-not-a-definition",
     "an-abbreviation-definition-is-recognized-only-at-document-level",
     "an-abbreviation-term-is-one-ascii-alphanumeric-word",
+    "an-absorbed-colon-fence-leaves-a-block-quote-s-paragraph-open",
     "an-at-sign-is-a-reference-label-character-everywhere-but-the-first-position",
     "an-attribute-line-inside-a-footnote-body-attaches-inside-it",
     "an-attribute-name-admits-no-colon",
+    "an-autolink-body-admits-non-ascii-and-excludes-format-characters",
     "an-empty-abbreviation-term-is-not-a-definition",
     "an-image-takes-a-reference-the-way-a-link-does",
     "an-inline-attribute-block-does-not-span-lines-but-an-attribute-line-does",
@@ -103,9 +119,12 @@
     "bold-italic-delimiter-needs-content",
     "boolean-attributes",
     "classes-are-deduplicated",
+    "code-fence-metadata-slots-must-be-a-space-too",
     "code-span-and-image-trailing-attributes-are-strict",
     "collapsed-reference-link",
     "colon-fence-as-a-block-opener-in-a-list-item",
+    "colon-fence-metadata-slots-must-be-a-space-too",
+    "colon-fence-separator-must-be-a-space",
     "colspan-marker-scans-left-past-a-consumed-cell",
     "comment-fence-with-trailing-text",
     "comments",
@@ -162,6 +181,7 @@
     "leading-attribute-brace-before-an-inline-span-stays-literal",
     "line-blocks",
     "line-endings-and-a-byte-order-mark",
+    "link-and-image-title-slots-must-be-a-space",
     "link-destination-parentheses-balance",
     "link-reference-definition-separator-must-be-a-space",
     "links",
@@ -215,6 +235,7 @@
     "table-as-a-block-opener-in-a-list-item",
     "table-cell-attributes",
     "table-cell-escaped-pipe",
+    "table-cell-padding-must-be-a-space",
     "table-cell-pipe-inside-code-span",
     "table-column-alignment",
     "table-doubled-alignment-marker",
@@ -232,6 +253,8 @@
     "tag-requires-a-word-boundary",
     "task-lists",
     "the-continuation-marker-at-an-item-s-own-column-and-what-follows-it",
+    "the-flush-left-line-after-a-container-a-quoted-line-opened",
+    "the-inline-attribute-interior-is-space-only-the-attribute-line-is-not",
     "the-same-column-written-with-four-spaces",
     "thematic-break-requires-contiguous-markers",
     "thematic-breaks",
@@ -240,6 +263,7 @@
     "trailing-attributes-on-a-link-reference-definition",
     "trailing-whitespace-after-a-block-marker",
     "trailing-whitespace-boundaries",
+    "trailing-whitespace-on-a-content-line-is-dropped",
     "trojan-source-heading-ids-are-nfc-normalized-and-strip-invisible-controls",
     "trojan-source-rendered-text-and-code-strip-bidi-override-controls",
     "two-abbreviation-definitions",
@@ -256,7 +280,10 @@
     "wrapped-definition-term-continuation-below-the-content-column-strips-leading-whitespace"
   ],
   "skip": {
-    "an-attribute-name-admits-no-colon-3": "a table row whose trailing attribute block carries an INVALID name (`| a | b |{.a:b}` - a class may not contain a colon) parses to ERROR. The engines make the whole line a paragraph, because the block is not an attribute block at all; this grammar commits to the row on the pipes and has no route back. The category's other two examples parse cleanly, so only this one is skipped."
+    "an-attribute-name-admits-no-colon-3": "a table row whose trailing attribute block carries an INVALID name (`| a | b |{.a:b}` - a class may not contain a colon) parses to ERROR. The engines make the whole line a paragraph, because the block is not an attribute block at all; this grammar commits to the row on the pipes and has no route back. The category's other two examples parse cleanly, so only this one is skipped.",
+    "a-blank-line-holds-spaces-and-tabs-and-nothing-else-3": "a paragraph whose interior lines hold a single vertical tab, form feed, NEL (U+0085), LS (U+2028) or PS (U+2029) and nothing else parses to ERROR. PART 9 makes a line blank only when it holds spaces and tabs, so each of these is CONTENT and the paragraph runs through them; this grammar has no line-content route for a line whose only character is one of them. The category's other examples parse cleanly.",
+    "trailing-whitespace-on-a-content-line-is-dropped-7": "content lines ending in NBSP, ZWSP, BOM, U+2000 or a form feed parse to ERROR. Only the ASCII space and tab are dropped as trailing whitespace; every other spelling is content the renderer keeps, and this grammar's line-content rule does not admit them in that position. The category's other examples parse cleanly.",
+    "a-quoted-attribute-value-stops-at-the-newline-3": "a quoted attribute value carrying a newline (`{k=\"a` / `b\"}`) parses to ERROR. The corpus pins it as literal text - the inline block does not span lines - but this grammar commits to an attribute block on the opening brace and has no route back to a paragraph when the value never closes on its line. Same class as an-attribute-name-admits-no-colon-3. The category's other examples parse cleanly."
   },
   "overAcceptance": {
     "an-unresolved-reference-image-takes-no-caption": {
@@ -268,6 +295,10 @@
   "invisibleOverAcceptance": {},
   "batteryDisagreements": {},
   "underAcceptance": {
+    "a-frontmatter-opener-takes-exactly-one-space": {
+      "gaps": "thematic_break: want 1 have 0",
+      "reason": "`---<SP><SP>yaml` is no longer read as a frontmatter opener - the opener's `[space]` slot takes exactly one space and the line is prose - but the `---` three lines below it, which the language turns into a thematic break, is folded into that prose instead. A thematic break does not interrupt an open paragraph in this grammar; `paragraph-interruption-3` records the same gap on a document with no frontmatter in it, and the two close together."
+    },
     "attribute-braces-on-a-list-item-marker-line": {
       "gaps": "heading: want 1 have 0"
     },
@@ -288,24 +319,6 @@
     },
     "implicit-heading-references-with-no-definition": {
       "gaps": "heading: want 4 have 3"
-    },
-    "line-blocks": {
-      "gaps": "line_block: want 1 have 0"
-    },
-    "line-blocks-2": {
-      "gaps": "line_block: want 1 have 0"
-    },
-    "line-blocks-3": {
-      "gaps": "line_block: want 1 have 0"
-    },
-    "line-blocks-4": {
-      "gaps": "line_block: want 1 have 0"
-    },
-    "line-blocks-5": {
-      "gaps": "line_block: want 1 have 0"
-    },
-    "line-blocks-9": {
-      "gaps": "line_block: want 1 have 0"
     },
     "list-lazy-continuation-2": {
       "gaps": "heading: want 1 have 0"
@@ -342,6 +355,26 @@
     },
     "thematic-break-requires-contiguous-markers": {
       "gaps": "list: want 2 have 0"
+    },
+    "a-fence-opened-on-a-list-marker-line-body-below-the-content-column-2": {
+      "gaps": "code_block: want 1 have 0",
+      "reason": "a code fence opened on a list MARKER line: the item closes with an EMPTY code block and the residue re-parses at document level when the body sits BELOW the item's content column (markup-carve/carve#646). This grammar builds no code_block for any of these, and MEASURED against it, the cause is NOT that the fence is committed to the item with no route out - it is that the fence never opens at all. `parse_backtick` refuses an opener when `has_extra_indent` is true, and on a marker line the fence sits past the line's own indent while the item's content column is only established by the marker itself, so `- ` + fence is read as inline verbatim. The heading marker and the colon fence carry the same column-0 guard and fail the same way on a marker line, while a block quote and a table - which do not - open there correctly. So the first half is a column question and the second half, closing the item at the boundary, is the container change; the fully-indented example (-3) needs only the first. Tracked in tree-sitter-carve#160."
+    },
+    "a-fence-opened-on-a-list-marker-line-body-below-the-content-column-3": {
+      "gaps": "code_block: want 1 have 0",
+      "reason": "a code fence opened on a list MARKER line: the item closes with an EMPTY code block and the residue re-parses at document level when the body sits BELOW the item's content column (markup-carve/carve#646). This grammar builds no code_block for any of these, and MEASURED against it, the cause is NOT that the fence is committed to the item with no route out - it is that the fence never opens at all. `parse_backtick` refuses an opener when `has_extra_indent` is true, and on a marker line the fence sits past the line's own indent while the item's content column is only established by the marker itself, so `- ` + fence is read as inline verbatim. The heading marker and the colon fence carry the same column-0 guard and fail the same way on a marker line, while a block quote and a table - which do not - open there correctly. So the first half is a column question and the second half, closing the item at the boundary, is the container change; the fully-indented example (-3) needs only the first. Tracked in tree-sitter-carve#160."
+    },
+    "a-fence-opened-on-a-list-marker-line-body-below-the-content-column-5": {
+      "gaps": "code_block: want 1 have 0",
+      "reason": "a code fence opened on a list MARKER line: the item closes with an EMPTY code block and the residue re-parses at document level when the body sits BELOW the item's content column (markup-carve/carve#646). This grammar builds no code_block for any of these, and MEASURED against it, the cause is NOT that the fence is committed to the item with no route out - it is that the fence never opens at all. `parse_backtick` refuses an opener when `has_extra_indent` is true, and on a marker line the fence sits past the line's own indent while the item's content column is only established by the marker itself, so `- ` + fence is read as inline verbatim. The heading marker and the colon fence carry the same column-0 guard and fail the same way on a marker line, while a block quote and a table - which do not - open there correctly. So the first half is a column question and the second half, closing the item at the boundary, is the container change; the fully-indented example (-3) needs only the first. Tracked in tree-sitter-carve#160."
+    },
+    "a-fence-opened-on-a-list-marker-line-body-below-the-content-column-6": {
+      "gaps": "code_block: want 1 have 0",
+      "reason": "a code fence opened on a list MARKER line: the item closes with an EMPTY code block and the residue re-parses at document level when the body sits BELOW the item's content column (markup-carve/carve#646). This grammar builds no code_block for any of these, and MEASURED against it, the cause is NOT that the fence is committed to the item with no route out - it is that the fence never opens at all. `parse_backtick` refuses an opener when `has_extra_indent` is true, and on a marker line the fence sits past the line's own indent while the item's content column is only established by the marker itself, so `- ` + fence is read as inline verbatim. The heading marker and the colon fence carry the same column-0 guard and fail the same way on a marker line, while a block quote and a table - which do not - open there correctly. So the first half is a column question and the second half, closing the item at the boundary, is the container change; the fully-indented example (-3) needs only the first. Tracked in tree-sitter-carve#160."
+    },
+    "a-fence-opened-on-a-list-marker-line-body-below-the-content-column": {
+      "gaps": "code_block: want 1 have 0",
+      "reason": "a code fence opened on a list MARKER line: the item closes with an EMPTY code block and the residue re-parses at document level when the body sits BELOW the item's content column (markup-carve/carve#646). This grammar builds no code_block for any of these, and MEASURED against it, the cause is NOT that the fence is committed to the item with no route out - it is that the fence never opens at all. `parse_backtick` refuses an opener when `has_extra_indent` is true, and on a marker line the fence sits past the line's own indent while the item's content column is only established by the marker itself, so `- ` + fence is read as inline verbatim. The heading marker and the colon fence carry the same column-0 guard and fail the same way on a marker line, while a block quote and a table - which do not - open there correctly. So the first half is a column question and the second half, closing the item at the boundary, is the container change; the fully-indented example (-3) needs only the first. Tracked in tree-sitter-carve#160."
     }
   },
   "errorFamilies": {
@@ -412,6 +445,14 @@
       "reason": "a lone carriage return still changes this document's tree. The scanner now treats all three spellings of `newline` as terminators, and 428 of 672 corpus documents that diverged before this do not any more, but these are the remainder: every one of them is a REFERENCE DEFINITION, an ATTRIBUTE BLOCK or a trailing block inside a list item - constructs whose probes read a column, and tree-sitter advances the row and resets the column on '\\n' and on nothing else (`lib/src/lexer.c`), so a scanner-maintained base carries them and does not carry every probe that reads one. tree-sitter-carve#143. The same mechanism has one reachable shape outside the corpus: `comment_line` in grammar.js consumes its own terminator in the internal lexer, so a comment line ended by a lone '\\r' strands the base for an indented construct below it."
     },
     "trailing-attributes-on-a-link-reference-definition": {
+      "spellings": "the cr spelling(s) parse to a different tree than lf",
+      "reason": "a lone carriage return still changes this document's tree. The scanner now treats all three spellings of `newline` as terminators, and 428 of 672 corpus documents that diverged before this do not any more, but these are the remainder: every one of them is a REFERENCE DEFINITION, an ATTRIBUTE BLOCK or a trailing block inside a list item - constructs whose probes read a column, and tree-sitter advances the row and resets the column on '\\n' and on nothing else (`lib/src/lexer.c`), so a scanner-maintained base carries them and does not carry every probe that reads one. tree-sitter-carve#143. The same mechanism has one reachable shape outside the corpus: `comment_line` in grammar.js consumes its own terminator in the internal lexer, so a comment line ended by a lone '\\r' strands the base for an indented construct below it."
+    },
+    "a-quoted-attribute-value-stops-at-the-newline-3": {
+      "spellings": "the cr spelling(s) parse to a different tree than lf",
+      "reason": "the cr spelling parses to a different tree because the LF spelling already parses to ERROR - this document is one of the three example-level skips added with the same corpus bump (a line holding only a vertical tab, form feed, NEL, LS or PS; a content line ending in NBSP, ZWSP, BOM or U+2000; a quoted attribute value carrying a newline). The terminator is not the defect here, the unmodeled construct is, and the divergence goes away with it. Tracked in tree-sitter-carve#160."
+    },
+    "a-fence-opened-on-a-list-marker-line-body-below-the-content-column-7": {
       "spellings": "the cr spelling(s) parse to a different tree than lf",
       "reason": "a lone carriage return still changes this document's tree. The scanner now treats all three spellings of `newline` as terminators, and 428 of 672 corpus documents that diverged before this do not any more, but these are the remainder: every one of them is a REFERENCE DEFINITION, an ATTRIBUTE BLOCK or a trailing block inside a list item - constructs whose probes read a column, and tree-sitter advances the row and resets the column on '\\n' and on nothing else (`lib/src/lexer.c`), so a scanner-maintained base carries them and does not carry every probe that reads one. tree-sitter-carve#143. The same mechanism has one reachable shape outside the corpus: `comment_line` in grammar.js consumes its own terminator in the internal lexer, so a comment line ended by a lone '\\r' strands the base for an indented construct below it."
     }

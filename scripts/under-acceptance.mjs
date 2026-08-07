@@ -24,7 +24,7 @@
 // until someone classifies it.
 import { readFileSync, readdirSync } from 'node:fs';
 import { refuseShortRun } from './participants.mjs';
-import { spawnSync } from 'node:child_process';
+import { parseTrees } from './parse-batched.mjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -47,7 +47,18 @@ const NODE_FOR = {
   code_block: 'code_block',
   list: 'list',
   definition_list: 'definition_list',
-  line_block: 'line_block',
+  // A line block is a `div` carrying a `line_block_marker` here, not a node of
+  // its own: `src/node-types.json` has no `line_block`, so mapping it to that
+  // name was a target no document could ever hit and EVERY line block in the
+  // corpus was reported as a gap. That is the exact failure the note at the top
+  // of this map describes - a count-based check reporting a missing node for a
+  // concept the two models spell differently - and six `line-blocks` entries
+  // sat in the ledger because of it.
+  //
+  // The MARKER rather than the `div`, which would be the `admonition` mapping:
+  // a line block that degraded to a plain div would still be a gap, and naming
+  // the marker is what keeps this able to see it.
+  line_block: 'line_block_marker',
   div: 'div',
   raw_block: 'raw_block',
   // No `figure` node: an image with a caption is an image plus a caption here,
@@ -64,6 +75,14 @@ const NODE_FOR = {
   footnote: null,
   abbreviation_def: null,
   comment: null,
+  // Same family, and it joined the engine's block vocabulary with the pin bump
+  // that fixed the oracle (carve-js #839 anchored the definition at end of
+  // line, which is what put the node in `CANONICAL_BLOCK_TYPES`). Counting it
+  // here would double-report what the RENDERS_NOTHING scan already asks, and
+  // ask it worse: that scan checks whether the definition's own source text
+  // survived into the render, which is the question that matters for a node
+  // producing no output of its own.
+  link_reference_definition: null,
   admonition: 'div',
   list_item: null,
   definition_term: null,
@@ -138,25 +157,7 @@ function countAst(node, acc) {
   return acc;
 }
 
-const trees = spawnSync('npx', ['tree-sitter', 'parse', ...files], {
-  cwd: repoRoot,
-  encoding: 'utf8',
-  maxBuffer: 256 * 1024 * 1024,
-});
-if (trees.error) {
-  console.error(`Failed to run tree-sitter parse: ${trees.error.message}`);
-  process.exit(2);
-}
-const perFile = (trees.stdout || '')
-  .split(/^(?=\(document )/m)
-  .filter((t) => t.trim());
-if (perFile.length !== files.length) {
-  console.error(
-    `Expected ${files.length} parse trees, got ${perFile.length}; the ` +
-      'tree-sitter output format changed and this check cannot be trusted.',
-  );
-  process.exit(2);
-}
+const perFile = parseTrees(files, repoRoot);
 
 const found = {};
 files.forEach((file, i) => {

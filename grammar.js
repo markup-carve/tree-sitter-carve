@@ -581,16 +581,24 @@ module.exports = grammar({
             // different case and stays valid below: `:::[First]` does open.
             //
             // The `"title"` and `[label]` slots below are the OTHER role: the
-            // type word has already decided the block, so they are PADDING and
-            // `_whitespace1` (`/[ \t]+/`) is the right spelling - `::: note` +
-            // TAB + `"T"` is a legal admonition. Narrowing them to match the
-            // separator is the blanket sweep grammar.ebnf PART 7 warns against,
-            // and `a_padding_slot_admits_a_tab` in `bindings/rust/lib.rs` fails
-            // if anyone tries it.
+            // type word has already decided the block, so they are PADDING. The
+            // ROLES differ, the terminal does not - a padding slot sits after
+            // the first non-whitespace character of the line, where a tab is not
+            // syntax - so all three slots are spelled `space` and only the
+            // cardinality differs: `space` at the separator, `space+` here
+            // (`::: note` + two spaces + `"T"` opens). carve#907 settled it;
+            // corpus category 255 carries the four tab cases.
+            //
+            // Whether the line OPENS at all is `colon_fence_named_tail_is_modeled`
+            // in `src/scanner.c`, because a slot that rejects its separator has
+            // to leave the line as PROSE and a rule here can only fail into an
+            // ERROR. These tokens are the same rule at the shape level.
             seq(
               field("class", $.class_name),
-              optional(seq($._whitespace1, field("title", $.div_title))),
-              optional(seq($._whitespace1, field("label", $.code_block_label))),
+              optional(seq($._padding_spaces, field("title", $.div_title))),
+              optional(
+                seq($._padding_spaces, field("label", $.code_block_label)),
+              ),
             ),
             // Bare [label] with no type word (a typeless tab member); it may
             // sit directly against the fence (`:::[First]`) or after a space.
@@ -605,6 +613,17 @@ module.exports = grammar({
     code_block: ($) =>
       seq(
         alias($._code_block_begin, $.code_block_marker_begin),
+        // `fenced_code_block = code_fence_open, [space], [code_fence_info]`:
+        // exactly one space, never a tab and never a run, which
+        // `code_fence_info_is_modeled` in `src/scanner.c` is what enforces.
+        //
+        // THIS TOKEN CANNOT SAY SO, because the same characters are TRAILING
+        // whitespace on a bare fence - `[ \t]*` here is the two roles at once,
+        // and only lookahead tells them apart. Narrowing it to the separator
+        // alone turned ``` ```<TAB> ```, ``` ```<SP><SP> ``` and
+        // ``` ```<SP><TAB><SP> ``` from code blocks into ERRORs, which no corpus
+        // document, sweep or battery could see; `a_whitespace_only_code_fence_tail_is_still_bare`
+        // in `bindings/rust/lib.rs` is what sees it now.
         $._whitespace,
         // Info string (PART 9 §2): an optional language, then an optional
         // quoted "header", then an optional bracketed [label] -- in that order,
@@ -614,14 +633,20 @@ module.exports = grammar({
           choice(
             seq(
               field("language", $.language),
+              // `code_fence_info = language_info, [space+, quoted_title],
+              // [space+, label]`: the two metadata slots take a RUN, and still
+              // no tab.
               optional(
                 seq(
-                  $._whitespace1,
+                  $._padding_spaces,
                   choice(
                     seq(
                       field("header", $.code_block_header),
                       optional(
-                        seq($._whitespace1, field("label", $.code_block_label)),
+                        seq(
+                          $._padding_spaces,
+                          field("label", $.code_block_label),
+                        ),
                       ),
                     ),
                     field("label", $.code_block_label),
@@ -631,7 +656,9 @@ module.exports = grammar({
             ),
             seq(
               field("header", $.code_block_header),
-              optional(seq($._whitespace1, field("label", $.code_block_label))),
+              optional(
+                seq($._padding_spaces, field("label", $.code_block_label)),
+              ),
             ),
             field("label", $.code_block_label),
           ),
@@ -653,6 +680,8 @@ module.exports = grammar({
     raw_block: ($) =>
       seq(
         alias($._code_block_begin, $.raw_block_marker_begin),
+        // The same slot the code fence takes, in both its roles; the scanner
+        // is the one that narrows it. See the note there.
         $._whitespace,
         field("info", $.raw_block_info),
         $._newline,
@@ -771,27 +800,54 @@ module.exports = grammar({
         $._link_ref_def_label_end,
         "]",
         ":",
+        // ANCHORED AT END OF LINE, and every slot on it takes ONE space.
+        // `reference_definition = '[', reference_label, ']', ':', space,
+        // link_destination, [link_title], [space, attributes], newline`
+        // (grammar.ebnf; carve#911 anchored it, carve#912 pinned the
+        // cardinality). What follows the modeled tokens does not get dropped -
+        // it makes the production FAIL, and the line is an ordinary paragraph.
+        //
+        // There used to be an `ignored_text` slot here that swallowed the tail
+        // "so the definition still parses without ERROR". That is the outcome
+        // PART 7 names as the one to avoid: with the tail eating anything, a
+        // title or attribute slot that REJECTED its separator had its metadata
+        // quietly dropped instead of falling back to prose, so `[a]: /u zzz`
+        // and `[a]: /u` + TAB + `{.c}` built a definition that renders nothing
+        // over source text the fixture still shows. Six recorded invisible
+        // over-acceptances.
         optional(
           seq(
+            // The separator after `]:` is a space and then a free run: `[a]:`
+            // plus two spaces plus `/u` is a definition, and so is `[a]:` plus
+            // a space and a TAB. `scan_ref_def` in `src/scanner.c` requires the
+            // FIRST character to be a space, which is what carve-rs and
+            // carve-js both do (tree-sitter-carve#83).
             $._whitespace1,
             field("destination", $.link_destination),
+            // `_whitespace1` rather than a one-space token, for the reason the
+            // code fence's opener slot carries: the same characters are also
+            // TRAILING whitespace, and a token cannot tell the two apart
+            // without lookahead. Spelling the separator here made `[a]: /u`
+            // with ONE trailing space an ERROR. `ref_def_tail_is_modeled` in
+            // `src/scanner.c` is what applies the cardinality, and it is the
+            // only place that can, because refusing has to leave the line as
+            // prose.
             optional(seq($._whitespace1, field("title", $.link_title))),
-            // Unquoted trailing text after the destination (or title) is
-            // dropped by the renderer (corpus 34-reference-link-5:
-            // `[r]: a b c` resolves to href="a"). Consume it so the
-            // definition still parses without ERROR; the low lexical
-            // precedence keeps a quoted `link_title` winning when present.
             optional(
               seq(
                 $._whitespace1,
-                alias(token(prec(-1, /[^ \t\r\n][^\r\n]*/)), $.ignored_text),
+                alias(
+                  token(prec(-1, /\{[^\r\n}]*\}/)),
+                  $.link_reference_attributes,
+                ),
               ),
             ),
           ),
         ),
-        // Trailing whitespace after the `:` (or the destination) is allowed:
-        // `[r]:   ` stays a definition-shaped line with no destination
-        // (corpus 34-reference-link-9).
+        // The line ENDING is `whitespace` - space and tab both - the same
+        // terminal `blank_line` takes (PART 1; carve#890). So `[r]:   ` stays a
+        // definition-shaped line with no destination (corpus 16-reference-link-9)
+        // and `[a]: /u` + TAB is still a definition.
         optional($._whitespace1),
         $._newline,
       ),
@@ -1122,6 +1178,22 @@ module.exports = grammar({
 
     _whitespace: (_) => token.immediate(/[ \t]*/),
     _whitespace1: (_) => token.immediate(/[ \t]+/),
+
+    // A SLOT SPELLED `space`, in its two cardinalities. grammar.ebnf PART 7
+    // (MARKER SEPARATORS AND PADDING SLOTS) spells every separator and every
+    // padding slot with the literal space terminal; a tab is syntax only in a
+    // line's leading indentation run, and each of these slots sits after the
+    // first non-whitespace character of its line. `_whitespace`/`_whitespace1`
+    // stay for the places that really do take both spellings - trailing
+    // whitespace, and inline text.
+    //
+    // Kept distinct from the scanner's own answer rather than duplicating it:
+    // `code_fence_info_is_modeled` in `src/scanner.c` decides whether the fence
+    // OPENS at all, because a slot that rejects its separator has to leave the
+    // line as prose, and a grammar rule can only fail into an ERROR. These
+    // tokens are the same rule at the SHAPE level, so the two spellings agree
+    // instead of the looser one silently authorizing what the scanner declines.
+    _padding_spaces: (_) => token.immediate(/ +/),
 
     _inline: ($) =>
       prec.left(

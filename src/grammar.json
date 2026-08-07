@@ -2254,7 +2254,7 @@
                           "members": [
                             {
                               "type": "SYMBOL",
-                              "name": "_whitespace1"
+                              "name": "_padding_spaces"
                             },
                             {
                               "type": "FIELD",
@@ -2279,7 +2279,7 @@
                           "members": [
                             {
                               "type": "SYMBOL",
-                              "name": "_whitespace1"
+                              "name": "_padding_spaces"
                             },
                             {
                               "type": "FIELD",
@@ -2404,7 +2404,7 @@
                           "members": [
                             {
                               "type": "SYMBOL",
-                              "name": "_whitespace1"
+                              "name": "_padding_spaces"
                             },
                             {
                               "type": "CHOICE",
@@ -2428,7 +2428,7 @@
                                           "members": [
                                             {
                                               "type": "SYMBOL",
-                                              "name": "_whitespace1"
+                                              "name": "_padding_spaces"
                                             },
                                             {
                                               "type": "FIELD",
@@ -2485,7 +2485,7 @@
                           "members": [
                             {
                               "type": "SYMBOL",
-                              "name": "_whitespace1"
+                              "name": "_padding_spaces"
                             },
                             {
                               "type": "FIELD",
@@ -3130,12 +3130,12 @@
                               "value": -1,
                               "content": {
                                 "type": "PATTERN",
-                                "value": "[^ \\t\\r\\n][^\\r\\n]*"
+                                "value": "\\{[^\\r\\n}]*\\}"
                               }
                             }
                           },
                           "named": true,
-                          "value": "ignored_text"
+                          "value": "link_reference_attributes"
                         }
                       ]
                     },
@@ -3966,6 +3966,13 @@
       "content": {
         "type": "PATTERN",
         "value": "[ \\t]+"
+      }
+    },
+    "_padding_spaces": {
+      "type": "IMMEDIATE_TOKEN",
+      "content": {
+        "type": "PATTERN",
+        "value": " +"
       }
     },
     "_inline": {

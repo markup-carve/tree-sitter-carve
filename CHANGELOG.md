@@ -8,6 +8,32 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **A fence opener's separator and its metadata slots are spaces** (spec:
+  `resources/grammar.ebnf`, PART 7 MARKER SEPARATORS AND PADDING SLOTS, with
+  markup-carve/carve#907 and markup-carve/carve#912 settling the two roles and
+  their cardinality). A tab in any of them makes the whole line prose, and a
+  code fence's own `[space]` slot takes exactly one space where the two slots
+  inside its info string take a run. So ``` ```<SP><SP>php ```,
+  ``` ```<TAB>js ```, ``` ```js<TAB>"T" ```, `::: note<TAB>"Title"` and
+  `---<SP><SP>yaml` open nothing and stay paragraphs; ``` ```js "T" [L] ```,
+  `::: note "T" [L]` and `--- yaml` are unchanged. Trailing whitespace after the
+  last token on an opener line still takes both spellings and any width.
+- **A colon fence opener is decided by its whole line.** `::: note zzz`,
+  `::: note {.x}`, `::: | x` and `::: note [L] "T"` produced an ERROR node; they
+  are ordinary paragraphs, as every engine renders them. The opener now models
+  the type word, an optional quoted title, an optional `[label]` and the end of
+  the line, and declines the block when the line does not match.
+- **A reference definition ends where its last modeled token does** (spec:
+  markup-carve/carve#911, ANCHORED AT END OF LINE). `[a]: /u zzz`,
+  `[a]: /u<TAB>{.c}`, `[a]: /u<SP><SP>{.c}` and `[r]: a b c` were parsed as
+  definitions, which render nothing - so their visible source text had no node
+  behind it, and a `[a][]` below them was highlighted as a reference that
+  resolves. They are paragraphs. `[a]:` plus two spaces plus `/u` is still a
+  definition, `[a]: /u` with a trailing space or tab is still a definition, and
+  `[r]:` with no destination still parses as one. A definition's trailing
+  attribute block is now a `link_reference_attributes` node rather than
+  `ignored_text`.
+
 - **A lone carriage return is a line ending** (spec: `resources/grammar.ebnf`,
   `newline = '\n' | '\r\n' | '\r'`, named rather than restated by PART 0's
   INPUT paragraph). Only two of the three spellings ended a line here: the

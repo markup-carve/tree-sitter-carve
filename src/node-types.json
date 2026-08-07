@@ -2160,7 +2160,7 @@
       "required": false,
       "types": [
         {
-          "type": "ignored_text",
+          "type": "link_reference_attributes",
           "named": true
         }
       ]
@@ -4220,10 +4220,6 @@
     "named": true
   },
   {
-    "type": "ignored_text",
-    "named": true
-  },
-  {
     "type": "insert_end",
     "named": true
   },
@@ -4241,6 +4237,10 @@
   },
   {
     "type": "link_destination",
+    "named": true
+  },
+  {
+    "type": "link_reference_attributes",
     "named": true
   },
   {

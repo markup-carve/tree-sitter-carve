@@ -12,15 +12,15 @@
 // coverage-matrix check is what guards the skip list itself.
 //
 // Parsing is delegated to the `tree-sitter parse` CLI so this script does not
-// depend on the compiled native node binding being loadable in CI. All covered
-// files are parsed in a single `--quiet` invocation: in quiet mode the CLI
-// prints exactly one line per file whose tree has an error (ERROR or MISSING)
-// and stays silent for clean files, so any output line is a conformance
-// failure.
+// depend on the compiled native node binding being loadable in CI. Covered
+// files are parsed in `--quiet` batches (see scripts/parse-batched.mjs): in
+// quiet mode the CLI prints exactly one line per file whose tree has an error
+// (ERROR or MISSING) and stays silent for clean files, so any output line is a
+// conformance failure.
 
 import { readFileSync, readdirSync } from 'node:fs';
 import { refuseShortRun } from './participants.mjs';
-import { spawnSync } from 'node:child_process';
+import { parseQuiet, parseTrees } from './parse-batched.mjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -86,35 +86,7 @@ for (const file of allFiles) {
 // tree contains an error and is silent otherwise; exit status is non-zero when
 // any tree had an error. We rely on stdout: each printed line names a failing
 // covered file.
-const result = spawnSync(
-  'npx',
-  ['tree-sitter', 'parse', '--quiet', ...coveredFiles],
-  { cwd: repoRoot, encoding: 'utf8' },
-);
-
-if (result.error) {
-  console.error(`Failed to run tree-sitter parse: ${result.error.message}`);
-  process.exit(2);
-}
-
-const failures = (result.stdout || '')
-  .split('\n')
-  .map((l) => l.trim())
-  .filter((l) => l.length > 0);
-
-// In `--quiet` mode the CLI is silent for clean files and prints one line per
-// file with an error, so a clean run is empty stdout with exit 0 and a run with
-// conformance failures is non-empty stdout with exit non-zero. A non-zero exit
-// with no per-file output means the invocation itself failed (parser failed to
-// load, bad path, etc.) - that must be a hard error, never a silent pass.
-if (failures.length === 0 && result.status !== 0) {
-  console.error(
-    `tree-sitter parse exited with status ${result.status} but produced no ` +
-      'per-file output; the parse invocation failed.',
-  );
-  if (result.stderr) console.error(result.stderr.toString().trim());
-  process.exit(2);
-}
+const failures = parseQuiet(coveredFiles, repoRoot);
 
 console.log(
   `corpus-conformance: parsed ${coveredFiles.length} file(s) across ${covered.size} ` +
@@ -148,15 +120,11 @@ if (failures.length) {
 // them that way.
 const promotable = [];
 for (const [key, skippedFiles] of skippedFilesByKey) {
-  const check = spawnSync('npx', ['tree-sitter', 'parse', '--quiet', ...skippedFiles], {
-    cwd: repoRoot,
-    encoding: 'utf8',
-  });
-  // Same reading as above: output lines name files with an error, so no output
-  // AND a zero exit is the only clean result. A non-zero exit with no output is
-  // an invocation failure, not a clean parse, and must not read as promotable.
-  const errored = (check.stdout || '').split('\n').filter((l) => l.trim().length > 0);
-  if (errored.length === 0 && check.status === 0) {
+  // Same reading as above: output lines name files with an error. parseQuiet
+  // exits hard on an invocation failure, so an empty return here is a clean
+  // parse rather than a run that never happened.
+  const errored = parseQuiet(skippedFiles, repoRoot);
+  if (errored.length === 0) {
     promotable.push([key, skippedFiles.length]);
   }
 }
@@ -224,25 +192,8 @@ const singleParagraphFiles = coveredFiles.filter((file) => {
 });
 
 if (singleParagraphFiles.length) {
-  const trees = spawnSync(
-    'npx',
-    ['tree-sitter', 'parse', ...singleParagraphFiles],
-    { cwd: repoRoot, encoding: 'utf8' },
-  );
-  if (trees.error) {
-    console.error(`Failed to run tree-sitter parse: ${trees.error.message}`);
-    process.exit(2);
-  }
-
   // One `(document ...)` per input, in input order, each starting at column 0.
-  const perFile = (trees.stdout || '').split(/^(?=\(document )/m).filter((t) => t.trim());
-  if (perFile.length !== singleParagraphFiles.length) {
-    console.error(
-      `Expected ${singleParagraphFiles.length} parse trees, got ${perFile.length}; ` +
-        'the tree-sitter output format changed and this check cannot be trusted.',
-    );
-    process.exit(2);
-  }
+  const perFile = parseTrees(singleParagraphFiles, repoRoot);
 
   // THE LINE IS RECORDED TOO, because the reason is free text and nothing
   // checked it. Four of the five entries here blamed a cause that had since been
@@ -439,25 +390,7 @@ const invisibleOverAcceptance = coverage.invisibleOverAcceptance ?? {};
 // The full (non `--quiet`) parse has to run over every COVERED file, not only
 // the single-paragraph subset above - that subset is exactly the scope this
 // check exists to get past.
-const fullTrees = spawnSync('npx', ['tree-sitter', 'parse', ...coveredFiles], {
-  cwd: repoRoot,
-  encoding: 'utf8',
-  maxBuffer: 256 * 1024 * 1024,
-});
-if (fullTrees.error) {
-  console.error(`Failed to run tree-sitter parse: ${fullTrees.error.message}`);
-  process.exit(2);
-}
-const fullPerFile = (fullTrees.stdout || '')
-  .split(/^(?=\(document )/m)
-  .filter((t) => t.trim());
-if (fullPerFile.length !== coveredFiles.length) {
-  console.error(
-    `Expected ${coveredFiles.length} parse trees, got ${fullPerFile.length}; the ` +
-      'tree-sitter output format changed and this check cannot be trusted.',
-  );
-  process.exit(2);
-}
+const fullPerFile = parseTrees(coveredFiles, repoRoot);
 
 const spanLineRe = /\(([a-z_]+) \[(\d+), (\d+)\] - \[(\d+), (\d+)\]/g;
 

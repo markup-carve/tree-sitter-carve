@@ -567,42 +567,62 @@ mod tests {
         }
     }
 
-    /// A PADDING slot on the admonition opener admits a tab.
+    /// A PADDING slot on the admonition opener takes a space, and no tab.
     ///
-    /// `resources/grammar.ebnf` PART 7, MARKER SEPARATORS AND PADDING SLOTS
-    /// (normative since markup-carve/carve#886), splits the opener line into two
-    /// roles. The whitespace right after `:::` is a MARKER SEPARATOR, because
-    /// the token after it selects which of the four blocks the line opens; it is
-    /// spelled `space` and a tab never satisfies it. Once `admonition_type` has
-    /// been read the block is DECIDED, so the `"title"` and `[label]` slots are
-    /// ordinary padding, spelled `whitespace`, and a tab is fine there.
+    /// `resources/grammar.ebnf` PART 7, MARKER SEPARATORS AND PADDING SLOTS,
+    /// splits the opener line into two roles. The whitespace right after `:::`
+    /// is a MARKER SEPARATOR, because the token after it selects which of the
+    /// four blocks the line opens. Once `admonition_type` has been read the
+    /// block is DECIDED, so the `"title"` and `[label]` slots are ordinary
+    /// padding. THE ROLES DIFFER, THE TERMINAL DOES NOT: a padding slot sits
+    /// after the first non-whitespace character of the line, where a tab is not
+    /// syntax, so `admonition_open = colon_fence:open, space, admonition_type,
+    /// [space+, quoted_title], [space+, label]` spells all three with `space`
+    /// and only the cardinality differs.
     ///
-    /// THIS IS THE MUTATION GUARD, and it is the reason the two roles are spelled
-    /// differently rather than swept together. `grammar.js:1081`
-    /// `_whitespace1: token.immediate(/[ \t]+/)` feeds these padding slots.
-    /// Narrow it to `/ +/` - the blanket sweep that "fixes the tab everywhere" -
-    /// and every case below fails while `test/corpus/carve.txt`'s four separator
-    /// cases keep passing, which is exactly the direction a blanket sweep is
-    /// wrong in.
+    /// This test asserted the OPPOSITE until markup-carve/tree-sitter-carve#160,
+    /// and called itself the mutation guard for keeping it that way: carve#886
+    /// had left the padding slots admitting a tab, and this grammar was written
+    /// to that reading. carve#907 settled it the other way, corpus category 255
+    /// carries the four cases, and a test defending the older answer is how a
+    /// grammar rule stays deliberately looser than the language it models.
     ///
-    /// It lives here rather than in `test/corpus/carve.txt` because the whole
-    /// meaning of each case IS the tab, and unlike the separator cases a tab
-    /// that degrades to a SPACE here rots SILENTLY: `::: note "T"` builds the
-    /// same tree, so the fixture would keep passing while testing nothing. The
-    /// separator cases fail loudly under the same degradation - `::: note` opens
-    /// a div where they expect a paragraph - which is what let them stay in the
-    /// fixture file. Same reasoning as the trailing-whitespace cases above.
+    /// THE DIRECTION THAT STILL NEEDS GUARDING IS CARDINALITY. The padding slot
+    /// takes `space+`, a RUN, while the fence's own `[space]` slot takes exactly
+    /// one - narrow the padding slot to one space and the last case here fails
+    /// while every tab case above it keeps passing.
+    ///
+    /// It lives here rather than in `test/corpus/carve.txt` because the run case
+    /// rots SILENTLY in a fixture: two spaces degrading to one builds the same
+    /// tree, so the fixture would keep passing while testing nothing.
     #[test]
-    fn a_padding_slot_admits_a_tab() {
+    fn a_padding_slot_takes_a_space_and_a_tab_makes_the_line_prose() {
         let mut parser = tree_sitter::Parser::new();
         parser
             .set_language(&super::language())
             .expect("Error loading Carve language");
+        for source in [
+            "::: note\t\"T\"\nx\n:::\n",
+            "::: note \"T\"\t[l]\nx\n:::\n",
+            "::: note\t[l]\nx\n:::\n",
+            "::: note\t\"T\"\t[l]\nx\n:::\n",
+        ] {
+            let tree = parser.parse(source, None).unwrap();
+            let root = tree.root_node();
+            assert!(!root.has_error(), "unexpected ERROR for {source:?}");
+            let block = root.child(0).expect("document has no child");
+            // A tab at either padding slot leaves the WHOLE line as prose - the
+            // block never opens, which is the outcome PART 7 promises for a slot
+            // that does not match. An ERROR here would be the other failure and
+            // is asserted against above.
+            assert_eq!(block.kind(), "paragraph", "for {source:?}");
+        }
+
+        // The run, and the one-space control beside it.
         for (source, want_title, want_label) in [
-            ("::: note\t\"T\"\nx\n:::\n", true, false),
-            ("::: note \"T\"\t[l]\nx\n:::\n", true, true),
-            ("::: note\t[l]\nx\n:::\n", false, true),
-            ("::: note\t\"T\"\t[l]\nx\n:::\n", true, true),
+            ("::: note  \"T\"\nx\n:::\n", true, false),
+            ("::: note \"T\"  [l]\nx\n:::\n", true, true),
+            ("::: note \"T\" [l]\nx\n:::\n", true, true),
         ] {
             let tree = parser.parse(source, None).unwrap();
             let root = tree.root_node();
@@ -656,26 +676,115 @@ mod tests {
         }
     }
 
-    /// The code fence still takes a tab before its info string.
+    /// The code fence's slots take a space too, in two cardinalities.
     ///
-    /// A CONTROL in the blast-radius direction. The code fence was deliberately
-    /// left out of the ruling that settled the colon fence: markup-carve/carve#886
-    /// says so in as many words, `code_fence_info` still spells its metadata
-    /// slots `space+`, and the implementations already split 3-1 on it. So it
-    /// keeps whatever this grammar did before, and a sweep that tightens the
-    /// colon fence must not travel here on the way past. Narrowing
-    /// `grammar.js:1080` `_whitespace` from `[ \t]*` to spaces only fails this.
+    /// This asserted the OPPOSITE until markup-carve/tree-sitter-carve#160, and
+    /// called itself a control in the blast-radius direction: carve#886 had left
+    /// the code fence out of the colon fence's ruling deliberately, so this
+    /// grammar kept what it did before and a test held it there. carve#907 and
+    /// carve#912 closed the gap - `fenced_code_block = code_fence_open, [space],
+    /// [code_fence_info]` and `code_fence_info = language_info, [space+,
+    /// quoted_title], [space+, label]` - and corpus categories 258 and 263 carry
+    /// the cases. A control that outlives the divergence it was written for is
+    /// how a grammar rule stays deliberately looser than the language.
+    ///
+    /// THE CARDINALITY IS WHAT NEEDS GUARDING NOW, and it differs BETWEEN the
+    /// two slots on the same line: the one before the info string takes exactly
+    /// one space, the two inside it take a run. Sweep them together in either
+    /// direction and one half of this test fails.
     #[test]
-    fn a_tab_before_the_code_fence_info_string_is_unchanged() {
+    fn a_code_fence_slot_takes_a_space_and_the_cardinality_differs() {
+        let mut parser = tree_sitter::Parser::new();
+        parser
+            .set_language(&super::language())
+            .expect("Error loading Carve language");
+        // A tab at any of the three slots leaves the whole line as prose.
+        for source in [
+            "```\tjs\nx\n```\n",
+            "```js\t\"T\"\nx\n```\n",
+            "```js \"T\"\t[L]\nx\n```\n",
+            "```\t=html\nx\n```\n",
+        ] {
+            let tree = parser.parse(source, None).unwrap();
+            let root = tree.root_node();
+            assert!(!root.has_error(), "unexpected ERROR for {source:?}");
+            let block = root.child(0).expect("document has no child");
+            assert_eq!(block.kind(), "paragraph", "for {source:?}");
+        }
+        // The slot before the info string is `[space]`: a second space reaches
+        // `language_info`, whose class holds no space, and the line is prose.
+        // The two slots INSIDE the info string are `space+` and take the run.
+        for (source, want) in [
+            ("```  php\nx\n```\n", "paragraph"),
+            ("```  =html\nx\n```\n", "paragraph"),
+            ("``` js\nx\n```\n", "code_block"),
+            ("```js\nx\n```\n", "code_block"),
+            ("```js  \"T\"\nx\n```\n", "code_block"),
+            ("```js \"T\"  [L]\nx\n```\n", "code_block"),
+            ("```=html\nx\n```\n", "raw_block"),
+            ("``` =html\nx\n```\n", "raw_block"),
+        ] {
+            let tree = parser.parse(source, None).unwrap();
+            let root = tree.root_node();
+            assert!(!root.has_error(), "unexpected ERROR for {source:?}");
+            let block = root.child(0).expect("document has no child");
+            assert_eq!(block.kind(), want, "for {source:?}");
+        }
+    }
+
+    /// A whitespace-only tail leaves a BARE code fence, tab or not.
+    ///
+    /// A CONTROL for the rule above, in the over-narrowing direction, and the
+    /// counterpart of `a_whitespace_only_fence_tail_is_still_bare` for the colon
+    /// fence. `code_fence_info_is_modeled` measures the run after the ticks and
+    /// asks what FOLLOWS it: with nothing after it on the line the run is
+    /// TRAILING whitespace, which takes both spellings and any width, so the
+    /// spelling and cardinality rules must not be reached. Move either test
+    /// ahead of the end-of-line test and every case here loses its code block
+    /// while the whole corpus, the block battery and the 2700-document no-error
+    /// sweep stay green - measured.
+    ///
+    /// A fixture cannot carry it: a tab or a second space degrading away keeps
+    /// the same tree, so the case would go on passing while testing nothing.
+    #[test]
+    fn a_whitespace_only_code_fence_tail_is_still_bare() {
+        let mut parser = tree_sitter::Parser::new();
+        parser
+            .set_language(&super::language())
+            .expect("Error loading Carve language");
+        for source in [
+            "```\nx\n```\n",
+            "```\t\nx\n```\n",
+            "``` \nx\n```\n",
+            "```  \nx\n```\n",
+            "``` \t \nx\n```\n",
+        ] {
+            let tree = parser.parse(source, None).unwrap();
+            let root = tree.root_node();
+            assert!(!root.has_error(), "unexpected ERROR for {source:?}");
+            let block = root.child(0).expect("document has no child");
+            assert_eq!(block.kind(), "code_block", "for {source:?}");
+        }
+    }
+
+    /// The frontmatter opener is the third site of the fence's `[space]` slot.
+    ///
+    /// `---<SP><SP>yaml` is not an opener: the second space reaches the language
+    /// token. It is decided in `src/scanner.c`, because refusing it has to leave
+    /// the LINE as prose and a rule in `grammar.js` can only fail into an ERROR -
+    /// and it must not fall back to a thematic break either, since the line
+    /// carries a word (corpus 264).
+    #[test]
+    fn a_frontmatter_opener_takes_one_space() {
         let mut parser = tree_sitter::Parser::new();
         parser
             .set_language(&super::language())
             .expect("Error loading Carve language");
         for (source, want) in [
-            ("```\tjs\nx\n```\n", "code_block"),
-            ("``` js\nx\n```\n", "code_block"),
-            ("```js\t\"T\"\nx\n```\n", "code_block"),
-            ("```\t=html\nx\n```\n", "raw_block"),
+            ("---  yaml\ntitle: T\n---\n\nbody\n", "paragraph"),
+            ("---\tyaml\ntitle: T\n---\n\nbody\n", "paragraph"),
+            ("--- yaml\ntitle: T\n---\n\nbody\n", "frontmatter"),
+            ("---\ntitle: T\n---\n\nbody\n", "frontmatter"),
         ] {
             let tree = parser.parse(source, None).unwrap();
             let root = tree.root_node();
