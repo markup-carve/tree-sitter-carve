@@ -24,7 +24,7 @@
 // until someone classifies it.
 import { readFileSync, readdirSync } from 'node:fs';
 import { refuseShortRun } from './participants.mjs';
-import { spawnSync } from 'node:child_process';
+import { parseTrees } from './parse-batched.mjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -138,25 +138,7 @@ function countAst(node, acc) {
   return acc;
 }
 
-const trees = spawnSync('npx', ['tree-sitter', 'parse', ...files], {
-  cwd: repoRoot,
-  encoding: 'utf8',
-  maxBuffer: 256 * 1024 * 1024,
-});
-if (trees.error) {
-  console.error(`Failed to run tree-sitter parse: ${trees.error.message}`);
-  process.exit(2);
-}
-const perFile = (trees.stdout || '')
-  .split(/^(?=\(document )/m)
-  .filter((t) => t.trim());
-if (perFile.length !== files.length) {
-  console.error(
-    `Expected ${files.length} parse trees, got ${perFile.length}; the ` +
-      'tree-sitter output format changed and this check cannot be trusted.',
-  );
-  process.exit(2);
-}
+const perFile = parseTrees(files, repoRoot);
 
 const found = {};
 files.forEach((file, i) => {
