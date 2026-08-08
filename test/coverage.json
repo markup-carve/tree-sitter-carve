@@ -100,6 +100,7 @@
     "an-attribute-name-admits-no-colon",
     "an-autolink-body-admits-non-ascii-and-excludes-format-characters",
     "an-empty-abbreviation-term-is-not-a-definition",
+    "an-empty-footnote-body-is-written-with-the-empty-sentinel",
     "an-image-takes-a-reference-the-way-a-link-does",
     "an-inline-attribute-block-does-not-span-lines-but-an-attribute-line-does",
     "an-invisible-line-does-not-cancel-a-blank-line-separation",
