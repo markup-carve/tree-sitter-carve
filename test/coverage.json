@@ -71,6 +71,7 @@
     "a-reference-definition-is-anchored-at-end-of-line",
     "a-reference-definition-s-metadata-slots-take-exactly-one-space",
     "a-reference-image-takes-a-caption",
+    "a-ragged-table-keeps-each-row-s-cell-count",
     "a-repeated-definition-which-one-wins",
     "a-single-percent-is-not-a-comment",
     "a-tab-after-a-heading-quote-or-caption-marker-leaves-the-line-as-prose",
