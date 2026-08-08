@@ -8,11 +8,13 @@
     "a-backslash-in-a-link-destination-is-a-literal-character",
     "a-bare-attribute-block-on-its-own-line-is-literal",
     "a-below-column-marker-after-a-comment-where-no-paragraph-is-open",
+    "a-boundary-line-inside-an-open-fence-does-not-end-the-container",
     "a-blank-after-a-comment-still-ends-the-item",
     "a-blank-line-holds-spaces-and-tabs-and-nothing-else",
     "a-block-attribute-line-inside-a-quote-ends-the-paragraph-above-it",
     "a-block-image-is-separated-from-the-block-after-it-on-every-target",
     "a-caret-is-a-reference-label-not-an-empty-footnote",
+    "a-caption-attaches-across-one-blank-line",
     "a-code-fence-opener-takes-exactly-one-space",
     "a-collapsed-image-reference-uses-its-alt-text-as-the-label",
     "a-collapsed-reference-is-matched-by-the-label-the-author-wrote",
@@ -24,6 +26,7 @@
     "a-comment-fence-under-a-nested-item-does-not-close-it-either",
     "a-comment-is-recognized-at-any-column",
     "a-comment-under-a-nested-item-does-not-close-it",
+    "a-container-a-lazy-line-folded-into-is-still-open",
     "a-continuation-marker-after-a-blank-line-in-a-loose-item",
     "a-continuation-marker-after-a-blank-line-in-the-item",
     "a-continuation-row-carries-no-trailing-text",
@@ -55,6 +58,7 @@
     "a-line-at-a-footnote-definition-s-own-column-followed-by-non-blank-text-forms-its-own-tight-block",
     "a-link-definition-written-before-a-footnote-stays-before-it",
     "a-link-title-takes-exactly-one-space",
+    "a-list-marker-at-the-content-column-inside-an-open-fence",
     "a-list-item-does-not-define-an-abbreviation-either",
     "a-marker-attribute-may-hold-a-quoted-brace",
     "a-marker-separator-is-a-space-never-a-tab",
@@ -96,6 +100,7 @@
     "an-attribute-name-admits-no-colon",
     "an-autolink-body-admits-non-ascii-and-excludes-format-characters",
     "an-empty-abbreviation-term-is-not-a-definition",
+    "an-empty-footnote-body-is-written-with-the-empty-sentinel",
     "an-image-takes-a-reference-the-way-a-link-does",
     "an-inline-attribute-block-does-not-span-lines-but-an-attribute-line-does",
     "an-invisible-line-does-not-cancel-a-blank-line-separation",
@@ -274,6 +279,7 @@
     "two-backticks-are-not-a-code-fence-opening-or-closing",
     "two-char-delimiter-runs",
     "two-dashes-are-not-a-thematic-break",
+    "two-blank-lines-detach-a-caption",
     "unclaimed-openers-stay-literal",
     "under-indented-definition-attaches-over-indented-definition-folds",
     "unquoted-attribute-values-may-contain-dots-and-colons",
@@ -299,6 +305,21 @@
   "invisibleOverAcceptance": {},
   "batteryDisagreements": {},
   "underAcceptance": {
+    "a-boundary-line-inside-an-open-fence-does-not-end-the-container": {
+      "gaps": "code_block: want 1 have 0"
+    },
+    "a-boundary-line-inside-an-open-fence-does-not-end-the-container-2": {
+      "gaps": "code_block: want 1 have 0"
+    },
+    "a-boundary-line-inside-an-open-fence-does-not-end-the-container-5": {
+      "gaps": "div: want 2 have 1"
+    },
+    "a-list-marker-at-the-content-column-inside-an-open-fence": {
+      "gaps": "code_block: want 1 have 0; list: want 2 have 1"
+    },
+    "a-list-marker-at-the-content-column-inside-an-open-fence-2": {
+      "gaps": "list: want 2 have 1"
+    },
     "a-frontmatter-opener-takes-exactly-one-space": {
       "gaps": "thematic_break: want 1 have 0",
       "reason": "`---<SP><SP>yaml` is no longer read as a frontmatter opener - the opener's `[space]` slot takes exactly one space and the line is prose - but the `---` three lines below it, which the language turns into a thematic break, is folded into that prose instead. A thematic break does not interrupt an open paragraph in this grammar; `paragraph-interruption-3` records the same gap on a document with no frontmatter in it, and the two close together."
