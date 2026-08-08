@@ -5,6 +5,7 @@
     "fence-on-a-marker-line-builds-nothing": "a code fence opened on a list MARKER line: the item closes with an EMPTY code block and the residue re-parses at document level when the body sits BELOW the item's content column (markup-carve/carve#646). This grammar builds no code_block for any of these, and MEASURED against it, the cause is NOT that the fence is committed to the item with no route out - it is that the fence never opens at all. `parse_backtick` refuses an opener when `has_extra_indent` is true, and on a marker line the fence sits past the line's own indent while the item's content column is only established by the marker itself, so `- ` + fence is read as inline verbatim. The heading marker and the colon fence carry the same column-0 guard and fail the same way on a marker line, while a block quote and a table - which do not - open there correctly. So the first half is a column question and the second half, closing the item at the boundary, is the container change; the fully-indented example (-3) needs only the first. Tracked in tree-sitter-carve#160."
   },
   "covered": [
+    "adjacent-block-openers-in-an-attached-run-stay-separate",
     "a-backslash-in-a-link-destination-is-a-literal-character",
     "a-bare-attribute-block-on-its-own-line-is-literal",
     "a-below-column-marker-after-a-comment-where-no-paragraph-is-open",
@@ -306,6 +307,10 @@
   "invisibleOverAcceptance": {},
   "batteryDisagreements": {},
   "underAcceptance": {
+    "adjacent-block-openers-in-an-attached-run-stay-separate": {
+      "gaps": "block_quote: want 2 have 1",
+      "reason": "two `+`-attached block quotes in one list item currently remain one grammar block: the second continuation marker is consumed inside the first quote and its following `>` becomes a marker in a fallback paragraph. The table variant already produces two table nodes; separating the quote requires the external scanner to close the attached quote at the second continuation boundary without regressing ordinary quote continuations."
+    },
     "a-boundary-line-inside-an-open-fence-does-not-end-the-container": {
       "gaps": "code_block: want 1 have 0"
     },
