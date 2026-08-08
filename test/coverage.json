@@ -307,24 +307,14 @@
   "invisibleOverAcceptance": {},
   "batteryDisagreements": {},
   "underAcceptance": {
-    "adjacent-block-openers-in-an-attached-run-stay-separate": {
-      "gaps": "block_quote: want 2 have 1",
-      "reason": "two `+`-attached block quotes in one list item currently remain one grammar block: the second continuation marker is consumed inside the first quote and its following `>` becomes a marker in a fallback paragraph. The table variant already produces two table nodes; separating the quote requires the external scanner to close the attached quote at the second continuation boundary without regressing ordinary quote continuations."
-    },
     "a-boundary-line-inside-an-open-fence-does-not-end-the-container": {
       "gaps": "code_block: want 1 have 0"
     },
     "a-boundary-line-inside-an-open-fence-does-not-end-the-container-2": {
       "gaps": "code_block: want 1 have 0"
     },
-    "a-boundary-line-inside-an-open-fence-does-not-end-the-container-5": {
-      "gaps": "div: want 2 have 1"
-    },
     "a-list-marker-at-the-content-column-inside-an-open-fence": {
-      "gaps": "code_block: want 1 have 0; list: want 2 have 1"
-    },
-    "a-list-marker-at-the-content-column-inside-an-open-fence-2": {
-      "gaps": "list: want 2 have 1"
+      "gaps": "code_block: want 1 have 0"
     },
     "a-frontmatter-opener-takes-exactly-one-space": {
       "gaps": "thematic_break: want 1 have 0",

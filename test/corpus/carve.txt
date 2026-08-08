@@ -192,6 +192,34 @@ Vote :+1: or :-1: today.
     (symbol)))
 
 ===============================================================================
+Adjacent attached block quotes stay separate
+===============================================================================
+- x
++
+> q
++
+> q
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)
+        (list_continuation_marker)
+        (block_quote
+          (block_quote_marker)
+          content: (content
+            (paragraph)))
+        (list_continuation_marker)
+        (block_quote
+          (block_quote_marker)
+          content: (content
+            (paragraph)))))))
+
+===============================================================================
 Official corpus: frontmatter
 ===============================================================================
 ---
