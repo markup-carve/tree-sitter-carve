@@ -304,6 +304,21 @@
   "invisibleOverAcceptance": {},
   "batteryDisagreements": {},
   "underAcceptance": {
+    "a-boundary-line-inside-an-open-fence-does-not-end-the-container": {
+      "gaps": "code_block: want 1 have 0"
+    },
+    "a-boundary-line-inside-an-open-fence-does-not-end-the-container-2": {
+      "gaps": "code_block: want 1 have 0"
+    },
+    "a-boundary-line-inside-an-open-fence-does-not-end-the-container-5": {
+      "gaps": "div: want 2 have 1"
+    },
+    "a-list-marker-at-the-content-column-inside-an-open-fence": {
+      "gaps": "code_block: want 1 have 0; list: want 2 have 1"
+    },
+    "a-list-marker-at-the-content-column-inside-an-open-fence-2": {
+      "gaps": "list: want 2 have 1"
+    },
     "a-frontmatter-opener-takes-exactly-one-space": {
       "gaps": "thematic_break: want 1 have 0",
       "reason": "`---<SP><SP>yaml` is no longer read as a frontmatter opener - the opener's `[space]` slot takes exactly one space and the line is prose - but the `---` three lines below it, which the language turns into a thematic break, is folded into that prose instead. A thematic break does not interrupt an open paragraph in this grammar; `paragraph-interruption-3` records the same gap on a document with no frontmatter in it, and the two close together."
