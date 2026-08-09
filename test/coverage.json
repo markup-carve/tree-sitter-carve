@@ -15,11 +15,13 @@
     "a-block-attribute-line-inside-a-quote-ends-the-paragraph-above-it",
     "a-block-image-is-separated-from-the-block-after-it-on-every-target",
     "a-caret-is-a-reference-label-not-an-empty-footnote",
+    "a-caret-line-does-not-end-a-paragraph-it-cannot-caption",
     "a-caption-attaches-across-one-blank-line",
     "a-code-fence-opener-takes-exactly-one-space",
     "a-collapsed-image-reference-uses-its-alt-text-as-the-label",
     "a-collapsed-reference-is-matched-by-the-label-the-author-wrote",
     "a-collapsed-reference-reaches-a-heading-by-the-heading-s-rendered-text",
+    "a-column-zero-definition-ends-an-open-list-item",
     "a-combined-bold-italic-span-may-cross-a-line",
     "a-comment-ends-the-paragraph-it-sits-under",
     "a-comment-fence-at-column-0-ends-the-item-a-line-does-not",
@@ -298,6 +300,16 @@
     "a-quoted-attribute-value-stops-at-the-newline-3": "a quoted attribute value carrying a newline (`{k=\"a` / `b\"}`) parses to ERROR. The corpus pins it as literal text - the inline block does not span lines - but this grammar commits to an attribute block on the opening brace and has no route back to a paragraph when the value never closes on its line. Same class as an-attribute-name-admits-no-colon-3. The category's other examples parse cleanly."
   },
   "overAcceptance": {
+    "a-caret-line-does-not-end-a-paragraph-it-cannot-caption": {
+      "nodes": "caption",
+      "lines": "2",
+      "reason": "a caret line after ordinary prose is paragraph text, but the context-free grammar cannot make caption recognition depend on whether the preceding block is one of the five captionable hosts, so it builds a caption node here. The renderer/parser implementations apply the host check and keep the line literal."
+    },
+    "a-caret-line-does-not-end-a-paragraph-it-cannot-caption-2": {
+      "nodes": "caption",
+      "lines": "3",
+      "reason": "a paragraph that merely contains an image is not a captionable host; deciding that the image is the paragraph's whole content needs semantic context beyond this grammar's local caret-line rule, so it over-accepts the caret line as a caption."
+    },
     "an-unresolved-reference-image-takes-no-caption": {
       "nodes": "caption",
       "lines": "2",
