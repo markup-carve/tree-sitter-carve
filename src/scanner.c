@@ -5661,6 +5661,19 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
     return true;
   }
 
+  // A second continuation marker in a list-attached run starts a sibling
+  // block. Close the attached quote before consuming the marker, otherwise the
+  // quote's own continuation production absorbs it and the following `>` is
+  // reduced as paragraph content inside the first quote.
+  if (lexer->lookahead == '+' && valid_symbols[BLOCK_CLOSE] &&
+      (s->state & STATE_LIST_CONTINUATION) &&
+      find_block(s, BLOCK_QUOTE) != NULL &&
+      scan_continuation_marker_at_paragraph_end(s, lexer)) {
+    lexer->result_symbol = BLOCK_CLOSE;
+    remove_block(s);
+    return true;
+  }
+
   // A lone `+` continuation marker must win over closing the list item: it
   // attaches the next flush-left block to the current item/quote instead of
   // ending it. Only valid where the grammar expects it.
