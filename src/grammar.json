@@ -3713,6 +3713,10 @@
                   },
                   {
                     "type": "SYMBOL",
+                    "name": "language_attribute"
+                  },
+                  {
+                    "type": "SYMBOL",
                     "name": "boolean_attribute"
                   },
                   {
@@ -3814,6 +3818,30 @@
     "boolean_attribute": {
       "type": "SYMBOL",
       "name": "key"
+    },
+    "language_attribute": {
+      "type": "TOKEN",
+      "content": {
+        "type": "SEQ",
+        "members": [
+          {
+            "type": "STRING",
+            "value": ":"
+          },
+          {
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "PATTERN",
+                "value": "[A-Za-z0-9]{1,8}(?:-[A-Za-z0-9]{1,8})*"
+              },
+              {
+                "type": "BLANK"
+              }
+            ]
+          }
+        ]
+      }
     },
     "key": {
       "type": "SYMBOL",
@@ -5392,6 +5420,10 @@
                 {
                   "type": "SYMBOL",
                   "name": "key_value"
+                },
+                {
+                  "type": "SYMBOL",
+                  "name": "language_attribute"
                 },
                 {
                   "type": "SYMBOL",
