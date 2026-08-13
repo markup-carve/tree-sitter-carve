@@ -431,6 +431,10 @@
     }
   },
   "lineTerminatorGaps": {
+    "a-fence-opened-on-a-list-marker-line-body-below-the-content-column-7": {
+      "spellings": "the cr spelling(s) parse to a different tree than lf",
+      "reason": "ref:lone-cr-strands-a-column-probe"
+    },
     "a-footnote-body-s-last-block-when-it-is-not-a-paragraph-gets-a-synthesized-paragraph-for-the-backlink": {
       "spellings": "the cr spelling(s) parse to a different tree than lf",
       "reason": "ref:lone-cr-strands-a-column-probe"
@@ -438,6 +442,10 @@
     "a-link-definition-written-before-a-footnote-stays-before-it": {
       "spellings": "the cr spelling(s) parse to a different tree than lf",
       "reason": "ref:lone-cr-strands-a-column-probe"
+    },
+    "a-quoted-attribute-value-stops-at-the-newline-3": {
+      "spellings": "the cr spelling(s) parse to a different tree than lf",
+      "reason": "the cr spelling parses to a different tree because the LF spelling already parses to ERROR - this document is one of the three example-level skips added with the same corpus bump (a line holding only a vertical tab, form feed, NEL, LS or PS; a content line ending in NBSP, ZWSP, BOM or U+2000; a quoted attribute value carrying a newline). The terminator is not the defect here, the unmodeled construct is, and the divergence goes away with it. Tracked in tree-sitter-carve#160."
     },
     "an-attribute-name-admits-no-colon": {
       "spellings": "the cr spelling(s) parse to a different tree than lf",
@@ -495,13 +503,9 @@
       "spellings": "the cr spelling(s) parse to a different tree than lf",
       "reason": "ref:lone-cr-strands-a-column-probe"
     },
-    "a-quoted-attribute-value-stops-at-the-newline-3": {
+    "unclaimed-openers-stay-literal": {
       "spellings": "the cr spelling(s) parse to a different tree than lf",
-      "reason": "the cr spelling parses to a different tree because the LF spelling already parses to ERROR - this document is one of the three example-level skips added with the same corpus bump (a line holding only a vertical tab, form feed, NEL, LS or PS; a content line ending in NBSP, ZWSP, BOM or U+2000; a quoted attribute value carrying a newline). The terminator is not the defect here, the unmodeled construct is, and the divergence goes away with it. Tracked in tree-sitter-carve#160."
-    },
-    "a-fence-opened-on-a-list-marker-line-body-below-the-content-column-7": {
-      "spellings": "the cr spelling(s) parse to a different tree than lf",
-      "reason": "ref:lone-cr-strands-a-column-probe"
+      "reason": "a span attribute list attaches across a lone-CR line break, so `[>foo]` reaches the next line and takes `{:tada:}` as its own attribute where the LF spelling is two paragraphs. PRE-EXISTING and not about the language attribute: `[a]\\r\\r{#id}\\r` diverges the same way on main today, with no `{:TAG}` rule anywhere. A bare `\\r` is an EXTRA, so it is skipped between `]` and `{` where a token can start, while a space or a tab in that position already breaks the attachment. This document reaches it only now because `{:tada:}` is the first attribute list able to consume across the CR. Tracked in tree-sitter-carve#192, where three candidate fixes are measured and rejected."
     }
   }
 }
