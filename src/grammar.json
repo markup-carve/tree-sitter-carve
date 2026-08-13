@@ -3819,30 +3819,6 @@
       "type": "SYMBOL",
       "name": "key"
     },
-    "language_attribute": {
-      "type": "TOKEN",
-      "content": {
-        "type": "SEQ",
-        "members": [
-          {
-            "type": "STRING",
-            "value": ":"
-          },
-          {
-            "type": "CHOICE",
-            "members": [
-              {
-                "type": "PATTERN",
-                "value": "[A-Za-z0-9]{1,8}(?:-[A-Za-z0-9]{1,8})*"
-              },
-              {
-                "type": "BLANK"
-              }
-            ]
-          }
-        ]
-      }
-    },
     "key": {
       "type": "SYMBOL",
       "name": "_id_no_digit_start"
@@ -6933,6 +6909,10 @@
     {
       "type": "SYMBOL",
       "name": "_square_bracket_span_end"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "language_attribute"
     },
     {
       "type": "SYMBOL",
