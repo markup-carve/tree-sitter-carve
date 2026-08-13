@@ -124,6 +124,8 @@ typedef enum {
   SQUARE_BRACKET_SPAN_MARK_BEGIN,
   SQUARE_BRACKET_SPAN_END,
 
+  LANGUAGE_ATTRIBUTE,
+
   IN_FALLBACK,
 
   ERROR,
@@ -893,6 +895,55 @@ static bool scan_name_no_digit_start(Scanner *s, TSLexer *lexer) {
     return false;
   }
   return scan_identifier(s, lexer);
+}
+
+/// The `{:TAG}` language tag envelope: subtags of 1-8 ASCII alphanumerics
+/// joined by `-`, or nothing at all for the bare `{:}` reset.
+///
+/// ONE spelling, called from all three places that have to agree about it: the
+/// block attribute validator, the span lookahead that decides whether `[` opens
+/// a span, and the LANGUAGE_ATTRIBUTE token itself. It was spelled twice before
+/// and the two copies disagreed - the block path knew about `:` and the span
+/// lookahead did not, so `[x]{:fr}` never became a span
+/// (markup-carve/tree-sitter-carve#193).
+///
+/// Consumes the tag. Does NOT check what follows: a caller that needs the tag
+/// to end at an attribute boundary asks for that itself, because the block
+/// validator and the token want different boundaries.
+static bool scan_language_tag(Scanner *s, TSLexer *lexer) {
+  size_t subtag_len = 0;
+  while (carve_is_alnum_ascii(lexer->lookahead)) {
+    if (++subtag_len > 8) {
+      return false;
+    }
+    advance(s, lexer);
+  }
+  // A LEADING separator is not a tag: `{:-en}` is literal text, the same way
+  // `{:en-}` is. Only the trailing half of this was checked before.
+  if (lexer->lookahead == '-' && subtag_len == 0) {
+    return false;
+  }
+  while (lexer->lookahead == '-') {
+    advance(s, lexer);
+    subtag_len = 0;
+    while (carve_is_alnum_ascii(lexer->lookahead)) {
+      if (++subtag_len > 8) {
+        return false;
+      }
+      advance(s, lexer);
+    }
+    if (subtag_len == 0) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/// Is the lexer sitting on a character that may end an attribute?
+static bool at_attribute_boundary(TSLexer *lexer) {
+  return lexer->lookahead == '}' || lexer->lookahead == ' ' ||
+         lexer->lookahead == '\t' || at_line_end(lexer) || lexer->eof(lexer);
 }
 
 static bool scan_until_unescaped(Scanner *s, TSLexer *lexer, char c) {
@@ -4380,28 +4431,7 @@ static bool parse_open_curly_bracket(Scanner *s, TSLexer *lexer,
     case ':': {
       can_be_inline_comment = false;
       advance(s, lexer);
-      size_t subtag_len = 0;
-      while (carve_is_alnum_ascii(lexer->lookahead)) {
-        if (++subtag_len > 8) {
-          return false;
-        }
-        advance(s, lexer);
-      }
-      while (lexer->lookahead == '-') {
-        advance(s, lexer);
-        subtag_len = 0;
-        while (carve_is_alnum_ascii(lexer->lookahead)) {
-          if (++subtag_len > 8) {
-            return false;
-          }
-          advance(s, lexer);
-        }
-        if (subtag_len == 0) {
-          return false;
-        }
-      }
-      if (lexer->lookahead != '}' && lexer->lookahead != ' ' &&
-          lexer->lookahead != '\t' && !at_line_end(lexer)) {
+      if (!scan_language_tag(s, lexer) || !at_attribute_boundary(lexer)) {
         return false;
       }
       break;
@@ -5275,6 +5305,18 @@ static bool scan_valid_inline_attribute(Scanner *s, TSLexer *lexer) {
         return false;
       }
       break;
+    case ':': {
+      // The language attribute. This function is what sets
+      // STATE_BRACKET_STARTS_SPAN, so without this case `[x]{:fr}` failed the
+      // payload check and never became a span - the attribute attached to the
+      // paragraph and the `[x]` content node disappeared, while `[x]{#id}` and
+      // `[x]{.c}` were unaffected (markup-carve/tree-sitter-carve#193).
+      advance(s, lexer);
+      if (!scan_language_tag(s, lexer) || !at_attribute_boundary(lexer)) {
+        return false;
+      }
+      break;
+    }
     case '%': {
       bool must_be_inline_comment = false;
       if (!scan_comment(s, lexer, s->indent + 1, &must_be_inline_comment)) {
@@ -5488,6 +5530,30 @@ static bool parse_span(Scanner *s, TSLexer *lexer, const bool *valid_symbols,
     return true;
   }
   return false;
+}
+
+/// The `{:TAG}` language attribute, as a token.
+///
+/// EXTERNAL rather than a grammar regex because the tag is only a language
+/// attribute when it ENDS at an attribute boundary, and a token regex cannot
+/// ask that. Spelled as a regex, `{:en_US}` matched `:en` and left `_US` to be
+/// picked up as a bare boolean key, so a malformed tag parsed as two valid
+/// attributes where carve-js leaves the whole brace group literal.
+///
+/// Failing to tokenize is the point: the brace group then falls to the same
+/// literal-text route `{!!bad}` and `{12=v}` already take.
+static bool parse_language_attribute(Scanner *s, TSLexer *lexer) {
+  if (lexer->lookahead != ':') {
+    return false;
+  }
+  advance(s, lexer);
+  if (!scan_language_tag(s, lexer) || !at_attribute_boundary(lexer)) {
+    return false;
+  }
+  lexer->mark_end(lexer);
+  lexer->result_symbol = LANGUAGE_ATTRIBUTE;
+
+  return true;
 }
 
 static bool check_non_whitespace(Scanner *s, TSLexer *lexer) {
@@ -5759,6 +5825,10 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
 
   if (valid_symbols[HIGHLIGHTED_OPEN_CHECK] &&
       check_highlighted_open(s, lexer)) {
+    return true;
+  }
+
+  if (valid_symbols[LANGUAGE_ATTRIBUTE] && parse_language_attribute(s, lexer)) {
     return true;
   }
 
@@ -6142,6 +6212,8 @@ static char *token_type_s(TokenType t) {
   case SQUARE_BRACKET_SPAN_END:
     return "SQUARE_BRACKET_SPAN_END";
 
+  case LANGUAGE_ATTRIBUTE:
+    return "LANGUAGE_ATTRIBUTE";
   case IN_FALLBACK:
     return "IN_FALLBACK";
 

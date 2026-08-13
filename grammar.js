@@ -1132,8 +1132,6 @@ module.exports = grammar({
     identifier: (_) => token(seq("#", token.immediate(/[^\s\}]+/))),
     key_value: ($) => seq(field("key", $.key), "=", field("value", $.value)),
     boolean_attribute: ($) => $.key,
-    language_attribute: (_) =>
-      token(seq(":", optional(/[A-Za-z0-9]{1,8}(?:-[A-Za-z0-9]{1,8})*/))),
     key: ($) => $._id_no_digit_start,
     value: (_) =>
       choice(
@@ -1933,6 +1931,11 @@ module.exports = grammar({
     // It's used to notify the external scanner if we're in the fallback branch or in
     // if we're scanning a span. This so the scanner knows if the current element should
     // be stored on the stack or not.
+    // `{:TAG}`. External because the tag is only a language attribute when it
+    // ENDS at an attribute boundary, which a token regex cannot ask - see
+    // parse_language_attribute in src/scanner.c.
+    $.language_attribute,
+
     $._in_fallback,
 
     // Never valid and is only used to signal an internal scanner error.
