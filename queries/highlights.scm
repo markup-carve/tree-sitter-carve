@@ -280,6 +280,8 @@
 
 (boolean_attribute) @property
 
+(language_attribute) @attribute
+
 (link_text
   [
     "["

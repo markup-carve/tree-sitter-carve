@@ -52,6 +52,10 @@
         {
           "type": "key_value",
           "named": true
+        },
+        {
+          "type": "language_attribute",
+          "named": true
         }
       ]
     }
@@ -4225,6 +4229,10 @@
   },
   {
     "type": "language",
+    "named": true
+  },
+  {
+    "type": "language_attribute",
     "named": true
   },
   {

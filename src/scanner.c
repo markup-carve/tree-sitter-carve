@@ -4377,6 +4377,35 @@ static bool parse_open_curly_bracket(Scanner *s, TSLexer *lexer,
         return false;
       }
       break;
+    case ':': {
+      can_be_inline_comment = false;
+      advance(s, lexer);
+      size_t subtag_len = 0;
+      while (carve_is_alnum_ascii(lexer->lookahead)) {
+        if (++subtag_len > 8) {
+          return false;
+        }
+        advance(s, lexer);
+      }
+      while (lexer->lookahead == '-') {
+        advance(s, lexer);
+        subtag_len = 0;
+        while (carve_is_alnum_ascii(lexer->lookahead)) {
+          if (++subtag_len > 8) {
+            return false;
+          }
+          advance(s, lexer);
+        }
+        if (subtag_len == 0) {
+          return false;
+        }
+      }
+      if (lexer->lookahead != '}' && lexer->lookahead != ' ' &&
+          lexer->lookahead != '\t' && !at_line_end(lexer)) {
+        return false;
+      }
+      break;
+    }
     case '\r':
     case '\n':
       can_be_inline_comment = false;

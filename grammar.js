@@ -1110,6 +1110,7 @@ module.exports = grammar({
                 $.class,
                 $.identifier,
                 $.key_value,
+                $.language_attribute,
                 // carve-php Boolean Attribute Shorthand: a bare key like
                 // `{reversed}` is equivalent to `{reversed=reversed}` /
                 // `{reversed=true}`. Must come after key_value in the
@@ -1131,6 +1132,8 @@ module.exports = grammar({
     identifier: (_) => token(seq("#", token.immediate(/[^\s\}]+/))),
     key_value: ($) => seq(field("key", $.key), "=", field("value", $.value)),
     boolean_attribute: ($) => $.key,
+    language_attribute: (_) =>
+      token(seq(":", optional(/[A-Za-z0-9]{1,8}(?:-[A-Za-z0-9]{1,8})*/))),
     key: ($) => $._id_no_digit_start,
     value: (_) =>
       choice(
@@ -1513,6 +1516,7 @@ module.exports = grammar({
               $.class,
               $.identifier,
               $.key_value,
+              $.language_attribute,
               $.boolean_attribute,
               alias($._comment, $.comment),
               $._whitespace1,

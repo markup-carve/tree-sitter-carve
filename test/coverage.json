@@ -6,12 +6,14 @@
   },
   "covered": [
     "adjacent-block-openers-in-an-attached-run-stay-separate",
+    "adjacent-sibling-lists-survive-the-round-trip",
     "a-backslash-in-a-link-destination-is-a-literal-character",
     "a-bare-attribute-block-on-its-own-line-is-literal",
     "a-below-column-marker-after-a-comment-where-no-paragraph-is-open",
     "a-boundary-line-inside-an-open-fence-does-not-end-the-container",
     "a-blank-after-a-comment-still-ends-the-item",
     "a-blank-line-holds-spaces-and-tabs-and-nothing-else",
+    "a-boolean-and-a-key-value-of-the-same-name-are-one-attribute",
     "a-block-attribute-line-inside-a-quote-ends-the-paragraph-above-it",
     "a-block-image-is-separated-from-the-block-after-it-on-every-target",
     "a-caret-is-a-reference-label-not-an-empty-footnote",
@@ -30,6 +32,13 @@
     "a-comment-is-recognized-at-any-column",
     "a-comment-under-a-nested-item-does-not-close-it",
     "a-container-a-lazy-line-folded-into-is-still-open",
+    "a-fence-keeps-the-blank-line-at-the-end-of-its-content",
+    "a-language-attribute-and-lang-are-one-key",
+    "a-language-attribute-is-exact-sugar-for-lang",
+    "a-malformed-language-tag-leaves-the-whole-block-literal",
+    "a-semantic-span-keeps-its-wrapper-unless-consumption-empties-it",
+    "a-structural-attribute-leads-the-author-s-own",
+    "the-language-sigil-takes-no-padding",
     "a-continuation-marker-after-a-blank-line-in-a-loose-item",
     "a-continuation-marker-after-a-blank-line-in-the-item",
     "a-continuation-row-carries-no-trailing-text",
@@ -320,6 +329,10 @@
   "invisibleOverAcceptance": {},
   "batteryDisagreements": {},
   "underAcceptance": {
+    "a-fence-keeps-the-blank-line-at-the-end-of-its-content-4": {
+      "gaps": "code_block: want 1 have 0",
+      "reason": "ref:fence-on-a-marker-line-builds-nothing"
+    },
     "a-boundary-line-inside-an-open-fence-does-not-end-the-container": {
       "gaps": "code_block: want 1 have 0"
     },
@@ -418,6 +431,10 @@
     }
   },
   "lineTerminatorGaps": {
+    "a-fence-opened-on-a-list-marker-line-body-below-the-content-column-7": {
+      "spellings": "the cr spelling(s) parse to a different tree than lf",
+      "reason": "ref:lone-cr-strands-a-column-probe"
+    },
     "a-footnote-body-s-last-block-when-it-is-not-a-paragraph-gets-a-synthesized-paragraph-for-the-backlink": {
       "spellings": "the cr spelling(s) parse to a different tree than lf",
       "reason": "ref:lone-cr-strands-a-column-probe"
@@ -425,6 +442,10 @@
     "a-link-definition-written-before-a-footnote-stays-before-it": {
       "spellings": "the cr spelling(s) parse to a different tree than lf",
       "reason": "ref:lone-cr-strands-a-column-probe"
+    },
+    "a-quoted-attribute-value-stops-at-the-newline-3": {
+      "spellings": "the cr spelling(s) parse to a different tree than lf",
+      "reason": "the cr spelling parses to a different tree because the LF spelling already parses to ERROR - this document is one of the three example-level skips added with the same corpus bump (a line holding only a vertical tab, form feed, NEL, LS or PS; a content line ending in NBSP, ZWSP, BOM or U+2000; a quoted attribute value carrying a newline). The terminator is not the defect here, the unmodeled construct is, and the divergence goes away with it. Tracked in tree-sitter-carve#160."
     },
     "an-attribute-name-admits-no-colon": {
       "spellings": "the cr spelling(s) parse to a different tree than lf",
@@ -482,13 +503,9 @@
       "spellings": "the cr spelling(s) parse to a different tree than lf",
       "reason": "ref:lone-cr-strands-a-column-probe"
     },
-    "a-quoted-attribute-value-stops-at-the-newline-3": {
+    "unclaimed-openers-stay-literal": {
       "spellings": "the cr spelling(s) parse to a different tree than lf",
-      "reason": "the cr spelling parses to a different tree because the LF spelling already parses to ERROR - this document is one of the three example-level skips added with the same corpus bump (a line holding only a vertical tab, form feed, NEL, LS or PS; a content line ending in NBSP, ZWSP, BOM or U+2000; a quoted attribute value carrying a newline). The terminator is not the defect here, the unmodeled construct is, and the divergence goes away with it. Tracked in tree-sitter-carve#160."
-    },
-    "a-fence-opened-on-a-list-marker-line-body-below-the-content-column-7": {
-      "spellings": "the cr spelling(s) parse to a different tree than lf",
-      "reason": "ref:lone-cr-strands-a-column-probe"
+      "reason": "a span attribute list attaches across a lone-CR line break, so `[>foo]` reaches the next line and takes `{:tada:}` as its own attribute where the LF spelling is two paragraphs. PRE-EXISTING and not about the language attribute: `[a]\\r\\r{#id}\\r` diverges the same way on main today, with no `{:TAG}` rule anywhere. A bare `\\r` is an EXTRA, so it is skipped between `]` and `{` where a token can start, while a space or a tab in that position already breaks the attachment. This document reaches it only now because `{:tada:}` is the first attribute list able to consume across the CR. Tracked in tree-sitter-carve#192, where three candidate fixes are measured and rejected."
     }
   }
 }
