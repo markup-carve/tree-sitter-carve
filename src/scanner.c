@@ -332,6 +332,20 @@ static const uint8_t STATE_FENCE_ABSORBS = 1 << 4;
 // Set at every line start whose line is blank; cleared by `parse_block_quote`
 // when it emits, which is the only place it is read.
 static const uint8_t STATE_AFTER_BLANK_LINE = 1 << 5;
+// Tracks that the `]` just closed was followed by a CARRIAGE RETURN.
+//
+// A bare '\r' is an extra, and an extra may be skipped anywhere no token can
+// start. Between `]` and `{` a token CAN start, so it was skipped there and a
+// span reached across a lone-CR blank line to take the next line's block
+// attribute list as its own (#192). A space or a tab in that position already
+// broke the attachment; only the carriage return slipped through, because only
+// it is an extra.
+//
+// The extra cannot simply go: it is what error recovery skips, and without it
+// any document that parses to ERROR degenerates - three corpus documents hang
+// outright. So the adjacency is enforced here instead, where the scanner can
+// see the character the grammar cannot.
+static const uint8_t STATE_SPAN_END_AT_CR = 1 << 6;
 
 static TokenType scan_list_marker_token(Scanner *s, TSLexer *lexer);
 static uint8_t scan_block_quote_markers(Scanner *s, TSLexer *lexer,
@@ -5476,6 +5490,13 @@ static bool mark_span_begin(Scanner *s, TSLexer *lexer,
     } else if (inline_type == CURLY_BRACKET_SPAN) {
       s->state &= ~STATE_BRACKET_STARTS_SPAN;
     }
+    // The `{` is not adjacent to the `]` it would qualify - a carriage return
+    // sits between them, skipped as an extra. Refuse the attribute list so the
+    // brackets stay literal text and the CR keeps its line break.
+    if (inline_type == CURLY_BRACKET_SPAN && (s->state & STATE_SPAN_END_AT_CR)) {
+      s->state &= ~STATE_SPAN_END_AT_CR;
+      return false;
+    }
 
     lexer->result_symbol = token;
     push_inline(s, inline_type, 0);
@@ -5511,6 +5532,14 @@ static bool parse_span_end(Scanner *s, TSLexer *lexer, InlineType element,
 
   lexer->mark_end(lexer);
   lexer->result_symbol = token;
+  // See STATE_SPAN_END_AT_CR: a `{` after this `]` is only the span's attribute
+  // list when it is ADJACENT, and a carriage return between them is invisible
+  // to the grammar because it is an extra.
+  if (element == SQUARE_BRACKET_SPAN && lexer->lookahead == '\r') {
+    s->state |= STATE_SPAN_END_AT_CR;
+  } else {
+    s->state &= ~STATE_SPAN_END_AT_CR;
+  }
   remove_inline(s);
   return true;
 }
