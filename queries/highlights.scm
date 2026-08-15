@@ -267,6 +267,49 @@
   (class_name)
 ] @type
 
+; Composite figures (PART 9 4c, markup-carve/carve#1215). The kind word `figure`
+; is RESERVED among the `:::` types: a BARE opener - the fence, its separator,
+; the word, and nothing else - is ONE figure of ordered panels, not an
+; admonition. `!title !label` IS the distinction, and it is the whole reason this
+; belongs in a query rather than in the grammar: the parse tree already tells the
+; two apart by which fields the opener carries, so a reserved kind word needs a
+; reserved capture rather than a new node. An opener carrying a quoted title or a
+; `[label]` matches nothing here and keeps `@type` above, which is the generic
+; Tier-2 container the clause says it stays.
+;
+; The group caption needs no rule: it is an ordinary `^ ` line one line below the
+; closing fence, and the parser already places it as a sibling of the container
+; rather than inside it, where the existing `(caption)` patterns claim it.
+((div
+  class: (class_name) @type.builtin
+  !title
+  !label)
+  (#eq? @type.builtin "figure")
+  (#set! priority 105))
+
+; GROUPS DO NOT NEST: a bare `::: figure` inside an open group is a generic
+; container, not an inner group. A query cannot say "whose ancestor is not a
+; group", so this restores `@type` on the inner opener at a higher priority than
+; the pattern above gives it.
+;
+; RESIDUAL, written down rather than left to be rediscovered: this reaches a
+; DIRECT child of the group's content. A bare opener nested deeper - inside a
+; `::: note` inside the group, or inside a list item there - keeps the group
+; capture, where the clause says any depth degrades. Widening it means a pattern
+; per depth, and the parse tree is right either way; only the colour is not.
+((div
+  class: (class_name) @_group.class
+  !title
+  !label
+  content: (content
+    (div
+      class: (class_name) @type
+      !title
+      !label)))
+  (#eq? @_group.class "figure")
+  (#eq? @type "figure")
+  (#set! priority 110))
+
 (identifier) @tag
 
 (key_value
