@@ -125,6 +125,30 @@ const CASES = [
         expect: 'type',
     },
     {
+        name: 'a bare opener one container deep inside a group is generic',
+        source: '::: figure\n:::: note\n::::: figure\nx\n:::::\n::::\n:::\n',
+        at: [2, 6],
+        expect: 'type',
+    },
+    {
+        name: 'a bare opener inside a quote inside a group is generic',
+        source: '::: figure\n> quoted\n>\n> :::: figure\n> x\n> ::::\n:::\n',
+        at: [3, 7],
+        expect: 'type',
+    },
+    {
+        name: 'a bare opener inside a list item inside a group is generic',
+        source: '::: figure\n- item\n\n  :::: figure\n  x\n  ::::\n:::\n',
+        at: [3, 7],
+        expect: 'type',
+    },
+    {
+        name: 'the intervening container itself keeps its own capture',
+        source: '::: figure\n:::: note\n::::: figure\nx\n:::::\n::::\n:::\n',
+        at: [1, 5],
+        expect: 'type',
+    },
+    {
         name: 'a group inside another container kind is still a group',
         source: '::: note\n:::: figure\nx\n::::\n:::\n',
         at: [1, 5],

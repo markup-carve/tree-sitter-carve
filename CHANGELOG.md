@@ -13,8 +13,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `:::` types: an opener carrying nothing else is one figure of ordered panels,
   and its `class_name` now captures `@type.builtin` instead of the generic
   `@type`. An opener that carries a quoted title or a `[label]` keeps `@type`,
-  and a bare opener that is a direct child of an open group is restored to
-  `@type` as well, because groups do not nest. The grammar itself is unchanged:
+  and a bare opener inside an open group is restored to `@type` as well, because
+  groups do not nest - through a direct child, an intervening container or quote,
+  and a list item. The grammar itself is unchanged:
   the parse tree already tells the two apart by which fields the opener carries,
   and the group caption already parses as a sibling of the container rather than
   inside it, which is where the clause puts it.

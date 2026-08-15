@@ -288,15 +288,22 @@
   (#set! priority 105))
 
 ; GROUPS DO NOT NEST: a bare `::: figure` inside an open group is a generic
-; container, not an inner group. A query cannot say "whose ancestor is not a
-; group", so this restores `@type` on the inner opener at a higher priority than
-; the pattern above gives it.
+; container, not an inner group, at ANY depth. A query has no transitive
+; closure - there is no "any descendant" - so the reach is spelled as wildcard
+; chains rooted at the group, one per intervening level, each restoring `@type`
+; on the inner opener at a higher priority than the pattern above gives it.
 ;
-; RESIDUAL, written down rather than left to be rediscovered: this reaches a
-; DIRECT child of the group's content. A bare opener nested deeper - inside a
-; `::: note` inside the group, or inside a list item there - keeps the group
-; capture, where the clause says any depth degrades. Widening it means a pattern
-; per depth, and the parse tree is right either way; only the colour is not.
+; Three levels covers every shape the language actually produces: a direct child
+; of the group's content; one intervening container (`div` > `content` > `div`,
+; and `block_quote` > `content` > `div`); and a list item
+; (`list` > `list_item` > `list_item_content` > `div`). The wildcards are
+; deliberate - naming the container types would have to be revisited every time
+; a new block gains a content field, and the chain LENGTH is the real constraint.
+;
+; RESIDUAL, written down rather than left to be rediscovered: a bare opener
+; reached through MORE than three levels - a quote inside a list item inside the
+; group, say - keeps the group capture. The parse tree is right either way; only
+; the colour is not.
 ((div
   class: (class_name) @_group.class
   !title
@@ -306,6 +313,37 @@
       class: (class_name) @type
       !title
       !label)))
+  (#eq? @_group.class "figure")
+  (#eq? @type "figure")
+  (#set! priority 110))
+
+((div
+  class: (class_name) @_group.class
+  !title
+  !label
+  content: (content
+    (_
+      (_
+        (div
+          class: (class_name) @type
+          !title
+          !label)))))
+  (#eq? @_group.class "figure")
+  (#eq? @type "figure")
+  (#set! priority 110))
+
+((div
+  class: (class_name) @_group.class
+  !title
+  !label
+  content: (content
+    (_
+      (_
+        (_
+          (div
+            class: (class_name) @type
+            !title
+            !label))))))
   (#eq? @_group.class "figure")
   (#eq? @type "figure")
   (#set! priority 110))
