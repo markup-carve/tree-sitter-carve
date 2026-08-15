@@ -53,6 +53,13 @@ jobs:
       - name: Line terminators
         run: npm run test:line-terminators
 
+      # The queries are the other half of what this repo ships - vim-carve,
+      # helix-carve and zed-carve load these files - and nothing here read them.
+      # A capture naming a node that no longer exists, or two patterns claiming
+      # one node with nobody deciding which wins, left every check green.
+      - name: Highlight captures resolve the way an editor resolves them
+        run: npm run test:highlights
+
       - name: The vendored battery is still carve-grammars' copy
         run: npm run test:battery-drift
       - name: Build WASM grammar

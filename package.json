@@ -19,7 +19,8 @@
     "test:battery-drift": "./tools/check-battery-drift.sh",
     "test:under-acceptance": "node scripts/under-acceptance.mjs",
     "test:no-error": "node scripts/no-error-sweep.mjs",
-    "test:line-terminators": "node scripts/line-terminators.mjs"
+    "test:line-terminators": "node scripts/line-terminators.mjs",
+    "test:highlights": "node scripts/highlight-captures.mjs"
   },
   "author": "",
   "license": "MIT",

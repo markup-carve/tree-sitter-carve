@@ -4778,3 +4778,101 @@ A fence whose only closer is over-indented does not interrupt (tree-sitter-carve
             begin_marker: (verbatim_marker_begin)
             content: (content)
             end_marker: (verbatim_marker_end)))))))
+
+===============================================================================
+A bare figure fence is a composite figure, and its caption sits after the closer (PART 9 4c)
+===============================================================================
+
+::: figure
+![one](a.png)
+^ (a) One
+
+![two](b.png)
+^ (b) Two
+:::
+^ Figure #: Group caption
+
+-------------------------------------------------------------------------------
+
+(document
+  (div
+    (div_marker_begin)
+    class: (class_name)
+    content: (content
+      (paragraph
+        (inline_image
+          description: (image_description)
+          destination: (inline_link_destination)))
+      (caption
+        (caption_marker)
+        content: (caption_content))
+      (paragraph
+        (inline_image
+          description: (image_description)
+          destination: (inline_link_destination)))
+      (caption
+        (caption_marker)
+        content: (caption_content)))
+    (div_marker_end))
+  (caption
+    (caption_marker)
+    content: (caption_content)))
+
+===============================================================================
+A title or a label keeps a figure fence a generic container (PART 9 4c)
+===============================================================================
+
+::: figure "A titled figure div"
+x
+:::
+
+::: figure [g]
+y
+:::
+
+-------------------------------------------------------------------------------
+
+(document
+  (div
+    (div_marker_begin)
+    class: (class_name)
+    title: (div_title)
+    content: (content
+      (paragraph))
+    (div_marker_end))
+  (div
+    (div_marker_begin)
+    class: (class_name)
+    label: (code_block_label)
+    content: (content
+      (paragraph))
+    (div_marker_end)))
+
+===============================================================================
+A bare figure fence inside an open group is an ordinary nested container (PART 9 4c)
+===============================================================================
+
+::: figure
+:::: figure
+x
+::::
+:::
+^ Figure #: Outer only
+
+-------------------------------------------------------------------------------
+
+(document
+  (div
+    (div_marker_begin)
+    class: (class_name)
+    content: (content
+      (div
+        (div_marker_begin)
+        class: (class_name)
+        content: (content
+          (paragraph))
+        (div_marker_end)))
+    (div_marker_end))
+  (caption
+    (caption_marker)
+    content: (caption_content)))
