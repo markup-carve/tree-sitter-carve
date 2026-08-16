@@ -479,6 +479,14 @@
 (footnote_reference
   (reference_label) @markup.link.label)
 
+; An inline note, `^[content]`. Its content is ordinary inline and highlights
+; itself; this marks the note as a whole so a reader can see where it ends -
+; which is the thing the construct is easy to get wrong about, and which this
+; grammar does get wrong for a note holding a bracket run that forms no span
+; (see the RECORDED GAP fixture). Painting the whole node is what makes that
+; visible in an editor rather than only in a tree dump.
+(inline_note) @markup.link.label
+
 [
   (footnote_marker_begin)
   (footnote_marker_end)

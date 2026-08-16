@@ -139,6 +139,17 @@ typedef enum {
   // stay adjacent to the marker above them.
   BOLD_ITALIC_MARK_BEGIN,
   BOLD_ITALIC_END,
+
+  // The zero-width mark that opens an inline note, `^[content]`. Appended for
+  // the same index reason as the two above.
+  INLINE_NOTE_MARK_BEGIN,
+
+  // The note's `^[` itself. External rather than a grammar token so the
+  // refusal happens BEFORE the characters are consumed: a grammar token is
+  // chosen by longest match, and once `^[` is taken there is no lexing left
+  // that reads the caret as text.
+  INLINE_NOTE_BEGIN,
+  INLINE_NOTE_END,
 } TokenType;
 
 // The different blocks in Carve that we track,
@@ -221,6 +232,24 @@ typedef enum {
   PARENS_SPAN,
   CURLY_BRACKET_SPAN,
   SQUARE_BRACKET_SPAN,
+  // An inline note, `^[content]`. Its own type rather than another
+  // square-bracket span: a nested `[` bumps the open span's fallback counter
+  // (see `mark_span_begin`), and with the note counted as one, `^[a [b] c]`
+  // could no longer close - `parse_span_end` refuses a span with open tags.
+  // A separate type keeps the note out of that count, which is right anyway:
+  // the note is a construct, not a bracket run.
+  //
+  // WHAT THAT COSTS, stated rather than left to be discovered. Keeping the
+  // note out of the count also keeps it from counting the nested run's DEPTH,
+  // so the note closes on the first `]` nobody else consumed: `x ^[a ^[b] c]`
+  // is a note over `^[a ^[b]` with ` c]` beside it, where the spec makes the
+  // whole of `a ^[b] c` its content (corpus 309). Closing correctly needs the
+  // scanner to be offered the inner `]`, and it is not - a bracket run that
+  // forms no span is consumed by the grammar's text rule, so no depth can be
+  // tracked here. `[^1]{.k}` is unaffected: the span consumes its own `]`.
+  // Pinned by the RECORDED GAP fixture in test/corpus/carve.txt, which fails
+  // when this is repaired.
+  INLINE_NOTE,
 } InlineType;
 
 // What kind of span we should parse.
@@ -5064,6 +5093,8 @@ static SpanType inline_span_type(InlineType type) {
   case CURLY_BRACKET_SPAN:
   case SQUARE_BRACKET_SPAN:
     return SpanSingle;
+  case INLINE_NOTE:
+    return SpanSingle;
   default:
     return SpanSingle;
   }
@@ -5099,6 +5130,8 @@ static char inline_begin_token(InlineType type) {
     return CURLY_BRACKET_SPAN_MARK_BEGIN;
   case SQUARE_BRACKET_SPAN:
     return SQUARE_BRACKET_SPAN_MARK_BEGIN;
+  case INLINE_NOTE:
+    return INLINE_NOTE_MARK_BEGIN;
   default:
     return ERROR;
   }
@@ -5134,6 +5167,8 @@ static char inline_end_token(InlineType type) {
     return CURLY_BRACKET_SPAN_END;
   case SQUARE_BRACKET_SPAN:
     return SQUARE_BRACKET_SPAN_END;
+  case INLINE_NOTE:
+    return INLINE_NOTE_END;
   default:
     return ERROR;
   }
@@ -5168,6 +5203,8 @@ static char inline_marker(InlineType type) {
   case CURLY_BRACKET_SPAN:
     return '}';
   case SQUARE_BRACKET_SPAN:
+    return ']';
+  case INLINE_NOTE:
     return ']';
   default:
     // Not used as verbatim is parsed separately.
@@ -5610,6 +5647,61 @@ static bool parse_span_end(Scanner *s, TSLexer *lexer, InlineType element,
 
 // Parse a span delimited with `marker`, with `_`, `{_`, and `_}` being valid
 // delimiters.
+/// The zero-width mark that opens an INLINE NOTE, `^[content]`.
+///
+/// `grammar.js` consumes the `^[` itself; this decides whether it opens a note
+/// at all, and the deciding case is the EMPTY one. `^[]` is a literal caret
+/// followed by an empty span, and `^[]{.c}` a caret followed by a span (spec
+/// corpus 307) - so a note must not form when the bracket closes immediately.
+/// A grammar rule cannot express that: the opener has to be one token for the
+/// lexer to prefer it over a bare `^`, and by then the decision is made.
+/// Refusing here kills the note branch and leaves the caret to the fallback,
+/// which is the reading the spec wants.
+///
+/// Everything else about the note's brackets is an ordinary square-bracket
+/// span, so it borrows that machinery wholesale and the existing
+/// `SQUARE_BRACKET_SPAN_END` closes it.
+static bool parse_inline_note_mark_begin(Scanner *s, TSLexer *lexer,
+                                         const bool *valid_symbols) {
+  return mark_span_begin(s, lexer, valid_symbols, INLINE_NOTE,
+                         INLINE_NOTE_MARK_BEGIN);
+}
+
+/// The `^[` that opens an inline note.
+///
+/// The EMPTY note is refused here, before either character is consumed. `^[]`
+/// is a literal caret followed by an empty span and `^[]{.c}` a caret followed
+/// by a span (spec corpus 307); a grammar token spelled `^[` cannot express
+/// that, because the lexer takes the longest match and the decision is over by
+/// the time anything can look at what follows. Refusing leaves the caret to
+/// the fallback, which is the reading the spec wants.
+static bool parse_inline_note_begin(Scanner *s, TSLexer *lexer) {
+  if (lexer->lookahead != '^') {
+    return false;
+  }
+  advance(s, lexer);
+  if (lexer->lookahead != '[') {
+    return false;
+  }
+  advance(s, lexer);
+  // The token is exactly `^[`; the scan below only looks.
+  lexer->mark_end(lexer);
+  // An EMPTY note is not a note, and neither is a whitespace-only one: `^[]`,
+  // `^[ ]` and `^[]{.c}` are all a literal caret followed by a bracket run
+  // (spec corpus 307). The content rule alone does not refuse `^[ ]` - a run
+  // of whitespace satisfies it - so the spaces are skipped here and the `]`
+  // behind them is what decides.
+  while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+    advance(s, lexer);
+  }
+  if (lexer->lookahead == ']') {
+    return false;
+  }
+  lexer->result_symbol = INLINE_NOTE_BEGIN;
+
+  return true;
+}
+
 static bool parse_span(Scanner *s, TSLexer *lexer, const bool *valid_symbols,
                        InlineType element) {
   TokenType begin_token = inline_begin_token(element);
@@ -5969,7 +6061,18 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
   if (parse_span(s, lexer, valid_symbols, CURLY_BRACKET_SPAN)) {
     return true;
   }
+  if (valid_symbols[INLINE_NOTE_MARK_BEGIN] &&
+      parse_inline_note_mark_begin(s, lexer, valid_symbols)) {
+    return true;
+  }
   if (parse_span(s, lexer, valid_symbols, SQUARE_BRACKET_SPAN)) {
+    return true;
+  }
+  // AFTER the square-bracket span, so a `]` closes an inner bracket before it
+  // closes the note. Offered first, the note took the first `]` it saw and
+  // `^[a [^1]{.k} c]` closed after `[^1`, leaving the rest of the note as
+  // ordinary text - no ERROR, and the wrong tree.
+  if (parse_span(s, lexer, valid_symbols, INLINE_NOTE)) {
     return true;
   }
 
@@ -5992,6 +6095,22 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
 
   if (valid_symbols[TABLE_CELL_END] && parse_table_cell_end(s, lexer)) {
     return true;
+  }
+
+  // A note's `^[`, LAST among everything that can read a caret.
+  //
+  // The check needs two characters and the lexer offers one, so it has to
+  // advance past the caret before it can tell whether a `[` follows - and a
+  // check that runs after it would then be reading a moved lexer. Rather than
+  // guess which of those matter, it goes after all of them and a refusal ends
+  // the scan, which puts the position back.
+  //
+  // Ordering it earlier is not a style question. Before the span parsers it
+  // swallowed the `^` that closes a braced superscript; before the table
+  // caption it turned `^ Fruit prices` into a document-level caption instead
+  // of the table's own, because the caption scanner never got the character.
+  if (valid_symbols[INLINE_NOTE_BEGIN] && lexer->lookahead == '^') {
+    return parse_inline_note_begin(s, lexer);
   }
 
   if (valid_symbols[HARD_LINE_BREAK] && parse_hard_line_break(s, lexer)) {
@@ -6307,6 +6426,12 @@ static char *token_type_s(TokenType t) {
 
   case LANGUAGE_ATTRIBUTE:
     return "LANGUAGE_ATTRIBUTE";
+  case INLINE_NOTE_MARK_BEGIN:
+    return "INLINE_NOTE_MARK_BEGIN";
+  case INLINE_NOTE_BEGIN:
+    return "INLINE_NOTE_BEGIN";
+  case INLINE_NOTE_END:
+    return "INLINE_NOTE_END";
   case IN_FALLBACK:
     return "IN_FALLBACK";
 

@@ -95,6 +95,15 @@ function effectiveCapture(text, row, column) {
  */
 const CASES = [
     {
+        // The note's own capture, which nothing else here would exercise: its
+        // content highlights as ordinary inline whatever the note does, so a
+        // query that never matched would look exactly like one that did.
+        name: 'an inline note is captured as a whole',
+        source: 'x ^[a note] c\n',
+        at: [0, 2],
+        expect: 'markup.link.label',
+    },
+    {
         name: 'a bare figure opener is a composite figure',
         source: '::: figure\n![one](a.png)\n^ (a) One\n:::\n^ Figure #: Group caption\n',
         at: [0, 4],
