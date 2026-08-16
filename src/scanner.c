@@ -2394,6 +2394,18 @@ static TokenType scan_ordered_list_marker_token_type(Scanner *s,
   // (corpus 156-parenthesized-ordered-marker). Accepting the wrapped form
   // coloured ordinary parenthesised prose as a list.
 
+  // A value-less marker is one that starts ON the delimiter, so this has to be
+  // read BEFORE the type scan: that scan CONSUMES the run it examined even when
+  // it rejects it, and the bare-dot fallback below cannot tell an omitted value
+  // from a rejected one by lookahead alone. `abc. item` therefore scanned
+  // `abc`, correctly refused it (an alpha marker is a single letter, EBNF
+  // `ordered_marker`), and then handed the leftover `.` to the fallback, which
+  // read it as a value-less decimal marker and built a list over `abc. ` - for
+  // a line the spec makes a paragraph
+  // (308-a-multi-letter-ordered-marker-opens-no-list). `ABC) item` escaped it
+  // only because the fallback is `.`-only.
+  bool value_omitted = lexer->lookahead == '.';
+
   OrderedListType list_type;
   if (!scan_ordered_list_type(s, lexer, &list_type)) {
     // BARE DOT (carve#472). The value may be omitted when the delimiter is
@@ -2405,7 +2417,7 @@ static TokenType scan_ordered_list_marker_token_type(Scanner *s,
     // why this is guarded on the delimiter and on not having consumed a `(` -
     // `() x` is not a marker either. The caller requires the trailing space,
     // so `.x` and a bare `.` on its own line are unaffected.
-    if (lexer->lookahead == '.') {
+    if (value_omitted) {
       advance(s, lexer);
       return LIST_MARKER_DECIMAL_PERIOD;
     }
@@ -5371,6 +5383,57 @@ static bool scan_valid_inline_attribute(Scanner *s, TSLexer *lexer) {
   return false;
 }
 
+// Scan for the `]` that closes the bracket run we are already inside,
+// skipping over any NESTED bracket run on the way.
+//
+// This is `scan_until(s, lexer, ']', top)` plus a depth counter, and the
+// counter is the whole point. A nested `[^1]{.k}` is CLOSER-SHAPED: it ends in
+// `]` immediately followed by `{`, which is exactly the `] {attrs}` tail the
+// caller uses to decide "this `[` opens a span". Stopping at the first `]`
+// therefore reads the INNER close as the outer one and flags the outer
+// bracket as a span it cannot actually be, and the parse of
+//
+//     x [a [^1]{.k} c]
+//
+// dies with an ERROR spanning the paragraph -- while `x [a [^1] {.k} c]`
+// (attribute detached) and `x [^1]{.k}` (not nested) both parse fine.
+// Counting depth means the outer lookahead only ever tests the `]` that
+// actually belongs to it.
+static bool scan_until_bracket_close(Scanner *s, TSLexer *lexer,
+                                     InlineType *top) {
+  // The opening `[` is already consumed by the caller, so we start one level
+  // in and are looking for the `]` that brings us back out.
+  unsigned depth = 0;
+  while (!lexer->eof(lexer)) {
+    if (top && scan_span_end_marker(s, lexer, *top)) {
+      return false;
+    }
+    if (lexer->lookahead == ']') {
+      if (depth == 0) {
+        return true;
+      }
+      depth--;
+      advance(s, lexer);
+    } else if (lexer->lookahead == '[') {
+      depth++;
+      advance(s, lexer);
+    } else if (lexer->lookahead == '\\') {
+      advance(s, lexer);
+      advance(s, lexer);
+    } else if (at_line_end(lexer)) {
+      // One newline is ok in inline spans, but not several in a row.
+      consume_line_end(s, lexer);
+      consume_whitespace(s, lexer);
+      if (at_line_end(lexer)) {
+        return false;
+      }
+    } else {
+      advance(s, lexer);
+    }
+  }
+  return false;
+}
+
 // Updates lookahead states that are used to block the acceptance of
 // the fallback characters `(` and `{` if there's a valid inline link
 // or span to be chosen.
@@ -5385,8 +5448,9 @@ static void update_square_bracket_lookahead_states(Scanner *s, TSLexer *lexer,
     top_type = &top->type;
   }
 
-  // Scan the `[some text]` span.
-  if (!scan_until(s, lexer, ']', top_type)) {
+  // Scan the `[some text]` span, stepping over nested bracket runs so a
+  // nested `[^1]{.k}` is not mistaken for this bracket's own `] {attrs}` tail.
+  if (!scan_until_bracket_close(s, lexer, top_type)) {
     return;
   }
   advance(s, lexer);

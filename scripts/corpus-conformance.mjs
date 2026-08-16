@@ -178,7 +178,15 @@ const RENDERS_NOTHING = new Set([
   // single-paragraph file (189-a-definition-inside-a-comment-registers-nothing),
   // where a construct that renders NOTHING was reported as over-acceptance.
   'fenced_comment_block',
-  'footnote_definition',
+  // `footnote`, not `footnote_definition` - the same dead-name defect as
+  // `comment_block` right above. This grammar's rule is named `footnote`, so
+  // the allowlist entry matched nothing and the check was blind to a footnote
+  // definition, which surfaced the moment a corpus document put an UNREFERENCED
+  // one in a single-paragraph file
+  // (314-a-footnote-in-an-unresolved-reference-is-not-a-reference): the
+  // definition is never called on, so it renders nothing, and it was reported
+  // as over-acceptance.
+  'footnote',
   'block_attribute',
 ]);
 
@@ -300,13 +308,15 @@ if (singleParagraphFiles.length) {
 // nothing" and "the line disappeared from the render" are the same claim, and
 // this checks the claim instead of assuming it from the node's name.
 //
-// `footnote_definition` is excluded from this set even though the allowlist
-// above calls it RENDERS_NOTHING: a footnote definition IS hoisted and
-// re-rendered, in its own footnotes section, holding the SAME body text - its
-// text is SUPPOSED to reappear there, and flagging that would fail every
-// correctly conforming footnote in the corpus.
+// `footnote` is excluded from this set even though the allowlist above calls
+// it RENDERS_NOTHING: a footnote definition IS hoisted and re-rendered, in its
+// own footnotes section, holding the SAME body text - its text is SUPPOSED to
+// reappear there, and flagging that would fail every correctly conforming
+// footnote in the corpus. (Spelled `footnote_definition` here too until the
+// allowlist above was corrected; against the real node name the exclusion had
+// nothing to exclude.)
 const INVISIBLE_ANYWHERE = new Set(
-  [...RENDERS_NOTHING].filter((type) => type !== 'footnote_definition'),
+  [...RENDERS_NOTHING].filter((type) => type !== 'footnote'),
 );
 
 // Turns a fixture's HTML into the text a reader actually sees: strip every
