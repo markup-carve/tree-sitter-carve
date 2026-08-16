@@ -480,6 +480,22 @@
       "spellings": "the cr spelling(s) parse to a different tree than lf",
       "reason": "ref:lone-cr-strands-a-column-probe"
     },
+    "a-note-body-s-own-references-resolve": {
+      "spellings": "the cr spelling(s) parse to a different tree than lf",
+      "reason": "ref:lone-cr-strands-a-column-probe"
+    },
+    "a-note-body-s-own-references-resolve-3": {
+      "spellings": "the cr spelling(s) parse to a different tree than lf",
+      "reason": "ref:lone-cr-strands-a-column-probe"
+    },
+    "a-note-s-content-recognizes-no-note-2": {
+      "spellings": "the cr spelling(s) parse to a different tree than lf",
+      "reason": "ref:lone-cr-strands-a-column-probe"
+    },
+    "a-note-s-content-recognizes-no-note-4": {
+      "spellings": "the cr spelling(s) parse to a different tree than lf",
+      "reason": "ref:lone-cr-strands-a-column-probe"
+    },
     "a-quoted-attribute-value-stops-at-the-newline-3": {
       "spellings": "the cr spelling(s) parse to a different tree than lf",
       "reason": "the cr spelling parses to a different tree because the LF spelling already parses to ERROR - this document is one of the three example-level skips added with the same corpus bump (a line holding only a vertical tab, form feed, NEL, LS or PS; a content line ending in NBSP, ZWSP, BOM or U+2000; a quoted attribute value carrying a newline). The terminator is not the defect here, the unmodeled construct is, and the divergence goes away with it. Tracked in tree-sitter-carve#160."
