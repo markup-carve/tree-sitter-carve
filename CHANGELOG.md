@@ -8,6 +8,25 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **An inline note, `^[content]`, is a construct** (spec PART 9, corpus 307 and
+  309). It was a literal caret followed by a bracket, with nothing in the tree
+  saying a note was written at all. The note is now an `inline_note` node with
+  a `content` field, captured as `markup.link.label`.
+
+  Its content recognizes no note and no footnote reference, as the spec says:
+  `^[b]` and `[^1]` inside a note are literal text, and `[^1]{.k}` is a span
+  over `^1`. An EMPTY or whitespace-only note is not a note - `^[]`, `^[ ]` and
+  `^[]{.c}` stay a literal caret and a bracket run.
+
+  KNOWN GAP: a note whose content holds a bracket run that forms no span ends
+  at that run's `]` rather than at its own. `x ^[a ^[b] c]` builds a note over
+  `^[a ^[b]` and leaves ` c]` beside it, where the spec makes the whole of
+  `a ^[b] c` the note's content (corpus 309). The corpus check cannot see it -
+  neither reading carries an ERROR - so `test/corpus/carve.txt` pins the
+  truncated tree explicitly, and whoever repairs it will be told by that
+  fixture failing. `[^1]{.k}` is unaffected, because the span consumes its own
+  `]`.
+
 - **A bare `::: figure` opener highlights as a composite figure** (spec PART 9
   §4c, markup-carve/carve#1215). The kind word `figure` is reserved among the
   `:::` types: an opener carrying nothing else is one figure of ordered panels,

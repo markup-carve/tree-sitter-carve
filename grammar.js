@@ -1,5 +1,183 @@
 const ELEMENT_PRECEDENCE = 100;
 
+// The inline element alternatives, shared by ordinary inline content and by a
+// note's content. `options.notes: false` drops the note, the footnote
+// reference and the `[^` fallback opener.
+function inlineElement($, options) {
+  const notes = options.notes !== false;
+  return prec.left(
+    choice(
+      // Span is declared separately because it always parses an `inline_attribute`,
+      // while the attribute is optional for everything else.
+      $.span,
+      seq(
+        choice(
+          $._smart_punctuation,
+          $.backslash_escape,
+          $.hard_line_break,
+          // Elements containing other inline elements needs to have the same precedence level
+          // so we can choose the element that's closed first.
+          //
+          // For example:
+          //
+          //     *[x](y*)
+          //
+          // Should parse a strong element instead of a link because it's closed before the link.
+          //
+          // They also need a higher precedence than the fallback tokens so that:
+          //
+          //     _a_
+          //
+          // Is parsed as emphasis instead of just text with `_symbol_fallback` tokens.
+          prec.dynamic(2 * ELEMENT_PRECEDENCE, $.bold_italic),
+          prec.dynamic(ELEMENT_PRECEDENCE, $.emphasis),
+          prec.dynamic(ELEMENT_PRECEDENCE, $.strong),
+          prec.dynamic(ELEMENT_PRECEDENCE, $.underline),
+          prec.dynamic(ELEMENT_PRECEDENCE, $.strikethrough),
+          prec.dynamic(ELEMENT_PRECEDENCE, $.highlighted),
+          prec.dynamic(ELEMENT_PRECEDENCE, $.superscript),
+          prec.dynamic(ELEMENT_PRECEDENCE, $.subscript),
+          prec.dynamic(ELEMENT_PRECEDENCE, $.insert),
+          prec.dynamic(ELEMENT_PRECEDENCE, $.delete),
+          $.substitution,
+          $.editorial_comment,
+          // A note's content recognizes neither a note nor a footnote
+          // reference, so both drop out there and stay the literal text
+          // the spec says they are (corpus 309).
+          ...(notes
+            ? [
+                prec.dynamic(ELEMENT_PRECEDENCE, $.inline_note),
+                prec.dynamic(ELEMENT_PRECEDENCE, $.footnote_reference),
+              ]
+            : []),
+          prec.dynamic(ELEMENT_PRECEDENCE, $._image),
+          prec.dynamic(ELEMENT_PRECEDENCE, $._link),
+          prec.dynamic(ELEMENT_PRECEDENCE, $.extension_inline),
+          prec.dynamic(ELEMENT_PRECEDENCE, $.mention),
+          prec.dynamic(ELEMENT_PRECEDENCE, $.tag),
+          prec.dynamic(ELEMENT_PRECEDENCE, $.citation_group),
+          $.autolink,
+          $.verbatim,
+          alias($.inline_math, $.math),
+          $.inline_literal,
+          $.raw_inline,
+          $.symbol,
+          $.inline_comment,
+          $.trailing_comment,
+          $._todo_highlights,
+          // Word runs that ABSORB a glued mention / tag / symbol, which is
+          // how the leading word-boundary guard is enforced without
+          // lookbehind (see _glued_* below).
+          $._glued_mention,
+          $._glued_tag,
+          $._glued_symbol,
+          // Text and the symbol fallback matches everything not matched elsewhere.
+          notes ? $._symbol_fallback : $._note_symbol_fallback,
+          $._text,
+        ),
+        optional(
+          // We need a separate fallback token for the opening `{`
+          // for the parser to recognize the conflict.
+          choice(
+            // Use precedence for inline attribute as well to allow
+            // closure before other elements.
+            prec.dynamic(
+              2 * ELEMENT_PRECEDENCE,
+              field("attribute", $.inline_attribute),
+            ),
+            $._curly_bracket_span_fallback,
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+// The fallback alternatives, shared by ordinary inline content and by a note's
+// content. `options.notes: false` drops the `[^` opener.
+function symbolFallback($, options) {
+  const notes = options.notes !== false;
+  return choice(
+    // Standalone emphasis and strong markers are required for backtracking
+    "/",
+    // `/*` is a token in its own right, so a bare one needs its own
+    // standalone fallback the way `/` and `*` do - otherwise `/* x/`, where
+    // the whitespace check after `/*` fails, has no lexing left at all.
+    "/*",
+    "*",
+    "_",
+    "~",
+    // Single-char highlight/subscript markers also need a standalone
+    // fallback so a lone `=` / `,` that does not open a span (e.g. the `=`
+    // in a `|=` table header cell, or a comma in prose) becomes literal.
+    ",",
+    "=",
+    // Whitespace sensitive
+    // `/*` is a longer token than `/`, so without a branch of its own an
+    // unclosed bold-italic could not lose to emphasis at all: the parser
+    // commits to `bold_italic_begin` and errors at the end of the line.
+    seq(
+      seq("/*", $._non_whitespace_check),
+      choice($._bold_italic_mark_begin, $._in_fallback),
+    ),
+    seq(
+      seq("/", $._non_whitespace_check),
+      choice($._emphasis_mark_begin, $._in_fallback),
+    ),
+    seq(
+      choice("{*", seq("*", $._non_whitespace_check)),
+      choice($._strong_mark_begin, $._in_fallback),
+    ),
+    seq(
+      seq("_", $._non_whitespace_check),
+      choice($._underline_mark_begin, $._in_fallback),
+    ),
+    seq(
+      seq("~", $._non_whitespace_check),
+      choice($._strikethrough_mark_begin, $._in_fallback),
+    ),
+    // Not sensitive to whitespace
+    seq(choice("{^", "^"), choice($._superscript_mark_begin, $._in_fallback)),
+    seq(
+      choice("{,", seq(",", $._non_whitespace_check)),
+      choice($._subscript_mark_begin, $._in_fallback),
+    ),
+    seq(
+      choice("{=", seq("=", $._highlighted_open_check)),
+      choice($._highlighted_mark_begin, $._in_fallback),
+    ),
+    seq("{+", choice($._insert_mark_begin, $._in_fallback)),
+    seq("{-", choice($._delete_mark_begin, $._in_fallback)),
+
+    // Bracketed spans
+    // A note's content has no footnote reference, so `[^` must not be an
+    // opener there either: taken as one it swallows the caret and
+    // `[^1]{.k}` comes back as a span over `1` where the spec wants `^1`.
+    ...(notes
+      ? [seq("[^", choice($._square_bracket_span_mark_begin, $._in_fallback))]
+      : []),
+    seq("![", choice($._square_bracket_span_mark_begin, $._in_fallback)),
+    seq("[", choice($._square_bracket_span_mark_begin, $._in_fallback)),
+    seq("(", choice($._parens_span_mark_begin, $._in_fallback)),
+
+    // Autolink
+    "<",
+    seq("<", /[^>\s]+/),
+
+    // Math
+    "$$",
+    "$",
+
+    // Inline literal: a bare `!` that does not open a `` !`…` `` span
+    // (no verbatim run follows) falls back to literal text, exactly as a
+    // lone `$` does for math.
+    "!",
+
+    // Empty link text
+    "[]",
+  );
+}
+
 module.exports = grammar({
   name: "carve",
 
@@ -15,23 +193,48 @@ module.exports = grammar({
   extras: (_) => ["\r"],
 
   conflicts: ($) => [
+    // Every conflict naming `_symbol_fallback` is mirrored for the note's
+    // variant of it, `_note_symbol_fallback` - same rules, same ambiguity, one
+    // alternative fewer - EXCEPT where the note's shorter alternative list
+    // makes the ambiguity unreachable and `tree-sitter generate` reports the
+    // declaration as unnecessary. A note's content holds no footnote
+    // reference and no note, so `footnote_marker_begin` and
+    // `_inline_note_begin` never compete with it and are not mirrored. The
+    // `^[` opener does not need a declared conflict against the plain
+    // fallback either: it is an external token offered last, and its refusal
+    // restores the position for the caret's own fallback.
     [$.bold_italic_begin, $._symbol_fallback],
+    [$.bold_italic_begin, $._note_symbol_fallback],
     [$.emphasis_begin, $._symbol_fallback],
+    [$.emphasis_begin, $._note_symbol_fallback],
     [$.strong_begin, $._symbol_fallback],
+    [$.strong_begin, $._note_symbol_fallback],
     [$.underline_begin, $._symbol_fallback],
+    [$.underline_begin, $._note_symbol_fallback],
     [$.strikethrough_begin, $._symbol_fallback],
+    [$.strikethrough_begin, $._note_symbol_fallback],
     [$.superscript_begin, $._symbol_fallback],
+    [$.superscript_begin, $._note_symbol_fallback],
     [$.subscript_begin, $._symbol_fallback],
+    [$.subscript_begin, $._note_symbol_fallback],
     [$.highlighted_begin, $._symbol_fallback],
+    [$.highlighted_begin, $._note_symbol_fallback],
     [$.insert_begin, $._symbol_fallback],
+    [$.insert_begin, $._note_symbol_fallback],
     [$.delete_begin, $._symbol_fallback],
+    [$.delete_begin, $._note_symbol_fallback],
     [$._bracketed_text_begin, $._symbol_fallback],
+    [$._bracketed_text_begin, $._note_symbol_fallback],
     [$._image_description_begin, $._symbol_fallback],
+    [$._image_description_begin, $._note_symbol_fallback],
     [$.footnote_marker_begin, $._symbol_fallback],
     [$.inline_math, $._symbol_fallback],
+    [$.inline_math, $._note_symbol_fallback],
     [$.block_math, $.inline_math, $._symbol_fallback],
     [$.inline_literal, $._symbol_fallback],
+    [$.inline_literal, $._note_symbol_fallback],
     [$.link_text, $._symbol_fallback],
+    [$.link_text, $._note_symbol_fallback],
     [$._curly_bracket_span_begin, $._curly_bracket_span_fallback],
   ],
 
@@ -1209,83 +1412,15 @@ module.exports = grammar({
         $._inline_element,
       ),
 
-    _inline_element: ($) =>
+    _inline_element: ($) => inlineElement($, {}),
+
+    _note_inline_element: ($) => inlineElement($, { notes: false }),
+
+    // A note's content: ordinary inline, minus what a note may not contain.
+    _note_inline: ($) =>
       prec.left(
-        choice(
-          // Span is declared separately because it always parses an `inline_attribute`,
-          // while the attribute is optional for everything else.
-          $.span,
-          seq(
-            choice(
-              $._smart_punctuation,
-              $.backslash_escape,
-              $.hard_line_break,
-              // Elements containing other inline elements needs to have the same precedence level
-              // so we can choose the element that's closed first.
-              //
-              // For example:
-              //
-              //     *[x](y*)
-              //
-              // Should parse a strong element instead of a link because it's closed before the link.
-              //
-              // They also need a higher precedence than the fallback tokens so that:
-              //
-              //     _a_
-              //
-              // Is parsed as emphasis instead of just text with `_symbol_fallback` tokens.
-              prec.dynamic(2 * ELEMENT_PRECEDENCE, $.bold_italic),
-              prec.dynamic(ELEMENT_PRECEDENCE, $.emphasis),
-              prec.dynamic(ELEMENT_PRECEDENCE, $.strong),
-              prec.dynamic(ELEMENT_PRECEDENCE, $.underline),
-              prec.dynamic(ELEMENT_PRECEDENCE, $.strikethrough),
-              prec.dynamic(ELEMENT_PRECEDENCE, $.highlighted),
-              prec.dynamic(ELEMENT_PRECEDENCE, $.superscript),
-              prec.dynamic(ELEMENT_PRECEDENCE, $.subscript),
-              prec.dynamic(ELEMENT_PRECEDENCE, $.insert),
-              prec.dynamic(ELEMENT_PRECEDENCE, $.delete),
-              $.substitution,
-              $.editorial_comment,
-              prec.dynamic(ELEMENT_PRECEDENCE, $.footnote_reference),
-              prec.dynamic(ELEMENT_PRECEDENCE, $._image),
-              prec.dynamic(ELEMENT_PRECEDENCE, $._link),
-              prec.dynamic(ELEMENT_PRECEDENCE, $.extension_inline),
-              prec.dynamic(ELEMENT_PRECEDENCE, $.mention),
-              prec.dynamic(ELEMENT_PRECEDENCE, $.tag),
-              prec.dynamic(ELEMENT_PRECEDENCE, $.citation_group),
-              $.autolink,
-              $.verbatim,
-              alias($.inline_math, $.math),
-              $.inline_literal,
-              $.raw_inline,
-              $.symbol,
-              $.inline_comment,
-              $.trailing_comment,
-              $._todo_highlights,
-              // Word runs that ABSORB a glued mention / tag / symbol, which is
-              // how the leading word-boundary guard is enforced without
-              // lookbehind (see _glued_* below).
-              $._glued_mention,
-              $._glued_tag,
-              $._glued_symbol,
-              // Text and the symbol fallback matches everything not matched elsewhere.
-              $._symbol_fallback,
-              $._text,
-            ),
-            optional(
-              // We need a separate fallback token for the opening `{`
-              // for the parser to recognize the conflict.
-              choice(
-                // Use precedence for inline attribute as well to allow
-                // closure before other elements.
-                prec.dynamic(
-                  2 * ELEMENT_PRECEDENCE,
-                  field("attribute", $.inline_attribute),
-                ),
-                $._curly_bracket_span_fallback,
-              ),
-            ),
-          ),
+        repeat1(
+          choice($._note_inline_element, $._newline_inline, $._whitespace1),
         ),
       ),
 
@@ -1489,6 +1624,28 @@ module.exports = grammar({
         "[]",
       ),
 
+    // An INLINE NOTE, `^[content]`.
+    //
+    // The opener is ONE token so the lexer prefers it to a bare `^`, which is
+    // what a bare caret falls back to; the scanner then refuses the mark when
+    // the bracket closes immediately, so `^[]` stays a caret and an empty span
+    // (spec corpus 307). Its brackets are otherwise an ordinary square-bracket
+    // span and close with the same token.
+    //
+    // The content is `_note_inline`, which recognizes NO note and NO footnote
+    // reference: the spec says a note's content recognizes neither, so `^[b]`
+    // and `[^1]` inside a note are literal text and `[^1]{.k}` is a span over
+    // `^1` (corpus 309). Modeled here rather than left to the renderer,
+    // because the reference otherwise consumed the `]` the note needed to
+    // close and the whole paragraph collapsed to ERROR.
+    inline_note: ($) =>
+      seq(
+        $._inline_note_begin,
+        $._inline_note_mark_begin,
+        field("content", alias($._note_inline, $.content)),
+        prec.dynamic(-ELEMENT_PRECEDENCE, alias($._inline_note_end, "]")),
+      ),
+
     span: ($) =>
       seq(
         $._bracketed_text_begin,
@@ -1635,84 +1792,9 @@ module.exports = grammar({
     // when the tree grows large.
     //
     // Block level collisions handled by the scanner scanning ahead.
-    _symbol_fallback: ($) =>
-      choice(
-        // Standalone emphasis and strong markers are required for backtracking
-        "/",
-        // `/*` is a token in its own right, so a bare one needs its own
-        // standalone fallback the way `/` and `*` do - otherwise `/* x/`, where
-        // the whitespace check after `/*` fails, has no lexing left at all.
-        "/*",
-        "*",
-        "_",
-        "~",
-        // Single-char highlight/subscript markers also need a standalone
-        // fallback so a lone `=` / `,` that does not open a span (e.g. the `=`
-        // in a `|=` table header cell, or a comma in prose) becomes literal.
-        ",",
-        "=",
-        // Whitespace sensitive
-        // `/*` is a longer token than `/`, so without a branch of its own an
-        // unclosed bold-italic could not lose to emphasis at all: the parser
-        // commits to `bold_italic_begin` and errors at the end of the line.
-        seq(
-          seq("/*", $._non_whitespace_check),
-          choice($._bold_italic_mark_begin, $._in_fallback),
-        ),
-        seq(
-          seq("/", $._non_whitespace_check),
-          choice($._emphasis_mark_begin, $._in_fallback),
-        ),
-        seq(
-          choice("{*", seq("*", $._non_whitespace_check)),
-          choice($._strong_mark_begin, $._in_fallback),
-        ),
-        seq(
-          seq("_", $._non_whitespace_check),
-          choice($._underline_mark_begin, $._in_fallback),
-        ),
-        seq(
-          seq("~", $._non_whitespace_check),
-          choice($._strikethrough_mark_begin, $._in_fallback),
-        ),
-        // Not sensitive to whitespace
-        seq(
-          choice("{^", "^"),
-          choice($._superscript_mark_begin, $._in_fallback),
-        ),
-        seq(
-          choice("{,", seq(",", $._non_whitespace_check)),
-          choice($._subscript_mark_begin, $._in_fallback),
-        ),
-        seq(
-          choice("{=", seq("=", $._highlighted_open_check)),
-          choice($._highlighted_mark_begin, $._in_fallback),
-        ),
-        seq("{+", choice($._insert_mark_begin, $._in_fallback)),
-        seq("{-", choice($._delete_mark_begin, $._in_fallback)),
+    _symbol_fallback: ($) => symbolFallback($, {}),
 
-        // Bracketed spans
-        seq("[^", choice($._square_bracket_span_mark_begin, $._in_fallback)),
-        seq("![", choice($._square_bracket_span_mark_begin, $._in_fallback)),
-        seq("[", choice($._square_bracket_span_mark_begin, $._in_fallback)),
-        seq("(", choice($._parens_span_mark_begin, $._in_fallback)),
-
-        // Autolink
-        "<",
-        seq("<", /[^>\s]+/),
-
-        // Math
-        "$$",
-        "$",
-
-        // Inline literal: a bare `!` that does not open a `` !`…` `` span
-        // (no verbatim run follows) falls back to literal text, exactly as a
-        // lone `$` does for math.
-        "!",
-
-        // Empty link text
-        "[]",
-      ),
+    _note_symbol_fallback: ($) => symbolFallback($, { notes: false }),
 
     // Used to branch on inline attributes that may follow any element.
     _curly_bracket_span_fallback: ($) =>
@@ -1950,5 +2032,16 @@ module.exports = grammar({
     // and not mirror images. Appended for the same reason as the marker above.
     $._bold_italic_mark_begin,
     $.bold_italic_end,
+
+    // Opens an inline note, `^[content]`. Appended for the same index reason.
+    $._inline_note_mark_begin,
+
+    // The note's `^[`. External so the scanner can refuse the EMPTY note
+    // before the characters are consumed, which is what keeps `^[]` a literal
+    // caret and an empty span.
+    $._inline_note_begin,
+    // The note's own closer. Its own token, and its own inline type in the
+    // scanner, so a bracket nested in the content does not count against it.
+    $._inline_note_end,
   ],
 });

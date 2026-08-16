@@ -552,6 +552,10 @@
           "named": true
         },
         {
+          "type": "inline_note",
+          "named": true
+        },
+        {
           "type": "insert",
           "named": true
         },
@@ -815,6 +819,10 @@
         },
         {
           "type": "inline_literal",
+          "named": true
+        },
+        {
+          "type": "inline_note",
           "named": true
         },
         {
@@ -1658,6 +1666,10 @@
           "named": true
         },
         {
+          "type": "inline_note",
+          "named": true
+        },
+        {
           "type": "insert",
           "named": true
         },
@@ -1867,6 +1879,22 @@
     }
   },
   {
+    "type": "inline_note",
+    "named": true,
+    "fields": {
+      "content": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "content",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "insert",
     "named": true,
     "fields": {
@@ -2047,6 +2075,10 @@
         },
         {
           "type": "inline_literal",
+          "named": true
+        },
+        {
+          "type": "inline_note",
           "named": true
         },
         {
@@ -2279,6 +2311,10 @@
         },
         {
           "type": "inline_literal",
+          "named": true
+        },
+        {
+          "type": "inline_note",
           "named": true
         },
         {
@@ -2867,6 +2903,10 @@
         },
         {
           "type": "inline_literal",
+          "named": true
+        },
+        {
+          "type": "inline_note",
           "named": true
         },
         {
@@ -3553,6 +3593,10 @@
           "named": true
         },
         {
+          "type": "inline_note",
+          "named": true
+        },
+        {
           "type": "insert",
           "named": true
         },
@@ -3785,6 +3829,10 @@
         },
         {
           "type": "inline_literal",
+          "named": true
+        },
+        {
+          "type": "inline_note",
           "named": true
         },
         {
