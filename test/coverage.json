@@ -13,8 +13,10 @@
     "a-block-attribute-line-inside-a-quote-ends-the-paragraph-above-it",
     "a-block-image-is-separated-from-the-block-after-it-on-every-target",
     "a-boolean-and-a-key-value-of-the-same-name-are-one-attribute",
+    "a-boolean-lang-is-the-third-spelling-of-the-same-key",
     "a-boundary-line-inside-an-open-fence-does-not-end-the-container",
     "a-caption-attaches-across-one-blank-line",
+    "a-captioned-quote-holds-more-than-one-block",
     "a-caret-is-a-reference-label-not-an-empty-footnote",
     "a-caret-line-does-not-end-a-paragraph-it-cannot-caption",
     "a-code-fence-opener-takes-exactly-one-space",
@@ -44,6 +46,7 @@
     "a-definition-marker-s-separator-is-a-space-and-it-is-a-run",
     "a-definition-on-a-footnote-body-s-continuation-line-is-collected",
     "a-definition-past-a-footnote-body-s-column-is-the-body-s-own-text",
+    "a-derived-title-yields-to-an-authored-one",
     "a-description-line-needs-a-term-above-it",
     "a-div-does-not-define-an-abbreviation-either",
     "a-fence-keeps-the-blank-line-at-the-end-of-its-content",
@@ -54,6 +57,9 @@
     "a-footnote-body-holds-blocks-and-they-render-where-they-were-written",
     "a-footnote-body-s-last-block-when-it-is-not-a-paragraph-gets-a-synthesized-paragraph-for-the-backlink",
     "a-footnote-body-s-own-column-is-two-and-a-third-column-is-its-text",
+    "a-footnote-in-an-unresolved-reference-is-not-a-reference",
+    "a-footnote-in-link-text-nests-the-anchors",
+    "a-footnote-in-reference-link-text-nests-the-anchors-too",
     "a-format-character-before-a-scheme-is-not-stripped-and-is-inert",
     "a-frontmatter-opener-takes-exactly-one-space",
     "a-heading-id-keeps-a-non-ascii-space",
@@ -68,9 +74,14 @@
     "a-list-marker-at-the-content-column-inside-an-open-fence",
     "a-malformed-language-tag-leaves-the-whole-block-literal",
     "a-marker-attribute-may-hold-a-quoted-brace",
+    "a-marker-glued-to-a-name-opens-nothing",
     "a-marker-separator-is-a-space-never-a-tab",
+    "a-math-span-s-base-class-keeps-the-class-slot-in-place",
+    "a-multi-letter-ordered-marker-opens-no-list",
     "a-multi-line-raw-block-is-placed-at-its-opening-and-verbatim-after-it",
     "a-nested-list-in-a-footnote-body-stays-nested",
+    "a-note-body-s-own-references-resolve",
+    "a-note-s-content-recognizes-no-note",
     "a-pipe-pair-with-no-cell-is-not-a-table",
     "a-quote-marker-is-plus-a-space-and-a-lazy-line-keeps-its-own-text",
     "a-quoted-attribute-value-stops-at-the-newline",
@@ -79,8 +90,9 @@
     "a-reference-definition-is-anchored-at-end-of-line",
     "a-reference-definition-s-metadata-slots-take-exactly-one-space",
     "a-reference-image-takes-a-caption",
+    "a-reference-link-s-text-survives-its-own-frame",
     "a-repeated-definition-which-one-wins",
-    "a-semantic-span-keeps-its-wrapper-unless-consumption-empties-it",
+    "a-semantic-name-renames-the-span-and-the-leftovers-ride-the-element",
     "a-single-percent-is-not-a-comment",
     "a-structural-attribute-leads-the-author-s-own",
     "a-tab-after-a-heading-quote-or-caption-marker-leaves-the-line-as-prose",
@@ -105,16 +117,22 @@
     "all-space-verbatim-content",
     "an-abbreviation-at-a-list-item-s-content-column-is-still-not-a-definition",
     "an-abbreviation-definition-is-recognized-only-at-document-level",
+    "an-abbreviation-expands-inside-an-inline-container",
     "an-abbreviation-term-is-one-ascii-alphanumeric-word",
     "an-absorbed-colon-fence-leaves-a-block-quote-s-paragraph-open",
+    "an-angle-bracket-is-escaped-only-where-it-opens-markup",
     "an-at-sign-is-a-reference-label-character-everywhere-but-the-first-position",
     "an-attribute-line-inside-a-footnote-body-attaches-inside-it",
     "an-attribute-name-admits-no-colon",
     "an-autolink-body-admits-non-ascii-and-excludes-format-characters",
+    "an-editorial-comment-s-bracket-is-content-not-the-close",
     "an-empty-abbreviation-term-is-not-a-definition",
     "an-empty-footnote-body-is-written-with-the-empty-sentinel",
+    "an-empty-inline-note-is-literal",
+    "an-image-s-alt-text-closes-where-a-link-s-text-closes",
     "an-image-takes-a-reference-the-way-a-link-does",
     "an-inline-attribute-block-does-not-span-lines-but-an-attribute-line-does",
+    "an-inline-note-s-content-resolves-after-the-note",
     "an-invisible-line-does-not-cancel-a-blank-line-separation",
     "an-unresolved-image-reference-stays-literal",
     "an-unresolved-reference-image-takes-no-caption",
@@ -139,6 +157,7 @@
     "blocks-that-render-to-nothing",
     "bold-italic-delimiter-needs-content",
     "boolean-attributes",
+    "cell-attributes-bind-after-the-kind-and-alignment-markers",
     "classes-are-deduplicated",
     "code-fence-metadata-slots-must-be-a-space-too",
     "code-span-and-image-trailing-attributes-are-strict",
@@ -150,6 +169,7 @@
     "comment-fence-with-trailing-text",
     "comments",
     "compact-list-blocks",
+    "composite-figures",
     "cross-reference",
     "cross-references-resolve-inside-footnote-bodies",
     "cyclic-cross-reference-resolves-to-one-level",
@@ -274,11 +294,13 @@
     "tables-with-rowspan-and-colspan",
     "tag-requires-a-word-boundary",
     "task-lists",
+    "the-canonical-writer-glues-a-code-fence-to-its-info-string",
     "the-continuation-marker-at-an-item-s-own-column-and-what-follows-it",
     "the-flush-left-line-after-a-container-a-quoted-line-opened",
     "the-inline-attribute-interior-is-space-only-the-attribute-line-is-not",
     "the-language-sigil-takes-no-padding",
     "the-same-column-written-with-four-spaces",
+    "the-semantic-registry-holds-no-element-carve-already-spells",
     "thematic-break-requires-contiguous-markers",
     "thematic-breaks",
     "tight-list-item-keeps-trailing-text-after-a-block-bare",
@@ -290,6 +312,7 @@
     "trojan-source-heading-ids-are-nfc-normalized-and-strip-invisible-controls",
     "trojan-source-rendered-text-and-code-strip-bidi-override-controls",
     "two-abbreviation-definitions",
+    "two-attributes-need-a-separator-between-them",
     "two-backticks-are-not-a-code-fence-opening-or-closing",
     "two-blank-lines-detach-a-caption",
     "two-char-delimiter-runs",
@@ -305,8 +328,9 @@
   ],
   "skip": {
     "a-blank-line-holds-spaces-and-tabs-and-nothing-else-3": "a paragraph whose interior lines hold a single vertical tab, form feed, NEL (U+0085), LS (U+2028) or PS (U+2029) and nothing else parses to ERROR. PART 9 makes a line blank only when it holds spaces and tabs, so each of these is CONTENT and the paragraph runs through them; this grammar has no line-content route for a line whose only character is one of them. The category's other examples parse cleanly.",
-    "trailing-whitespace-on-a-content-line-is-dropped-7": "content lines ending in NBSP, ZWSP, BOM, U+2000 or a form feed parse to ERROR. Only the ASCII space and tab are dropped as trailing whitespace; every other spelling is content the renderer keeps, and this grammar's line-content rule does not admit them in that position. The category's other examples parse cleanly.",
-    "a-quoted-attribute-value-stops-at-the-newline-3": "a quoted attribute value carrying a newline (`{k=\"a` / `b\"}`) parses to ERROR. The corpus pins it as literal text - the inline block does not span lines - but this grammar commits to an attribute block on the opening brace and has no route back to a paragraph when the value never closes on its line. Same class as an-attribute-name-admits-no-colon-3. The category's other examples parse cleanly."
+    "a-note-s-content-recognizes-no-note-4": "`x ^[a [^1]{.k} c]` parses to ERROR. An inline note is not a construct in this grammar - `^[` is a literal caret followed by a bracket - so the `[^` inside the note opens a footnote reference, that reference consumes the `]` the outer bracket needed, and the paragraph is left with an unmatched close. The spec says a note's content recognizes no note and no reference, which makes the inner text literal and `[^1]{.k}` a span over `^1`. Modeling the note as a bracket construct was tried and does not reach: the caret is consumed by the superscript fallback before a note opener is ever considered, so the rule never competes - `tree-sitter generate` says as much, reporting the declared conflict as unnecessary. A real fix belongs in the external scanner, which owns the bracket marks. The category's other examples parse cleanly.",
+    "a-quoted-attribute-value-stops-at-the-newline-3": "a quoted attribute value carrying a newline (`{k=\"a` / `b\"}`) parses to ERROR. The corpus pins it as literal text - the inline block does not span lines - but this grammar commits to an attribute block on the opening brace and has no route back to a paragraph when the value never closes on its line. Same class as an-attribute-name-admits-no-colon-3. The category's other examples parse cleanly.",
+    "trailing-whitespace-on-a-content-line-is-dropped-7": "content lines ending in NBSP, ZWSP, BOM, U+2000 or a form feed parse to ERROR. Only the ASCII space and tab are dropped as trailing whitespace; every other spelling is content the renderer keeps, and this grammar's line-content rule does not admit them in that position. The category's other examples parse cleanly."
   },
   "overAcceptance": {
     "a-caret-line-does-not-end-a-paragraph-it-cannot-caption": {
@@ -319,6 +343,16 @@
       "lines": "3",
       "reason": "a paragraph that merely contains an image is not a captionable host; deciding that the image is the paragraph's whole content needs semantic context beyond this grammar's local caret-line rule, so it over-accepts the caret line as a caption."
     },
+    "a-footnote-in-an-unresolved-reference-is-not-a-reference": {
+      "nodes": "footnote",
+      "lines": "3",
+      "reason": "`a [t[^1]][nope] b` leaves the reference unresolved, which makes its text literal - so the `[^1]` inside is not a footnote reference and the `[^1]: n` definition below it has nothing to bind (carve#1202). Whether the reference resolved is a document-wide question this grammar cannot ask, so it builds the definition anyway. Same family as the note frame recorded in `skip`: both need a context the context-free grammar does not carry."
+    },
+    "a-multi-letter-ordered-marker-opens-no-list": {
+      "nodes": "list",
+      "lines": "1",
+      "reason": "`abc. item` is a paragraph: an ordered marker is a SINGLE letter, so a multi-letter run opens no list (spec PART 9, carve#1171). This grammar's marker rule accepts a letter RUN before the `.`, and narrowing it to one letter is a token change whose blast radius reaches every alphabetic list in the corpus - measured, not assumed, before it is attempted."
+    },
     "an-unresolved-reference-image-takes-no-caption": {
       "nodes": "caption",
       "lines": "2",
@@ -328,22 +362,46 @@
   "invisibleOverAcceptance": {},
   "batteryDisagreements": {},
   "underAcceptance": {
-    "a-fence-keeps-the-blank-line-at-the-end-of-its-content-4": {
-      "gaps": "code_block: want 1 have 0",
-      "reason": "ref:fence-on-a-marker-line-builds-nothing"
-    },
     "a-boundary-line-inside-an-open-fence-does-not-end-the-container": {
       "gaps": "code_block: want 1 have 0"
     },
     "a-boundary-line-inside-an-open-fence-does-not-end-the-container-2": {
       "gaps": "code_block: want 1 have 0"
     },
-    "a-list-marker-at-the-content-column-inside-an-open-fence": {
-      "gaps": "code_block: want 1 have 0"
+    "a-captioned-quote-holds-more-than-one-block-4": {
+      "gaps": "code_block: want 1 have 0",
+      "reason": "a tilde-fenced code block inside a block quote reads as paragraph content: the quote markers on the fence lines are consumed as markers and the fence never opens. Same family as the other container-fence gaps recorded here, and the new case is the first to reach it through a captioned quote."
+    },
+    "a-fence-keeps-the-blank-line-at-the-end-of-its-content-4": {
+      "gaps": "code_block: want 1 have 0",
+      "reason": "ref:fence-on-a-marker-line-builds-nothing"
+    },
+    "a-fence-opened-on-a-list-marker-line-body-below-the-content-column": {
+      "gaps": "code_block: want 1 have 0",
+      "reason": "ref:fence-on-a-marker-line-builds-nothing"
+    },
+    "a-fence-opened-on-a-list-marker-line-body-below-the-content-column-2": {
+      "gaps": "code_block: want 1 have 0",
+      "reason": "ref:fence-on-a-marker-line-builds-nothing"
+    },
+    "a-fence-opened-on-a-list-marker-line-body-below-the-content-column-3": {
+      "gaps": "code_block: want 1 have 0",
+      "reason": "ref:fence-on-a-marker-line-builds-nothing"
+    },
+    "a-fence-opened-on-a-list-marker-line-body-below-the-content-column-5": {
+      "gaps": "code_block: want 1 have 0",
+      "reason": "ref:fence-on-a-marker-line-builds-nothing"
+    },
+    "a-fence-opened-on-a-list-marker-line-body-below-the-content-column-6": {
+      "gaps": "code_block: want 1 have 0",
+      "reason": "ref:fence-on-a-marker-line-builds-nothing"
     },
     "a-frontmatter-opener-takes-exactly-one-space": {
       "gaps": "thematic_break: want 1 have 0",
       "reason": "`---<SP><SP>yaml` is no longer read as a frontmatter opener - the opener's `[space]` slot takes exactly one space and the line is prose - but the `---` three lines below it, which the language turns into a thematic break, is folded into that prose instead. A thematic break does not interrupt an open paragraph in this grammar; `paragraph-interruption-3` records the same gap on a document with no frontmatter in it, and the two close together."
+    },
+    "a-list-marker-at-the-content-column-inside-an-open-fence": {
+      "gaps": "code_block: want 1 have 0"
     },
     "attribute-braces-on-a-list-item-marker-line": {
       "gaps": "heading: want 1 have 0"
@@ -401,26 +459,6 @@
     },
     "thematic-break-requires-contiguous-markers": {
       "gaps": "list: want 2 have 0"
-    },
-    "a-fence-opened-on-a-list-marker-line-body-below-the-content-column-2": {
-      "gaps": "code_block: want 1 have 0",
-      "reason": "ref:fence-on-a-marker-line-builds-nothing"
-    },
-    "a-fence-opened-on-a-list-marker-line-body-below-the-content-column-3": {
-      "gaps": "code_block: want 1 have 0",
-      "reason": "ref:fence-on-a-marker-line-builds-nothing"
-    },
-    "a-fence-opened-on-a-list-marker-line-body-below-the-content-column-5": {
-      "gaps": "code_block: want 1 have 0",
-      "reason": "ref:fence-on-a-marker-line-builds-nothing"
-    },
-    "a-fence-opened-on-a-list-marker-line-body-below-the-content-column-6": {
-      "gaps": "code_block: want 1 have 0",
-      "reason": "ref:fence-on-a-marker-line-builds-nothing"
-    },
-    "a-fence-opened-on-a-list-marker-line-body-below-the-content-column": {
-      "gaps": "code_block: want 1 have 0",
-      "reason": "ref:fence-on-a-marker-line-builds-nothing"
     }
   },
   "errorFamilies": {
