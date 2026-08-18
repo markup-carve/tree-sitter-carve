@@ -108,9 +108,9 @@ const recorded = coverage.underAcceptance ?? {};
 refuseShortRun({
   label: 'CORPUS',
   actual: readdirSync(corpusDir).filter((f) => f.endsWith('.crv')).length,
-  atLeast: 400,
+  atLeast: 1000,
   of: `document(s) under ${corpusDir}`,
-  hint: 'the spec corpus has ~650; run `git submodule update --init`.',
+  hint: 'the spec corpus has ~1240; run `git submodule update --init`.',
 });
 
 const files = readdirSync(corpusDir)
