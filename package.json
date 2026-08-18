@@ -1,6 +1,14 @@
 {
   "name": "tree-sitter-carve",
   "version": "0.1.3",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/markup-carve/tree-sitter-carve.git"
+  },
+  "homepage": "https://github.com/markup-carve/tree-sitter-carve#readme",
+  "bugs": {
+    "url": "https://github.com/markup-carve/tree-sitter-carve/issues"
+  },
   "description": "Carve grammar for tree-sitter",
   "main": "bindings/node",
   "types": "bindings/node",
