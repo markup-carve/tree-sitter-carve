@@ -89,10 +89,15 @@ jobs:
           name: prebuilds-${{ matrix.os }}
           path: prebuilds/
 
+  # Deliberately does NOT depend on `prebuild`. This is a correctness check on
+  # the grammar, and coupling it to npm packaging would let a Windows prebuild
+  # failure block the crates.io and PyPI publishes, which carry no prebuilds at
+  # all. Installing without them makes node-gyp-build compile from source, which
+  # is slower and measures the same parser.
   corpus-gate:
     name: Run the corpus through the packed tarball
     runs-on: ubuntu-latest
-    needs: [guard, prebuild]
+    needs: [guard]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -104,17 +109,6 @@ jobs:
 
       - run: npm ci
 
-      # Every platform's prebuild, so the tarball the gate measures is the
-      # tarball publish will upload - not a linux-only subset of it.
-      - uses: actions/download-artifact@v4
-        with:
-          pattern: prebuilds-*
-          path: prebuilds-staging
-      - name: Collect the prebuilds
-        run: |
-          mkdir -p prebuilds
-          find prebuilds-staging -mindepth 2 -maxdepth 2 -type d -exec cp -r {} prebuilds/ \;
-          find prebuilds -type f -name '*.node' | sort
 
       # Pack, then install into a directory that shares nothing with the
       # checkout, so what gets measured is what a consumer would receive.
@@ -131,9 +125,9 @@ jobs:
         run: |
           tar -tzf "${{ steps.pack.outputs.tarball }}" | sed 's/^package\///' | sort
           echo "---"
-          test -d /tmp/consumer/node_modules/tree-sitter-carve/prebuilds \
-            && echo "prebuilds: present" \
-            || { echo "::error::the packed tarball carries no prebuilds"; exit 1; }
+          # No prebuild assertion here on purpose - publish-npm owns that, and
+          # this job is about whether the grammar is right.
+          echo "(prebuild presence is asserted by publish-npm, not here)" 
 
       # Both checks against the INSTALLED binding. binding-parity compares the
       # node addon to the CLI over the corpus (the two have disagreed before -
@@ -191,7 +185,7 @@ jobs:
   publish-crates:
     name: Publish to crates.io
     runs-on: ubuntu-latest
-    needs: [guard, prebuild, corpus-gate]
+    needs: [guard, corpus-gate]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -285,7 +279,7 @@ jobs:
   publish-pypi:
     name: Publish to PyPI
     runs-on: ubuntu-latest
-    needs: [guard, prebuild, corpus-gate, build-python, build-python-sdist]
+    needs: [guard, corpus-gate, build-python, build-python-sdist]
     steps:
       - name: The PyPI credential is present
         run: |
