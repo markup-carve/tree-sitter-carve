@@ -87,7 +87,20 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        # windows-2022, NOT windows-latest. The 2026-08-18 rehearsal failed here
+        # with "could not find a version of Visual Studio 2017 or newer" on
+        # image windows-2025-vs2026 using node-gyp@10.1.0 - the runner moved to
+        # Visual Studio 2026 and that node-gyp predates it, since its detection
+        # works from a list of known versions rather than by probing.
+        #
+        # The compiler was present, not missing: `Python wheels
+        # (windows-latest)` succeeded in the same run, because cibuildwheel
+        # brings its own toolchain and never asks node-gyp anything.
+        #
+        # Pinning is the narrow fix. The durable one is a node-gyp new enough to
+        # know VS 2026, which npm bundles - see markup-carve/tree-sitter-carve#231.
+        # Revisit before windows-2022 is retired.
+        os: [ubuntu-latest, macos-latest, windows-2022]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
