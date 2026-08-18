@@ -20,7 +20,8 @@
     "test:under-acceptance": "node scripts/under-acceptance.mjs",
     "test:no-error": "node scripts/no-error-sweep.mjs",
     "test:line-terminators": "node scripts/line-terminators.mjs",
-    "test:highlights": "node scripts/highlight-captures.mjs"
+    "test:highlights": "node scripts/highlight-captures.mjs",
+    "test:binding-parity": "node scripts/binding-parity.mjs"
   },
   "author": "",
   "license": "MIT",
@@ -29,7 +30,7 @@
     "node-gyp-build": "^4.8.0"
   },
   "peerDependencies": {
-    "tree-sitter": "^0.21.0"
+    "tree-sitter": "^0.25.0"
   },
   "peerDependenciesMeta": {
     "tree_sitter": {
@@ -40,7 +41,8 @@
     "@markup-carve/carve": "git+https://github.com/markup-carve/carve-js.git#2dc3232e426a93ce40ffe3b099c0bb8731fd25e7",
     "prebuildify": "^6.0.0",
     "prettier": "3.9.6",
-    "tree-sitter-cli": "^0.22.1"
+    "tree-sitter": "0.25.0",
+    "tree-sitter-cli": "0.22.6"
   },
   "files": [
     "grammar.js",

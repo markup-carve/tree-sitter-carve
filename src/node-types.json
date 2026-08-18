@@ -3441,6 +3441,10 @@
           "named": true
         },
         {
+          "type": "table_continuation_row",
+          "named": true
+        },
+        {
           "type": "table_header",
           "named": true
         },
@@ -3670,6 +3674,11 @@
         }
       ]
     }
+  },
+  {
+    "type": "table_continuation_row",
+    "named": true,
+    "fields": {}
   },
   {
     "type": "table_header",

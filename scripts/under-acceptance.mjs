@@ -180,11 +180,31 @@ function countAst(node, acc) {
   return acc;
 }
 
+function countMappedTypes(node, acc) {
+  if (!node || typeof node !== 'object') return acc;
+  if (typeof node.type === 'string' && NODE_FOR[node.type]) {
+    acc.set(node.type, (acc.get(node.type) ?? 0) + 1);
+  }
+  for (const value of Object.values(node)) {
+    if (Array.isArray(value)) value.forEach((v) => countMappedTypes(v, acc));
+    else if (value && typeof value === 'object') countMappedTypes(value, acc);
+  }
+  return acc;
+}
+
 const perFile = parseTrees(files, repoRoot);
 
 const found = {};
+const population = Object.fromEntries(
+  Object.entries(NODE_FOR).filter(([, target]) => target).map(([type]) => [type, { documents: 0, nodes: 0 }]),
+);
 files.forEach((file, i) => {
-  const want = countAst(parse(readFileSync(file, 'utf8')), new Map());
+  const ast = parse(readFileSync(file, 'utf8'));
+  const want = countAst(ast, new Map());
+  for (const [type, nodes] of countMappedTypes(ast, new Map())) {
+    population[type].documents++;
+    population[type].nodes += nodes;
+  }
   const tree = perFile[i];
   const gaps = [];
   for (const [node, n] of [...want].sort()) {
@@ -207,6 +227,13 @@ if (unmapped.size) {
       'or as null with the reason it is uncomparable:',
   );
   for (const t of [...unmapped].sort()) console.error(`  - ${t}`);
+  process.exit(1);
+}
+
+const recordedPopulation = coverage.comparisonPopulation ?? {};
+if (JSON.stringify(population) !== JSON.stringify(recordedPopulation)) {
+  console.error('\nThe live comparison population changed. Review it and update `comparisonPopulation` in test/coverage.json:');
+  console.error(JSON.stringify(population, null, 2));
   process.exit(1);
 }
 
