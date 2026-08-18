@@ -62,7 +62,7 @@ refuseShortRun({
   actual: files.length,
   atLeast: 1000,
   of: `document(s) under ${corpusDir}`,
-  hint: 'the spec corpus has ~1240; run `git submodule update --init`.',
+  hint: 'the spec corpus has ~1260; run `git submodule update --init`.',
 });
 
 const SPELLINGS = { lf: '\n', crlf: '\r\n', cr: '\r' };
