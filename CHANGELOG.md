@@ -21,6 +21,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Parse tilde code and raw fences with the same width, metadata, container, and
+  interruption rules as backtick fences. A closer must use the opener's fence
+  character and may be wider than it.
+
 - **An inline note, `^[content]`, is a construct** (spec PART 9, corpus 307 and
   309). It was a literal caret followed by a bracket, with nothing in the tree
   saying a note was written at all. The note is now an `inline_note` node with

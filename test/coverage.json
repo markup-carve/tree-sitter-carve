@@ -23,8 +23,7 @@
     "an-unclosed-verbatim-run-abandons-the-row": "an UNCLOSED verbatim run inside a table row makes the grammar abandon the table: `| a `b | c d |` parses to a paragraph holding one `verbatim` node whose content runs to end of line, and no `table` is built. The rule these categories exist to pin is the opposite one - the run stops at the closing pipe, so the row is still a row and the fixture expects `<td>a <code>b | c d</code></td>`. The continuation-row spelling (`| a `b |` / `+ c` |`) fails the same way and for the same reason.",
     "fence-on-a-marker-line-builds-nothing": "a code fence opened on a list MARKER line: the item closes with an EMPTY code block and the residue re-parses at document level when the body sits BELOW the item's content column (markup-carve/carve#646). This grammar builds no code_block for any of these, and MEASURED against it, the cause is NOT that the fence is committed to the item with no route out - it is that the fence never opens at all. `parse_backtick` refuses an opener when `has_extra_indent` is true, and on a marker line the fence sits past the line's own indent while the item's content column is only established by the marker itself, so `- ` + fence is read as inline verbatim. The heading marker and the colon fence carry the same column-0 guard and fail the same way on a marker line, while a block quote and a table - which do not - open there correctly. The quote half of that was narrower than it reads and is now closed: its MARKER opened, but the quote took no content and the rest of the line was ejected from the list, repaired in tree-sitter-carve#218 by moving the line's content margin to the quote's own content column when it opens on an item's marker line - the same move this entry's openers need at the LIST marker. So the first half is a column question and the second half, closing the item at the boundary, is the container change; the fully-indented example (-3) needs only the first. Tracked in tree-sitter-carve#160.",
     "lone-cr-strands-a-column-probe": "a lone carriage return still changes this document's tree. The scanner now treats all three spellings of `newline` as terminators, and 428 of 672 corpus documents that diverged before this do not any more, but these are the remainder: every one of them is a REFERENCE DEFINITION, an ATTRIBUTE BLOCK or a trailing block inside a list item - constructs whose probes read a column, and tree-sitter advances the row and resets the column on '\\n' and on nothing else (`lib/src/lexer.c`), so a scanner-maintained base carries them and does not carry every probe that reads one. tree-sitter-carve#143. The same mechanism has one reachable shape outside the corpus: `comment_line` in grammar.js consumes its own terminator in the internal lexer, so a comment line ended by a lone '\\r' strands the base for an indented construct below it. The corpus bump to 287b4b8 adds two more, and one of them widens the enumeration above: a-bracketed-construct-s-identifiers-stay-on-one-line is a REFERENCE DEFINITION and fits it as written, but a-container-whose-table-ends-on-a-joined-header-row-3 is a table CONTINUATION ROW reached through a block quote - a column probe inside a container rather than any of the three construct classes originally listed. The mechanism is unchanged; the list of constructs that read a column is simply longer than it was when this was written.",
-    "marker-line-block-opener-builds-nothing": "a block opener written on a list MARKER line builds nothing. `- # H` gives a list item whose content is a PARAGRAPH, not a heading; `- ---` is read as a document-level thematic break that consumes the marker, so no list is built at all. Verified against the indented spelling, which works: `- a` / `  # H` does build the heading. This is the same shape as the recorded `fence-on-a-marker-line-builds-nothing` - the marker line is one position this grammar does not run block-opener recognition in - now reached by the heading and thematic-break openers too. A TASK checkbox does not change which openers reach it, but it does change what the thematic break degrades INTO, and the sentence above is wrong for that spelling: `- [x] # h` is still a paragraph, while `- [ ] ---` no longer consumes the marker - the list and the item ARE built and `---` becomes an inline `em_dash` inside the item's paragraph. Measured against the neighbour that works, which is what keeps the checkbox out of it: `- [ ] > q` opens its quote with content, so the checkbox does not disturb an opener the marker line already admits. That is why a-task-item-s-checkbox-is-not-decided-by-its-first-block reports `heading: want 1 have 0; thematic_break: want 1 have 0` and no gap for its quote.",
-    "tilde-fence-is-unimplemented": "a tilde code fence builds no code_block, because this grammar implements no tilde fence AT ALL - not inside a block quote, not in a list item, not at document level, where `~~~` / code / `~~~` is one paragraph. The spec makes it a first-class spelling of the same construct (grammar.ebnf `code_fence_open = (backtick_fence | tilde_fence)`, `tilde_fence = '~', '~', '~', {'~'}`), and the backtick spelling of this very document parses correctly, so the gap is the SPELLING and not the position. Adding it is a feature, not a repair: the opener/closer length match, the info string, the raw-block `=FORMAT` form and every interruption and indentation rule would all have to be mirrored from the backtick path, and none of it has hand-written test coverage today. Recorded rather than half-implemented; three corpus documents use a tilde fence."
+    "marker-line-block-opener-builds-nothing": "a block opener written on a list MARKER line builds nothing. `- # H` gives a list item whose content is a PARAGRAPH, not a heading; `- ---` is read as a document-level thematic break that consumes the marker, so no list is built at all. Verified against the indented spelling, which works: `- a` / `  # H` does build the heading. This is the same shape as the recorded `fence-on-a-marker-line-builds-nothing` - the marker line is one position this grammar does not run block-opener recognition in - now reached by the heading and thematic-break openers too. A TASK checkbox does not change which openers reach it, but it does change what the thematic break degrades INTO, and the sentence above is wrong for that spelling: `- [x] # h` is still a paragraph, while `- [ ] ---` no longer consumes the marker - the list and the item ARE built and `---` becomes an inline `em_dash` inside the item's paragraph. Measured against the neighbour that works, which is what keeps the checkbox out of it: `- [ ] > q` opens its quote with content, so the checkbox does not disturb an opener the marker line already admits. That is why a-task-item-s-checkbox-is-not-decided-by-its-first-block reports `heading: want 1 have 0; thematic_break: want 1 have 0` and no gap for its quote."
   },
   "covered": [
     "a-backslash-in-a-link-destination-is-a-literal-character",
@@ -432,10 +431,6 @@
       "gaps": "code_block: want 1 have 0",
       "reason": "ref:fence-on-a-marker-line-builds-nothing"
     },
-    "a-captioned-quote-holds-more-than-one-block-4": {
-      "gaps": "code_block: want 1 have 0",
-      "reason": "ref:tilde-fence-is-unimplemented"
-    },
     "a-column-0-line-after-a-container-s-last-block-when-that-block-left-no-paragraph-open-4": {
       "gaps": "list: want 1 have 0",
       "reason": "ref:marker-line-block-opener-builds-nothing"
@@ -540,9 +535,6 @@
     "fence-opener-with-a-nested-list-body-inside-a-list-item-6": {
       "gaps": "div: want 2 have 1"
     },
-    "fenced-code-13": {
-      "gaps": "code_block: want 1 have 0"
-    },
     "list-lazy-continuation-8": {
       "gaps": "table: want 1 have 0"
     },
@@ -558,9 +550,6 @@
     "only-lazy-folding-demotes-a-marker-line-colon-opener": {
       "gaps": "div: want 1 have 0",
       "reason": "ref:fence-on-a-marker-line-builds-nothing"
-    },
-    "opaque-spans-inside-a-container-2": {
-      "gaps": "code_block: want 1 have 0"
     },
     "paragraph-interruption-3": {
       "gaps": "thematic_break: want 1 have 0"

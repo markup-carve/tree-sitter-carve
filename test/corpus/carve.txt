@@ -662,6 +662,57 @@ Fenced code
     (code_block_marker_end)))
 
 ===============================================================================
+Tilde fenced code mirrors backtick fenced code
+===============================================================================
+~~~ rust
+/not italic/
+~~~
+
+-------------------------------------------------------------------------------
+
+(document
+  (code_block
+    (code_block_marker_begin)
+    language: (language)
+    code: (code)
+    (code_block_marker_end)))
+
+===============================================================================
+Tilde raw block with =FORMAT info string
+===============================================================================
+~~~=html
+<custom-el>x</custom-el>
+~~~
+
+-------------------------------------------------------------------------------
+
+(document
+  (raw_block
+    (raw_block_marker_begin)
+    info: (raw_block_info
+      marker: (language_marker)
+      language: (language))
+    content: (content)
+    (raw_block_marker_end)))
+
+===============================================================================
+A backtick run does not close a tilde fence
+===============================================================================
+~~~
+```
+sample
+```
+~~~
+
+-------------------------------------------------------------------------------
+
+(document
+  (code_block
+    (code_block_marker_begin)
+    code: (code)
+    (code_block_marker_end)))
+
+===============================================================================
 Forced brace forms for highlight, subscript, superscript
 ===============================================================================
 

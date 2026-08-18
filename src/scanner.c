@@ -1421,9 +1421,18 @@ static bool parse_verbatim_content(Scanner *s, TSLexer *lexer) {
 // The COMMENT fence is deliberately not this rule - `%%%%` does not close
 // `%%%`, which the corpus pins in both directions - so this stays scoped to
 // CODE_BLOCK.
-static bool code_fence_run_matches_open_block(Scanner *s, uint8_t ticks) {
+static const uint8_t CODE_FENCE_TILDE = 0x80;
+static const uint8_t CODE_FENCE_WIDTH = 0x7f;
+
+static bool code_fence_run_matches_open_block(Scanner *s, uint8_t width,
+                                               char fence_char) {
   Block *top = peek_block(s);
-  return top && top->type == CODE_BLOCK && top->data <= ticks;
+  if (!top || top->type != CODE_BLOCK) {
+    return false;
+  }
+  bool opened_with_tilde = (top->data & CODE_FENCE_TILDE) != 0;
+  return opened_with_tilde == (fence_char == '~') &&
+         (top->data & CODE_FENCE_WIDTH) <= width;
 }
 
 // A code fence CLOSER carries nothing after its run but optional trailing
@@ -1622,7 +1631,8 @@ static bool code_fence_info_is_modeled(Scanner *s, TSLexer *lexer) {
   return false;
 }
 
-static bool try_begin_code_block(Scanner *s, TSLexer *lexer, uint8_t ticks) {
+static bool try_begin_code_block(Scanner *s, TSLexer *lexer, uint8_t width,
+                                 char fence_char) {
   Block *top = peek_block(s);
   if (top && top->type == CODE_BLOCK) {
     return false;
@@ -1633,7 +1643,8 @@ static bool try_begin_code_block(Scanner *s, TSLexer *lexer, uint8_t ticks) {
   if (!code_fence_info_is_modeled(s, lexer)) {
     return false;
   }
-  push_block(s, CODE_BLOCK, ticks);
+  push_block(s, CODE_BLOCK,
+             width | (fence_char == '~' ? CODE_FENCE_TILDE : 0));
   lexer->result_symbol = CODE_BLOCK_BEGIN;
   return true;
 }
@@ -1794,20 +1805,22 @@ static bool parse_comment_fence_begin(Scanner *s, TSLexer *lexer,
   return false;
 }
 
-static bool parse_backtick(Scanner *s, TSLexer *lexer,
-                           const bool *valid_symbols) {
+static bool parse_code_fence(Scanner *s, TSLexer *lexer,
+                             const bool *valid_symbols, char fence_char) {
+  bool supports_verbatim = fence_char == '`';
   if (!valid_symbols[CODE_BLOCK_BEGIN] && !valid_symbols[CODE_BLOCK_END] &&
-      !valid_symbols[BLOCK_CLOSE] && !valid_symbols[VERBATIM_BEGIN] &&
-      !valid_symbols[VERBATIM_END]) {
+      !valid_symbols[BLOCK_CLOSE] &&
+      !(supports_verbatim && (valid_symbols[VERBATIM_BEGIN] ||
+                              valid_symbols[VERBATIM_END]))) {
     return false;
   }
 
-  uint8_t ticks = consume_chars(s, lexer, '`');
-  if (ticks == 0) {
+  uint8_t width = consume_chars(s, lexer, fence_char);
+  if (width == 0) {
     return false;
   }
 
-  if (ticks >= 3) {
+  if (width >= 3) {
     // Does this line CLOSE the open fence? One question, asked once, for both
     // tokens a closer line yields: the zero-width BLOCK_CLOSE the grammar takes
     // first, then CODE_BLOCK_END. Asking it separately in each emitter left the
@@ -1816,7 +1829,7 @@ static bool parse_backtick(Scanner *s, TSLexer *lexer,
     // duplicate check was a clause no mutation could break. This is the same
     // collapse #104 made for the colon fence's opener and peek.
     if ((valid_symbols[CODE_BLOCK_END] || valid_symbols[BLOCK_CLOSE]) &&
-        code_fence_run_matches_open_block(s, ticks)) {
+        code_fence_run_matches_open_block(s, width, fence_char)) {
       // CODE_BLOCK_END spans the run, so pin it BEFORE the tail peek advances
       // the lexer; BLOCK_CLOSE is zero width and keeps the scan-entry mark.
       if (valid_symbols[CODE_BLOCK_END]) {
@@ -1846,9 +1859,13 @@ static bool parse_backtick(Scanner *s, TSLexer *lexer,
     // as they would mid-paragraph (corpus 11-fenced-code). Only the OPENER is
     // guarded -- a closer is matched against its opener's block, above.
     if (valid_symbols[CODE_BLOCK_BEGIN] && !has_extra_indent(s) &&
-        try_begin_code_block(s, lexer, ticks)) {
+        try_begin_code_block(s, lexer, width, fence_char)) {
       return true;
     }
+  }
+
+  if (!supports_verbatim) {
+    return false;
   }
 
   Inline *top = peek_inline(s);
@@ -1856,7 +1873,7 @@ static bool parse_backtick(Scanner *s, TSLexer *lexer,
     remove_inline(s);
     // For ticks >= 3 the end is already pinned above (fence validation may have
     // advanced the lexer); only re-mark for the 1-2 tick inline case.
-    if (ticks < 3) {
+    if (width < 3) {
       lexer->mark_end(lexer);
     }
     lexer->result_symbol = VERBATIM_END;
@@ -1865,11 +1882,11 @@ static bool parse_backtick(Scanner *s, TSLexer *lexer,
   if (valid_symbols[VERBATIM_BEGIN]) {
     // For ticks >= 3 the end is already pinned above; re-mark here for the
     // 1-2 tick inline-verbatim case where no fence validation ran.
-    if (ticks < 3) {
+    if (width < 3) {
       lexer->mark_end(lexer);
     }
     lexer->result_symbol = VERBATIM_BEGIN;
-    push_inline(s, VERBATIM, ticks);
+    push_inline(s, VERBATIM, width);
     return true;
   }
   return false;
@@ -6055,7 +6072,8 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
   if (parse_comment_fence(s, lexer, valid_symbols)) {
     return true;
   }
-  if (lexer->lookahead == '`' && parse_backtick(s, lexer, valid_symbols)) {
+  if ((lexer->lookahead == '`' || lexer->lookahead == '~') &&
+      parse_code_fence(s, lexer, valid_symbols, (char)lexer->lookahead)) {
     return true;
   }
   // A colon line that ENDS the open paragraph is decided before the colon
