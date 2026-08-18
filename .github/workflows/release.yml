@@ -175,6 +175,15 @@ jobs:
     name: Publish to npm
     runs-on: ubuntu-latest
     needs: [guard, prebuild, corpus-gate]
+    # `npm publish --provenance` signs an attestation binding the tarball to
+    # this commit, and that needs an OIDC token. `id-token` is never granted
+    # implicitly - not even when the repo default is read-write - so omitting
+    # this block does not weaken provenance, it makes the publish FAIL. The
+    # rehearsal could not catch it while the dry run left `--provenance` off,
+    # which is why the flags below are now identical on both paths.
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -214,7 +223,7 @@ jobs:
       - name: Publish to npm
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            npm publish --dry-run --access public
+            npm publish --dry-run --provenance --access public
             echo "::notice::rehearsal - nothing was published to npm"
           else
             npm publish --provenance --access public
