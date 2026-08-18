@@ -8,7 +8,12 @@ import { refuseShortRun } from './participants.mjs';
 
 const require = createRequire(import.meta.url);
 const Parser = require('tree-sitter');
-const carve = require('../bindings/node');
+// CARVE_TS_BINDING lets the release gate point this at the PACKED tarball
+// installed into a clean directory, rather than at the source tree. The whole
+// value of this check at release time is that it measures the artifact a
+// consumer receives - a source tree that agrees with the CLI says nothing about
+// what npm actually shipped. Unset, it resolves the source tree as before.
+const carve = require(process.env.CARVE_TS_BINDING || '../bindings/node');
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const corpusDir = path.join(repoRoot, 'spec', 'tests', 'corpus');
 // One base document per original corpus category, matching the 178-document
