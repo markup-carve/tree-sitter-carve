@@ -37,7 +37,7 @@
     }
   },
   "devDependencies": {
-    "@markup-carve/carve": "git+https://github.com/markup-carve/carve-js.git#e35cfcb870166ca9fa7b1f006c87b68208acd8b9",
+    "@markup-carve/carve": "git+https://github.com/markup-carve/carve-js.git#7cd66e01513a16f9d1f0abf36b1a6c8d4a08c3ba",
     "prebuildify": "^6.0.0",
     "prettier": "3.9.6",
     "tree-sitter-cli": "^0.22.1"

@@ -64,6 +64,19 @@ const NODE_FOR = {
   // No `figure` node: an image with a caption is an image plus a caption here,
   // so a figure count has nothing to compare against.
   figure: null,
+  // The composite form is NOT the same answer, because it has a spelling: every
+  // composite figure in the corpus is a `::: figure` fence, which this grammar
+  // builds as a `div`. That is the `admonition` mapping, not the `figure` one.
+  //
+  // It matters which of the two it gets. `figure_group` arrived in the engine's
+  // block vocabulary with this pin bump - before it, the engine built a plain
+  // `div` for those documents and this check compared it against the grammar's
+  // `div`. Classifying the new name as null would have quietly retired a
+  // comparison that was live and passing on main, in the direction nobody
+  // checks: 9 documents would stop being asked the question they were already
+  // answering. Mapping it to `div` keeps the measurement identical across the
+  // bump.
+  figure_group: 'div',
   // Sections wrap headings in the AST; the grammar nests content under the
   // heading itself and builds no separate node.
   section: null,
@@ -83,6 +96,16 @@ const NODE_FOR = {
   // survived into the render, which is the question that matters for a node
   // producing no output of its own.
   link_reference_definition: null,
+  // Not null: this grammar builds a node of the SAME name, so the two models
+  // spell the construct the same way and a count comparison means something.
+  // It also joined the engine's block vocabulary with this pin bump. The count
+  // is zero on both sides across the whole corpus today - citations are a
+  // Tier-2 extension and the engine's default `parse` does not enable them -
+  // so mapping it costs nothing now and is what would see the gap if that
+  // changes. Naming it null would have been the cheaper answer and the wrong
+  // one: `figure`'s null is earned by there being no node to compare against,
+  // and here there is one.
+  citation_definition: 'citation_definition',
   admonition: 'div',
   list_item: null,
   definition_term: null,
