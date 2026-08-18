@@ -92,6 +92,25 @@ jobs:
       #
       # PyPI likewise has no whoami endpoint - a token there can only be proven
       # by uploading.
+      # npm refuses a --provenance publish whose package.json repository.url
+      # does not match the repository the attestation was signed for. The 0.1.3
+      # tag reached that check live and got
+      #   422 ... "repository.url" is "", expected to match
+      #   "https://github.com/markup-carve/tree-sitter-carve" from provenance
+      # after every prebuild and the corpus gate had already run. No rehearsal
+      # can reach it: `npm publish --dry-run --provenance` skips provenance
+      # entirely, so the registry never sees the bundle. Comparing the two
+      # strings here costs nothing and is the only pre-publish form this check
+      # can take.
+      - name: package.json points at this repository
+        run: |
+          want="https://github.com/${{ github.repository }}"
+          got="$(node -p 'require("./package.json").repository?.url ?? ""')"
+          norm="$(printf %s "$got" | sed -e 's|^git+||' -e 's|\.git$||')"
+          [ "$norm" = "$want" ] \
+            || { echo "::error::package.json repository.url is '$got', which normalizes to '$norm'; npm provenance requires '$want'"; exit 1; }
+          echo "repository.url matches $want"
+
       - name: The npm credential actually authenticates
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
