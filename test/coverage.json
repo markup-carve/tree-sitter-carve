@@ -3,14 +3,14 @@
   "comparisonPopulation": {
     "thematic_break": { "documents": 9, "nodes": 11 },
     "block_quote": { "documents": 124, "nodes": 147 },
-    "table": { "documents": 119, "nodes": 120 },
+    "table": { "documents": 120, "nodes": 121 },
     "heading": { "documents": 105, "nodes": 136 },
     "code_block": { "documents": 69, "nodes": 69 },
     "list": { "documents": 316, "nodes": 397 },
     "definition_list": { "documents": 40, "nodes": 40 },
     "line_block": { "documents": 29, "nodes": 29 },
     "div": { "documents": 21, "nodes": 23 },
-    "raw_block": { "documents": 7, "nodes": 7 },
+    "raw_block": { "documents": 8, "nodes": 8 },
     "figure_group": { "documents": 9, "nodes": 9 },
     "citation_definition": { "documents": 0, "nodes": 0 },
     "admonition": { "documents": 52, "nodes": 258 }
@@ -30,6 +30,8 @@
     "a-quote-is-reached-by-its-marker-and-a-column-never-reaches-into-one",
     "a-raw-block-keeps-the-blank-line-at-the-end-of-its-payload-too",
     "a-table-alignment-run-carries-two-independent-axes",
+    "a-vertical-table-marker-needs-a-horizontal-partner",
+    "an-all-blank-raw-payload-still-emits-its-line",
     "an-unterminated-fence-at-a-content-column-opens-no-block-so-the-paragraph-stays-open",
     "table-columns-carry-alignment-vertical-alignment-and-widths",
     "a-backslash-in-a-link-destination-is-a-literal-character",
@@ -406,6 +408,11 @@
     "trailing-whitespace-on-a-content-line-is-dropped-7": "content lines ending in NBSP, ZWSP, BOM, U+2000 or a form feed parse to ERROR. Only the ASCII space and tab are dropped as trailing whitespace; every other spelling is content the renderer keeps, and this grammar's line-content rule does not admit them in that position. The category's other examples parse cleanly."
   },
   "overAcceptance": {
+    "an-all-blank-raw-payload-still-emits-its-line": {
+      "nodes": "raw_block",
+      "lines": "1",
+      "reason": "the source deliberately opens a raw block whose payload is one blank line. Its expected HTML is therefore only a newline, which has no HTML element for the comparison pass to count; the raw_block node is the correct source structure rather than a grammar error."
+    },
     "a-caret-line-does-not-end-a-paragraph-it-cannot-caption": {
       "nodes": "caption",
       "lines": "2",
