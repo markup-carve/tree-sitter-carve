@@ -2057,6 +2057,64 @@ static void output_block_quote_continuation(Scanner *s, TSLexer *lexer,
 // quote indentation, or if there's an "empty line" (only > on a line).
 //
 // And we also need to close open blocks when we go down a nesting level.
+/// A quote that opens on a list item's own MARKER line (`- > x`, `1. > x`,
+/// `- - > x`, `- [ ] > x`) moves the line's content margin to the quote's own
+/// content column, and extends the marker chain so a further marker on the same
+/// line chains off this one. The block-quote counterpart of the marker-line
+/// nested list `- - A` that `parse_list_marker_or_thematic_break` already
+/// models, in the same two fields.
+///
+/// WHY THE MARGIN HAS TO MOVE. `s->indent` is the current line's LEADING
+/// whitespace and is refreshed only when a scan starts at column 0, so on a
+/// marker line it keeps whatever the line began with - which is below the
+/// item's own margin by construction. Every margin question then answers for a
+/// position the scan left long ago. `close_list_nested_block_if_needed` read
+/// `0 < 1` and closed the quote before it could hold a single block, so `- > x`
+/// built an EMPTY quote and ejected `x` into a document-level paragraph; and
+/// `has_extra_indent` read the same 0 and disqualified every block opener after
+/// the marker, so `- > # H` degraded to paragraph text inside the quote.
+/// carve-js nests both, `<ul><li><blockquote><h1>H</h1></blockquote></li></ul>`
+/// for the second (tree-sitter-carve#218).
+///
+/// THREE CONDITIONS, and each one keeps a shape out that must not move.
+///
+///   - PAST THE LINE'S OWN MARGIN. A quote whose marker sits AT the margin is
+///     an ordinary quote line and its container prefix is the line's leading
+///     whitespace, which `s->indent` already describes: `- a` / `  > # H`
+///     builds the heading today and must keep the margin it has.
+///   - A LIST IS OPEN. At the document root `> > x` has no marker line to sit
+///     on, and raising the margin there would report the inner quote's own
+///     content as indented - `> > # H` is a heading in every engine, and
+///     `has_extra_indent` answers that from a margin of 0.
+///   - AT OR PAST THE ITEM'S CONTENT COLUMN. This is what tells a marker LINE
+///     from a marked line inside the item: in `> - a` / `> > x` the inner `>`
+///     also sits past the line's margin with a list open, but at column 2
+///     against the item's content column of 4, so it is the quote's own second
+///     marker rather than a quote opening on the item's marker.
+///
+/// A container whose content column was never recorded reads 0 and gets no
+/// opinion, exactly as in `has_surplus_indent`; the first two conditions still
+/// have to hold.
+///
+/// The quote's content column is the marker plus its single separator space - a
+/// marker separator is one literal space, never a tab and never a run, which is
+/// what `scan_block_quote_marker` already enforces.
+static void open_marker_line_quote(Scanner *s, uint32_t marker_start_col) {
+  if (marker_start_col <= s->indent) {
+    return;
+  }
+  Block *list = find_list(s);
+  if (list == NULL || marker_start_col < list->content_col) {
+    return;
+  }
+  uint32_t content_col = marker_start_col + 2;
+  if (content_col > UINT8_MAX) {
+    return;
+  }
+  s->indent = (uint8_t)content_col;
+  s->marker_end_col = (uint8_t)content_col;
+}
+
 static bool parse_block_quote(Scanner *s, TSLexer *lexer,
                               const bool *valid_symbols) {
   if (!valid_symbols[BLOCK_QUOTE_BEGIN] &&
@@ -2070,6 +2128,13 @@ static bool parse_block_quote(Scanner *s, TSLexer *lexer,
   // end. Leaving it set would make a LATER marker line close a quote that no
   // blank line separates.
   bool after_blank_line = (s->state & STATE_AFTER_BLANK_LINE) != 0;
+
+  // Where this call's `>` sits, read BEFORE anything is consumed. A quote whose
+  // marker begins exactly where the previous marker on this line ended is a
+  // MARKER-LINE quote (`- > x`), the block-quote counterpart of the marker-line
+  // nested list `- - A` that `parse_list_marker_or_thematic_break` already
+  // models with the same two fields - see `open_marker_line_quote` below.
+  uint32_t marker_start_col = line_column(s, lexer);
 
   bool ending_newline = false;
   // A valid marker is a '> ' or '>\n'.
@@ -2240,6 +2305,7 @@ static bool parse_block_quote(Scanner *s, TSLexer *lexer,
       lexer->mark_end(lexer);
     }
     output_block_quote_continuation(s, lexer, marker_count, ending_newline);
+    open_marker_line_quote(s, marker_start_col);
     return true;
   }
 
@@ -2257,6 +2323,7 @@ static bool parse_block_quote(Scanner *s, TSLexer *lexer,
     } else {
       s->block_quote_level = marker_count;
     }
+    open_marker_line_quote(s, marker_start_col);
     lexer->result_symbol = BLOCK_QUOTE_BEGIN;
     return true;
   }

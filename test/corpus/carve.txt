@@ -4956,3 +4956,244 @@ x
   (caption
     (caption_marker)
     content: (caption_content)))
+
+===============================================================================
+A quote on a list item's marker line takes the rest of the line (tree-sitter-carve#218)
+===============================================================================
+
+- > x
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (block_quote
+          (block_quote_marker)
+          content: (content
+            (paragraph)))))))
+
+===============================================================================
+A marker-line quote keeps the item's boundary, so only the tail is a document paragraph (tree-sitter-carve#218)
+===============================================================================
+
+- > x
+
+after
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (block_quote
+          (block_quote_marker)
+          content: (content
+            (paragraph))))))
+  (paragraph))
+
+===============================================================================
+A quote run on a marker line nests inside the item (tree-sitter-carve#218)
+===============================================================================
+
+- > > x
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (block_quote
+          (block_quote_marker)
+          content: (content
+            (block_quote
+              (block_quote_marker)
+              content: (content
+                (paragraph)))))))))
+
+===============================================================================
+An ordered marker line carries a quote (tree-sitter-carve#218)
+===============================================================================
+
+1. > x
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_decimal_period)
+      content: (list_item_content
+        (block_quote
+          (block_quote_marker)
+          content: (content
+            (paragraph)))))))
+
+===============================================================================
+A marker-line nested list carries a quote on its own marker line (tree-sitter-carve#218)
+===============================================================================
+
+- - > x
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (list
+          (list_item
+            marker: (list_marker_dash)
+            content: (list_item_content
+              (block_quote
+                (block_quote_marker)
+                content: (content
+                  (paragraph))))))))))
+
+===============================================================================
+A task marker line carries a quote (tree-sitter-carve#218)
+===============================================================================
+
+- [ ] > x
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_task
+        checkmark: (unchecked))
+      content: (list_item_content
+        (block_quote
+          (block_quote_marker)
+          content: (content
+            (paragraph)))))))
+
+===============================================================================
+A heading opens after a marker-line quote's own marker (tree-sitter-carve#218)
+===============================================================================
+
+- > # H
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (block_quote
+          (block_quote_marker)
+          content: (content
+            (heading
+              marker: (marker)
+              content: (content))))))))
+
+===============================================================================
+A list opens after a marker-line quote's own marker, as content and not a sibling (tree-sitter-carve#218)
+===============================================================================
+
+- > - a
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (block_quote
+          (block_quote_marker)
+          content: (content
+            (list
+              (list_item
+                marker: (list_marker_dash)
+                content: (list_item_content
+                  (paragraph))))))))))
+
+===============================================================================
+A document-level quote run keeps the document's own margin (tree-sitter-carve#218)
+===============================================================================
+
+> > # H
+
+-------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (block_quote
+        (block_quote_marker)
+        content: (content
+          (heading
+            marker: (marker)
+            content: (content)))))))
+
+===============================================================================
+A quote's own second marker is not a marker-line quote (tree-sitter-carve#218)
+===============================================================================
+
+> - a
+> > x
+
+-------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (paragraph))))
+      (block_quote_marker)
+      (block_quote
+        (block_quote_marker)
+        content: (content
+          (paragraph))))))
+
+===============================================================================
+A quote below an item's first line keeps the item's own margin (tree-sitter-carve#218)
+===============================================================================
+
+- a
+  > # h
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)
+        (block_quote
+          (block_quote_marker)
+          content: (content
+            (heading
+              marker: (marker)
+              content: (content))))))))
+
+===============================================================================
+A glued marker on an item's marker line is not a quote (tree-sitter-carve#218)
+===============================================================================
+
+- >x
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)))))
