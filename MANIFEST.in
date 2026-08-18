@@ -1,0 +1,10 @@
+# setup.py's ext_modules names src/parser.c and src/scanner.c, and setuptools
+# carries ext_modules SOURCES into an sdist by itself - the 0.1.3 rehearsal
+# copied exactly those two and nothing else from src/. It does not carry
+# HEADERS, and this extension compiles with include_dirs=["src"], so the sdist
+# it produced was missing src/tree_sitter/parser.h, array.h and alloc.h and
+# could not have been built by anyone who downloaded it.
+#
+# The npm tarball never had this problem because package.json lists "src/**" in
+# files. Nothing granted the sdist the equivalent until now.
+graft src
