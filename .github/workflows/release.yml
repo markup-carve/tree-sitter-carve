@@ -80,51 +80,32 @@ jobs:
           grep -qE "^## \[?${v}\]? - " CHANGELOG.md \
             || { echo "::error::CHANGELOG.md has no section for ${v}"; exit 1; }
 
-      # Presence is not validity. The publish jobs checked that each secret was
-      # non-empty, which an expired or wrong-scope token passes cheerfully - and
-      # then the publish dies partway through the release. The publishes are
-      # serialized behind npm, so a bad crates.io token would surface only after
-      # npm had already shipped, and no registry lets a version number be
-      # reused. Validating both tokens up front, in the job every publish
-      # already needs, turns that into a run that stops before any registry
-      # receives anything.
+      # npm only. An earlier version of this step also called crates.io's
+      # /api/v1/me and failed the 0.1.3 release with HTTP 403 - not because the
+      # token was bad, but because a least-privilege crates.io token (scoped to
+      # publish-new / publish-update) is not permitted to read the user
+      # endpoint. crates.io answers 401 for a malformed token and 403 for "this
+      # action requires authentication", so the check punished exactly the
+      # token shape it should encourage. There is no crates.io endpoint that
+      # validates a publish-scoped token without publishing, so that leg is
+      # deliberately unchecked rather than checked wrongly.
       #
-      # PyPI has no whoami endpoint - a token can only be proven by uploading -
-      # so it is absent here on purpose rather than by oversight.
-      - name: The registry credentials actually authenticate
+      # PyPI likewise has no whoami endpoint - a token there can only be proven
+      # by uploading.
+      - name: The npm credential actually authenticates
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         run: |
-          fail=0
-
-          code="$(curl -sS -o /tmp/npm-who -w '%{http_code}' \
+          code="$(curl -sS -o /tmp/npm-who.json -w '%{http_code}' \
             -H "Authorization: Bearer $NPM_TOKEN" \
             https://registry.npmjs.org/-/whoami)"
-          if [ "$code" = "200" ]; then
-            echo "npm: authenticated as $(node -p 'require("/tmp/npm-who").username')"
-          else
-            echo "::error::NPM_TOKEN does not authenticate (HTTP $code)"; fail=1
-          fi
+          [ "$code" = "200" ] \
+            || { echo "::error::NPM_TOKEN does not authenticate (HTTP $code)"; exit 1; }
+          # .json extension matters: require() on an extensionless path parses
+          # the file as JavaScript and yields an empty module, which is how the
+          # 0.1.3 run printed "authenticated as" with no name.
+          echo "npm: authenticated as $(node -p 'require("/tmp/npm-who.json").username')"
 
-          code="$(curl -sS -o /dev/null -w '%{http_code}' \
-            -H "Authorization: $CARGO_REGISTRY_TOKEN" \
-            -H 'User-Agent: tree-sitter-carve-release' \
-            https://crates.io/api/v1/me)"
-          if [ "$code" = "200" ]; then
-            echo "crates.io: token accepted"
-          else
-            echo "::error::CARGO_REGISTRY_TOKEN does not authenticate (HTTP $code)"; fail=1
-          fi
-
-          exit $fail
-
-  # package.json already lists `prebuilds/**` in `files` and carries prebuildify
-  # as a devDependency, so the packaging INTENDS prebuilds - nobody had ever run
-  # the build. Without them `"install": "node-gyp-build"` falls through to
-  # compiling 7.3MB of generated parser.c on every consumer machine, which needs
-  # a working toolchain. A dry-run pack on 2026-08-18 carried 22 files and no
-  # prebuilds at all.
   prebuild:
     name: Prebuild (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
