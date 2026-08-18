@@ -2,15 +2,15 @@
   "_comment": "Coverage matrix for the shared Carve spec corpus (spec/tests/corpus/*.crv). Every NN-slug base category must appear in covered or skip; the coverage-matrix test fails otherwise so a new spec category forces a classify decision. covered = grammar parses every file in the category with no ERROR/MISSING node. skip = at least one file currently produces an ERROR/MISSING node; reason records the unmodeled construct (a grammar gap to surface, not to hack around). A skip key is a CATEGORY (NN-slug) or a single EXAMPLE (NN-slug-2) — use the example form when the rest of the category parses cleanly, so one gap does not drop assertion for its siblings. A key equal to a category name is read as the CATEGORY, so the first example of a category cannot be skipped on its own. REASONS: a ledger entry's `reason` may be `ref:<key>`, resolving against the top-level `reasons` map, so one grammar gap spanning a whole category states its explanation once. coverage-matrix gates it both ways - a ref with no entry fails, and a reasons entry nothing references fails, because a reason nobody points at is an excuse that outlived the gap it excused.",
   "comparisonPopulation": {
     "thematic_break": { "documents": 9, "nodes": 11 },
-    "block_quote": { "documents": 119, "nodes": 142 },
-    "table": { "documents": 115, "nodes": 116 },
-    "heading": { "documents": 104, "nodes": 135 },
-    "code_block": { "documents": 67, "nodes": 67 },
-    "list": { "documents": 306, "nodes": 386 },
-    "definition_list": { "documents": 39, "nodes": 39 },
+    "block_quote": { "documents": 124, "nodes": 147 },
+    "table": { "documents": 119, "nodes": 120 },
+    "heading": { "documents": 105, "nodes": 136 },
+    "code_block": { "documents": 69, "nodes": 69 },
+    "list": { "documents": 316, "nodes": 397 },
+    "definition_list": { "documents": 40, "nodes": 40 },
     "line_block": { "documents": 29, "nodes": 29 },
     "div": { "documents": 21, "nodes": 23 },
-    "raw_block": { "documents": 4, "nodes": 4 },
+    "raw_block": { "documents": 7, "nodes": 7 },
     "figure_group": { "documents": 9, "nodes": 9 },
     "citation_definition": { "documents": 0, "nodes": 0 },
     "admonition": { "documents": 52, "nodes": 258 }
@@ -26,6 +26,12 @@
     "marker-line-block-opener-builds-nothing": "a block opener written on a list MARKER line builds nothing. `- # H` gives a list item whose content is a PARAGRAPH, not a heading; `- ---` is read as a document-level thematic break that consumes the marker, so no list is built at all. Verified against the indented spelling, which works: `- a` / `  # H` does build the heading. This is the same shape as the recorded `fence-on-a-marker-line-builds-nothing` - the marker line is one position this grammar does not run block-opener recognition in - now reached by the heading and thematic-break openers too. A TASK checkbox does not change which openers reach it, but it does change what the thematic break degrades INTO, and the sentence above is wrong for that spelling: `- [x] # h` is still a paragraph, while `- [ ] ---` no longer consumes the marker - the list and the item ARE built and `---` becomes an inline `em_dash` inside the item's paragraph. Measured against the neighbour that works, which is what keeps the checkbox out of it: `- [ ] > q` opens its quote with content, so the checkbox does not disturb an opener the marker line already admits. That is why a-task-item-s-checkbox-is-not-decided-by-its-first-block reports `heading: want 1 have 0; thematic_break: want 1 have 0` and no gap for its quote."
   },
   "covered": [
+    "a-heading-at-an-item-s-content-column-leaves-no-paragraph-open",
+    "a-quote-is-reached-by-its-marker-and-a-column-never-reaches-into-one",
+    "a-raw-block-keeps-the-blank-line-at-the-end-of-its-payload-too",
+    "a-table-alignment-run-carries-two-independent-axes",
+    "an-unterminated-fence-at-a-content-column-opens-no-block-so-the-paragraph-stays-open",
+    "table-columns-carry-alignment-vertical-alignment-and-widths",
     "a-backslash-in-a-link-destination-is-a-literal-character",
     "a-bare-attribute-block-on-its-own-line-is-literal",
     "a-below-column-marker-after-a-comment-where-no-paragraph-is-open",
@@ -419,6 +425,10 @@
   "invisibleOverAcceptance": {},
   "batteryDisagreements": {},
   "underAcceptance": {
+    "a-raw-block-keeps-the-blank-line-at-the-end-of-its-payload-too-2": {
+      "gaps": "raw_block: want 1 have 0",
+      "reason": "ref:fence-on-a-marker-line-builds-nothing"
+    },
     "a-blank-line-before-a-sibling-marker-separates-the-items-whatever-consumed-it": {
       "gaps": "div: want 1 have 0",
       "reason": "ref:fence-on-a-marker-line-builds-nothing"
@@ -574,6 +584,10 @@
     }
   },
   "lineTerminatorGaps": {
+    "an-unterminated-fence-at-a-content-column-opens-no-block-so-the-paragraph-stays-open-6": {
+      "spellings": "the cr spelling(s) parse to a different tree than lf",
+      "reason": "ref:lone-cr-strands-a-column-probe"
+    },
     "a-block-attached-after-an-invisible-line-leaves-the-item-tight-2": {
       "spellings": "the cr spelling(s) parse to a different tree than lf",
       "reason": "ref:lone-cr-strands-a-column-probe"
