@@ -155,8 +155,11 @@ jobs:
           registry-url: https://registry.npmjs.org
       - run: npm ci
 
-      # The same prebuilds the gate measured. Packing without them here would
-      # publish an artifact nothing verified.
+      # The gate deliberately does not measure prebuilds - it checks the
+      # grammar, and coupling it to packaging would let a Windows build block
+      # two registries that carry none. So this job owns the packaging half:
+      # collect every platform's prebuild and refuse below three, because a
+      # tarball missing one silently makes that platform compile from source.
       - uses: actions/download-artifact@v4
         with:
           pattern: prebuilds-*
