@@ -676,6 +676,50 @@
     "trailing-attributes-on-a-link-reference-definition": {
       "spellings": "the cr spelling(s) parse to a different tree than lf",
       "reason": "ref:lone-cr-strands-a-column-probe"
+    },
+    "link-destination-parentheses-balance-4": {
+      "spellings": "the cr spelling(s) parse to a different tree than lf",
+      "reason": "ref:lone-cr-strands-a-column-probe"
+    },
+    "post-blank-list-continuation-content-column-model-5": {
+      "spellings": "the cr spelling(s) parse to a different tree than lf",
+      "reason": "ref:lone-cr-strands-a-column-probe"
+    },
+    "a-boundary-line-inside-an-open-fence-does-not-end-the-container-2": {
+      "spellings": "the cr spelling(s) parse to a different tree than lf",
+      "reason": "ref:lone-cr-strands-a-column-probe"
+    },
+    "a-boundary-line-inside-an-open-fence-does-not-end-the-container": {
+      "spellings": "the cr spelling(s) parse to a different tree than lf",
+      "reason": "ref:lone-cr-strands-a-column-probe"
+    },
+    "a-container-whose-table-ends-on-a-continuation-row-3": {
+      "spellings": "the cr spelling(s) parse to a different tree than lf",
+      "reason": "ref:lone-cr-strands-a-column-probe"
+    },
+    "a-container-whose-table-ends-on-a-continuation-row-5": {
+      "spellings": "the cr spelling(s) parse to a different tree than lf",
+      "reason": "ref:lone-cr-strands-a-column-probe"
+    },
+    "a-bracketed-construct-s-identifiers-stay-on-one-line-3": {
+      "spellings": "the cr spelling(s) parse to a different tree than lf",
+      "reason": "ref:lone-cr-strands-a-column-probe"
+    },
+    "a-bracketed-construct-s-identifiers-stay-on-one-line-4": {
+      "spellings": "the cr spelling(s) parse to a different tree than lf",
+      "reason": "ref:lone-cr-strands-a-column-probe"
+    },
+    "a-quote-inside-a-quote-is-asked-what-it-ends-on-8": {
+      "spellings": "the cr spelling(s) parse to a different tree than lf",
+      "reason": "ref:lone-cr-strands-a-column-probe"
+    },
+    "a-quote-inside-a-quote-is-asked-what-it-ends-on-9": {
+      "spellings": "the cr spelling(s) parse to a different tree than lf",
+      "reason": "ref:lone-cr-strands-a-column-probe"
+    },
+    "a-paragraph-opened-after-a-block-in-an-item-is-still-open-for-a-lazy-line": {
+      "spellings": "the cr spelling(s) parse to a different tree than lf",
+      "reason": "ref:lone-cr-strands-a-column-probe"
     }
   }
 }
