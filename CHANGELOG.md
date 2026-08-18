@@ -6,56 +6,58 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-### Fixed
-
-- Keep table continuation rows inside block quotes, recognize headings at a
-  quote's content column, and keep link identifiers on one physical line
-  (#208, #209, #210, #219).
-- Pin the grammar battery revision and make Node-addon/CLI parse parity a CI
-  invariant (#216, #217).
-
-### Changed
-
-- Ratchet under-acceptance against the exact compared document/node population
-  so corpus or node-mapping drift cannot silently shrink the sweep (#223).
+## [0.1.3] - 2026-08-18
 
 ### Added
 
-- Parse tilde code and raw fences with the same width, metadata, container, and
+- Tilde code and raw fences parse with the same width, metadata, container and
   interruption rules as backtick fences. A closer must use the opener's fence
-  character and may be wider than it.
+  character and may be wider than it (#225).
+- Semantic language attributes: `{:TAG}` and `{:}` parse in inline and block
+  attribute lists, with the structural subtag envelope enforced in the block
+  scanner and a dedicated highlighted node (#191).
+- An inline note, `^[content]`, is a construct: an `inline_note` node with a
+  `content` field captured as `markup.link.label`. Its content recognizes no
+  note and no footnote reference, and an empty or whitespace-only note stays a
+  literal caret and bracket run (#199). Known gap, pinned in
+  `test/corpus/carve.txt`: a note whose content holds a bracket run that forms
+  no span ends at that run's `]` (corpus 309).
+- A bare `::: figure` opener highlights as a composite figure - `class_name`
+  captures `@type.builtin` rather than the generic `@type`, and an opener
+  carrying a title or a `[label]` keeps `@type` (#197, markup-carve/carve#1215).
+- Node-addon and CLI parse parity is a CI invariant, with the grammar battery
+  pinned to a source revision (#224).
 
-- **An inline note, `^[content]`, is a construct** (spec PART 9, corpus 307 and
-  309). It was a literal caret followed by a bracket, with nothing in the tree
-  saying a note was written at all. The note is now an `inline_note` node with
-  a `content` field, captured as `markup.link.label`.
+### Fixed
 
-  Its content recognizes no note and no footnote reference, as the spec says:
-  `^[b]` and `[^1]` inside a note are literal text, and `[^1]{.k}` is a span
-  over `^1`. An EMPTY or whitespace-only note is not a note - `^[]`, `^[ ]` and
-  `^[]{.c}` stay a literal caret and a bracket run.
+- A quote on a list item's marker line keeps the rest of that line instead of
+  building an empty quote and ejecting the content out of the list (#220).
+- Table continuation rows stay inside block quotes and definition-list
+  prefixes, headings are recognized at an active container's content column,
+  and a link reference identifier stays on one physical line (#224).
+- A language tag has one spelling, so `[x]{:fr}` forms a span like every other
+  attribute kind and a malformed tag stays literal (#194).
+- A span's attribute list must be adjacent to the bracket it qualifies; a span
+  no longer reaches across a lone-CR blank line to take the next line's block
+  attribute list (#196).
 
-  KNOWN GAP: a note whose content holds a bracket run that forms no span ends
-  at that run's `]` rather than at its own. `x ^[a ^[b] c]` builds a note over
-  `^[a ^[b]` and leaves ` c]` beside it, where the spec makes the whole of
-  `a ^[b] c` the note's content (corpus 309). The corpus check cannot see it -
-  neither reading carries an ERROR - so `test/corpus/carve.txt` pins the
-  truncated tree explicitly, and whoever repairs it will be told by that
-  fixture failing. `[^1]{.k}` is unaffected, because the span consumes its own
-  `]`.
+### Changed
 
-- **A bare `::: figure` opener highlights as a composite figure** (spec PART 9
-  §4c, markup-carve/carve#1215). The kind word `figure` is reserved among the
-  `:::` types: an opener carrying nothing else is one figure of ordered panels,
-  and its `class_name` now captures `@type.builtin` instead of the generic
-  `@type`. An opener that carries a quoted title or a `[label]` keeps `@type`,
-  and a bare opener inside an open group is restored to `@type` as well, because
-  groups do not nest - through a direct child, an intervening container or quote,
-  and a list item. The grammar itself is unchanged:
-  the parse tree already tells the two apart by which fields the opener carries,
-  and the group caption already parses as a sibling of the container rather than
-  inside it, which is where the clause puts it.
-
+- The spec corpus pin moves from carve `c19d1a4` to the `22f7f47` freeze:
+  892 to 1259 documents, 288 to 365 categories, each added category classified
+  rather than regenerated (#206, #213, #221).
+- The engine oracle behind `scripts/under-acceptance.mjs` moves to carve-js
+  `2dc3232e`, 200 commits forward from a pin that predated the 0.1.3 engine
+  release, so the recorded gaps describe an engine somebody ships (#215, #222).
+- Under-acceptance is ratcheted against the exact compared document and node
+  population, so corpus or node-mapping drift cannot silently shrink the sweep
+  (#224). Over this release the ledger moved 28 to 40 recorded gaps - 21 in,
+  9 out - and the line-terminator ledger 18 to 34 - 17 in, 1 out - against a
+  corpus that grew by 367 documents.
+- The four short-run corpus floors move from 400 to 1000 documents. A floor set
+  at a third of the population caught an uninitialized submodule and nothing
+  else, so a half-lost checkout ran at 600 documents and reported a clean pass
+  (#207).
 ## [0.1.2] - 2026-08-10
 
 ### Fixed
