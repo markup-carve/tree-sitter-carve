@@ -1,11 +1,23 @@
 {
   "_comment": "Coverage matrix for the shared Carve spec corpus (spec/tests/corpus/*.crv). Every NN-slug base category must appear in covered or skip; the coverage-matrix test fails otherwise so a new spec category forces a classify decision. covered = grammar parses every file in the category with no ERROR/MISSING node. skip = at least one file currently produces an ERROR/MISSING node; reason records the unmodeled construct (a grammar gap to surface, not to hack around). A skip key is a CATEGORY (NN-slug) or a single EXAMPLE (NN-slug-2) — use the example form when the rest of the category parses cleanly, so one gap does not drop assertion for its siblings. A key equal to a category name is read as the CATEGORY, so the first example of a category cannot be skipped on its own. REASONS: a ledger entry's `reason` may be `ref:<key>`, resolving against the top-level `reasons` map, so one grammar gap spanning a whole category states its explanation once. coverage-matrix gates it both ways - a ref with no entry fails, and a reasons entry nothing references fails, because a reason nobody points at is an excuse that outlived the gap it excused.",
+  "comparisonPopulation": {
+    "thematic_break": { "documents": 9, "nodes": 11 },
+    "block_quote": { "documents": 119, "nodes": 142 },
+    "table": { "documents": 115, "nodes": 116 },
+    "heading": { "documents": 104, "nodes": 135 },
+    "code_block": { "documents": 67, "nodes": 67 },
+    "list": { "documents": 306, "nodes": 386 },
+    "definition_list": { "documents": 39, "nodes": 39 },
+    "line_block": { "documents": 29, "nodes": 29 },
+    "div": { "documents": 21, "nodes": 23 },
+    "raw_block": { "documents": 4, "nodes": 4 },
+    "figure_group": { "documents": 9, "nodes": 9 },
+    "citation_definition": { "documents": 0, "nodes": 0 },
+    "admonition": { "documents": 52, "nodes": 258 }
+  },
   "reasons": {
     "a-column-0-opener-does-not-close-an-open-list": "a column-0 block opener does not close an open LIST; it folds into the item as lazy paragraph text. `- a` / `# H` builds no heading, while `> q` / `# H` does - so the block quote closes correctly and only the list does not. Both documents here reach it through a `+` continuation marker, which this grammar opens as an ordinary bullet list, after which the column-0 heading below is swallowed the same way.",
-    "a-container-content-column-opener-does-not-close-the-nested-container": "a block opener sitting at an OUTER container's content column - not at column 0 - builds no block. `> > q` / `> # H` closes the inner quote correctly and then reads `# H` as a PARAGRAPH, where the language builds a heading (markup-carve/carve#1357, markup-carve/carve#1350: at a container's content column, a block ends the paragraph it sits under). Reduced to that two-line probe rather than read off the corpus document. Distinct from the recorded a-column-0-opener-does-not-close-an-open-list, which is a COLUMN-0 opener under an open LIST: here no list is involved, the inner container does close, and what fails is block-opener recognition at the reopened outer container's content position.",
-    "a-continuation-row-inside-a-quote-abandons-the-table": "a table CONTINUATION ROW reached through a BLOCK QUOTE prefix parses to ERROR: `> | a |` / `> + b |` abandons the table at the quote's content column and the quote body becomes one ERROR node, where the corpus joins the continuation row onto the row above it (markup-carve/carve#1354, markup-carve/carve#1361). MEASURED against the neighbouring positions rather than assumed, which is what narrows it: the same continuation row is CLEAN at column 0, CLEAN inside a list item (`- | a |` / `  + b |`) and CLEAN inside a colon container, and a plain non-continuation row inside the same quote is clean too - so the gap is the continuation row's interaction with the block-quote prefix specifically, and neither construct alone. It reaches every quote depth and both row spellings: the two quote-inside-a-quote examples are this same document at two and three markers, and the joined HEADER row (`|=a |`) fails identically. The symptom depends on how deeply the quote is nested: at document level the quote body becomes an ERROR node, while inside a description-list dd (`:  > | a |` / `   > + b |`) no ERROR appears at all and the quote simply holds a PARAGRAPH - no table is built. Same gap, and the quiet spelling is the one worth naming, because a clean tree with the construct missing is what the ERROR-only conformance check is structurally unable to see.",
     "a-heading-in-a-description-body-builds-nothing": "a heading indented inside a description-list DEFINITION body builds no heading: the `definition` node is returned as one undivided span, so the `# H` below a floating attribute inside it never opens. The same heading one level out, in an ordinary list item, does open.",
-    "a-marked-heading-line-inside-a-quote-is-not-a-heading": "a heading written on a MARKED line inside a block quote builds no heading; it folds into the paragraph above it (tree-sitter-carve#219). `> intro` / `> # H` is one paragraph spanning both lines here, where carve-js at the pinned oracle ends the paragraph and builds the heading. Narrowed rather than assumed: `> # H` alone DOES build the heading and `> intro` / blank / `> # H` builds it in a second quote, so the marker is not the problem and the open paragraph is - the normative rule it misses is markup-carve/carve#1364, a block at a container's content column ends the paragraph it sits under. `test/corpus/carve.txt` pins the current answer as a test of its own, so closing it means re-baselining that case rather than watching it start to pass. Reached here on the CONTINUATION line of the -3 document: with the marker-line quote nesting repaired (tree-sitter-carve#218), `  >     # h` is a marked line in a quote and still builds nothing. Distinct from a-container-content-column-opener-does-not-close-the-nested-container and from tree-sitter-carve#210, which are the same rule reached after a NESTED container closes; nothing is nested here.",
     "a-tabbed-frontmatter-opener-swallows-the-break-below": "`---` followed by a TAB is not a frontmatter opener, and the grammar agrees that far - it builds no frontmatter. But it then reads the closing `---` three lines down as an `em_dash` inside the still-open paragraph rather than as a thematic break, so the `<hr>` the fixture expects between the paragraph and `body` is not built.",
     "an-attribute-line-does-not-end-the-paragraph-above-a-list": "a floating attribute line at column 0 does not end the paragraph above it, so the list it is meant to attach to never opens: `para` / `{.x}` / `- b` is ONE paragraph. The fixture expects the paragraph to end at the attribute line and the run to reach the list below it, as `<ul class=\"x\">`.",
     "an-unclosed-verbatim-run-abandons-the-row": "an UNCLOSED verbatim run inside a table row makes the grammar abandon the table: `| a `b | c d |` parses to a paragraph holding one `verbatim` node whose content runs to end of line, and no `table` is built. The rule these categories exist to pin is the opposite one - the run stops at the closing pipe, so the row is still a row and the fixture expects `<td>a <code>b | c d</code></td>`. The continuation-row spelling (`| a `b |` / `+ c` |`) fails the same way and for the same reason.",
@@ -383,26 +395,12 @@
   ],
   "skip": {
     "a-blank-line-holds-spaces-and-tabs-and-nothing-else-3": "a paragraph whose interior lines hold a single vertical tab, form feed, NEL (U+0085), LS (U+2028) or PS (U+2029) and nothing else parses to ERROR. PART 9 makes a line blank only when it holds spaces and tabs, so each of these is CONTENT and the paragraph runs through them; this grammar has no line-content route for a line whose only character is one of them. The category's other examples parse cleanly.",
-    "a-container-whose-table-ends-on-a-continuation-row-3": "ref:a-continuation-row-inside-a-quote-abandons-the-table",
-    "a-container-whose-table-ends-on-a-joined-header-row-3": "ref:a-continuation-row-inside-a-quote-abandons-the-table",
     "a-continuation-marker-attaches-one-block-and-the-boundary-is-that-block-s-extent-5": "a `+` continuation marker that attaches NOTHING - the line after it opens a sibling item rather than a block to attach - leaves the first item unclosed and the whole document parses to one top-level ERROR. `- a` / `+` / `- x` / `- y` is three flat items in the fixture. The category's other eight examples, where the marker does attach a block, parse cleanly.",
-    "a-quote-inside-a-quote-is-asked-what-it-ends-on-8": "ref:a-continuation-row-inside-a-quote-abandons-the-table",
-    "a-quote-inside-a-quote-is-asked-what-it-ends-on-9": "ref:a-continuation-row-inside-a-quote-abandons-the-table",
     "a-quoted-attribute-value-stops-at-the-newline-3": "a quoted attribute value carrying a newline (`{k=\"a` / `b\"}`) parses to ERROR. The corpus pins it as literal text - the inline block does not span lines - but this grammar commits to an attribute block on the opening brace and has no route back to a paragraph when the value never closes on its line. Same class as an-attribute-name-admits-no-colon-3. The category's other examples parse cleanly.",
     "delimited-comments-8": "a `%%` trailing comment inside a TABLE ROW swallows the rest of the line, closing pipes included, so `| d %% tail | e |` parses to a `trailing_comment` followed by ERROR. The fixture keeps the row: it expects `<td>d</td><td>e</td>`, the comment stripped from the first cell and the second cell intact. The category's other seven examples parse cleanly - including `{% ... %}`, which this grammar models as `inline_comment` and the pinned carve-js engine does not model at all.",
     "trailing-whitespace-on-a-content-line-is-dropped-7": "content lines ending in NBSP, ZWSP, BOM, U+2000 or a form feed parse to ERROR. Only the ASCII space and tab are dropped as trailing whitespace; every other spelling is content the renderer keeps, and this grammar's line-content rule does not admit them in that position. The category's other examples parse cleanly."
   },
   "overAcceptance": {
-    "a-bracketed-construct-s-identifiers-stay-on-one-line-3": {
-      "nodes": "caption",
-      "lines": "3",
-      "reason": "the identifier slot spans a line boundary here and this grammar admits it: `![a][r` / `x]` builds a full_reference_image whose LABEL crosses the newline, and `![a](/i` / `q)` an inline_image whose DESTINATION does. Having built an image, the `^ cap` line below finds a captionable host and becomes a caption. The language keeps an IDENTIFIER on one line (markup-carve/carve#1352, markup-carve/carve#1360), so each document is ONE paragraph of literal text end to end and there is no image for the caret line to caption. The sibling category a-bracketed-construct-spanning-a-line-boundary parses correctly, which locates the gap precisely: the half this grammar models is inline CONTENT spanning a line, and the half it does not is the identifier slots - a reference label and an inline destination - whose scanners run straight across the newline. The over-acceptance is the caption, because that is the only BLOCK node the mis-parse produces; the image itself is an inline over-acceptance this sweep cannot see."
-    },
-    "a-bracketed-construct-s-identifiers-stay-on-one-line-4": {
-      "nodes": "caption",
-      "lines": "3",
-      "reason": "the identifier slot spans a line boundary here and this grammar admits it: `![a][r` / `x]` builds a full_reference_image whose LABEL crosses the newline, and `![a](/i` / `q)` an inline_image whose DESTINATION does. Having built an image, the `^ cap` line below finds a captionable host and becomes a caption. The language keeps an IDENTIFIER on one line (markup-carve/carve#1352, markup-carve/carve#1360), so each document is ONE paragraph of literal text end to end and there is no image for the caret line to caption. The sibling category a-bracketed-construct-spanning-a-line-boundary parses correctly, which locates the gap precisely: the half this grammar models is inline CONTENT spanning a line, and the half it does not is the identifier slots - a reference label and an inline destination - whose scanners run straight across the newline. The over-acceptance is the caption, because that is the only BLOCK node the mis-parse produces; the image itself is an inline over-acceptance this sweep cannot see."
-    },
     "a-caret-line-does-not-end-a-paragraph-it-cannot-caption": {
       "nodes": "caption",
       "lines": "2",
@@ -434,47 +432,13 @@
       "gaps": "code_block: want 1 have 0",
       "reason": "ref:fence-on-a-marker-line-builds-nothing"
     },
-    "a-boundary-line-inside-an-open-fence-does-not-end-the-container": {
-      "gaps": "code_block: want 1 have 0"
-    },
-    "a-boundary-line-inside-an-open-fence-does-not-end-the-container-2": {
-      "gaps": "code_block: want 1 have 0"
-    },
     "a-captioned-quote-holds-more-than-one-block-4": {
       "gaps": "code_block: want 1 have 0",
       "reason": "ref:tilde-fence-is-unimplemented"
     },
-    "a-column-0-line-after-a-container-s-last-block-when-that-block-left-no-paragraph-open": {
-      "gaps": "heading: want 1 have 0",
-      "reason": "ref:marker-line-block-opener-builds-nothing"
-    },
-    "a-column-0-line-after-a-container-s-last-block-when-that-block-left-no-paragraph-open-10": {
-      "gaps": "heading: want 1 have 0",
-      "reason": "ref:marker-line-block-opener-builds-nothing"
-    },
-    "a-column-0-line-after-a-container-s-last-block-when-that-block-left-no-paragraph-open-14": {
-      "gaps": "heading: want 1 have 0",
-      "reason": "ref:marker-line-block-opener-builds-nothing"
-    },
-    "a-column-0-line-after-a-container-s-last-block-when-that-block-left-no-paragraph-open-16": {
-      "gaps": "heading: want 1 have 0",
-      "reason": "ref:marker-line-block-opener-builds-nothing"
-    },
-    "a-column-0-line-after-a-container-s-last-block-when-that-block-left-no-paragraph-open-17": {
-      "gaps": "heading: want 1 have 0",
-      "reason": "ref:marker-line-block-opener-builds-nothing"
-    },
     "a-column-0-line-after-a-container-s-last-block-when-that-block-left-no-paragraph-open-4": {
       "gaps": "list: want 1 have 0",
       "reason": "ref:marker-line-block-opener-builds-nothing"
-    },
-    "a-container-whose-table-ends-on-a-continuation-row-5": {
-      "gaps": "table: want 1 have 0",
-      "reason": "ref:a-continuation-row-inside-a-quote-abandons-the-table"
-    },
-    "a-container-whose-table-ends-on-a-continuation-row-6": {
-      "gaps": "table: want 1 have 0",
-      "reason": "ref:a-continuation-row-inside-a-quote-abandons-the-table"
     },
     "a-continuation-marker-attaches-one-block-and-the-boundary-is-that-block-s-extent-9": {
       "gaps": "heading: want 1 have 0",
@@ -491,10 +455,6 @@
     "a-continuation-row-s-open-run-and-an-escaped-closing-pipe-4": {
       "gaps": "table: want 1 have 0",
       "reason": "ref:an-unclosed-verbatim-run-abandons-the-row"
-    },
-    "a-definition-behind-an-alternating-container-prefix-registers-at-the-innermost-content-column-3": {
-      "gaps": "heading: want 1 have 0",
-      "reason": "ref:a-marked-heading-line-inside-a-quote-is-not-a-heading"
     },
     "a-fence-keeps-the-blank-line-at-the-end-of-its-content-4": {
       "gaps": "code_block: want 1 have 0",
@@ -520,10 +480,6 @@
       "gaps": "code_block: want 1 have 0",
       "reason": "ref:fence-on-a-marker-line-builds-nothing"
     },
-    "a-floating-attribute-is-scoped-to-the-container-that-holds-it-4": {
-      "gaps": "heading: want 1 have 0",
-      "reason": "ref:a-column-0-opener-does-not-close-an-open-list"
-    },
     "a-floating-attribute-is-scoped-to-the-container-that-holds-it-9": {
       "gaps": "heading: want 1 have 0",
       "reason": "ref:a-heading-in-a-description-body-builds-nothing"
@@ -538,10 +494,6 @@
     "a-paragraph-opened-after-a-block-in-an-item-is-still-open-for-a-lazy-line-3": {
       "gaps": "code_block: want 1 have 0",
       "reason": "ref:fence-on-a-marker-line-builds-nothing"
-    },
-    "a-quote-inside-a-quote-is-asked-what-it-ends-on-12": {
-      "gaps": "heading: want 1 have 0",
-      "reason": "ref:a-container-content-column-opener-does-not-close-the-nested-container"
     },
     "a-tab-after-a-fence-or-a-frontmatter-opener-depends-on-where-it-sits-3": {
       "gaps": "thematic_break: want 1 have 0",
@@ -582,9 +534,6 @@
     "attribute-braces-on-a-list-item-marker-line": {
       "gaps": "heading: want 1 have 0"
     },
-    "attribute-order-on-an-unwrapped-heading": {
-      "gaps": "heading: want 3 have 1"
-    },
     "fence-opener-with-a-nested-list-body-inside-a-list-item-5": {
       "gaps": "div: want 1 have 0"
     },
@@ -593,15 +542,6 @@
     },
     "fenced-code-13": {
       "gaps": "code_block: want 1 have 0"
-    },
-    "headings-inside-containers-are-not-wrapped": {
-      "gaps": "heading: want 3 have 2"
-    },
-    "implicit-heading-references-with-no-definition": {
-      "gaps": "heading: want 4 have 3"
-    },
-    "list-lazy-continuation-2": {
-      "gaps": "heading: want 1 have 0"
     },
     "list-lazy-continuation-8": {
       "gaps": "table: want 1 have 0"
@@ -627,9 +567,6 @@
     },
     "paragraph-interruption-8": {
       "gaps": "table: want 1 have 0"
-    },
-    "post-blank-list-continuation-content-column-model-5": {
-      "gaps": "code_block: want 1 have 0"
     },
     "table-as-a-block-opener-in-a-list-item": {
       "gaps": "table: want 1 have 0"

@@ -6,6 +6,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Keep table continuation rows inside block quotes, recognize headings at a
+  quote's content column, and keep link identifiers on one physical line
+  (#208, #209, #210, #219).
+- Pin the grammar battery revision and make Node-addon/CLI parse parity a CI
+  invariant (#216, #217).
+
+### Changed
+
+- Ratchet under-acceptance against the exact compared document/node population
+  so corpus or node-mapping drift cannot silently shrink the sweep (#223).
+
 ### Added
 
 - **An inline note, `^[content]`, is a construct** (spec PART 9, corpus 307 and

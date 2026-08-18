@@ -9,6 +9,27 @@ Plain text.
   (paragraph))
 
 ===============================================================================
+A table continuation row survives a block-quote prefix (tree-sitter-carve#208)
+===============================================================================
+
+> | a |
+> + b |
+tail
+
+-------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (table
+        (table_row
+          (table_cell))
+        (block_quote_marker)
+        (table_continuation_row))))
+  (paragraph))
+
+===============================================================================
 Headings
 ===============================================================================
 # One
@@ -4800,7 +4821,7 @@ A heading at a list item's column ends a quote inside that item (tree-sitter-car
           content: (content))))))
 
 ===============================================================================
-A MARKED heading line inside a quote is still not a heading (tree-sitter-carve#112)
+A marked heading line inside a quote ends the paragraph (tree-sitter-carve#219)
 ===============================================================================
 
 > intro
@@ -4812,8 +4833,33 @@ A MARKED heading line inside a quote is still not a heading (tree-sitter-carve#1
   (block_quote
     (block_quote_marker)
     content: (content
-      (paragraph
-        (block_quote_marker)))))
+      (paragraph)
+      (block_quote_marker)
+      (heading
+        marker: (marker)
+        content: (content)))))
+
+===============================================================================
+An opener at an outer quote content column closes the inner quote (#210)
+===============================================================================
+
+> > q
+> # H
+
+-------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (block_quote
+        (block_quote_marker)
+        content: (content
+          (paragraph)))
+      (block_quote_marker)
+      (heading
+        marker: (marker)
+        content: (content)))))
 
 ===============================================================================
 A fence whose only closer is outdented does not interrupt (tree-sitter-carve#112)
@@ -5197,3 +5243,29 @@ A glued marker on an item's marker line is not a quote (tree-sitter-carve#218)
       marker: (list_marker_dash)
       content: (list_item_content
         (paragraph)))))
+
+===============================================================================
+A reference label cannot cross a line boundary (tree-sitter-carve#209)
+===============================================================================
+
+![a][r
+x]
+^ cap
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph))
+
+===============================================================================
+An inline destination cannot cross a line boundary (tree-sitter-carve#209)
+===============================================================================
+
+![a](/i
+q)
+^ cap
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph))

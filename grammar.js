@@ -280,7 +280,8 @@ module.exports = grammar({
         optional($._block_quote_continuation),
         choice($.heading, $._block_element, $._newline),
       ),
-    _block_element: ($) =>
+    _block_element: ($) => choice($._nonparagraph_block, $._paragraph),
+    _nonparagraph_block: ($) =>
       choice(
         $.list,
         $.definition_list,
@@ -299,7 +300,6 @@ module.exports = grammar({
         $.caption,
         $.block_attribute,
         $.callout_list,
-        $._paragraph,
       ),
 
     // A heading ends at its newline and nothing folds into it (SINGLE-LINE
@@ -419,8 +419,13 @@ module.exports = grammar({
       seq(
         optional($._block_quote_prefix),
         field("marker", $.list_marker_description),
-        field("definition", alias($._paragraph_content, $.definition)),
-        choice($._eof_or_newline, $._close_paragraph),
+        choice(
+          seq(
+            field("definition", alias($._paragraph_content, $.definition)),
+            choice($._eof_or_newline, $._close_paragraph),
+          ),
+          choice($.heading, $._nonparagraph_block),
+        ),
         // A description holds BLOCKS, not just the line it starts on: corpus
         // 25-definition-lists-2 continues one into a second paragraph, and a
         // `+` marker attaches a FLUSH-LEFT block the same way it does for a
@@ -668,7 +673,8 @@ module.exports = grammar({
     table: ($) =>
       prec.right(
         seq(
-          repeat1($._table_row),
+          $._table_regular_row,
+          repeat($._table_row),
           optional($._newline),
           optional($.table_caption),
         ),
@@ -676,8 +682,19 @@ module.exports = grammar({
     _table_row: ($) =>
       seq(
         optional($._block_quote_prefix),
+        choice(
+          $.table_header,
+          $.table_separator,
+          $.table_row,
+          $.table_continuation_row,
+        ),
+      ),
+    _table_regular_row: ($) =>
+      seq(
+        optional($._block_quote_prefix),
         choice($.table_header, $.table_separator, $.table_row),
       ),
+    table_continuation_row: ($) => $._table_continuation_row,
     table_header: ($) =>
       seq(
         alias($._table_header_begin, "|"),
@@ -972,7 +989,15 @@ module.exports = grammar({
         choice($.heading, $._block_element),
         repeat(
           choice(
-            seq($._block_quote_prefix, optional($._block_element)),
+            seq(
+              $._block_quote_prefix,
+              optional(
+                choice(
+                  seq(optional($._whitespace1), $.heading),
+                  $._block_element,
+                ),
+              ),
+            ),
             // A `+` continuation marker (PART 9 §17) attaches a flush-left block
             // (not `>`-prefixed) to the quote (corpus 100-block-quote-continuation-marker).
             seq($.list_continuation_marker, $._block_element),
@@ -1404,6 +1429,9 @@ module.exports = grammar({
         repeat1(choice($._inline_element, $._newline_inline, $._whitespace1)),
       ),
 
+    _inline_single_line: ($) =>
+      prec.left(repeat1(choice($._inline_element, $._whitespace1))),
+
     _inline_without_trailing_space: ($) =>
       seq(
         prec.left(
@@ -1695,7 +1723,7 @@ module.exports = grammar({
     _link_label: ($) =>
       seq(
         "[",
-        field("label", alias($._inline, $.link_label)),
+        field("label", alias($._inline_single_line, $.link_label)),
         token.immediate("]"),
       ),
     inline_link_destination: ($) =>
@@ -1707,7 +1735,7 @@ module.exports = grammar({
       ),
     _inline_link_url: ($) =>
       // Can escape `)`, but shouldn't capture it.
-      repeat1(choice(/([^\)\r\n]|\\\))+/, $._newline_inline)),
+      repeat1(/([^)\r\n]|\\\))+/),
     _parens_span_begin: (_) => "(",
 
     _comment: ($) =>
@@ -2043,5 +2071,9 @@ module.exports = grammar({
     // The note's own closer. Its own token, and its own inline type in the
     // scanner, so a bracket nested in the content does not count against it.
     $._inline_note_end,
+
+    // A `+ ` row is admitted only after the scanner verifies that the entire
+    // physical line is made of pipe-terminated continuation cells.
+    $._table_continuation_row,
   ],
 });

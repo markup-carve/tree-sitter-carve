@@ -72,6 +72,8 @@ jobs:
             throw new Error(`Expected carve grammar, got ${grammar.name}`)
           }
           NODE
+      - name: Node binding agrees with the CLI over the corpus
+        run: npm run test:binding-parity
 
   rust:
     runs-on: ubuntu-latest
