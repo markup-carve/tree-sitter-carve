@@ -24,6 +24,13 @@ on:
   push:
     tags:
       - "[0-9]+.[0-9]+.[0-9]+"
+  # A rehearsal. Everything runs - the version guard, the three-platform
+  # prebuild matrix, the corpus gate over the packed tarball, and every
+  # packaging check - and the three publish steps become --dry-run. The point is
+  # that the first time this workflow runs should not be the moment a tag makes
+  # it irreversible: npm, crates.io and PyPI all refuse to replace a published
+  # version.
+  workflow_dispatch:
 
 jobs:
   guard:
@@ -38,7 +45,15 @@ jobs:
       # would have shipped that divergence a third time.
       - name: Every manifest agrees with the tag
         run: |
-          tag="${GITHUB_REF_NAME}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            # No tag exists in a rehearsal, so package.json stands in for it and
+            # the check becomes "do all four agree", which is the half that
+            # caught three manifests sitting at 0.1.0 through two releases.
+            tag="$(node -p 'require("./package.json").version')"
+            echo "rehearsal: comparing every manifest against package.json ($tag)"
+          else
+            tag="${GITHUB_REF_NAME}"
+          fi
           fail=0
           check() {
             if [ "$2" != "$tag" ]; then
@@ -54,8 +69,10 @@ jobs:
 
       - name: The changelog describes this version
         run: |
-          grep -qE "^## \[?${GITHUB_REF_NAME}\]? - " CHANGELOG.md \
-            || { echo "::error::CHANGELOG.md has no section for ${GITHUB_REF_NAME}"; exit 1; }
+          v="${GITHUB_REF_NAME}"
+          [ "${{ github.event_name }}" = "workflow_dispatch" ] && v="$(node -p 'require("./package.json").version')"
+          grep -qE "^## \[?${v}\]? - " CHANGELOG.md \
+            || { echo "::error::CHANGELOG.md has no section for ${v}"; exit 1; }
 
   # package.json already lists `prebuilds/**` in `files` and carries prebuildify
   # as a devDependency, so the packaging INTENDS prebuilds - nobody had ever run
@@ -181,7 +198,14 @@ jobs:
           [ -n "${{ secrets.NPM_TOKEN }}" ] \
             || { echo "::error::NPM_TOKEN is not available to this repository"; exit 1; }
 
-      - run: npm publish --provenance --access public
+      - name: Publish to npm
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            npm publish --dry-run --access public
+            echo "::notice::rehearsal - nothing was published to npm"
+          else
+            npm publish --provenance --access public
+          fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
@@ -210,18 +234,28 @@ jobs:
       # immutable on the registry.
       - name: What the crate would carry
         run: |
+          v="${GITHUB_REF_NAME}"
+          [ "${{ github.event_name }}" = "workflow_dispatch" ] && v="$(grep -m1 '^version = ' Cargo.toml | cut -d'"' -f2)"
+          echo "CRATE_VERSION=$v" >> "$GITHUB_ENV"
           cargo package --list --allow-dirty | sort
           cargo package --allow-dirty
-          test -f target/package/tree-sitter-carve-${GITHUB_REF_NAME}.crate \
+          test -f "target/package/tree-sitter-carve-${v}.crate" \
             || { echo "::error::cargo package produced no crate"; exit 1; }
 
       - name: The packaged crate carries the generated parser
         run: |
-          tar -tzf "target/package/tree-sitter-carve-${GITHUB_REF_NAME}.crate" \
+          tar -tzf "target/package/tree-sitter-carve-${CRATE_VERSION}.crate" \
             | grep -q 'src/parser\.c$' \
             || { echo "::error::the crate has no src/parser.c - it would compile for nobody"; exit 1; }
 
-      - run: cargo publish --token "${{ secrets.CARGO_REGISTRY_TOKEN }}"
+      - name: Publish to crates.io
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            cargo publish --dry-run --allow-dirty
+            echo "::notice::rehearsal - nothing was published to crates.io"
+          else
+            cargo publish --token "${{ secrets.CARGO_REGISTRY_TOKEN }}"
+          fi
 
   build-python:
     name: Python wheels (${{ matrix.os }})
@@ -299,6 +333,14 @@ jobs:
           ls -l dist
           n="$(ls dist/*.whl 2>/dev/null | wc -l)"
           [ "$n" -ge 3 ] || { echo "::error::only $n wheel(s); expected one per platform"; exit 1; }
+      # twine check validates the metadata the upload would send, which is the
+      # dry run PyPI itself does not offer.
+      - name: Validate the distributions
+        run: pipx run twine check dist/*
       - uses: pypa/gh-action-pypi-publish@release/v1
+        if: github.event_name != 'workflow_dispatch'
         with:
           password: ${{ secrets.PYPI_API_TOKEN }}
+      - name: Rehearsal notice
+        if: github.event_name == 'workflow_dispatch'
+        run: echo "::notice::rehearsal - nothing was published to PyPI" 
