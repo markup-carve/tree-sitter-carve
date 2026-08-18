@@ -1,0 +1,204 @@
+# This repo was tagged three times - 0.1.0, 0.1.1, 0.1.2 - and published to
+# nothing. The tags exist, the GitHub releases exist, and no registry has ever
+# served the package. This workflow is the missing half.
+#
+# THE GATE RUNS BEFORE PUBLISH, AND PUBLISH SITS BEHIND IT VIA `needs:`, not by
+# step order. On 2026-08-18 carve-py's release put a corpus check in front of a
+# publish step in the same job; the check failed, the step was skipped, the job
+# went green, and PyPI served a vulnerable version while the release page said
+# otherwise. A separate job with `needs:` is what makes the publish unreachable
+# rather than merely later.
+#
+# THE GATE MEASURES THE PACKED TARBALL, not the source tree. A source tree that
+# agrees with the CLI says nothing about what npm shipped: vscode-carve was
+# found running two different engines at once because nobody hashed the
+# installed tree.
+#
+# The spec corpus here comes from the `spec` SUBMODULE, so this repo cannot make
+# the mistake its sibling bindings made - aiming a release gate at spec `main`
+# holds an artifact to a corpus newer than the release it gates, which becomes
+# unpassable the moment the spec moves after a tag. The gitlink IS the pin.
+name: Release
+
+on:
+  push:
+    tags:
+      - "[0-9]+.[0-9]+.[0-9]+"
+
+jobs:
+  guard:
+    name: The tag matches every version surface
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # FIVE surfaces, not one. pyproject.toml, tree-sitter.json and the Makefile
+      # sat at 0.1.0 through both 0.1.1 and 0.1.2 because nothing compared them
+      # and no test pinned them against each other. Checking only package.json
+      # would have shipped that divergence a third time.
+      - name: Every manifest agrees with the tag
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          fail=0
+          check() {
+            if [ "$2" != "$tag" ]; then
+              echo "::error::$1 declares '$2', tag is '$tag'"
+              fail=1
+            fi
+          }
+          check package.json    "$(node -p 'require("./package.json").version')"
+          check tree-sitter.json "$(node -p 'require("./tree-sitter.json").metadata.version')"
+          check Cargo.toml      "$(grep -m1 '^version = ' Cargo.toml | cut -d'"' -f2)"
+          check pyproject.toml  "$(grep -m1 '^version = ' pyproject.toml | cut -d'"' -f2)"
+          exit $fail
+
+      - name: The changelog describes this version
+        run: |
+          grep -qE "^## \[?${GITHUB_REF_NAME}\]? - " CHANGELOG.md \
+            || { echo "::error::CHANGELOG.md has no section for ${GITHUB_REF_NAME}"; exit 1; }
+
+  # package.json already lists `prebuilds/**` in `files` and carries prebuildify
+  # as a devDependency, so the packaging INTENDS prebuilds - nobody had ever run
+  # the build. Without them `"install": "node-gyp-build"` falls through to
+  # compiling 7.3MB of generated parser.c on every consumer machine, which needs
+  # a working toolchain. A dry-run pack on 2026-08-18 carried 22 files and no
+  # prebuilds at all.
+  prebuild:
+    name: Prebuild (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    needs: [guard]
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci
+      - run: npm run prebuildify
+      - name: The prebuild exists and is not empty
+        shell: bash
+        run: |
+          found="$(find prebuilds -type f -name '*.node' | wc -l)"
+          [ "$found" -gt 0 ] || { echo "::error::prebuildify produced no .node for ${{ matrix.os }}"; exit 1; }
+          find prebuilds -type f -name '*.node' -exec ls -l {} +
+      - uses: actions/upload-artifact@v4
+        with:
+          name: prebuilds-${{ matrix.os }}
+          path: prebuilds/
+
+  corpus-gate:
+    name: Run the corpus through the packed tarball
+    runs-on: ubuntu-latest
+    needs: [guard, prebuild]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - run: npm ci
+
+      # Every platform's prebuild, so the tarball the gate measures is the
+      # tarball publish will upload - not a linux-only subset of it.
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: prebuilds-*
+          path: prebuilds-staging
+      - name: Collect the prebuilds
+        run: |
+          mkdir -p prebuilds
+          find prebuilds-staging -mindepth 2 -maxdepth 2 -type d -exec cp -r {} prebuilds/ \;
+          find prebuilds -type f -name '*.node' | sort
+
+      # Pack, then install into a directory that shares nothing with the
+      # checkout, so what gets measured is what a consumer would receive.
+      - name: Pack and install the tarball
+        id: pack
+        run: |
+          tarball="$(npm pack --silent)"
+          echo "tarball=$tarball" >> "$GITHUB_OUTPUT"
+          mkdir -p /tmp/consumer && cd /tmp/consumer
+          npm init -y >/dev/null
+          npm install --no-audit --no-fund "$GITHUB_WORKSPACE/$tarball" tree-sitter
+
+      - name: What the tarball actually carries
+        run: |
+          tar -tzf "${{ steps.pack.outputs.tarball }}" | sed 's/^package\///' | sort
+          echo "---"
+          test -d /tmp/consumer/node_modules/tree-sitter-carve/prebuilds \
+            && echo "prebuilds: present" \
+            || { echo "::error::the packed tarball carries no prebuilds"; exit 1; }
+
+      # Both checks against the INSTALLED binding. binding-parity compares the
+      # node addon to the CLI over the corpus (the two have disagreed before -
+      # see #216), and the no-ERROR sweep is the one check that can look outside
+      # the corpus, because no Carve input may parse to ERROR.
+      - name: The installed binding agrees with the CLI over the corpus
+        env:
+          CARVE_TS_BINDING: /tmp/consumer/node_modules/tree-sitter-carve
+        run: npm run test:binding-parity
+
+      - name: No input parses to ERROR
+        run: npm run test:no-error
+
+  publish-npm:
+    name: Publish to npm
+    runs-on: ubuntu-latest
+    needs: [guard, prebuild, corpus-gate]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+      - run: npm ci
+
+      # The same prebuilds the gate measured. Packing without them here would
+      # publish an artifact nothing verified.
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: prebuilds-*
+          path: prebuilds-staging
+      - name: Collect the prebuilds
+        run: |
+          mkdir -p prebuilds
+          find prebuilds-staging -mindepth 2 -maxdepth 2 -type d -exec cp -r {} prebuilds/ \;
+          find prebuilds -type f -name '*.node' | sort
+      - name: Refuse to publish without prebuilds
+        run: |
+          n="$(find prebuilds -type f -name '*.node' | wc -l)"
+          [ "$n" -ge 3 ] || { echo "::error::only $n prebuild(s) present; expected one per platform"; exit 1; }
+
+      # A missing credential FAILS rather than skipping. A skipped publish that
+      # leaves the job green is what half-released carve-py.
+      - name: The npm credential is present
+        run: |
+          [ -n "${{ secrets.NPM_TOKEN }}" ] \
+            || { echo "::error::NPM_TOKEN is not available to this repository"; exit 1; }
+
+      - run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  # crates.io and PyPI are DELIBERATELY NOT WIRED, and this comment is the
+  # record of why rather than a silence to be discovered later.
+  #
+  # Both names are free - `tree-sitter-carve` is unclaimed on crates.io and on
+  # PyPI as of 2026-08-18 - and both manifests already declare it at the right
+  # version. What is missing is only the credential:
+  #
+  #   crates.io  needs  CARGO_REGISTRY_TOKEN
+  #   PyPI       needs  PYPI_API_TOKEN, or a configured Trusted Publisher
+  #
+  # Neither exists on this repository or on the organization; only NPM_TOKEN
+  # does. Adding a job now would either fail every release or skip silently,
+  # and the second is the failure mode this workflow exists to prevent. Add the
+  # secret, then add the job.
