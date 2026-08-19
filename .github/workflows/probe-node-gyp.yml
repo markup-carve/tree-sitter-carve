@@ -1,0 +1,84 @@
+# A MEASUREMENT, not a fix. Dispatch-only, touches nothing else.
+#
+# The Windows prebuild is pinned to windows-2022 because node-gyp 10.1.0 on
+# `windows-latest` (image windows-2025-vs2026) reports
+#
+#   gyp ERR! find VS could not find a version of Visual Studio 2017 or newer
+#
+# while cibuildwheel compiles Python wheels on the SAME image in the SAME run.
+# The compiler is there; node-gyp's detection works from a list of known
+# versions and does not know VS 2026 (#231).
+#
+# The durable fix needs a node-gyp new enough to recognize it, and #231 says
+# explicitly that the version should be CONFIRMED on this image rather than
+# guessed from a changelog. This job answers that and nothing else: which Node
+# line ships a node-gyp that works here, and which explicit node-gyp version
+# works if none of them do.
+#
+# Delete this file once #231 lands a fix. A probe kept after it has answered its
+# question becomes a workflow nobody reads.
+name: Probe node-gyp against VS 2026
+
+on:
+  workflow_dispatch:
+
+jobs:
+  bundled:
+    name: Bundled node-gyp on Node ${{ matrix.node }}
+    runs-on: windows-latest
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['20', '22', '24']
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: What this image and toolchain actually are
+        shell: bash
+        run: |
+          echo "image:      ${ImageOS:-unknown} / ${ImageVersion:-unknown}"
+          echo "node:       $(node --version)"
+          echo "npm:        $(npm --version)"
+          echo "node-gyp:   $(npm exec --yes -- node-gyp --version 2>&1 | tail -1)"
+          echo "--- Visual Studio instances vswhere can see ---"
+          "/c/Program Files (x86)/Microsoft Visual Studio/Installer/vswhere.exe" \
+            -all -products '*' -format value -property catalog_productDisplayVersion 2>/dev/null || echo "  vswhere not found"
+
+      # The real question: can it configure the dependency that fails, on this
+      # image, with the node-gyp this Node line bundles?
+      - name: Configure tree-sitter with the bundled node-gyp
+        shell: bash
+        run: |
+          npm ci --ignore-scripts
+          cd node_modules/tree-sitter
+          npm exec --yes -- node-gyp configure 2>&1 | tail -20
+
+  explicit:
+    name: node-gyp@${{ matrix.gyp }} on Node 20
+    runs-on: windows-latest
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        gyp: ['10.1.0', '10.3.1', '11.0.0', 'latest']
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+
+      # 10.1.0 is the version that FAILS, kept as the control. A probe whose
+      # every arm passes has not shown that the lever it is testing is the one
+      # that matters.
+      - name: Configure tree-sitter with node-gyp@${{ matrix.gyp }}
+        shell: bash
+        run: |
+          npm install -g node-gyp@${{ matrix.gyp }}
+          echo "node-gyp: $(node-gyp --version)"
+          npm ci --ignore-scripts
+          cd node_modules/tree-sitter
+          node-gyp configure 2>&1 | tail -20
