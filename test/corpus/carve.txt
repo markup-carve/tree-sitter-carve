@@ -1163,9 +1163,10 @@ Local hard-break block
 ;; no route to `DIV_BEGIN` and the whole thing folded into a paragraph - the
 ;; recorded under-acceptance `line-blocks-7` (#105).
 ;;
-;; `div_marker_begin` covers the backslash here, unlike the line-block bar
-;; above: the tail test has to read to the end of the line to answer at all,
-;; and the lexer cannot rewind to put the token end back at the separator.
+;; The backslash is its OWN node, `local_hard_break_marker`, exactly as the
+;; line-block bar above is: it used to hide inside `div_marker_begin`, so a
+;; `hardbreaks` div and a plain `:::` div differed only by the WIDTH of that
+;; marker and no query could tell them apart (markup-carve/carve-grammars#311).
 ===============================================================================
 ::: \
 one
@@ -1177,6 +1178,7 @@ two
 (document
   (div
     (div_marker_begin)
+    local_hard_break_marker: (local_hard_break_marker)
     content: (content
       (paragraph))
     (div_marker_end)))
@@ -1238,6 +1240,7 @@ one
   (paragraph)
   (div
     (div_marker_begin)
+    local_hard_break_marker: (local_hard_break_marker)
     content: (content
       (paragraph))
     (div_marker_end)))
@@ -5320,3 +5323,134 @@ q)
 
 (document
   (paragraph))
+
+
+===============================================================================
+A cross-reference with auto text is not an autolink (markup-carve/carve-grammars#311)
+;; grammar.ebnf `auto_text_link = "</#", crossref_id, '>'`. carve-js renders it
+;; as a link to a heading id whose visible text comes from the target, while an
+;; autolink is a URL or an email address that shows its own body. The grammar
+;; had one loose `autolink` rule and it took the whole run, so every editor
+;; loading these queries colored a crossref as a web address.
+===============================================================================
+
+see </#Intro> ok
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (auto_text_link)))
+
+===============================================================================
+A URL autolink is still an autolink
+;; The other half of the pair, so the crossref rule cannot pass by swallowing
+;; both: a run with no `/#` after the bracket keeps the `autolink` node.
+===============================================================================
+
+see <http://example.com/a> ok
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (autolink)))
+
+===============================================================================
+A crossref with an empty id forms no crossref
+;; `</#>` is literal text in carve-js. The rule is ONE token so a malformed run
+;; is simply not matched, rather than committing to the `</#` opener and
+;; failing into an ERROR node partway through the id.
+===============================================================================
+
+x </#> y
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (autolink)))
+
+===============================================================================
+A crossref id cannot hold a space
+;; `crossref_id = {character - ('>' | whitespace | newline)}+`, so the run ends
+;; at the space and nothing is built - matching carve-js, which renders the
+;; brackets as literal text.
+===============================================================================
+
+x </#a b> y
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph))
+
+===============================================================================
+A crossref inside a code span stays inert
+;; The payload of a verbatim run is not Carve, so the crossref rule must not
+;; reach into it. This is the second axis the construct ledger tracks: a
+;; construct can be recognized and still color something false inside a span
+;; that was supposed to be opaque.
+===============================================================================
+
+a `</#x>` b
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (verbatim
+      begin_marker: (verbatim_marker_begin)
+      content: (content)
+      end_marker: (verbatim_marker_end))))
+
+===============================================================================
+A braced comment is named for the construct it is (markup-carve/carve-grammars#311)
+;; grammar.ebnf `braced_comment = "{%", {character - "%}"}, "%}"`. This node was
+;; called `inline_comment`, which is the spec's name for the `%%`-to-end-of-line
+;; form below - so the two constructs are pinned together here, each under the
+;; name that belongs to it.
+===============================================================================
+
+a {% hidden %} b %% tail
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (braced_comment
+      content: (content))
+    (trailing_comment)))
+
+===============================================================================
+A braced comment keeps its payload inert
+;; carve#1239: a comment whose payload stayed live colored a bold run inside
+;; it on four surfaces, which is worse than not highlighting it at all - the
+;; output claims something false about the document. The emphasis markers here
+;; must stay inside `content` with no node of their own.
+===============================================================================
+
+a {% x *b* y %} z
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (braced_comment
+      content: (content))))
+
+===============================================================================
+A braced comment spans a soft line break
+;; The delimited form has an explicit closer, so unlike the `%%` run it ends
+;; mid-paragraph and may cross the soft line breaks inside one paragraph.
+===============================================================================
+
+a {% one
+two %} b
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (braced_comment
+      content: (content))))

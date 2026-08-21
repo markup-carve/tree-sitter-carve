@@ -164,6 +164,22 @@
     }
   },
   {
+    "type": "braced_comment",
+    "named": true,
+    "fields": {
+      "content": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "content",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "callout_list",
     "named": true,
     "fields": {},
@@ -408,6 +424,10 @@
       "required": false,
       "types": [
         {
+          "type": "auto_text_link",
+          "named": true
+        },
+        {
           "type": "autolink",
           "named": true
         },
@@ -429,6 +449,10 @@
         },
         {
           "type": "bold_italic",
+          "named": true
+        },
+        {
+          "type": "braced_comment",
           "named": true
         },
         {
@@ -533,10 +557,6 @@
         },
         {
           "type": "highlighted",
-          "named": true
-        },
-        {
-          "type": "inline_comment",
           "named": true
         },
         {
@@ -678,6 +698,10 @@
       "required": false,
       "types": [
         {
+          "type": "auto_text_link",
+          "named": true
+        },
+        {
           "type": "autolink",
           "named": true
         },
@@ -699,6 +723,10 @@
         },
         {
           "type": "bold_italic",
+          "named": true
+        },
+        {
+          "type": "braced_comment",
           "named": true
         },
         {
@@ -803,10 +831,6 @@
         },
         {
           "type": "highlighted",
-          "named": true
-        },
-        {
-          "type": "inline_comment",
           "named": true
         },
         {
@@ -1020,6 +1044,16 @@
         "types": [
           {
             "type": "line_block_marker",
+            "named": true
+          }
+        ]
+      },
+      "local_hard_break_marker": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "local_hard_break_marker",
             "named": true
           }
         ]
@@ -1574,6 +1608,10 @@
       "required": false,
       "types": [
         {
+          "type": "auto_text_link",
+          "named": true
+        },
+        {
           "type": "autolink",
           "named": true
         },
@@ -1583,6 +1621,10 @@
         },
         {
           "type": "bold_italic",
+          "named": true
+        },
+        {
+          "type": "braced_comment",
           "named": true
         },
         {
@@ -1647,10 +1689,6 @@
         },
         {
           "type": "highlighted",
-          "named": true
-        },
-        {
-          "type": "inline_comment",
           "named": true
         },
         {
@@ -1757,22 +1795,6 @@
           "named": true
         }
       ]
-    }
-  },
-  {
-    "type": "inline_comment",
-    "named": true,
-    "fields": {
-      "content": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "content",
-            "named": true
-          }
-        ]
-      }
     }
   },
   {
@@ -1986,6 +2008,10 @@
       "required": false,
       "types": [
         {
+          "type": "auto_text_link",
+          "named": true
+        },
+        {
           "type": "autolink",
           "named": true
         },
@@ -1995,6 +2021,10 @@
         },
         {
           "type": "bold_italic",
+          "named": true
+        },
+        {
+          "type": "braced_comment",
           "named": true
         },
         {
@@ -2059,10 +2089,6 @@
         },
         {
           "type": "highlighted",
-          "named": true
-        },
-        {
-          "type": "inline_comment",
           "named": true
         },
         {
@@ -2222,6 +2248,10 @@
       "required": false,
       "types": [
         {
+          "type": "auto_text_link",
+          "named": true
+        },
+        {
           "type": "autolink",
           "named": true
         },
@@ -2231,6 +2261,10 @@
         },
         {
           "type": "bold_italic",
+          "named": true
+        },
+        {
+          "type": "braced_comment",
           "named": true
         },
         {
@@ -2295,10 +2329,6 @@
         },
         {
           "type": "highlighted",
-          "named": true
-        },
-        {
-          "type": "inline_comment",
           "named": true
         },
         {
@@ -2810,6 +2840,10 @@
       "required": false,
       "types": [
         {
+          "type": "auto_text_link",
+          "named": true
+        },
+        {
           "type": "autolink",
           "named": true
         },
@@ -2823,6 +2857,10 @@
         },
         {
           "type": "bold_italic",
+          "named": true
+        },
+        {
+          "type": "braced_comment",
           "named": true
         },
         {
@@ -2887,10 +2925,6 @@
         },
         {
           "type": "highlighted",
-          "named": true
-        },
-        {
-          "type": "inline_comment",
           "named": true
         },
         {
@@ -3505,6 +3539,10 @@
       "required": false,
       "types": [
         {
+          "type": "auto_text_link",
+          "named": true
+        },
+        {
           "type": "autolink",
           "named": true
         },
@@ -3514,6 +3552,10 @@
         },
         {
           "type": "bold_italic",
+          "named": true
+        },
+        {
+          "type": "braced_comment",
           "named": true
         },
         {
@@ -3578,10 +3620,6 @@
         },
         {
           "type": "highlighted",
-          "named": true
-        },
-        {
-          "type": "inline_comment",
           "named": true
         },
         {
@@ -3745,6 +3783,10 @@
       "required": false,
       "types": [
         {
+          "type": "auto_text_link",
+          "named": true
+        },
+        {
           "type": "autolink",
           "named": true
         },
@@ -3758,6 +3800,10 @@
         },
         {
           "type": "bold_italic",
+          "named": true
+        },
+        {
+          "type": "braced_comment",
           "named": true
         },
         {
@@ -3822,10 +3868,6 @@
         },
         {
           "type": "highlighted",
-          "named": true
-        },
-        {
-          "type": "inline_comment",
           "named": true
         },
         {
@@ -4161,6 +4203,10 @@
     "named": true
   },
   {
+    "type": "auto_text_link",
+    "named": true
+  },
+  {
     "type": "backslash_escape",
     "named": true
   },
@@ -4398,6 +4444,10 @@
   },
   {
     "type": "literal_marker_end",
+    "named": true
+  },
+  {
+    "type": "local_hard_break_marker",
     "named": true
   },
   {
