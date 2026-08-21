@@ -6,6 +6,30 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- A cross-reference with auto text is its own `auto_text_link` node, captured as
+  `markup.link`. It used to parse as an `autolink`, so editors colored a
+  crossref as a web address (#245, markup-carve/carve-grammars#311).
+- The local hard-break block's type token is a `local_hard_break_marker` node,
+  as the line block's bar already was. A `hardbreaks` div and a plain `:::` div
+  are distinguishable by node name for the first time (#245).
+
+### Fixed
+
+- A container opener carrying trailing whitespace opens its block instead of
+  producing an ERROR node over the rest of the document. All four opener forms
+  were affected, in both the space and the tab spelling (#245).
+
+### Changed
+
+- BREAKING: the `{% ... %}` node is renamed from `inline_comment` to
+  `braced_comment`, the name the spec grammar gives that construct; the
+  `%%`-to-end-of-line form keeps `trailing_comment`. The old name belonged to
+  the other construct, so a consumer reading node names got a false answer
+  about which comment it had. Queries naming `inline_comment` need updating
+  (#245, markup-carve/carve-grammars#311).
+
 ## [0.1.3] - 2026-08-18
 
 ### Added

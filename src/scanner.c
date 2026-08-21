@@ -87,7 +87,7 @@ typedef enum {
   COMMENT_END_MARKER,
   COMMENT_CLOSE,
 
-  INLINE_COMMENT_BEGIN,
+  BRACED_COMMENT_BEGIN,
 
   VERBATIM_BEGIN,
   VERBATIM_END,
@@ -3891,12 +3891,12 @@ static bool parse_colon(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     // is NO: the handoff below emits a token at the end as it stands, and
     // without this it would cover the rest of the line instead of the fence.
     //
-    // The backslash form is the exception, and the only one: `grammar.js` has
-    // no branch for it, so `div_marker_begin` has to cover the whole `::: \`
-    // opener. Its end is marked after the test instead.
-    if (c != '\\') {
-      lexer->mark_end(lexer);
-    }
+    // The backslash form used to be the exception - `grammar.js` had no branch
+    // for it, so `div_marker_begin` covered the whole `::: \` opener and the
+    // marker was unnameable. It has a branch now
+    // (`local_hard_break_marker`), so it marks here with the other three and
+    // the tail test reads past the mark exactly as it does for `|`.
+    lexer->mark_end(lexer);
     bool ok = colon_fence_tail_opens_block(s, lexer, bare, spaced, tabbed, c);
     // ...and a bare fence is not an opener at all while the open paragraph is
     // absorbing: after a malformed `::: {.x}` the trailing `:::` is text, at
@@ -3938,10 +3938,6 @@ static bool parse_colon(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     // VALID openers is the smaller loss than three characters of source
     // uncovered on invalid ones.
     //
-    // Only the backslash form still marks HERE; see the note at the tail test.
-    if (c == '\\') {
-      lexer->mark_end(lexer);
-    }
     push_block(s, DIV, colons);
     lexer->result_symbol = DIV_BEGIN;
     return true;
@@ -4478,7 +4474,7 @@ static bool parse_table_caption_end(Scanner *s, TSLexer *lexer) {
 // Scan until the end of a comment, either consuming the next `%`
 // or before the ending `}`.
 static bool scan_comment(Scanner *s, TSLexer *lexer, uint8_t indent,
-                         bool *must_be_inline_comment) {
+                         bool *must_be_braced_comment) {
   if (lexer->lookahead != '%') {
     return false;
   }
@@ -4498,9 +4494,9 @@ static bool scan_comment(Scanner *s, TSLexer *lexer, uint8_t indent,
     case '\n':
       consume_line_end(s, lexer);
       // Need to match indent for comments inside attributes
-      // but not for inline comments.
+      // but not for braced comments.
       if (indent != consume_whitespace(s, lexer)) {
-        *must_be_inline_comment = true;
+        *must_be_braced_comment = true;
       }
       // Can only have one newline in a row for a valid attribute.
       if (at_line_end(lexer)) {
@@ -4533,7 +4529,7 @@ static bool parse_open_curly_bracket(Scanner *s, TSLexer *lexer,
                                      const bool *valid_symbols) {
 
   if (!valid_symbols[BLOCK_ATTRIBUTE_BEGIN] &&
-      !valid_symbols[INLINE_COMMENT_BEGIN]) {
+      !valid_symbols[BRACED_COMMENT_BEGIN]) {
     return false;
   }
   if (lexer->lookahead != '{') {
@@ -4546,27 +4542,27 @@ static bool parse_open_curly_bracket(Scanner *s, TSLexer *lexer,
   // Match indent to one past the `{`
   uint8_t indent = s->indent + 1;
 
-  // An inline comment must follow the `{% ... %}` format.
-  bool can_be_inline_comment = lexer->lookahead == '%';
-  bool must_be_inline_comment = false;
+  // A braced comment must follow the `{% ... %}` format.
+  bool can_be_braced_comment = lexer->lookahead == '%';
+  bool must_be_braced_comment = false;
 
   while (!lexer->eof(lexer)) {
     uint8_t space = consume_whitespace(s, lexer);
     if (space > 0) {
-      can_be_inline_comment = false;
+      can_be_braced_comment = false;
     }
 
     switch (lexer->lookahead) {
     case '\\':
-      can_be_inline_comment = false;
+      can_be_braced_comment = false;
       advance(s, lexer);
       advance(s, lexer);
       break;
     case '}':
-      if (can_be_inline_comment && valid_symbols[INLINE_COMMENT_BEGIN]) {
-        lexer->result_symbol = INLINE_COMMENT_BEGIN;
+      if (can_be_braced_comment && valid_symbols[BRACED_COMMENT_BEGIN]) {
+        lexer->result_symbol = BRACED_COMMENT_BEGIN;
         return true;
-      } else if (!must_be_inline_comment &&
+      } else if (!must_be_braced_comment &&
                  valid_symbols[BLOCK_ATTRIBUTE_BEGIN] &&
                  // COLUMN ZERO. An indented `{.x}` line is literal text, not
                  // an attribute for the block below it (corpus
@@ -4597,7 +4593,7 @@ static bool parse_open_curly_bracket(Scanner *s, TSLexer *lexer,
         return false;
       }
     case '.':
-      can_be_inline_comment = false;
+      can_be_braced_comment = false;
       advance(s, lexer);
       // Class names may not start with a digit (`.123` is not a class).
       if (!scan_name_no_digit_start(s, lexer)) {
@@ -4605,19 +4601,19 @@ static bool parse_open_curly_bracket(Scanner *s, TSLexer *lexer,
       }
       break;
     case '#':
-      can_be_inline_comment = false;
+      can_be_braced_comment = false;
       advance(s, lexer);
       if (!scan_identifier(s, lexer)) {
         return false;
       }
       break;
     case '%':
-      if (!scan_comment(s, lexer, indent, &must_be_inline_comment)) {
+      if (!scan_comment(s, lexer, indent, &must_be_braced_comment)) {
         return false;
       }
       break;
     case ':': {
-      can_be_inline_comment = false;
+      can_be_braced_comment = false;
       advance(s, lexer);
       if (!scan_language_tag(s, lexer) || !at_attribute_boundary(lexer)) {
         return false;
@@ -4626,7 +4622,7 @@ static bool parse_open_curly_bracket(Scanner *s, TSLexer *lexer,
     }
     case '\r':
     case '\n':
-      can_be_inline_comment = false;
+      can_be_braced_comment = false;
       consume_line_end(s, lexer);
       // Need to match indent!
       if (indent != consume_whitespace(s, lexer)) {
@@ -4638,7 +4634,7 @@ static bool parse_open_curly_bracket(Scanner *s, TSLexer *lexer,
       }
       break;
     default: {
-      can_be_inline_comment = false;
+      can_be_braced_comment = false;
       // An attribute key may not start with a digit (`12=v` is not a key), and
       // a digit/`_`/`-`-leading token is not a bare boolean key either. This
       // also keeps a curly-emphasis form like `{_text_}` from being mistaken
@@ -5552,8 +5548,8 @@ static bool scan_valid_inline_attribute(Scanner *s, TSLexer *lexer) {
       break;
     }
     case '%': {
-      bool must_be_inline_comment = false;
-      if (!scan_comment(s, lexer, s->indent + 1, &must_be_inline_comment)) {
+      bool must_be_braced_comment = false;
+      if (!scan_comment(s, lexer, s->indent + 1, &must_be_braced_comment)) {
         return false;
       }
       break;

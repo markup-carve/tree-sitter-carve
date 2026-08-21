@@ -56,13 +56,14 @@ function inlineElement($, options) {
           prec.dynamic(ELEMENT_PRECEDENCE, $.mention),
           prec.dynamic(ELEMENT_PRECEDENCE, $.tag),
           prec.dynamic(ELEMENT_PRECEDENCE, $.citation_group),
+          $.auto_text_link,
           $.autolink,
           $.verbatim,
           alias($.inline_math, $.math),
           $.inline_literal,
           $.raw_inline,
           $.symbol,
-          $.inline_comment,
+          $.braced_comment,
           $.trailing_comment,
           $._todo_highlights,
           // Word runs that ABSORB a glued mention / tag / symbol, which is
@@ -791,12 +792,33 @@ module.exports = grammar({
             // Line block: `::: |` (the separator space is required before the
             // bar, and enforced there).
             seq(field("line_block_marker", alias("|", $.line_block_marker))),
+            // Local hard-break block: `::: \` (grammar.ebnf
+            // `local_hard_break_block_open = colon_fence:open, space,
+            // backslash`). The separator space is required and the backslash
+            // has to be the last thing on the line; both are enforced in
+            // `colon_fence_tail_opens_block`, the same place the bar's rule
+            // lives.
+            //
+            // It is spelled here rather than left inside `div_marker_begin`
+            // because the two type tokens are the same rule: `::: |` and
+            // `::: \` each select a container the bare fence does not build,
+            // and only one of them had a name. Without this branch a
+            // `hardbreaks` div and a plain div differ only by the WIDTH of
+            // `div_marker_begin`, which no query and no consumer can read - so
+            // the construct was recognized and unnameable at once
+            // (markup-carve/carve-grammars#311).
+            seq(
+              field(
+                "local_hard_break_marker",
+                alias("\\", $.local_hard_break_marker),
+              ),
+            ),
             // Named div / admonition, with an optional quoted custom title and
             // an optional bracketed [label] (a grouping id; PART 9 §12).
             //
             // The class needs a SPACE after the fence. `:::note` glued is a
             // paragraph in every engine - the separator rule that governs every
-            // other marker governs this one - and accepting it coloured a
+            // other marker governs this one - and accepting it colored a
             // malformed opener as a real container. A glued [label] is a
             // different case and stays valid below: `:::[First]` does open.
             //
@@ -825,6 +847,42 @@ module.exports = grammar({
             seq(field("label", $.code_block_label)),
           ),
         ),
+        // TRAILING WHITESPACE ON THE OPENER LINE, for every branch above.
+        //
+        // The scanner already accepts it - `colon_fence_tail_opens_block` runs
+        // to `at_line_end` for the backslash form and
+        // `colon_fence_tail_is_only_trailing_whitespace` for the bar - and
+        // carve-js opens all four (`:::  |   `, `:::  \   `, `::: note   `,
+        // `::: [L]  ` render as a line-block, a hardbreaks div, an admonition
+        // and a labelled div). The grammar had nowhere to put those spaces, so
+        // an opener the scanner had already committed to came back as an ERROR
+        // node covering the rest of the document.
+        //
+        // It was invisible on the backslash form because `div_marker_begin`
+        // swallowed the whole opener there; naming the marker is what exposed
+        // it, and the fix belongs to all four branches rather than the one that
+        // surfaced it. The bare fence needs no slot - the scanner's separator
+        // loop has already consumed that line's whitespace before the branch is
+        // reached.
+        //
+        // Spelled `_padding_spaces` rather than `_whitespace1` because the
+        // title and label slots above already use it: two token rules matching
+        // the same run at the same position is a LEXER ambiguity no parser
+        // conflict declaration can settle, and with `_whitespace1` here the
+        // lexer took this slot on `::: note "T"  ` and the title stopped
+        // parsing. One token leaves the decision to the parser, which has the
+        // lookahead it needs - a quote or a bracket opens a padding slot, a
+        // line ending closes the opener.
+        //
+        // A run CARRYING A TAB is a second, disjoint token, because
+        // `_padding_spaces` cannot hold one and a padding slot never takes one:
+        // an admonition opener with a tab between the type word and its quoted
+        // title is a paragraph in this grammar and in carve-js alike
+        // (carve#886). So a whitespace run with a tab in it, at this position,
+        // can only be the opener's trailing whitespace - which the engine
+        // accepts on all four openers, and which the backslash form used to
+        // reach only because `div_marker_begin` swallowed the whole line.
+        optional(choice($._padding_spaces, $._opener_trailing_tabs)),
       ),
     class_name: ($) => $._id_no_digit_start,
     div_title: (_) =>
@@ -1424,6 +1482,12 @@ module.exports = grammar({
     // instead of the looser one silently authorizing what the scanner declines.
     _padding_spaces: (_) => token.immediate(/ +/),
 
+    // Trailing whitespace on a container opener line that CONTAINS a tab; see
+    // the slot in `_div_marker_begin`. Disjoint from `_padding_spaces` on
+    // purpose - two tokens matching the same run at the same position is a
+    // lexer ambiguity, and this one matches nothing `_padding_spaces` does.
+    _opener_trailing_tabs: (_) => token.immediate(/[ \t]*\t[ \t]*/),
+
     _inline: ($) =>
       prec.left(
         repeat1(choice($._inline_element, $._newline_inline, $._whitespace1)),
@@ -1466,6 +1530,30 @@ module.exports = grammar({
     backslash_escape: (_) => /\\[^\r\n]/,
 
     autolink: (_) => seq("<", /[^>\s]+/, ">"),
+
+    // A cross-reference with auto text, grammar.ebnf
+    // `auto_text_link = "</#", crossref_id, '>'`. It is NOT an autolink: the
+    // spec's autolink is a URL or an email address, and this one carries a
+    // heading id that the renderer resolves to the target's own text
+    // (carve-js turns `</#Intro>` into `<a href="#Intro">Intro</a>`). The
+    // grammar had no rule for it, so the loose `autolink` above took the whole
+    // run and every editor colored a crossref as a URL - a name that says
+    // something false about the document, which is the failure mode the
+    // construct ledger tracks (markup-carve/carve-grammars#311).
+    //
+    // The id takes at least one character, so `</#>` forms no crossref, and it
+    // takes non-ASCII: automatic heading ids preserve Unicode and case, so
+    // a crossref to an accented heading has to be writable.
+    //
+    // ONE TOKEN, not a `seq` of three like `autolink` above. Spelled as a
+    // sequence, the `</#` opener is committed before the id is read, and a
+    // malformed run has no route back: an empty id and an id carrying a space
+    // both parsed to an ERROR node where carve-js renders literal text, which
+    // trades a wrong NAME for a wrong TREE. As one token the lexer simply does
+    // not match it and the run falls back to the same text it does today. The
+    // cost is that the brackets are not their own nodes, so `highlights.scm`
+    // captures the whole crossref rather than concealing them.
+    auto_text_link: (_) => token(seq("</#", /[^>\s]+/, ">")),
 
     mention: (_) => token(seq("@", /[a-zA-Z0-9][a-zA-Z0-9_-]*/)),
 
@@ -1748,10 +1836,20 @@ module.exports = grammar({
         choice(alias($._comment_end_marker, "%"), $._comment_close),
       ),
 
-    inline_comment: ($) =>
+    // The DELIMITED inline comment, grammar.ebnf
+    // `braced_comment = "{%", {character - "%}"}, "%}"`. It was named
+    // `inline_comment` here, which is the spec's name for the OTHER inline
+    // comment - the `%%` run to end of line, which this grammar calls
+    // `trailing_comment`. Two constructs, and the name of one of them sat on
+    // the other; a consumer reading node names got a false answer about which
+    // comment it was looking at, and the construct ledger could not record
+    // either row honestly (markup-carve/carve-grammars#311). Renamed rather
+    // than aliased: an alias would leave both names live and the wrong one is
+    // the one people already use.
+    braced_comment: ($) =>
       seq(
         $._whitespace1,
-        $._inline_comment_begin,
+        $._braced_comment_begin,
         $._curly_bracket_span_mark_begin,
         $._comment,
         alias($._curly_bracket_span_end, "}"),
@@ -1998,7 +2096,7 @@ module.exports = grammar({
     // Inline elements.
 
     // Zero-width check if a standalone comment is valid.
-    $._inline_comment_begin,
+    $._braced_comment_begin,
 
     // Verbatim is handled externally to match a varying number of `,
     // and to close open verbatim when a paragraph ends with a blankline.

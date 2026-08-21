@@ -240,7 +240,7 @@
   (comment_line)
   (fenced_comment_block)
   (comment)
-  (inline_comment)
+  (braced_comment)
   (trailing_comment)
 ] @comment
 
@@ -303,7 +303,7 @@
 ; RESIDUAL, written down rather than left to be rediscovered: a bare opener
 ; reached through MORE than three levels - a quote inside a list item inside the
 ; group, say - keeps the group capture. The parse tree is right either way; only
-; the colour is not.
+; the color is not.
 ((div
   class: (class_name) @_group.class
   !title
@@ -453,6 +453,12 @@
   (link_reference_definition)
 ] @markup.link.url
 
+; A cross-reference with auto text is a LINK but not a URL: `</#Intro>` carries
+; a heading id the renderer resolves to the target's own text, so it takes
+; @markup.link rather than the @markup.link.url above. It used to parse as an
+; autolink and take that capture, which colored a crossref as a web address.
+(auto_text_link) @markup.link
+
 (abbreviation_definition
   (abbreviation_marker) @punctuation.special)
 
@@ -506,6 +512,7 @@
 
 [
   (autolink)
+  (auto_text_link)
   (inline_link_destination)
   (link_destination)
   (code_block)
