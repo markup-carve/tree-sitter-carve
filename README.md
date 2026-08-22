@@ -49,7 +49,3 @@ dropping coverage.
 
 Initial grammar. It is intended for editor support and structural parsing. The
 Carve conformance corpus remains the source of truth for renderer behavior.
-
-## License
-
-MIT
