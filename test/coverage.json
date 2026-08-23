@@ -2,25 +2,25 @@
   "_comment": "Coverage matrix for the shared Carve spec corpus (spec/tests/corpus/*.crv). Every NN-slug base category must appear in covered or skip; the coverage-matrix test fails otherwise so a new spec category forces a classify decision. covered = grammar parses every file in the category with no ERROR/MISSING node. skip = at least one file currently produces an ERROR/MISSING node; reason records the unmodeled construct (a grammar gap to surface, not to hack around). A skip key is a CATEGORY (NN-slug) or a single EXAMPLE (NN-slug-2) — use the example form when the rest of the category parses cleanly, so one gap does not drop assertion for its siblings. A key equal to a category name is read as the CATEGORY, so the first example of a category cannot be skipped on its own. REASONS: a ledger entry's `reason` may be `ref:<key>`, resolving against the top-level `reasons` map, so one grammar gap spanning a whole category states its explanation once. coverage-matrix gates it both ways - a ref with no entry fails, and a reasons entry nothing references fails, because a reason nobody points at is an excuse that outlived the gap it excused.",
   "comparisonPopulation": {
     "thematic_break": { "documents": 9, "nodes": 11 },
-    "block_quote": { "documents": 124, "nodes": 147 },
-    "table": { "documents": 121, "nodes": 122 },
+    "block_quote": { "documents": 133, "nodes": 157 },
+    "table": { "documents": 130, "nodes": 131 },
     "heading": { "documents": 105, "nodes": 136 },
     "code_block": { "documents": 69, "nodes": 69 },
-    "list": { "documents": 320, "nodes": 401 },
-    "definition_list": { "documents": 40, "nodes": 40 },
-    "line_block": { "documents": 29, "nodes": 29 },
+    "list": { "documents": 354, "nodes": 449 },
+    "definition_list": { "documents": 42, "nodes": 42 },
+    "line_block": { "documents": 31, "nodes": 31 },
     "div": { "documents": 21, "nodes": 23 },
     "raw_block": { "documents": 8, "nodes": 8 },
     "figure_group": { "documents": 9, "nodes": 9 },
     "citation_definition": { "documents": 0, "nodes": 0 },
-    "admonition": { "documents": 52, "nodes": 258 }
+    "admonition": { "documents": 56, "nodes": 263 }
   },
   "reasons": {
     "a-column-0-opener-does-not-close-an-open-list": "a column-0 block opener does not close an open LIST; it folds into the item as lazy paragraph text. `- a` / `# H` builds no heading, while `> q` / `# H` does - so the block quote closes correctly and only the list does not. Both documents here reach it through a `+` continuation marker, which this grammar opens as an ordinary bullet list, after which the column-0 heading below is swallowed the same way.",
     "a-heading-in-a-description-body-builds-nothing": "a heading indented inside a description-list DEFINITION body builds no heading: the `definition` node is returned as one undivided span, so the `# H` below a floating attribute inside it never opens. The same heading one level out, in an ordinary list item, does open.",
     "a-tabbed-frontmatter-opener-swallows-the-break-below": "`---` followed by a TAB is not a frontmatter opener, and the grammar agrees that far - it builds no frontmatter. But it then reads the closing `---` three lines down as an `em_dash` inside the still-open paragraph rather than as a thematic break, so the `<hr>` the fixture expects between the paragraph and `body` is not built.",
     "an-attribute-line-does-not-end-the-paragraph-above-a-list": "a floating attribute line at column 0 does not end the paragraph above it, so the list it is meant to attach to never opens: `para` / `{.x}` / `- b` is ONE paragraph. The fixture expects the paragraph to end at the attribute line and the run to reach the list below it, as `<ul class=\"x\">`.",
-    "an-unclosed-verbatim-run-abandons-the-row": "an UNCLOSED verbatim run inside a table row makes the grammar abandon the table: `| a `b | c d |` parses to a paragraph holding one `verbatim` node whose content runs to end of line, and no `table` is built. The rule these categories exist to pin is the opposite one - the run stops at the closing pipe, so the row is still a row and the fixture expects `<td>a <code>b | c d</code></td>`. The continuation-row spelling (`| a `b |` / `+ c` |`) fails the same way and for the same reason.",
+    "an-unclosed-verbatim-run-abandons-the-row": "an UNCLOSED verbatim run inside a table row makes the grammar abandon the table: `| a `b | c d |` parses to a paragraph holding one `verbatim` node whose content runs to end of line, and no `table` is built. The rule these categories exist to pin is the opposite one - the run stops at the closing pipe, so the row is still a row and the fixture expects `<td>a <code>b | c d</code></td>`. The continuation-row spelling (`| a `b |` / `+ c` |`) fails the same way and for the same reason. The INLINE LITERAL spelling reaches it too: `| a !`b | c d |` (markup-carve/carve#1466's `!`-prefixed run) parses to a paragraph holding one `inline_literal` whose content runs to end of line, and again no `table` is built. The mechanism is unchanged - an unclosed verbatim-family run abandons the row - the list of spellings that open one is simply longer than it was when this was written.",
     "fence-on-a-marker-line-builds-nothing": "a code fence opened on a list MARKER line: the item closes with an EMPTY code block and the residue re-parses at document level when the body sits BELOW the item's content column (markup-carve/carve#646). This grammar builds no code_block for any of these, and MEASURED against it, the cause is NOT that the fence is committed to the item with no route out - it is that the fence never opens at all. `parse_backtick` refuses an opener when `has_extra_indent` is true, and on a marker line the fence sits past the line's own indent while the item's content column is only established by the marker itself, so `- ` + fence is read as inline verbatim. The heading marker and the colon fence carry the same column-0 guard and fail the same way on a marker line, while a block quote and a table - which do not - open there correctly. The quote half of that was narrower than it reads and is now closed: its MARKER opened, but the quote took no content and the rest of the line was ejected from the list, repaired in tree-sitter-carve#218 by moving the line's content margin to the quote's own content column when it opens on an item's marker line - the same move this entry's openers need at the LIST marker. So the first half is a column question and the second half, closing the item at the boundary, is the container change; the fully-indented example (-3) needs only the first. Tracked in tree-sitter-carve#160.",
     "lone-cr-strands-a-column-probe": "a lone carriage return still changes this document's tree. The scanner now treats all three spellings of `newline` as terminators, and 428 of 672 corpus documents that diverged before this do not any more, but these are the remainder: every one of them is a REFERENCE DEFINITION, an ATTRIBUTE BLOCK or a trailing block inside a list item - constructs whose probes read a column, and tree-sitter advances the row and resets the column on '\\n' and on nothing else (`lib/src/lexer.c`), so a scanner-maintained base carries them and does not carry every probe that reads one. tree-sitter-carve#143. The same mechanism has one reachable shape outside the corpus: `comment_line` in grammar.js consumes its own terminator in the internal lexer, so a comment line ended by a lone '\\r' strands the base for an indented construct below it. The corpus bump to 287b4b8 adds two more, and one of them widens the enumeration above: a-bracketed-construct-s-identifiers-stay-on-one-line is a REFERENCE DEFINITION and fits it as written, but a-container-whose-table-ends-on-a-joined-header-row-3 is a table CONTINUATION ROW reached through a block quote - a column probe inside a container rather than any of the three construct classes originally listed. The mechanism is unchanged; the list of constructs that read a column is simply longer than it was when this was written.",
     "marker-line-block-opener-builds-nothing": "a block opener written on a list MARKER line builds nothing. `- # H` gives a list item whose content is a PARAGRAPH, not a heading; `- ---` is read as a document-level thematic break that consumes the marker, so no list is built at all. Verified against the indented spelling, which works: `- a` / `  # H` does build the heading. This is the same shape as the recorded `fence-on-a-marker-line-builds-nothing` - the marker line is one position this grammar does not run block-opener recognition in - now reached by the heading and thematic-break openers too. A TASK checkbox does not change which openers reach it, but it does change what the thematic break degrades INTO, and the sentence above is wrong for that spelling: `- [x] # h` is still a paragraph, while `- [ ] ---` no longer consumes the marker - the list and the item ARE built and `---` becomes an inline `em_dash` inside the item's paragraph. Measured against the neighbour that works, which is what keeps the checkbox out of it: `- [ ] > q` opens its quote with content, so the checkbox does not disturb an opener the marker line already admits. That is why a-task-item-s-checkbox-is-not-decided-by-its-first-block reports `heading: want 1 have 0; thematic_break: want 1 have 0` and no gap for its quote."
@@ -400,12 +400,36 @@
     "what-a-content-column-block-does-not-reach",
     "which-inline-content-a-heading-id-is-derived-from",
     "widened-verbatim-fences",
-    "wrapped-definition-term-continuation-below-the-content-column-strips-leading-whitespace"
+    "wrapped-definition-term-continuation-below-the-content-column-strips-leading-whitespace",
+    "a-boolean-attribute-does-not-start-with-an-underscore",
+    "a-braced-hyphen-pair-is-an-en-dash",
+    "a-container-s-span-ends-at-its-last-placed-child",
+    "a-continuation-marker-attaches-only-a-flush-left-block",
+    "a-definition-list-ends-at-its-last-placed-child-too",
+    "a-hyphen-run-opening-a-word-after-whitespace-is-a-flag",
+    "a-lazy-marker-line-s-definition-defines-nothing-in-any-container",
+    "a-leading-escaped-caret-keeps-its-escape",
+    "a-longer-run-at-a-list-boundary-is-written-as-exactly-three-blank-lines",
+    "a-marker-line-link-definition-is-collected-where-no-paragraph-is-open",
+    "a-reference-definition-cannot-take-its-destination-from-the-next-line",
+    "a-resumed-lazy-run-belongs-to-the-innermost-marker-line-item",
+    "a-table-cell-s-marker-run-ends-at-a-space",
+    "a-terminal-comment-in-a-quote-leaves-no-paragraph-open",
+    "a-terminal-comment-line-still-leaves-an-empty-verse-line",
+    "an-attribute-line-below-a-list-item-interrupts-it",
+    "an-attributed-cell-keeps-its-attributes-and-its-literal-marker",
+    "an-engine-written-shape-says-what-it-is-called",
+    "an-idle-escape-does-not-spread-from-the-block-that-needed-one",
+    "an-unclosed-inline-literal-reaches-the-end-of-its-block",
+    "pipe-tables-can-state-head-and-foot-row-counts",
+    "the-doubled-run-is-the-canonical-arrow-in-both-families"
   ],
   "skip": {
     "a-blank-line-holds-spaces-and-tabs-and-nothing-else-3": "a paragraph whose interior lines hold a single vertical tab, form feed, NEL (U+0085), LS (U+2028) or PS (U+2029) and nothing else parses to ERROR. PART 9 makes a line blank only when it holds spaces and tabs, so each of these is CONTENT and the paragraph runs through them; this grammar has no line-content route for a line whose only character is one of them. The category's other examples parse cleanly.",
     "a-continuation-marker-attaches-one-block-and-the-boundary-is-that-block-s-extent-5": "a `+` continuation marker that attaches NOTHING - the line after it opens a sibling item rather than a block to attach - leaves the first item unclosed and the whole document parses to one top-level ERROR. `- a` / `+` / `- x` / `- y` is three flat items in the fixture. The category's other eight examples, where the marker does attach a block, parse cleanly.",
+    "a-null-byte-is-replaced-before-the-document-is-read": "a NUL byte and a lone VERTICAL TAB inside a paragraph each parse to ERROR. PART 3 replaces a NUL with U+FFFD BEFORE the document is read, so the engines never see the byte at all and the corpus pins `a\\u0000b` as the text `a\\uFFFDb`; this grammar reads the raw bytes and has no rule for either control character, so `397-...` and `397-...-3` both leave a one-character ERROR inside an otherwise correct paragraph. The `-3` half is not new: it is the same control-character family the `a-blank-line-holds-spaces-and-tabs-and-nothing-else-3` skip already records. The `-2` file, which carries its NUL inside a code span, parses clean.",
     "a-quoted-attribute-value-stops-at-the-newline-3": "a quoted attribute value carrying a newline (`{k=\"a` / `b\"}`) parses to ERROR. The corpus pins it as literal text - the inline block does not span lines - but this grammar commits to an attribute block on the opening brace and has no route back to a paragraph when the value never closes on its line. Same class as an-attribute-name-admits-no-colon-3. The category's other examples parse cleanly.",
+    "an-empty-brace-pair-is-not-a-construct": "an EMPTY braced pair parses to ERROR. carve#1447 rules `{//}`, `{**}`, `{~~}`, `{^^}`, `{,,}`, `{==}`, `{++}` and `{##}` literal text, and the braced substitution shapes `{~a~>~}` with them; this grammar opens the braced construct on `{/`, `{*`, `{~` and finds no content before the closer, so the whole line is ERROR. Both files in the category are affected, and the second is nothing but those shapes. The construct is unmodeled rather than mis-modeled - the grammar has no empty-pair alternative to fall back to.",
     "delimited-comments-8": "a `%%` trailing comment inside a TABLE ROW swallows the rest of the line, closing pipes included, so `| d %% tail | e |` parses to a `trailing_comment` followed by ERROR. The fixture keeps the row: it expects `<td>d</td><td>e</td>`, the comment stripped from the first cell and the second cell intact. The category's other seven examples parse cleanly - including `{% ... %}`, which this grammar models as `braced_comment` and the pinned carve-js engine does not model at all.",
     "trailing-whitespace-on-a-content-line-is-dropped-7": "content lines ending in NBSP, ZWSP, BOM, U+2000 or a form feed parse to ERROR. Only the ASCII space and tab are dropped as trailing whitespace; every other spelling is content the renderer keeps, and this grammar's line-content rule does not admit them in that position. The category's other examples parse cleanly."
   },
@@ -431,7 +455,12 @@
       "reason": "`![a][nope]` + `^ cap` is one paragraph: the reference does not resolve, so the image is literal text and the `^` line is literal with it. Whether it resolves depends on the DEFINITIONS in the document, which a context-free grammar does not have - so the caption is built here and cannot be declined without a symbol table. The renderer decides correctly; highlighting a caption that the language declines is the cost."
     }
   },
-  "invisibleOverAcceptance": {},
+  "invisibleOverAcceptance": {
+    "a-boolean-attribute-does-not-start-with-an-underscore-3": {
+      "nodes": "block_attribute: {_foo}",
+      "reason": "carve#1450 rules that a boolean attribute may NOT start with `_`, so `{_foo}` is literal text and the fixture renders `<p>{_foo}\npara</p>`. This grammar still accepts it as a `block_attribute` holding a `boolean_attribute` key, which swallows the line. The over-acceptance is INVISIBLE to the node-count pass because a block attribute renders nothing, so there is no element to count against - which is exactly the shape this ledger exists to catch."
+    }
+  },
   "batteryDisagreements": {},
   "underAcceptance": {
     "a-raw-block-keeps-the-blank-line-at-the-end-of-its-payload-too-2": {
@@ -584,6 +613,10 @@
     },
     "thematic-break-requires-contiguous-markers": {
       "gaps": "list: want 2 have 0"
+    },
+    "an-unclosed-inline-literal-reaches-the-end-of-its-block-3": {
+      "gaps": "table: want 1 have 0",
+      "reason": "ref:an-unclosed-verbatim-run-abandons-the-row"
     }
   },
   "errorFamilies": {
@@ -732,6 +765,18 @@
     "a-paragraph-opened-after-a-block-in-an-item-is-still-open-for-a-lazy-line": {
       "spellings": "the cr spelling(s) parse to a different tree than lf",
       "reason": "ref:lone-cr-strands-a-column-probe"
+    },
+    "a-terminal-comment-in-a-quote-leaves-no-paragraph-open": {
+      "spellings": "the cr spelling(s) parse to a different tree than lf",
+      "reason": "ref:lone-cr-strands-a-column-probe"
+    },
+    "an-empty-brace-pair-is-not-a-construct": {
+      "spellings": "the cr spelling(s) parse to a different tree than lf",
+      "reason": "the cr spelling parses to a different tree because the LF spelling ALREADY parses to ERROR: the empty braced pair this document is made of is unmodeled, which is the skip recorded for the category above. Both spellings are ERROR and they differ only in whether a trailing ERROR node reaches the last line. The terminator is not the defect here, the unmodeled construct is, and the divergence goes away with it."
+    },
+    "an-empty-brace-pair-is-not-a-construct-2": {
+      "spellings": "the cr spelling(s) parse to a different tree than lf",
+      "reason": "the cr spelling parses to a different tree because the LF spelling ALREADY parses to ERROR: the empty braced pair this document is made of is unmodeled, which is the skip recorded for the category above. Both spellings are ERROR and they differ only in whether a trailing ERROR node reaches the last line. The terminator is not the defect here, the unmodeled construct is, and the divergence goes away with it."
     }
   }
 }
