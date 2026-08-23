@@ -1199,6 +1199,22 @@
     }
   },
   {
+    "type": "editorial_comment",
+    "named": true,
+    "fields": {
+      "content": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "content",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "emphasis",
     "named": true,
     "fields": {
@@ -4089,6 +4105,10 @@
     "named": false
   },
   {
+    "type": "#",
+    "named": false
+  },
+  {
     "type": "$",
     "named": false
   },
@@ -4286,10 +4306,6 @@
   },
   {
     "type": "div_marker_end",
-    "named": true
-  },
-  {
-    "type": "editorial_comment",
     "named": true
   },
   {

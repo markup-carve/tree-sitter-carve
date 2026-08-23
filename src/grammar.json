@@ -5598,24 +5598,73 @@
       }
     },
     "editorial_comment": {
-      "type": "TOKEN",
-      "content": {
-        "type": "SEQ",
-        "members": [
-          {
-            "type": "STRING",
-            "value": "{#"
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "_editorial_comment_begin"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "_curly_bracket_span_mark_begin"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "_editorial_comment_body"
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_curly_bracket_span_end"
           },
-          {
-            "type": "PATTERN",
-            "value": "(?:[^#\\r\\n]|#+[^#}\\r\\n])+#*|#+"
-          },
-          {
-            "type": "STRING",
-            "value": "#}"
+          "named": false,
+          "value": "}"
+        }
+      ]
+    },
+    "_editorial_comment_body": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "#"
+        },
+        {
+          "type": "FIELD",
+          "name": "content",
+          "content": {
+            "type": "ALIAS",
+            "content": {
+              "type": "REPEAT1",
+              "content": {
+                "type": "CHOICE",
+                "members": [
+                  {
+                    "type": "SYMBOL",
+                    "name": "_comment_body_hash"
+                  },
+                  {
+                    "type": "PATTERN",
+                    "value": "[^#]"
+                  }
+                ]
+              }
+            },
+            "named": true,
+            "value": "content"
           }
-        ]
-      }
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_comment_hash_end_marker"
+          },
+          "named": false,
+          "value": "#"
+        }
+      ]
     },
     "_empty_braced_pair": {
       "type": "TOKEN",
@@ -8209,6 +8258,18 @@
     {
       "type": "SYMBOL",
       "name": "_figure_group_marker"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_editorial_comment_begin"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_comment_body_hash"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_comment_hash_end_marker"
     }
   ],
   "inline": [],

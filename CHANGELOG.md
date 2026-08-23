@@ -36,6 +36,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   markup-carve/carve#1293, markup-carve/carve#1466).
 - An unclosed braced span falls back to literal text instead of an ERROR:
   `{/`, `{_` and `{~` gained the fallback branch `{*` already had (#247).
+- An editorial comment written across a line break is one comment, so the
+  markup inside its body stays inert. The body may span the soft line breaks
+  inside one paragraph and ends at a blank line, and a block quote's or list
+  item's prefix no longer lands in it (#250).
 
 ### Changed
 

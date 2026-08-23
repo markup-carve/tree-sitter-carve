@@ -274,6 +274,26 @@ const CASES = [
         expect: null,
     },
     {
+        // The other half of the same row: 102 of the 286 generated bodies in
+        // markup-carve/carve-grammars#320's sweep are written across a line
+        // break, and every one of them coloured
+        // (markup-carve/tree-sitter-carve#250). A `token()` cannot reach this
+        // - the payload has to be a repetition inside the paragraph.
+        name: 'an editorial comment written across a line break keeps its payload inert',
+        source: 'a {# x\n*b* y #} z\n',
+        at: [1, 0],
+        expect: null,
+    },
+    {
+        // And the container is why the widened token was the wrong shape: the
+        // `> ` on the second line is stripped by the block machinery before
+        // the payload sees it, which no token could do for itself.
+        name: 'a quoted editorial comment keeps its payload inert across the break',
+        source: '> a {# x\n> *b* y #} z\n',
+        at: [1, 2],
+        expect: null,
+    },
+    {
         name: 'a fence opener with a trailing space keeps its body inert',
         source: '```js \nx *b* y\n```\n',
         at: [1, 2],

@@ -1772,36 +1772,59 @@ module.exports = grammar({
     // a one-or-more repetition (carve#1447), so an empty one is literal text
     // and falls through to `_empty_braced_pair`. `{# #}`, whose content is a
     // single space, is still a comment.
-    // `editorial_comment = "{#", comment_content, "#}"`, and
-    // `comment_content` is "any text until the matching `#}`, preserved
-    // literally" (grammar.ebnf). ANY text - a `#` that is not the `#` of the
-    // closing `#}` is body, so `{# renumber #4 #}` is one comment.
     //
-    // The body used to be `/[^#\r\n]+/`, which ends the comment at the first
-    // `#` of any kind. A body carrying one therefore built no comment at all
-    // and the markup inside it coloured: 78 of the 286 generated bodies in
-    // markup-carve/carve-grammars#320's sweep leaked that way, and every one of
-    // them fits on a single line - which is why the ticket's own sample, a body
-    // written across a line break, could not show it.
+    // `editorial_comment = "{#", comment_content, "#}"`, and `comment_content`
+    // is "any text until the matching `#}`, preserved literally"
+    // (grammar.ebnf). ANY text: a `#` that is not the `#` of the closing `#}`
+    // is body, so `{# renumber #4 #}` is one comment - and a SOFT LINE BREAK
+    // is body too, so `a {# x` / `y #} z` is one comment whose body spans the
+    // break, which is what carve-js renders.
     //
-    // The class is spelled as "a run that does not spell `#}`" rather than as a
-    // negative lookahead, which tree-sitter's regex engine does not have: a
-    // non-`#` character, or a run of `#` followed by a character that is not
-    // `}`, repeated - and a trailing run of `#` is admitted separately, because
-    // a body may END in one (`{# see #4##}` closes on the last two characters
-    // and keeps `#4#`).
+    // NOT A `token()`, and that is the point. A token is decided by the lexer
+    // alone, with no idea of the container it sits in, so widening its class
+    // to admit a line break buys the multi-line bodies and loses the block
+    // quote: nothing strips a `> ` prefix for a token, so the prefix lands
+    // inside the body. Spelled as a multi-token rule instead - the shape
+    // `braced_comment` already has - the opener is a scanner token and the
+    // body is a repetition inside the paragraph, so the break goes through the
+    // machinery that knows where the paragraph is.
     //
-    // STILL SINGLE-LINE, and that is the remaining half of the row. This is a
-    // `token()`, so it is decided by the lexer alone, with no idea of the
-    // container it sits in: widening it across line breaks would swallow a
-    // block quote's `> ` prefix into the body and run past a heading or a list
-    // marker on the next line, where carve-js ends the paragraph and the
-    // comment with it. Reaching those needs the block machinery the braced
-    // comment gets by being a multi-token rule, and the `{#` opener cannot
-    // simply move to the scanner the way `{%` did - `{#id}` is an id attribute,
-    // and the classifier that decides between them cannot rewind.
-    editorial_comment: (_) =>
-      token(seq("{#", /(?:[^#\r\n]|#+[^#}\r\n])+#*|#+/, "#}")),
+    // 102 of the 286 generated bodies in markup-carve/carve-grammars#320's
+    // sweep are written across a line break and every one of them leaked
+    // (markup-carve/tree-sitter-carve#250). The single-line half of that row -
+    // a body carrying a `#` - was closed separately (#248).
+    //
+    // KNOWN GAP, pinned in `test/corpus/carve.txt`: a continuation line that
+    // OPENS A BLOCK is run past. carve-js ends the paragraph at a heading and
+    // the comment with it; here the body is a repetition of characters and a
+    // newline is one of them, so nothing asks the block machinery whether the
+    // line still belongs to the paragraph. The braced comment reads it the same
+    // way, which is why the gap is recorded for both rather than closed for one.
+    editorial_comment: ($) =>
+      seq(
+        $._editorial_comment_begin,
+        $._curly_bracket_span_mark_begin,
+        $._editorial_comment_body,
+        alias($._curly_bracket_span_end, "}"),
+      ),
+
+    // A `#` ON BOTH SIDES, like `_braced_comment_body`'s `%`, and for the same
+    // reason: an editorial comment closes on `#}` and on nothing else, so a
+    // `#` is body text unless a `}` follows it. That needs the character AFTER
+    // the `#`, which is why it is `_comment_body_hash` in `src/scanner.c` and
+    // not a token regex. A lone `}` is an ordinary body character.
+    //
+    // NO BACKSLASH ESCAPE. The content is LITERAL and "no escape is resolved"
+    // (grammar.ebnf), so the first `#}` closes whatever precedes it.
+    _editorial_comment_body: ($) =>
+      seq(
+        "#",
+        field(
+          "content",
+          alias(repeat1(choice($._comment_body_hash, /[^#]/)), $.content),
+        ),
+        alias($._comment_hash_end_marker, "#"),
+      ),
 
     // An EMPTY braced pair is not a construct (carve#1447): `{//}`, `{**}`,
     // `{__}`, `{~~}`, `{^^}`, `{,,}`, `{==}`, `{++}` and `{##}` are literal
@@ -2382,5 +2405,19 @@ module.exports = grammar({
     // The reserved kind word `figure` on a BARE colon-fence opener. Appended
     // last for the same index reason as the tokens above it.
     $._figure_group_marker,
+
+    // The `{` of an editorial comment, `{# … #}`. External because the same
+    // `{` can open an id attribute (`{#id}`), and the two are told apart only
+    // by what closes them - see `parse_open_curly_bracket` in src/scanner.c.
+    // Appended last for the same index reason as the tokens above it.
+    $._editorial_comment_begin,
+
+    // A `#` STANDING IN AN EDITORIAL COMMENT'S BODY - one that is not the `#`
+    // of the closing `#}`. Appended last for the same index reason.
+    $._comment_body_hash,
+
+    // The `#` that closes an editorial comment, the one a `}` follows.
+    // Appended last for the same index reason.
+    $._comment_hash_end_marker,
   ],
 });
