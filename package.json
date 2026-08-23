@@ -46,7 +46,7 @@
     }
   },
   "devDependencies": {
-    "@markup-carve/carve": "git+https://github.com/markup-carve/carve-js.git#2dc3232e426a93ce40ffe3b099c0bb8731fd25e7",
+    "@markup-carve/carve": "0.1.4",
     "prebuildify": "^6.0.0",
     "prettier": "3.9.6",
     "tree-sitter": "0.25.0",
