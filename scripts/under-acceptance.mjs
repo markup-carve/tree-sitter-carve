@@ -65,18 +65,17 @@ const NODE_FOR = {
   // so a figure count has nothing to compare against.
   figure: null,
   // The composite form is NOT the same answer, because it has a spelling: every
-  // composite figure in the corpus is a `::: figure` fence, which this grammar
-  // builds as a `div`. That is the `admonition` mapping, not the `figure` one.
+  // composite figure in the corpus is a `::: figure` fence.
   //
-  // It matters which of the two it gets. `figure_group` arrived in the engine's
-  // block vocabulary with this pin bump - before it, the engine built a plain
-  // `div` for those documents and this check compared it against the grammar's
-  // `div`. Classifying the new name as null would have quietly retired a
-  // comparison that was live and passing on main, in the direction nobody
-  // checks: 9 documents would stop being asked the question they were already
-  // answering. Mapping it to `div` keeps the measurement identical across the
-  // bump.
-  figure_group: 'div',
+  // THE MARKER, not the `div`, for the reason the line block above states: this
+  // grammar builds a `div` for every `:::` container, so comparing against that
+  // node asks whether SOME container opened and a group that degraded to a
+  // plain div would still count as answered. `figure_group_marker` is the token
+  // that selects the group, so it is the one that can see it. It exists at all
+  // because of that: the construct had no name until
+  // markup-carve/tree-sitter-carve#245, and this row was the `div` mapping only
+  // because there was nothing else to point at.
+  figure_group: 'figure_group_marker',
   // Sections wrap headings in the AST; the grammar nests content under the
   // heading itself and builds no separate node.
   section: null,
@@ -106,7 +105,12 @@ const NODE_FOR = {
   // one: `figure`'s null is earned by there being no node to compare against,
   // and here there is one.
   citation_definition: 'citation_definition',
-  admonition: 'div',
+  // THE TYPE WORD, and the same reasoning again. Any word after the colon
+  // fence's separator opens an admonition and a generic div is the opener with
+  // NO word, so the word is what selects the construct; the `div` it sits in is
+  // the container both share. Mapped to `div` this compared 263 admonition
+  // nodes against a count that a plain `:::` fence also feeds.
+  admonition: 'admonition_type',
   list_item: null,
   definition_term: null,
   definition_description: null,

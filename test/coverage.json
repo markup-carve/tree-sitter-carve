@@ -460,7 +460,7 @@
       "reason": "ref:fence-on-a-marker-line-builds-nothing"
     },
     "a-blank-line-before-a-sibling-marker-separates-the-items-whatever-consumed-it": {
-      "gaps": "div: want 1 have 0",
+      "gaps": "admonition_type: want 1 have 0",
       "reason": "ref:fence-on-a-marker-line-builds-nothing"
     },
     "a-blank-line-before-a-sibling-marker-separates-the-items-whatever-consumed-it-2": {
@@ -535,25 +535,45 @@
       "reason": "ref:an-attribute-line-does-not-end-the-paragraph-above-a-list"
     },
     "an-unterminated-container-does-not-extend-the-item-past-a-blank-line": {
-      "gaps": "div: want 1 have 0",
+      "gaps": "admonition_type: want 1 have 0",
       "reason": "ref:fence-on-a-marker-line-builds-nothing"
     },
     "an-unterminated-container-does-not-extend-the-item-past-a-blank-line-2": {
-      "gaps": "div: want 1 have 0",
+      "gaps": "admonition_type: want 1 have 0",
       "reason": "ref:fence-on-a-marker-line-builds-nothing"
     },
     "an-unterminated-container-does-not-extend-the-item-past-a-blank-line-3": {
-      "gaps": "div: want 1 have 0",
+      "gaps": "admonition_type: want 1 have 0",
       "reason": "ref:fence-on-a-marker-line-builds-nothing"
     },
     "attribute-braces-on-a-list-item-marker-line": {
       "gaps": "heading: want 1 have 0"
     },
+    "fence-opener-with-a-nested-list-body-inside-a-list-item": {
+      "gaps": "admonition_type: want 1 have 0",
+      "reason": "ref:fence-on-a-marker-line-builds-nothing"
+    },
+    "fence-opener-with-a-nested-list-body-inside-a-list-item-2": {
+      "gaps": "admonition_type: want 1 have 0",
+      "reason": "ref:fence-on-a-marker-line-builds-nothing"
+    },
+    "fence-opener-with-a-nested-list-body-inside-a-list-item-3": {
+      "gaps": "admonition_type: want 1 have 0",
+      "reason": "ref:fence-on-a-marker-line-builds-nothing"
+    },
+    "fence-opener-with-a-nested-list-body-inside-a-list-item-4": {
+      "gaps": "admonition_type: want 1 have 0",
+      "reason": "ref:fence-on-a-marker-line-builds-nothing"
+    },
+    "fence-opener-with-a-nested-list-body-inside-a-list-item-7": {
+      "gaps": "admonition_type: want 1 have 0",
+      "reason": "ref:fence-on-a-marker-line-builds-nothing"
+    },
     "fence-opener-with-a-nested-list-body-inside-a-list-item-5": {
-      "gaps": "div: want 1 have 0"
+      "gaps": "admonition_type: want 1 have 0"
     },
     "fence-opener-with-a-nested-list-body-inside-a-list-item-6": {
-      "gaps": "div: want 2 have 1"
+      "gaps": "admonition_type: want 1 have 0"
     },
     "list-lazy-continuation-8": {
       "gaps": "table: want 1 have 0"
@@ -568,7 +588,7 @@
       "gaps": "heading: want 1 have 0"
     },
     "only-lazy-folding-demotes-a-marker-line-colon-opener": {
-      "gaps": "div: want 1 have 0",
+      "gaps": "admonition_type: want 1 have 0",
       "reason": "ref:fence-on-a-marker-line-builds-nothing"
     },
     "paragraph-interruption-3": {
