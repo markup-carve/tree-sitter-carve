@@ -68,9 +68,28 @@ function effectiveCapture(text, row, column) {
     const tree = parser.parse(text);
     let winner = null;
     let winningPriority = -Infinity;
-    let winningIndex = -Infinity;
+    let winningPattern = -Infinity;
 
-    query.matches(tree.rootNode).forEach((match, index) => {
+    /*
+     * THE TIE IS BROKEN ON THE PATTERN'S POSITION IN THE QUERY FILE, which is
+     * what "later patterns win a tie" means.
+     *
+     * It used to be broken on the index `matches()` handed out, and that index
+     * is TREE order: it says which node came first in the document and nothing
+     * about which pattern in `highlights.scm` wrote the capture. Two
+     * equal-priority patterns therefore resolved by where their nodes happened
+     * to sit, so the same query file could answer differently for two documents
+     * that differ only in the order of two constructs. `match.pattern` is the
+     * pattern's own position in the file, and it is the number the model this
+     * script states is about.
+     *
+     * The current query file has no equal-priority pair that lands on one node,
+     * so no case here changes answer - measured, in this repository and in
+     * carve-grammars' copy of the same resolver. It is a latent defect rather
+     * than a wrong reading today, and the fix is what keeps the next
+     * equal-priority pattern from being graded by document order.
+     */
+    for (const match of query.matches(tree.rootNode)) {
         const priority = Number(query.setProperties?.[match.pattern]?.priority ?? DEFAULT_PRIORITY);
         for (const capture of match.captures) {
             // `@_name` captures are internal to a predicate and paint nothing.
@@ -78,13 +97,14 @@ function effectiveCapture(text, row, column) {
             if (NOT_A_COLOUR.has(capture.name)) continue;
             const { startPosition } = capture.node;
             if (startPosition.row !== row || startPosition.column !== column) continue;
-            if (priority > winningPriority || (priority === winningPriority && index >= winningIndex)) {
+            if (priority > winningPriority
+                || (priority === winningPriority && match.pattern >= winningPattern)) {
                 winner = capture.name;
                 winningPriority = priority;
-                winningIndex = index;
+                winningPattern = match.pattern;
             }
         }
-    });
+    }
 
     return winner;
 }
@@ -174,6 +194,77 @@ const CASES = [
         source: '::: figure\nx\n:::\n^ Figure #: Group caption\n',
         at: [3, 2],
         expect: 'markup.italic',
+    },
+
+    /*
+     * A PAYLOAD THAT IS NOT CARVE KEEPS THE MARKERS INSIDE IT INERT, asked of
+     * the queries because a leak is a statement the QUERIES make: the payload
+     * has to come back painted as its construct and not as the markup its
+     * characters spell.
+     *
+     * Every row is a position where a `*b*` run sits inside a verbatim payload.
+     * A leak puts an emphasis node there, and an emphasis node STARTS at that
+     * column - which is the one thing the resolver above reports - so the row
+     * reads `null` while the payload is inert and `punctuation.delimiter` the
+     * moment it is not. The control below the block is the same run outside any
+     * payload, so the rows cannot all pass by asking about a position nothing
+     * ever claims.
+     *
+     * Each shape is one this repository got wrong
+     * (markup-carve/tree-sitter-carve#248), and one sample per construct could
+     * not find any of them: the bodies that leaked carry the construct's OWN
+     * delimiter characters, and the plain sample carries none.
+     */
+    {
+        name: 'a percent in a braced comment does not end its payload',
+        source: 'a {% 50% off *b* %} z\n',
+        at: [0, 13],
+        expect: null,
+    },
+    {
+        name: 'a brace in a braced comment does not end its payload',
+        source: 'a {% a } b *b* %} z\n',
+        at: [0, 11],
+        expect: null,
+    },
+    {
+        name: 'a hash in an editorial comment does not end its payload',
+        source: 'a {# see #4 *b* #} z\n',
+        at: [0, 12],
+        expect: null,
+    },
+    {
+        name: 'a fence opener with a trailing space keeps its body inert',
+        source: '```js \nx *b* y\n```\n',
+        at: [1, 2],
+        expect: null,
+    },
+    {
+        name: 'a fence opener with a trailing tab keeps its body inert',
+        source: '```js\t\nx *b* y\n```\n',
+        at: [1, 2],
+        expect: null,
+    },
+    {
+        name: 'a raw opener with a trailing space keeps its body inert',
+        source: '```=html \n<i>*b*</i>\n```\n',
+        at: [1, 3],
+        expect: null,
+    },
+    {
+        name: 'an indented delimiter-shaped line does not end the payload',
+        source: '```\n  ```\n*b*\n```\n',
+        at: [2, 0],
+        expect: null,
+    },
+    {
+        // THE CONTROL for the seven rows above. Same run, no payload around it:
+        // if `null` were the answer everywhere, none of them would be reading
+        // anything.
+        name: 'the same run outside a payload is emphasis',
+        source: 'a *b* z\n',
+        at: [0, 2],
+        expect: 'punctuation.delimiter',
     },
 ];
 

@@ -5627,3 +5627,156 @@ c |
       begin_marker: (verbatim_marker_begin)
       content: (content)
       end_marker: (verbatim_marker_end))))
+
+===============================================================================
+A braced comment's body holds a lone percent and a lone brace
+;; `braced_comment = "{%", {character - "%}"}, "%}"`: the body runs to the
+;; FIRST `%}` and every other character is body, a `%` and a `}` included.
+;; The body used to be the ATTRIBUTE comment's, which ends at either of them,
+;; so `{% 50% off %}` and `{% a } b %}` built no comment at all and the markup
+;; inside them coloured (markup-carve/tree-sitter-carve#248).
+===============================================================================
+
+a {% 50% off *b* %} z
+
+a {% a } b *b* %} z
+
+a {% x %} z
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (braced_comment
+      content: (content)))
+  (paragraph
+    (braced_comment
+      content: (content)))
+  (paragraph
+    (braced_comment
+      content: (content))))
+
+===============================================================================
+A braced comment without its closer is ordinary text
+;; The CONTROL for the case above, in the over-accepting direction. Widening
+;; the body to hold a `%` and a `}` must not let a `{%` with no `%}` swallow
+;; the rest of the paragraph: carve-js renders `a {% x } z` with the braces
+;; literal, and so does this.
+===============================================================================
+
+a {% x } z
+
+a {% x %
+} z
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph)
+  (paragraph))
+
+===============================================================================
+An editorial comment's body holds a hash that does not close it
+;; `comment_content` is "any text until the matching `#}`, preserved
+;; literally", so a `#` that is not the `#` of the closer is body. The body
+;; used to end at the first `#` of any kind, which built no comment and
+;; coloured the markup inside it (markup-carve/tree-sitter-carve#248). The
+;; second line is the closer test: the body may END in a hash run, and the
+;; comment still closes on the LAST two characters.
+===============================================================================
+
+a {# renumber #4 *b* #} z
+
+a {# see #4##} z
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (editorial_comment))
+  (paragraph
+    (editorial_comment)))
+
+===============================================================================
+An empty braced pair is still not an editorial comment
+;; The CONTROL for the case above. `comment_content` takes at least one
+;; character (carve#1447), so `{##}` stays the empty braced pair and `{#id}`
+;; stays a tag - neither may be swept up by the widened body.
+===============================================================================
+
+a {##} z
+
+a {#id} z
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph)
+  (paragraph
+    (tag)))
+
+===============================================================================
+An indented delimiter-shaped line inside a fence is content
+;; COLUMN-EXACT DELIMITERS (grammar.ebnf PART 2, normative): "a closing run
+;; indented PAST its opener is not a delimiter but code content -- which is
+;; exactly what lets an indented ``` line appear as sample text inside a
+;; fence". The closer used to be matched on its fence character and width
+;; alone, so the indented run ended the block and everything under it was live
+;; prose (markup-carve/tree-sitter-carve#248).
+===============================================================================
+
+```
+  ```
+*b*
+```
+
+~~~
+  ~~~~
+*b*
+~~~
+
+-------------------------------------------------------------------------------
+
+(document
+  (code_block
+    (code_block_marker_begin)
+    code: (code)
+    (code_block_marker_end))
+  (code_block
+    (code_block_marker_begin)
+    code: (code)
+    (code_block_marker_end)))
+
+===============================================================================
+A closer at the opener's own column still closes, at any depth
+;; The CONTROL for the case above. The new guard asks whether the run sits
+;; PAST its container's content column, so a closer AT that column - column 0
+;; at the top level, the item's content column inside a list - has to go on
+;; closing. Without the control the guard could refuse every closer and the
+;; case above would still pass.
+===============================================================================
+
+```
+x
+```
+
+- ```
+  x
+  ```
+
+-------------------------------------------------------------------------------
+
+(document
+  (code_block
+    (code_block_marker_begin)
+    code: (code)
+    (code_block_marker_end))
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph
+          (verbatim
+            begin_marker: (verbatim_marker_begin)
+            content: (content)
+            end_marker: (verbatim_marker_end)))))))

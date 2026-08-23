@@ -956,6 +956,35 @@ module.exports = grammar({
             field("label", $.code_block_label),
           ),
         ),
+        // TRAILING WHITESPACE ON THE OPENER LINE, for every info-string shape.
+        //
+        // PART 2 drops trailing whitespace on a content line before the line is
+        // read, so ```` ```js ```` and ```` ```js ```` with a trailing space are
+        // the SAME opener - which is exactly the reading grammar.ebnf gives the
+        // tab case (carve#1295: a tab with nothing after it "is trailing
+        // whitespace on a content line, PART 2 drops it"). The scanner already
+        // agrees: `code_fence_info_is_modeled` consumes the run after each
+        // token and returns true at the line end, ahead of every spelling and
+        // cardinality test.
+        //
+        // The GRAMMAR had nowhere to put those characters, so an opener the
+        // scanner had already committed to came back as an ERROR node covering
+        // the rest of the document, and the whole body went to inline parsing
+        // as live prose. That is the `_div_marker_begin` defect one construct
+        // over, and the same fix: the bare fence needs no slot because
+        // `_whitespace` above already holds its run, and every opener that
+        // carries an info string needs one.
+        //
+        // Spelled the same two disjoint tokens the colon fence uses.
+        // `_padding_spaces` is already the metadata separator inside the info
+        // string, so a run of spaces here is one token the parser resolves by
+        // lookahead - a quote or a bracket opens a padding slot, a line ending
+        // closes the opener - rather than a lexer ambiguity no conflict
+        // declaration could settle. A run CARRYING A TAB is the second token:
+        // a padding slot never takes a tab (`code_fence_info_is_modeled`
+        // returns false for ```` ```js<TAB>"T" ````), so at this position such
+        // a run can only be trailing whitespace.
+        optional(choice($._padding_spaces, $._opener_trailing_tabs)),
         $._newline,
         optional(field("code", $.code)),
         $._block_close,
@@ -977,6 +1006,12 @@ module.exports = grammar({
         // is the one that narrows it. See the note there.
         $._whitespace,
         field("info", $.raw_block_info),
+        // The same trailing-whitespace slot the code fence takes, for the same
+        // reason: `code_fence_info_is_modeled` accepts ```` ```=html ```` with a
+        // trailing space or tab, and without a slot here that opener was an
+        // ERROR and its body live prose. Both raw spellings reach it -
+        // ```` ```=FORMAT ```` and ```` ```raw FORMAT ````.
+        optional(choice($._padding_spaces, $._opener_trailing_tabs)),
         $._newline,
         field("content", optional(alias($.code, $.content))),
         $._block_close,
@@ -1692,7 +1727,36 @@ module.exports = grammar({
     // a one-or-more repetition (carve#1447), so an empty one is literal text
     // and falls through to `_empty_braced_pair`. `{# #}`, whose content is a
     // single space, is still a comment.
-    editorial_comment: (_) => token(seq("{#", /[^#\r\n]+/, "#}")),
+    // `editorial_comment = "{#", comment_content, "#}"`, and
+    // `comment_content` is "any text until the matching `#}`, preserved
+    // literally" (grammar.ebnf). ANY text - a `#` that is not the `#` of the
+    // closing `#}` is body, so `{# renumber #4 #}` is one comment.
+    //
+    // The body used to be `/[^#\r\n]+/`, which ends the comment at the first
+    // `#` of any kind. A body carrying one therefore built no comment at all
+    // and the markup inside it coloured: 78 of the 286 generated bodies in
+    // markup-carve/carve-grammars#320's sweep leaked that way, and every one of
+    // them fits on a single line - which is why the ticket's own sample, a body
+    // written across a line break, could not show it.
+    //
+    // The class is spelled as "a run that does not spell `#}`" rather than as a
+    // negative lookahead, which tree-sitter's regex engine does not have: a
+    // non-`#` character, or a run of `#` followed by a character that is not
+    // `}`, repeated - and a trailing run of `#` is admitted separately, because
+    // a body may END in one (`{# see #4##}` closes on the last two characters
+    // and keeps `#4#`).
+    //
+    // STILL SINGLE-LINE, and that is the remaining half of the row. This is a
+    // `token()`, so it is decided by the lexer alone, with no idea of the
+    // container it sits in: widening it across line breaks would swallow a
+    // block quote's `> ` prefix into the body and run past a heading or a list
+    // marker on the next line, where carve-js ends the paragraph and the
+    // comment with it. Reaching those needs the block machinery the braced
+    // comment gets by being a multi-token rule, and the `{#` opener cannot
+    // simply move to the scanner the way `{%` did - `{#id}` is an id attribute,
+    // and the classifier that decides between them cannot rewind.
+    editorial_comment: (_) =>
+      token(seq("{#", /(?:[^#\r\n]|#+[^#}\r\n])+#*|#+/, "#}")),
 
     // An EMPTY braced pair is not a construct (carve#1447): `{//}`, `{**}`,
     // `{__}`, `{~~}`, `{^^}`, `{,,}`, `{==}`, `{++}` and `{##}` are literal
@@ -1903,8 +1967,42 @@ module.exports = grammar({
         $._whitespace1,
         $._braced_comment_begin,
         $._curly_bracket_span_mark_begin,
-        $._comment,
+        $._braced_comment_body,
         alias($._curly_bracket_span_end, "}"),
+      ),
+
+    // THE BRACED COMMENT'S BODY IS NOT `_comment`, and the two differ in the
+    // characters this construct is about.
+    //
+    // `_comment` above is the ATTRIBUTE comment - `{.a %note% .b}` - which ends
+    // at a bare `%` or at the attribute's own `}`, so its content excludes both
+    // characters. `braced_comment = "{%", {character - "%}"}, "%}"` excludes
+    // neither: it runs to the first `%}` and a lone `%` or a lone `}` is body
+    // text. Sharing one rule gave the braced comment the attribute's reading,
+    // and a body holding either character ended the comment early - so
+    // `{% 50% off %}` and `{% a } b %}` were not comments at all and the
+    // markup after them coloured. 185 of 469 generated bodies leaked that way
+    // (markup-carve/carve-grammars#320's sweep); the ticket's own sample, a
+    // body written across a line break, was already inert, which is why one
+    // sample per construct could not find this.
+    //
+    // `}` is an ordinary body character here, and a `%` is one unless a `}`
+    // follows it - which needs the character AFTER the `%` and so is
+    // `_comment_body_percent` in `src/scanner.c` rather than a token regex.
+    //
+    // NO BACKSLASH ESCAPE. `_comment` admits `backslash_escape`; this body must
+    // not, because the first `%}` closes whatever precedes it: carve-js renders
+    // `a {% \%} %} z` as `a  %} z`, the comment ending at the `%}` right after
+    // the backslash. With `}` admitted as content an escape branch would carry
+    // the comment past that closer instead.
+    _braced_comment_body: ($) =>
+      seq(
+        "%",
+        field(
+          "content",
+          alias(repeat(choice($._comment_body_percent, /[^%]/)), $.content),
+        ),
+        alias($._comment_end_marker, "%"),
       ),
 
     // Trailing inline comment: `text %% to end of line`.
@@ -2231,5 +2329,9 @@ module.exports = grammar({
     // internal lexer reserves the value 0 for end-of-input - see NUL_BYTE in
     // src/scanner.c.
     $._nul_byte,
+
+    // A `%` standing in a braced comment's BODY - not the `%` of its closing
+    // `%}`. Appended last for the same index reason as the tokens above it.
+    $._comment_body_percent,
   ],
 });
