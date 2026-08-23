@@ -41,6 +41,13 @@ function inlineElement($, options) {
           prec.dynamic(ELEMENT_PRECEDENCE, $.delete),
           $.substitution,
           $.editorial_comment,
+          // An EMPTY braced pair is literal text, and it has to be recognized
+          // BEFORE any of the openers above can commit - see
+          // `_empty_braced_pair`.
+          $._empty_braced_pair,
+          // A NUL byte is one character of content, handed over by the
+          // external scanner because no character class can match it.
+          $._nul_byte,
           // A note's content recognizes neither a note nor a footnote
           // reference, so both drop out there and stay the literal text
           // the spec says they are (corpus 309).
@@ -121,8 +128,16 @@ function symbolFallback($, options) {
       seq("/*", $._non_whitespace_check),
       choice($._bold_italic_mark_begin, $._in_fallback),
     ),
+    // The BRACED opener needs a fallback branch of its own, exactly as `{*`
+    // has had one here all along: `{/`, `{_` and `{~` are their own tokens, so
+    // without a branch an unclosed braced span has no lexing left and the line
+    // comes back as ERROR rather than as the literal text the spec says it is.
+    // `{_foo}` is the reachable shape - carve#1450 stops it from being an
+    // attribute line, and until this branch existed it stopped being anything
+    // at all. The bare `^`, `,`, `=`, `+` and `-` branches below already pair
+    // their braced form the same way.
     seq(
-      seq("/", $._non_whitespace_check),
+      choice("{/", seq("/", $._non_whitespace_check)),
       choice($._emphasis_mark_begin, $._in_fallback),
     ),
     seq(
@@ -130,11 +145,11 @@ function symbolFallback($, options) {
       choice($._strong_mark_begin, $._in_fallback),
     ),
     seq(
-      seq("_", $._non_whitespace_check),
+      choice("{_", seq("_", $._non_whitespace_check)),
       choice($._underline_mark_begin, $._in_fallback),
     ),
     seq(
-      seq("~", $._non_whitespace_check),
+      choice("{~", seq("~", $._non_whitespace_check)),
       choice($._strikethrough_mark_begin, $._in_fallback),
     ),
     // Not sensitive to whitespace
@@ -1666,9 +1681,46 @@ module.exports = grammar({
       ),
     delete_begin: (_) => "{-",
 
-    substitution: (_) => token(seq("{~", /[^~\r\n]+/, "~>", /[^~\r\n]+/, "~}")),
+    // Either half of a substitution may be EMPTY (carve#1447): `{~a~>~}`
+    // deletes without inserting, `{~~>b~}` inserts without deleting, and
+    // `{~~>~}` does both to nothing. All three are the construct, with an
+    // empty `del` or `ins` - which is why the arrow, and not the content, is
+    // what makes this a substitution rather than the empty pair below.
+    substitution: (_) => token(seq("{~", /[^~\r\n]*/, "~>", /[^~\r\n]*/, "~}")),
 
-    editorial_comment: (_) => token(seq("{#", /[^#\r\n]*/, "#}")),
+    // `{##}` is NOT an empty comment. Every braced construct's content slot is
+    // a one-or-more repetition (carve#1447), so an empty one is literal text
+    // and falls through to `_empty_braced_pair`. `{# #}`, whose content is a
+    // single space, is still a comment.
+    editorial_comment: (_) => token(seq("{#", /[^#\r\n]+/, "#}")),
+
+    // An EMPTY braced pair is not a construct (carve#1447): `{//}`, `{**}`,
+    // `{__}`, `{~~}`, `{^^}`, `{,,}`, `{==}`, `{++}` and `{##}` are literal
+    // text.
+    //
+    // One token, and matched ahead of every opener, because the grammar has no
+    // empty-content alternative to fall back TO: every braced span requires
+    // content between its markers, so an opener taken on `{/` reaches the
+    // closer with nothing in between and the whole line comes back as ERROR.
+    // A four-character token beats the two-character opener on length, so the
+    // pair is decided before any construct commits.
+    //
+    // `{--}` is deliberately absent: it is the braced en dash (carve#1447),
+    // a construct of its own rather than an empty deletion.
+    _empty_braced_pair: (_) =>
+      token(
+        choice(
+          "{//}",
+          "{**}",
+          "{__}",
+          "{~~}",
+          "{^^}",
+          "{,,}",
+          "{==}",
+          "{++}",
+          "{##}",
+        ),
+      ),
 
     footnote_reference: ($) =>
       seq(
@@ -1939,7 +1991,7 @@ module.exports = grammar({
     _glued_symbol: (_) =>
       token(prec(1, /[A-Za-z0-9_]+:[a-zA-Z0-9+-][a-zA-Z0-9_+-]*:/)),
 
-    _text: (_) => repeat1(/\S/),
+    _text: (_) => repeat1(/[^ \t\r\n]/),
   },
 
   externals: ($) => [
@@ -2173,5 +2225,11 @@ module.exports = grammar({
     // A `+ ` row is admitted only after the scanner verifies that the entire
     // physical line is made of pipe-terminated continuation cells.
     $._table_continuation_row,
+
+    // A NUL byte standing in a line of content. Appended last for the same
+    // index reason as the tokens above, and external because tree-sitter's
+    // internal lexer reserves the value 0 for end-of-input - see NUL_BYTE in
+    // src/scanner.c.
+    $._nul_byte,
   ],
 });
