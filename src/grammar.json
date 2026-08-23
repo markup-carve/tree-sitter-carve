@@ -2332,14 +2332,27 @@
                   ]
                 },
                 {
+                  "type": "FIELD",
+                  "name": "figure_group_marker",
+                  "content": {
+                    "type": "ALIAS",
+                    "content": {
+                      "type": "SYMBOL",
+                      "name": "_figure_group_marker"
+                    },
+                    "named": true,
+                    "value": "figure_group_marker"
+                  }
+                },
+                {
                   "type": "SEQ",
                   "members": [
                     {
                       "type": "FIELD",
-                      "name": "class",
+                      "name": "type",
                       "content": {
                         "type": "SYMBOL",
-                        "name": "class_name"
+                        "name": "admonition_type"
                       }
                     },
                     {
@@ -2436,6 +2449,10 @@
           ]
         }
       ]
+    },
+    "admonition_type": {
+      "type": "SYMBOL",
+      "name": "_id_no_digit_start"
     },
     "class_name": {
       "type": "SYMBOL",
@@ -8188,6 +8205,10 @@
     {
       "type": "SYMBOL",
       "name": "_comment_body_percent"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_figure_group_marker"
     }
   ],
   "inline": [],

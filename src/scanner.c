@@ -166,6 +166,12 @@ typedef enum {
   // character run and on nothing else, and a token regex here cannot look one
   // character ahead.
   COMMENT_BODY_PERCENT,
+
+  // The RESERVED kind word `figure`, when the colon fence's opener is bare.
+  // Appended last for the same index reason as the tokens above it, and
+  // external because the decision needs the REST OF THE LINE - see
+  // `parse_figure_group_marker`.
+  FIGURE_GROUP_MARKER,
 } TokenType;
 
 // The different blocks in Carve that we track,
@@ -201,6 +207,14 @@ typedef enum {
   LIST_UPPER_ALPHA_PARENS,
   LIST_LOWER_ROMAN_PARENS,
   LIST_UPPER_ROMAN_PARENS,
+
+  // A DIV THAT CARRIES THE RESERVED KIND WORD `figure`. It nests, is counted
+  // and is closed exactly as a `DIV` - every colon-fence rule asks
+  // `number_of_colon_fence_blocks_from_top`, which matches both - and the
+  // separate type exists for ONE question: whether a bare `::: figure` opener
+  // sits inside an already-open group. Appended last so every existing type
+  // keeps its serialized value.
+  FIGURE_GROUP,
 } BlockType;
 
 // The different types of "numbers" in ordered lists.
@@ -682,6 +696,39 @@ static size_t number_of_blocks_from_top(Scanner *s, BlockType type,
     }
   }
   return 0;
+}
+
+/// The nearest colon-fence container of exactly `colons` colons, from the top.
+///
+/// A `FIGURE_GROUP` is a `DIV` wearing the reserved kind word, so every rule
+/// that counts colon fences has to see both or a group would stop closing its
+/// own fence. `number_of_blocks_from_top` takes ONE type, which is why this
+/// exists rather than a second call beside each site.
+static size_t number_of_colon_fence_blocks_from_top(Scanner *s,
+                                                    uint8_t colons) {
+  for (int i = s->open_blocks->size - 1; i >= 0; --i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if ((b->type == DIV || b->type == FIGURE_GROUP) && b->data == colons) {
+      return s->open_blocks->size - i;
+    }
+  }
+  return 0;
+}
+
+/// Is a composite figure group already open, ignoring the block on top?
+///
+/// GROUPS DO NOT NEST (grammar.ebnf PART 9 section 4c): "a bare `::: figure`
+/// opener anywhere inside an open group's body -- ANY DEPTH -- is a generic
+/// Tier-2 container, not an inner group". The top is skipped because the group
+/// marker is read one token after its own fence opened, so the block on top IS
+/// the container the word is deciding.
+static bool inside_open_figure_group(Scanner *s) {
+  for (int i = (int)s->open_blocks->size - 2; i >= 0; --i) {
+    if ((*array_get(s->open_blocks, i))->type == FIGURE_GROUP) {
+      return true;
+    }
+  }
+  return false;
 }
 
 static Block *find_block(Scanner *s, BlockType type) {
@@ -2827,7 +2874,7 @@ static bool scan_paragraph_closing_marker(Scanner *s, TSLexer *lexer) {
       }
       // Bare. A closer for a div that is actually open is still that closer,
       // absorption or not - the flag only suppresses opening a NEW div.
-      if (number_of_blocks_from_top(s, DIV, colons) > 0) {
+      if (number_of_colon_fence_blocks_from_top(s, colons) > 0) {
         return true;
       }
       // ...and the absorption is the PARAGRAPH's, so it reaches only as far as
@@ -4002,7 +4049,7 @@ static bool parse_colon(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   int32_t c = lexer->lookahead;
   bool bare = c == '\n' || c == '\r' || lexer->eof(lexer);
 
-  size_t from_top = bare ? number_of_blocks_from_top(s, DIV, colons) : 0;
+  size_t from_top = bare ? number_of_colon_fence_blocks_from_top(s, colons) : 0;
 
   if (from_top == 0) {
     if (!valid_symbols[DIV_BEGIN]) {
@@ -6231,6 +6278,56 @@ static bool check_highlighted_open(Scanner *s, TSLexer *lexer) {
   }
 }
 
+/// The RESERVED kind word `figure`, and only where it opens a composite figure.
+///
+/// `figure_group_open = colon_fence:open, space, "figure"` (grammar.ebnf PART 9
+/// section 4c): the fence, its separator, the word, AND NOTHING ELSE. An opener
+/// carrying a quoted title or a `[label]` - `::: figure "T"`, `::: figure [g]` -
+/// does not match that production and stays an `admonition` of kind `figure`, a
+/// generic Tier-2 container.
+///
+/// So the word alone cannot decide it, and a token in `grammar.js` could not
+/// either: tree-sitter's lexer chooses between two tokens before the parser has
+/// seen what follows, and `admonition_type` matches the same six characters.
+/// Here the rest of the line is readable. The word is consumed, the token is
+/// pinned at its end - the opener's own trailing-whitespace slot still takes
+/// the run - and only a whitespace tail leaves it a group.
+///
+/// Whether a group NESTS is a different question and not this one:
+/// `queries/highlights.scm` demotes a bare opener inside an open group, because
+/// that rule is about what a reader is shown rather than about what the line is.
+static bool parse_figure_group_marker(Scanner *s, TSLexer *lexer) {
+  // Asked BEFORE a character is read, so a declined word is left exactly where
+  // the internal lexer needs it.
+  if (inside_open_figure_group(s)) {
+    return false;
+  }
+  Block *opener = peek_block(s);
+  if (!opener || opener->type != DIV) {
+    return false;
+  }
+  static const char word[] = "figure";
+  for (const char *c = word; *c != '\0'; ++c) {
+    if (lexer->lookahead != (int32_t)*c) {
+      return false;
+    }
+    advance(s, lexer);
+  }
+  lexer->mark_end(lexer);
+  while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+    advance(s, lexer);
+  }
+  if (!at_line_end(lexer) && !lexer->eof(lexer)) {
+    return false;
+  }
+  // The container the word decided. Recorded on the block rather than derived
+  // later, because the question a nested opener asks - "is a group already
+  // open?" - can only be answered from the stack.
+  opener->type = FIGURE_GROUP;
+  lexer->result_symbol = FIGURE_GROUP_MARKER;
+  return true;
+}
+
 bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
                                             const bool *valid_symbols) {
   Scanner *s = (Scanner *)payload;
@@ -6322,6 +6419,19 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
     lexer->mark_end(lexer);
     lexer->result_symbol = NUL_BYTE;
     return true;
+  }
+
+  // The reserved `figure` kind word, asked before any probe below can consume
+  // it. Narrow by construction: the symbol is valid only at the colon fence's
+  // type-word position, which is mid-line and inside an opener the scanner has
+  // already committed to, and the lookahead has to be the word's first letter.
+  //
+  // A DECLINE RETURNS rather than falling through. The word has been read by
+  // then, and a probe below would run from the moved position - the hazard the
+  // note above `at_eof` is about. Returning false hands the position to the
+  // internal lexer, which takes the same characters as `admonition_type`.
+  if (valid_symbols[FIGURE_GROUP_MARKER] && lexer->lookahead == 'f') {
+    return parse_figure_group_marker(s, lexer);
   }
 
   if (valid_symbols[BLOCK_CLOSE] && handle_blocks_to_close(s, lexer)) {
@@ -6940,6 +7050,8 @@ static char *token_type_s(TokenType t) {
     return "BOLD_ITALIC_END";
   case LIST_CONTINUATION_MARKER:
     return "LIST_CONTINUATION_MARKER";
+  case FIGURE_GROUP_MARKER:
+    return "FIGURE_GROUP_MARKER";
     // default:
     //   return "NOT IMPLEMENTED";
   }
@@ -6953,6 +7065,8 @@ static char *block_type_s(BlockType t) {
     return "HEADING";
   case DIV:
     return "DIV";
+  case FIGURE_GROUP:
+    return "FIGURE_GROUP";
   case BLOCK_QUOTE:
     return "BLOCK_QUOTE";
   case CODE_BLOCK:

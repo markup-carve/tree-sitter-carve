@@ -629,12 +629,18 @@ mod tests {
             assert!(!root.has_error(), "unexpected ERROR for {source:?}");
             let block = root.child(0).expect("document has no child");
             assert_eq!(block.kind(), "div", "for {source:?}");
-            // The class alone is not enough: a narrowed padding token could end
-            // the opener at the type word and still leave a `div` behind, with
-            // the title silently demoted to body text.
+            // The type word alone is not enough: a narrowed padding token could
+            // end the opener at it and still leave a `div` behind, with the
+            // title silently demoted to body text.
+            //
+            // The field is `type` and the node is `admonition_type`. It was
+            // `class`, which named a different construct - the `.foo` inside an
+            // attribute block - while any word after the colon fence's
+            // separator opens an ADMONITION and a generic div is the opener
+            // with no word at all.
             assert!(
-                block.child_by_field_name("class").is_some(),
-                "no class for {source:?}"
+                block.child_by_field_name("type").is_some(),
+                "no type word for {source:?}"
             );
             assert_eq!(
                 block.child_by_field_name("title").is_some(),
@@ -834,6 +840,73 @@ mod tests {
             assert!(!root.has_error(), "unexpected ERROR for {:?}", source);
             let block = root.child(0).expect("document has no child");
             assert_eq!(block.kind(), "paragraph", "for {:?}", source);
+        }
+    }
+
+    /// A bare `::: figure` opener is still a composite figure group with
+    /// trailing whitespace after the kind word.
+    ///
+    /// `figure_group_open = colon_fence:open, space, "figure"` and NOTHING
+    /// else (grammar.ebnf PART 9 section 4c) - and trailing whitespace is
+    /// nothing else, because PART 2 drops it on a content line before the line
+    /// is read. So `parse_figure_group_marker` in `src/scanner.c` skips the run
+    /// after the word before asking whether the line ends there, and this is
+    /// what fails if that skip goes: the opener becomes an `admonition_type`
+    /// and the group silently degrades to a generic container.
+    ///
+    /// It lives here rather than in `test/corpus/carve.txt` for the reason the
+    /// cases at the top of this file do: the whole meaning of the row IS the
+    /// trailing whitespace, and one editor sweep over a fixture file turns it
+    /// into the bare row it is the counterpart of - a case that can no longer
+    /// fail. The corpus file has no `trim_trailing_whitespace = false` of its
+    /// own, so nothing in the repository would stop that.
+    #[test]
+    fn a_figure_group_opener_may_carry_trailing_whitespace() {
+        let mut parser = tree_sitter::Parser::new();
+        parser
+            .set_language(&super::language())
+            .expect("Error loading Carve language");
+        // The document is named with a positional argument, not an inline one:
+        // this crate is `edition = "2018"`, where `{source:?}` is not a capture
+        // and prints as those nine literal characters.
+        for source in [
+            "::: figure\nx\n:::\n",
+            "::: figure \nx\n:::\n",
+            "::: figure\t\nx\n:::\n",
+            "::: figure   \nx\n:::\n",
+        ] {
+            let tree = parser.parse(source, None).unwrap();
+            let root = tree.root_node();
+            assert!(!root.has_error(), "unexpected ERROR for {:?}", source);
+            let block = root.child(0).expect("document has no child");
+            assert_eq!(block.kind(), "div", "for {:?}", source);
+            let marker = block.child(1).expect("opener has no kind word");
+            assert_eq!(marker.kind(), "figure_group_marker", "for {:?}", source);
+            // The token ends at the WORD. The tail peek walks past the
+            // whitespace, so the scanner has to pin the token before it looks;
+            // pinning after would stretch the marker over the trailing run and
+            // leave the opener's own trailing-whitespace slot nothing to take.
+            assert_eq!(
+                marker.end_byte() - marker.start_byte(),
+                6,
+                "marker spans more than its word for {:?}",
+                source
+            );
+        }
+        // THE CONTROL, in the over-accepting direction: anything OTHER than
+        // whitespace after the word is not this production, and the opener
+        // stays a generic Tier-2 container of kind `figure`.
+        for source in [
+            "::: figure \"T\"\nx\n:::\n",
+            "::: figure [g]\nx\n:::\n",
+            "::: figures\nx\n:::\n",
+        ] {
+            let tree = parser.parse(source, None).unwrap();
+            let root = tree.root_node();
+            assert!(!root.has_error(), "unexpected ERROR for {:?}", source);
+            let block = root.child(0).expect("document has no child");
+            let marker = block.child(1).expect("opener has no kind word");
+            assert_eq!(marker.kind(), "admonition_type", "for {:?}", source);
         }
     }
 

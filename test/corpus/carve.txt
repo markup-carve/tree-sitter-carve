@@ -1024,7 +1024,7 @@ x
 (document
   (div
     (div_marker_begin)
-    class: (class_name)
+    type: (admonition_type)
     title: (div_title)
     label: (code_block_label)
     content: (content
@@ -1257,7 +1257,7 @@ Save early.
 (document
   (div
     (div_marker_begin)
-    class: (class_name)
+    type: (admonition_type)
     title: (div_title)
     content: (content
       (paragraph))
@@ -1433,7 +1433,7 @@ body
   (paragraph)
   (div
     (div_marker_begin)
-    class: (class_name)
+    type: (admonition_type)
     content: (content
       (paragraph))
     (div_marker_end)))
@@ -1456,7 +1456,7 @@ text
 (document
   (div
     (div_marker_begin)
-    class: (class_name)
+    type: (admonition_type)
     content: (content
       (paragraph))
     (div_marker_end))
@@ -2289,7 +2289,7 @@ body
 (document
   (div
     (div_marker_begin)
-    class: (class_name)
+    type: (admonition_type)
     title: (div_title)
     label: (code_block_label)
     content: (content
@@ -3198,7 +3198,7 @@ after
 (document
   (div
     (div_marker_begin)
-    class: (class_name)
+    type: (admonition_type)
     content: (content
       (code_block
         (code_block_marker_begin)
@@ -3874,11 +3874,11 @@ x
 (document
   (div
     (div_marker_begin)
-    class: (class_name)
+    type: (admonition_type)
     content: (content
       (div
         (div_marker_begin)
-        class: (class_name)
+        type: (admonition_type)
         content: (content
           (paragraph))
         (div_marker_end)))
@@ -3898,11 +3898,11 @@ x
 (document
   (div
     (div_marker_begin)
-    class: (class_name)
+    type: (admonition_type)
     content: (content
       (div
         (div_marker_begin)
-        class: (class_name)
+        type: (admonition_type)
         content: (content
           (paragraph))
         (div_marker_end)))
@@ -3921,7 +3921,7 @@ after
 (document
   (div
     (div_marker_begin)
-    class: (class_name)
+    type: (admonition_type)
     content: (content
       (paragraph))
     (div_marker_end))
@@ -4244,7 +4244,7 @@ tail
 (document
   (div
     (div_marker_begin)
-    class: (class_name)
+    type: (admonition_type)
     content: (content
       (paragraph))
     (div_marker_end)))
@@ -4977,7 +4977,7 @@ A bare figure fence is a composite figure, and its caption sits after the closer
 (document
   (div
     (div_marker_begin)
-    class: (class_name)
+    figure_group_marker: (figure_group_marker)
     content: (content
       (paragraph
         (inline_image
@@ -5015,14 +5015,14 @@ y
 (document
   (div
     (div_marker_begin)
-    class: (class_name)
+    type: (admonition_type)
     title: (div_title)
     content: (content
       (paragraph))
     (div_marker_end))
   (div
     (div_marker_begin)
-    class: (class_name)
+    type: (admonition_type)
     label: (code_block_label)
     content: (content
       (paragraph))
@@ -5044,11 +5044,11 @@ x
 (document
   (div
     (div_marker_begin)
-    class: (class_name)
+    figure_group_marker: (figure_group_marker)
     content: (content
       (div
         (div_marker_begin)
-        class: (class_name)
+        type: (admonition_type)
         content: (content
           (paragraph))
         (div_marker_end)))
@@ -5780,3 +5780,158 @@ x
             begin_marker: (verbatim_marker_begin)
             content: (content)
             end_marker: (verbatim_marker_end)))))))
+
+===============================================================================
+A custom kind word opens an admonition too
+;; `admonition_type = "note" | ... | identifier`: ANY word after the colon
+;; fence's separator opens an admonition, the Tier-1 kinds and a Tier-2 custom
+;; one alike. A generic div is the opener with NO word at all, so a `:::` fence
+;; carrying a class does not exist - and the word was spelled `class_name`,
+;; which is this grammar's rule for the `.foo` inside an attribute block. A
+;; name that belongs to a different construct, leaving the admonition with none
+;; of its own (markup-carve/tree-sitter-carve#245).
+===============================================================================
+
+::: mycustom "T" [L]
+x
+:::
+
+-------------------------------------------------------------------------------
+
+(document
+  (div
+    (div_marker_begin)
+    type: (admonition_type)
+    title: (div_title)
+    label: (code_block_label)
+    content: (content
+      (paragraph))
+    (div_marker_end)))
+
+===============================================================================
+Figure groups do not nest, at ANY depth, and a sibling is not inside one
+;; "A bare `::: figure` opener anywhere inside an open group's body -- ANY
+;; DEPTH -- is a generic Tier-2 container, not an inner group" (PART 9 4c).
+;; The neighbouring case covers one level; the demotion reads the scanner's own
+;; open-block stack, so this covers two levels through an intervening
+;; container, which the three wildcard chains it replaced could reach and a
+;; fourth level would not have been.
+;;
+;; The SECOND group is the control, and it is what keeps the rule about being
+;; INSIDE a group rather than about having followed one: a group that closed
+;; before this one opened demotes nothing.
+===============================================================================
+
+::: figure
+:::: note
+::::: figure
+x
+:::::
+::::
+:::
+
+::: figure
+y
+:::
+
+-------------------------------------------------------------------------------
+
+(document
+  (div
+    (div_marker_begin)
+    figure_group_marker: (figure_group_marker)
+    content: (content
+      (div
+        (div_marker_begin)
+        type: (admonition_type)
+        content: (content
+          (div
+            (div_marker_begin)
+            type: (admonition_type)
+            content: (content
+              (paragraph))
+            (div_marker_end)))
+        (div_marker_end)))
+    (div_marker_end))
+  (div
+    (div_marker_begin)
+    figure_group_marker: (figure_group_marker)
+    content: (content
+      (paragraph))
+    (div_marker_end)))
+
+===============================================================================
+The reserved kind word is the WHOLE word
+;; `figure_group_open = colon_fence:open, space, "figure"` and nothing else, so
+;; a longer word that merely BEGINS with it is an ordinary Tier-2 admonition
+;; type. This is half of the pair the scanner token exists for: the decision
+;; needs the rest of the line, which is why a token in `grammar.js` could not
+;; make it - the lexer chooses between `figure_group_marker` and
+;; `admonition_type` before the parser has seen what follows the word. The
+;; other half is the trailing-whitespace opener, which lives in
+;; `bindings/rust/lib.rs` because a fixture cannot hold a trailing space
+;; safely.
+===============================================================================
+
+::: figures
+x
+:::
+
+-------------------------------------------------------------------------------
+
+(document
+  (div
+    (div_marker_begin)
+    type: (admonition_type)
+    content: (content
+      (paragraph))
+    (div_marker_end)))
+
+===============================================================================
+A figure group opens at a container's content column too
+;; The column-0 half of a construct is not the whole construct. A `:::` fence
+;; sits exactly at its container's content column, so a group has to open
+;; inside a list item and inside a block quote as well as at the document's own
+;; column - and an opener INDENTED past the document's column is plain text,
+;; which is the control that keeps the first two from passing by accident.
+===============================================================================
+
+- a
+
+  ::: figure
+  x
+  :::
+
+> ::: figure
+> y
+> :::
+
+  ::: figure
+z
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)
+        (div
+          (div_marker_begin)
+          figure_group_marker: (figure_group_marker)
+          content: (content
+            (paragraph))
+          (div_marker_end)))))
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (div
+        (div_marker_begin)
+        figure_group_marker: (figure_group_marker)
+        content: (content
+          (paragraph
+            (block_quote_marker)))
+        (block_quote_marker)
+        (div_marker_end))))
+  (paragraph))

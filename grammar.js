@@ -828,8 +828,36 @@ module.exports = grammar({
                 alias("\\", $.local_hard_break_marker),
               ),
             ),
-            // Named div / admonition, with an optional quoted custom title and
-            // an optional bracketed [label] (a grouping id; PART 9 §12).
+            // COMPOSITE FIGURE GROUP (PART 9 §4c): the fence, its separator,
+            // the word `figure`, and NOTHING else. `figure` is RESERVED among
+            // the `:::` kind words, so a BARE opener is one figure of ordered
+            // panels rather than an admonition - while `::: figure "T"` and
+            // `::: figure [g]` do NOT match that production and stay an
+            // admonition of kind `figure`.
+            //
+            // The word therefore cannot decide the construct on its own, and
+            // that is why the token comes from `src/scanner.c`: tree-sitter's
+            // lexer chooses between two tokens before the parser has seen what
+            // follows, and `admonition_type` below matches the same six
+            // characters. `parse_figure_group_marker` reads the rest of the
+            // line, which is the only place the answer is.
+            //
+            // Before this the construct had no name at all. The parse tree told
+            // the two apart by which FIELDS the opener carried, so
+            // `queries/highlights.scm` could paint it and nothing could NAME
+            // it: a consumer asking for a composite figure - a fold, an
+            // injection, a structural navigation - had nothing to ask for, and
+            // the shared construct ledger recorded the row as a gap
+            // (markup-carve/carve-grammars#284). This is the same move that
+            // named the line block and the local hard-break block
+            // (markup-carve/carve-grammars#311): the marker that SELECTS the
+            // container is the construct's name.
+            field(
+              "figure_group_marker",
+              alias($._figure_group_marker, $.figure_group_marker),
+            ),
+            // ADMONITION, with an optional quoted custom title and an optional
+            // bracketed [label] (a grouping id; PART 9 §12).
             //
             // The class needs a SPACE after the fence. `:::note` glued is a
             // paragraph in every engine - the separator rule that governs every
@@ -851,7 +879,7 @@ module.exports = grammar({
             // to leave the line as PROSE and a rule here can only fail into an
             // ERROR. These tokens are the same rule at the shape level.
             seq(
-              field("class", $.class_name),
+              field("type", $.admonition_type),
               optional(seq($._padding_spaces, field("title", $.div_title))),
               optional(
                 seq($._padding_spaces, field("label", $.code_block_label)),
@@ -899,6 +927,23 @@ module.exports = grammar({
         // reach only because `div_marker_begin` swallowed the whole line.
         optional(choice($._padding_spaces, $._opener_trailing_tabs)),
       ),
+    // THE COLON FENCE'S TYPE WORD IS AN ADMONITION TYPE, not a class.
+    //
+    // `admonition_open = colon_fence:open, space, admonition_type` and
+    // `admonition_type = "note" | ... | identifier` (grammar.ebnf): ANY word
+    // after the separator opens an admonition, the Tier-1 kinds and a Tier-2
+    // custom one alike. A generic div is the opener with NO word at all
+    // (`div_open = colon_fence:open, [[space], label]`), so there is no such
+    // thing as a `:::` fence carrying a class - class, id and data-* attach
+    // through a PRECEDING block-attribute line.
+    //
+    // It was spelled `class_name`, which is a real rule in this grammar and
+    // implements a DIFFERENT construct: the `.foo` inside an attribute block.
+    // So the admonition had no name of its own and the name it did carry
+    // described something else - a row that reads as covered while being false
+    // (markup-carve/carve-grammars#284). `class_name` stays, for the attribute
+    // it is actually about.
+    admonition_type: ($) => $._id_no_digit_start,
     class_name: ($) => $._id_no_digit_start,
     div_title: (_) =>
       choice(seq('"', /[^"\r\n]*/, '"'), seq("'", /[^'\r\n]*/, "'")),
@@ -2333,5 +2378,9 @@ module.exports = grammar({
     // A `%` standing in a braced comment's BODY - not the `%` of its closing
     // `%}`. Appended last for the same index reason as the tokens above it.
     $._comment_body_percent,
+
+    // The reserved kind word `figure` on a BARE colon-fence opener. Appended
+    // last for the same index reason as the tokens above it.
+    $._figure_group_marker,
   ],
 });

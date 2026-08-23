@@ -98,7 +98,7 @@
 
 ; Parameters, inside a description of a thing
 [
-  (class_name)
+  (admonition_type)
   (class)
   (identifier)
   (key_value)

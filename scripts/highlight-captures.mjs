@@ -19,7 +19,7 @@
  * Run: `node scripts/highlight-captures.mjs`
  */
 import Parser from 'tree-sitter';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { createRequire } from 'node:module';
@@ -40,8 +40,37 @@ parser.setLanguage(Carve);
  * subset of the file, which is the shape of check this repo keeps finding
  * afterwards: it would have passed while the real file was broken.
  */
-const raw = readFileSync(resolve(__dirname, '../queries/highlights.scm'), 'utf8');
-const source = raw.replace(/\(#offset![^)]*\)/g, '');
+/*
+ * EVERY QUERY FILE COMPILES, not only the one this script measures.
+ *
+ * `queries/` ships seven files and this script loaded one, so a capture naming
+ * a node that no longer exists went unreported in the other six - and a query
+ * that fails to build is not a degraded highlight, it is an editor that loads
+ * NO textobjects, NO folds, NO injections for the language. Renaming one node
+ * (`class_name` to `admonition_type`, markup-carve/tree-sitter-carve#245) broke
+ * `textobjects.scm` and every gate in this repository stayed green.
+ *
+ * Building each one IS the check: `Parser.Query` refuses a pattern over a node
+ * type the grammar does not have.
+ */
+const queryDir = resolve(__dirname, '../queries');
+const strip = (text) => text.replace(/\(#offset![^)]*\)/g, '');
+const broken = [];
+for (const file of readdirSync(queryDir).filter((f) => f.endsWith('.scm')).sort()) {
+    try {
+        new Parser.Query(Carve, strip(readFileSync(resolve(queryDir, file), 'utf8')));
+    } catch (error) {
+        broken.push(`FAIL ${file} does not compile against this grammar\n   ${String(error.message).split('\n')[0]}`);
+    }
+}
+if (broken.length) {
+    console.log(`query files: ${broken.length} of the shipped set do not compile`);
+    for (const line of broken) console.log(line);
+    process.exit(1);
+}
+
+const raw = readFileSync(resolve(queryDir, 'highlights.scm'), 'utf8');
+const source = strip(raw);
 const query = new Parser.Query(Carve, source);
 
 const DEFAULT_PRIORITY = 100;
@@ -187,6 +216,17 @@ const CASES = [
         name: 'another kind word is a generic container',
         source: '::: note\nx\n:::\n',
         at: [0, 4],
+        expect: 'type',
+    },
+    {
+        // THE RESIDUAL THAT IS GONE. The demotion used to be three wildcard
+        // chains in the query, and a bare opener reached through more levels
+        // than that kept the group colour. Depth is free in the scanner, which
+        // reads its own open-block stack, so a group four containers deep is
+        // demoted like any other - and the tree says so, not just the paint.
+        name: 'a bare opener four levels inside a group is still generic',
+        source: '::: figure\n:::: note\n::::: note\n:::::: note\n::::::: figure\nx\n:::::::\n::::::\n:::::\n::::\n:::\n',
+        at: [4, 8],
         expect: 'type',
     },
     {
