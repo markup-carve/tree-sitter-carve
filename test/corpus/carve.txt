@@ -5454,3 +5454,176 @@ two %} b
   (paragraph
     (braced_comment
       content: (content))))
+===============================================================================
+An empty braced pair is literal text (carve#1447)
+;; Every braced span's content slot is a one-or-more repetition, so an empty
+;; pair has no construct to build. The grammar has no empty-content alternative
+;; to fall back TO either, so an opener taken on `{/` reached the closer with
+;; nothing between and the whole line came back as ERROR. Nine spellings, and
+;; `{##}` among them - an EMPTY editorial comment is text too, while `{# c #}`
+;; below is still the comment.
+===============================================================================
+
+{//} {**} {__} {~~} {^^} {,,} {==} {++} {##}
+
+{/i/} {*b*} {~s~} {+ins+} {# c #}
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph)
+  (paragraph
+    (emphasis
+      begin_marker: (emphasis_begin)
+      content: (content)
+      end_marker: (emphasis_end))
+    (strong
+      begin_marker: (strong_begin)
+      content: (content)
+      end_marker: (strong_end))
+    (strikethrough
+      begin_marker: (strikethrough_begin)
+      content: (content)
+      end_marker: (strikethrough_end))
+    (insert
+      begin_marker: (insert_begin)
+      content: (content)
+      end_marker: (insert_end))
+    (editorial_comment)))
+
+===============================================================================
+Either half of a substitution may be empty (carve#1447)
+;; `{--}` freed the empty-deletion string for the en dash, but a substitution
+;; is made by its ARROW, not by its content: all three of these are the
+;; construct, with an empty `del` or `ins`. The content slots used to be
+;; one-or-more, so none of them parsed.
+===============================================================================
+
+{~a~>~} deletes, {~~>b~} inserts, and {~~>~} does both to nothing.
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (substitution)
+    (substitution)
+    (substitution)))
+
+===============================================================================
+A NUL byte is one character of content (PART 3)
+;; The replacement to U+FFFD happens BEFORE the document is read, so no engine
+;; ever sees the byte and the corpus pins `a<NUL>b` as text. This grammar is
+;; handed the raw bytes, and tree-sitter's internal lexer reserves 0 for
+;; end-of-input - so no character class can match one and the byte left an
+;; ERROR inside an otherwise correct paragraph. The external scanner can tell
+;; the two apart, which is why NUL_BYTE is a token. The vertical tab beside it
+;; is an ordinary widening of the text token: PART 9 makes a line blank only
+;; when it holds spaces and tabs, so every other control character is content.
+===============================================================================
+
+a b
+
+cd
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph)
+  (paragraph))
+
+===============================================================================
+A bare boolean attribute does not start with an underscore (carve#1450)
+;; `{_x_}` is a forced underline and a bare `{_foo}` is text. Both lines used to
+;; be swallowed as attribute lines that render nothing - invisible to a
+;; node-count pass, because a block attribute has no element to count against.
+;; An id, a class and a key/value may still lead with `_`.
+===============================================================================
+
+{_x_}
+
+{_foo}
+para
+
+{#_id ._c _k=1 _="on click"}
+para
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (underline
+      begin_marker: (underline_begin)
+      content: (content)
+      end_marker: (underline_end)))
+  (paragraph)
+  (block_attribute
+    args: (args
+      (identifier)
+      (class)
+      (key_value
+        key: (key)
+        value: (value))
+      (key_value
+        key: (key)
+        value: (value))))
+  (paragraph))
+
+===============================================================================
+An unclosed run in a table row stops at the row's closing pipe (carve#1284, carve#1293, carve#1466)
+;; The row survives an open verbatim-family run: its closer is the row's own
+;; closing pipe, so `| a `b | c d |` is one cell and not a paragraph. The
+;; `!`-prefixed inline literal reaches the same rule. A run that DOES close
+;; keeps a pipe inside it as content, which is what the third row here pins -
+;; the closer is the LAST pipe on the line, and a closing tick run overrides
+;; it.
+===============================================================================
+
+| a `b | c d |
+| a !`b | c d |
+| a `x|` | b |
+
+-------------------------------------------------------------------------------
+
+(document
+  (table
+    (table_row
+      (table_cell
+        (verbatim
+          begin_marker: (verbatim_marker_begin)
+          content: (content)
+          end_marker: (verbatim_marker_end))))
+    (table_row
+      (table_cell
+        (inline_literal
+          marker: (literal_marker)
+          open: (literal_marker_begin)
+          content: (content)
+          close: (literal_marker_end))))
+    (table_row
+      (table_cell
+        (verbatim
+          begin_marker: (verbatim_marker_begin)
+          content: (content)
+          end_marker: (verbatim_marker_end)))
+      (table_cell))))
+
+===============================================================================
+A line-final backslash does not carry the row scan onto the next line
+;; The run scan honors an escape pair, and the pair must not be the escape
+;; plus the LINE TERMINATOR: reading on would answer this line's question
+;; with the line below's pipe, and a row whose own line has no closing pipe
+;; would come back as a table. It is a paragraph, and the run reaches the end
+;; of it.
+===============================================================================
+
+| a `b \
+c |
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (verbatim
+      begin_marker: (verbatim_marker_begin)
+      content: (content)
+      end_marker: (verbatim_marker_end))))

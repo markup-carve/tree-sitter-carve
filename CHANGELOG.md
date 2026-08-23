@@ -20,6 +20,22 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - A container opener carrying trailing whitespace opens its block instead of
   producing an ERROR node over the rest of the document. All four opener forms
   were affected, in both the space and the tab spelling (#245).
+- An EMPTY braced pair is literal text, not an ERROR over the whole line:
+  `{//}`, `{**}`, `{__}`, `{~~}`, `{^^}`, `{,,}`, `{==}`, `{++}` and `{##}`
+  (#247, markup-carve/carve#1447).
+- Either half of a substitution may be empty, so `{~a~>~}`, `{~~>b~}` and
+  `{~~>~}` build the construct (#247, markup-carve/carve#1447).
+- A NUL byte and a lone vertical tab are content, not an ERROR inside the
+  paragraph holding them (#247).
+- A bare boolean attribute may not start with `_`: `{_x_}` is a forced
+  underline and `{_foo}` is text, where both were swallowed as attribute lines
+  that render nothing (#247, markup-carve/carve#1450).
+- A table row survives an unclosed verbatim-family run in a cell, which is
+  closed by the row's own closing pipe. Both the plain `` ` `` and the
+  `!`-prefixed spelling reach it (#247, markup-carve/carve#1284,
+  markup-carve/carve#1293, markup-carve/carve#1466).
+- An unclosed braced span falls back to literal text instead of an ERROR:
+  `{/`, `{_` and `{~` gained the fallback branch `{*` already had (#247).
 
 ### Changed
 

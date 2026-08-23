@@ -151,6 +151,13 @@ typedef enum {
   INLINE_NOTE_BEGIN,
   INLINE_NOTE_END,
   TABLE_CONTINUATION_ROW,
+
+  // A NUL byte standing in a line of content. Appended last for the same index
+  // reason as the tokens above it. External because tree-sitter's internal
+  // lexer reserves the value 0 for end-of-input, so no token regex can match a
+  // real NUL - only a scanner that can ask `lexer->eof` can tell the two
+  // apart.
+  NUL_BYTE,
 } TokenType;
 
 // The different blocks in Carve that we track,
@@ -950,6 +957,19 @@ static bool scan_name_no_digit_start(Scanner *s, TSLexer *lexer) {
   return scan_identifier(s, lexer);
 }
 
+/// A BARE boolean key may not start with `_` (carve#1450).
+///
+/// An id, a class and a `key=value` may: `{#_id}`, `{._c}`, `{_k=1}` and
+/// `{_="on click"}` are all attributes. Only the value-less shorthand is
+/// refused, because `{_x_}` is a forced underline and a bare `{_foo}` is text -
+/// a line the attribute validator used to swallow whole, rendering nothing
+/// where the fixture wants `<p>{_foo}` + `para</p>`.
+///
+/// Called with the first character of the key, BEFORE it is consumed, from both
+/// attribute validators - the block one and the inline one - so the two cannot
+/// drift apart on it.
+static bool valid_bare_boolean_first_char(int32_t c) { return c != '_'; }
+
 /// The `{:TAG}` language tag envelope: subtags of 1-8 ASCII alphanumerics
 /// joined by `-`, or nothing at all for the bare `{:}` reset.
 ///
@@ -1360,8 +1380,27 @@ static bool parse_verbatim_content(Scanner *s, TSLexer *lexer) {
     return false;
   }
 
+  // Inside a table ROW an open run is closed by the row's own closing pipe:
+  // `| a `b | c d |` is one cell holding `b | c d`, and the `!`-prefixed
+  // spelling (carve#1466) reaches the same rule. The closer is the LAST `|` on
+  // the line and the lexer cannot rewind, so every pipe re-marks the token end
+  // and the last mark standing is the one that counts. A run that DOES close
+  // re-marks once more, immediately before its own ticks, which is why
+  // `| a `x|` | b |` still ends at the ticks with the pipe inside it as
+  // content.
+  bool in_table_row = find_block(s, TABLE_ROW) != NULL;
+  // Does the mark currently stand at a pipe? Set by a `|`, kept across the
+  // whitespace that may trail it, cleared by any other content - the same
+  // question `scan_verbatim_run_in_cell` answers while validating the row.
+  bool marked_at_pipe = false;
+
   while (!lexer->eof(lexer)) {
     if (at_line_end(lexer)) {
+      if (in_table_row && marked_at_pipe) {
+        // The row ends here and the mark is at its closing pipe. Stop, and let
+        // the zero-width VERBATIM_END emitted at that pipe close the run.
+        break;
+      }
       // We should only end verbatim if the paragraph is ended by a
       // blankline.
 
@@ -1375,9 +1414,15 @@ static bool parse_verbatim_content(Scanner *s, TSLexer *lexer) {
         break;
       } else {
         // No blankline, continue parsing.
+        marked_at_pipe = false;
         lexer->mark_end(lexer);
       }
     } else if (lexer->lookahead == '`') {
+      // Pin the end BEFORE the run: a matching one stops the content exactly
+      // here, whatever a pipe further back marked. In every non-row document
+      // this is the position the previous iteration already marked, so it
+      // changes nothing there.
+      lexer->mark_end(lexer);
       // If we find a `, we need to count them to see if we should stop.
       uint8_t current = consume_chars(s, lexer, '`');
       if (current == top->data) {
@@ -1386,11 +1431,24 @@ static bool parse_verbatim_content(Scanner *s, TSLexer *lexer) {
       } else {
         // Found a number of ` that doesn't match the start,
         // we should consume them.
+        marked_at_pipe = false;
         lexer->mark_end(lexer);
       }
+    } else if (in_table_row && lexer->lookahead == '|') {
+      // A candidate row closer: mark BEFORE it and read on without moving the
+      // mark, so a later pipe (or a closing run) overrides this one.
+      lexer->mark_end(lexer);
+      marked_at_pipe = true;
+      advance(s, lexer);
+    } else if (in_table_row && marked_at_pipe &&
+               (lexer->lookahead == ' ' || lexer->lookahead == '\t')) {
+      // Whitespace trailing what may be the closing pipe. A row admits it, so
+      // step over it without moving the mark off the pipe.
+      advance(s, lexer);
     } else {
       // Non-` token found, this we should consume.
       advance(s, lexer);
+      marked_at_pipe = false;
       lexer->mark_end(lexer);
     }
   }
@@ -3254,6 +3312,72 @@ static bool scan_verbatim_to_end_no_newline(Scanner *s, TSLexer *lexer) {
   return false;
 }
 
+/// `scan_verbatim_to_end_no_newline`, plus the one question a TABLE ROW has to
+/// ask when the run does NOT close on its line.
+///
+/// An unclosed verbatim-family run inside a row is closed by the ROW's closing
+/// pipe: `| a `b | c d |` is one cell holding `b | c d`, not a paragraph, and
+/// the `!`-prefixed spelling `| a !`b | c d |` (carve#1466) reaches the same
+/// rule. So a run reaching end of line is only fatal to the row when the row
+/// has no closing pipe left for it to end at - which is true exactly when the
+/// LAST `|` on the line is followed by something other than whitespace.
+///
+/// Returns true when the run closes on its own ticks, as before. Otherwise
+/// returns false and sets `*row_closer_seen` to whether such a closing pipe
+/// exists.
+static bool scan_verbatim_run_in_cell(Scanner *s, TSLexer *lexer,
+                                      bool *row_closer_seen) {
+  *row_closer_seen = false;
+  uint8_t tick_count = consume_chars(s, lexer, '`');
+  if (tick_count == 0) {
+    return false;
+  }
+  // "The mark stands at a pipe": set by a `|`, kept across the whitespace that
+  // may trail it, cleared by any other content.
+  bool after_pipe = false;
+  while (!lexer->eof(lexer)) {
+    switch (lexer->lookahead) {
+    case '\\':
+      after_pipe = false;
+      advance(s, lexer);
+      // The escaped character, but NEVER the line terminator. A trailing
+      // backslash would otherwise escape the newline, and the scan would read
+      // on into the line below and answer THIS line's question with the next
+      // line's pipe: a row ending in a backslash came back as a one-row table
+      // where the line has no closing pipe at all and the document is a
+      // paragraph. This function is line-bounded by contract, like the
+      // no_newline scan it is derived from.
+      if (!at_line_end(lexer) && !lexer->eof(lexer)) {
+        advance(s, lexer);
+      }
+      break;
+    case '`':
+      if (consume_chars(s, lexer, '`') == tick_count) {
+        return true;
+      }
+      after_pipe = false;
+      break;
+    case '|':
+      after_pipe = true;
+      advance(s, lexer);
+      break;
+    case ' ':
+    case '\t':
+      advance(s, lexer);
+      break;
+    case '\r':
+    case '\n':
+      *row_closer_seen = after_pipe;
+      return false;
+    default:
+      after_pipe = false;
+      advance(s, lexer);
+    }
+  }
+  *row_closer_seen = after_pipe;
+  return false;
+}
+
 /// The rest of a reference-definition line, AFTER the space that follows `]:`.
 ///
 /// `reference_definition = '[', reference_label, ']', ':', space,
@@ -4109,8 +4233,17 @@ static bool parse_footnote_continuation(Scanner *s, TSLexer *lexer) {
 // ran into the NEWLINE after consuming content, meaning the row never closed on
 // a pipe. Hitting the newline with nothing but whitespace consumed is the normal
 // way a properly closed row ends, and leaves it false.
+/// One table cell's worth of lookahead.
+///
+/// `closed_by_open_run` (optional, pass NULL where an unclosed run cannot
+/// matter) reports the one case where a FALSE return still leaves a valid row:
+/// the cell holds a verbatim-family run that does not close on its line, and
+/// the row's own closing pipe is what ends it. The cell is then the row's last,
+/// so there is no next cell to scan and the caller has to count this one
+/// itself. See `scan_verbatim_run_in_cell`.
 static bool scan_table_cell(Scanner *s, TSLexer *lexer, bool *separator,
-                            bool *empty, bool *unterminated) {
+                            bool *empty, bool *unterminated,
+                            bool *closed_by_open_run) {
   uint8_t leading_ws = consume_whitespace(s, lexer);
 
   *separator = true;
@@ -4129,13 +4262,19 @@ static bool scan_table_cell(Scanner *s, TSLexer *lexer, bool *separator,
     case '\n':
       *unterminated = !first_char;
       return false;
-    case '`':
+    case '`': {
       *separator = false;
-      // We must have ending ticks for this to be a valid table cell.
-      if (!scan_verbatim_to_end_no_newline(s, lexer)) {
+      // Ending ticks make this an ordinary cell. Without them the row is still
+      // a row, as long as it has a closing pipe for the open run to end at.
+      bool row_closer_seen = false;
+      if (!scan_verbatim_run_in_cell(s, lexer, &row_closer_seen)) {
+        if (row_closer_seen && closed_by_open_run) {
+          *closed_by_open_run = true;
+        }
         return false;
       }
       break;
+    }
 
     case '|':
       *empty = first_char && leading_ws == 0;
@@ -4180,7 +4319,10 @@ static bool scan_separator_row(Scanner *s, TSLexer *lexer) {
   bool attr_after_pipe = false;
   while (true) {
     attr_after_pipe = lexer->lookahead == '{';
-    if (!scan_table_cell(s, lexer, &curr_separator, &curr_empty, &unterminated)) {
+    // A cell holding a verbatim run is not a separator cell, so an unclosed
+    // one cannot save a separator row: NULL.
+    if (!scan_table_cell(s, lexer, &curr_separator, &curr_empty, &unterminated,
+                         NULL)) {
       break;
     }
     if (!curr_separator) {
@@ -4224,9 +4366,14 @@ static bool scan_table_row(Scanner *s, TSLexer *lexer, TokenType *row_type) {
   // a next cell would start. It is not an unterminated final cell; the row-end
   // token validates and consumes it (parse_table_end_newline).
   bool attr_after_pipe = false;
+  // A final cell whose verbatim-family run runs open to the row's own closing
+  // pipe. The cell scan returns FALSE there - there is no next cell after it -
+  // so the row has to count it here.
+  bool closed_by_open_run = false;
   while (true) {
     attr_after_pipe = lexer->lookahead == '{';
-    if (!scan_table_cell(s, lexer, &curr_separator, &curr_empty, &unterminated)) {
+    if (!scan_table_cell(s, lexer, &curr_separator, &curr_empty, &unterminated,
+                         &closed_by_open_run)) {
       break;
     }
     if (!curr_separator) {
@@ -4242,6 +4389,16 @@ static bool scan_table_row(Scanner *s, TSLexer *lexer, TokenType *row_type) {
   }
   if (attr_after_pipe) {
     unterminated = false;
+  }
+  if (closed_by_open_run) {
+    // The run swallowed the rest of the line, closing pipe included, so the
+    // scan is already past end of line and the checks below cannot re-read it.
+    // Everything they ask has been answered on the way: the cell has content,
+    // it is not a separator, and its closing pipe is there.
+    all_separators = false;
+    any_content = true;
+    unterminated = false;
+    ++cell_count;
   }
 
   // A row whose pipe gaps are all zero-width (`||`) has no cells and is not
@@ -4635,17 +4792,23 @@ static bool parse_open_curly_bracket(Scanner *s, TSLexer *lexer,
       break;
     default: {
       can_be_braced_comment = false;
-      // An attribute key may not start with a digit (`12=v` is not a key), and
-      // a digit/`_`/`-`-leading token is not a bare boolean key either. This
-      // also keeps a curly-emphasis form like `{_text_}` from being mistaken
-      // for a bare key.
+      // An attribute key may not start with a digit (`12=v` is not a key).
+      int32_t first = lexer->lookahead;
       if (!scan_name_no_digit_start(s, lexer)) {
         return false;
       }
       // carve-php Boolean Attribute Shorthand: a bare `key` (no `=value`)
       // is accepted as long as it is followed by a valid attribute boundary
-      // — `}`, whitespace, or newline.
+      // — `}`, whitespace, or newline, and as long as it does not start with
+      // `_` (carve#1450). The `_` half is what keeps a curly-emphasis form
+      // like `{_text_}` from being read as a bare key; the comment here used
+      // to claim `scan_name_no_digit_start` already did that, and it does not
+      // - a leading `_` is a valid name character, so `{_x_}` and `{_foo}`
+      // were both taken as attribute lines.
       if (lexer->lookahead != '=') {
+        if (!valid_bare_boolean_first_char(first)) {
+          return false;
+        }
         if (lexer->lookahead == '}' || lexer->lookahead == ' ' ||
             lexer->lookahead == '\t' || at_line_end(lexer)) {
           break;
@@ -5565,12 +5728,17 @@ static bool scan_valid_inline_attribute(Scanner *s, TSLexer *lexer) {
       break;
     default: {
       // An attribute key must not start with a digit (`12=v` is not a key).
+      int32_t first = lexer->lookahead;
       if (!scan_name_no_digit_start(s, lexer)) {
         return false;
       }
       if (lexer->lookahead != '=') {
-        // Bare boolean attribute: a key (already known non-digit-leading)
-        // followed by a valid boundary (`}`, whitespace, newline).
+        // Bare boolean attribute: a key (already known non-digit-leading and
+        // not `_`-leading, carve#1450) followed by a valid boundary (`}`,
+        // whitespace, newline).
+        if (!valid_bare_boolean_first_char(first)) {
+          return false;
+        }
         if (lexer->lookahead == '}' || lexer->lookahead == ' ' ||
             lexer->lookahead == '\t' || at_line_end(lexer)) {
           break;
@@ -6026,6 +6194,24 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
     return true;
   }
 
+  // A NUL byte is CONTENT. PART 3 replaces it with U+FFFD BEFORE the document
+  // is read, so no engine ever sees the byte and the corpus pins `a<NUL>b` as
+  // the text `a<U+FFFD>b`. This grammar is handed the raw bytes instead, and
+  // tree-sitter's internal lexer reserves the value 0 for end-of-input - a
+  // character class can never match one, which is why widening the text token
+  // fixed the vertical tab beside it and left the NUL an ERROR. Here the
+  // distinction is available: `lexer->eof` answers whether the 0 is a byte in
+  // the document or the end of it.
+  //
+  // Placed after the ERROR branch above so error recovery, where every symbol
+  // reads as valid, keeps returning ERROR exactly as it did.
+  if (valid_symbols[NUL_BYTE] && lexer->lookahead == 0 && !at_eof) {
+    advance(s, lexer);
+    lexer->mark_end(lexer);
+    lexer->result_symbol = NUL_BYTE;
+    return true;
+  }
+
   if (valid_symbols[BLOCK_CLOSE] && handle_blocks_to_close(s, lexer)) {
     return true;
   }
@@ -6269,6 +6455,21 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
   }
   if (valid_symbols[TABLE_CAPTION_BEGIN] &&
       parse_table_caption_begin(s, lexer)) {
+    return true;
+  }
+
+  // An open verbatim-family run inside a table ROW is closed by the row's
+  // closing pipe and has no closer of its own - the same implicit close a
+  // blank line performs for a paragraph, taken at the position the row ends
+  // the cell instead. `parse_verbatim_content` has already stopped the content
+  // here; without a token that can follow it the `|` has nothing to reduce
+  // against and the row is abandoned, which is the shape
+  // `an-unclosed-verbatim-run-abandons-the-row` recorded. Before
+  // TABLE_CELL_END, because the cell's end may only be taken once the run
+  // inside it is closed.
+  if (valid_symbols[VERBATIM_END] && lexer->lookahead == '|' &&
+      find_block(s, TABLE_ROW) != NULL &&
+      try_implicit_close_verbatim(s, lexer)) {
     return true;
   }
 
