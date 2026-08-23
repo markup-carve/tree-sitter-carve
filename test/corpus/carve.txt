@@ -621,7 +621,8 @@ a {+ins+} {-del-} {~old~>new~} b{# note #}
       content: (content)
       end_marker: (delete_end))
     (substitution)
-    (editorial_comment)))
+    (editorial_comment
+      content: (content))))
 
 ===============================================================================
 Links and spans
@@ -5489,7 +5490,8 @@ An empty braced pair is literal text (carve#1447)
       begin_marker: (insert_begin)
       content: (content)
       end_marker: (insert_end))
-    (editorial_comment)))
+    (editorial_comment
+      content: (content))))
 
 ===============================================================================
 Either half of a substitution may be empty (carve#1447)
@@ -5693,9 +5695,11 @@ a {# see #4##} z
 
 (document
   (paragraph
-    (editorial_comment))
+    (editorial_comment
+      content: (content)))
   (paragraph
-    (editorial_comment)))
+    (editorial_comment
+      content: (content))))
 
 ===============================================================================
 An empty braced pair is still not an editorial comment
@@ -5714,6 +5718,149 @@ a {#id} z
   (paragraph)
   (paragraph
     (tag)))
+
+===============================================================================
+An editorial comment spans a soft line break (markup-carve/tree-sitter-carve#250)
+;; `comment_content` is "any text until the matching `#}`", and a SOFT LINE
+;; BREAK is text: carve-js renders `a {# x` / `y #} z` as one comment whose body
+;; carries the break. This used to be a `token()`, which the lexer decides
+;; alone, so a body written across a line break built no comment at all and the
+;; markup inside it coloured - 102 of the 286 generated bodies in
+;; markup-carve/carve-grammars#320's sweep. The `*b*` runs are the leak test:
+;; they must stay inside `content` with no node of their own.
+;;
+;; THE CONTAINER PREFIX is why this is a multi-token rule and not a wider
+;; token. The quoted and the listed body reach the same single node, because
+;; the break goes through the machinery that already knows the block.
+===============================================================================
+
+a {# x
+*b* y #} z
+
+> a {# x
+> *b* y #} z
+
+- a {# x
+  *b* y #} z
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (editorial_comment
+      content: (content)))
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (paragraph
+        (editorial_comment
+          content: (content)))))
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph
+          (editorial_comment
+            content: (content)))))))
+
+===============================================================================
+An editorial comment ends at a blank line
+;; The CONTROL for the case above, in the over-accepting direction. The body
+;; may span the soft line breaks inside ONE paragraph and no further, so a
+;; blank line between the opener and the `#}` leaves both halves literal - two
+;; paragraphs, as carve-js renders them. The second document is the same test
+;; without any closer at all.
+===============================================================================
+
+a {# x
+
+y #} z
+
+a {# x
+y z
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph)
+  (paragraph)
+  (paragraph))
+
+===============================================================================
+KNOWN GAP: a block opener on a continuation line does not end the comment
+;; carve-js ends the paragraph at the heading and the comment with it, so this
+;; document is a paragraph plus a heading there and one comment here. The body
+;; is a repetition of characters, and a `\n` is one of them, so nothing asks
+;; the block machinery whether the next line still belongs to the paragraph.
+;;
+;; PINNED RATHER THAN FIXED because it is not this construct's gap: the braced
+;; comment has had exactly the same reading since its body became a repetition,
+;; and the second document here says so. Closing it is one change to how both
+;; bodies cross a line end, not two - so it is recorded here, where a fix has
+;; to come past it, instead of being fixed for one construct and left for the
+;; other (markup-carve/tree-sitter-carve#250).
+===============================================================================
+
+a {# x
+# y #} z
+
+a {% x
+# y %} z
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (editorial_comment
+      content: (content)))
+  (paragraph
+    (braced_comment
+      content: (content))))
+
+===============================================================================
+An id attribute is still an id attribute, and the closer decides
+;; The CONTROL for the classifier. The `{` of `{#id}` and the `{` of `{# c #}`
+;; are the same character, and the two readings are told apart only by what
+;; CLOSES the braces: a `}` on its own ends an id attribute, a `#}` ends a
+;; comment. carve-js reads all four of these that way. The comment's opener is
+;; a scanner token now, so it is decided in the same forward pass as the
+;; attribute - and without this case that pass could refuse every attribute
+;; line and the multi-line case above would still pass.
+===============================================================================
+
+{#myid}
+para
+
+{#myid .c}
+para
+
+{#myid
+ .c}
+para
+
+{#myid#}
+para
+
+-------------------------------------------------------------------------------
+
+(document
+  (block_attribute
+    args: (args
+      (identifier)))
+  (paragraph)
+  (block_attribute
+    args: (args
+      (identifier)
+      (class)))
+  (paragraph)
+  (block_attribute
+    args: (args
+      (identifier)
+      (class)))
+  (paragraph)
+  (paragraph
+    (editorial_comment
+      content: (content))))
 
 ===============================================================================
 An indented delimiter-shaped line inside a fence is content

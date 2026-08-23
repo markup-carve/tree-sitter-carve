@@ -172,6 +172,23 @@ typedef enum {
   // external because the decision needs the REST OF THE LINE - see
   // `parse_figure_group_marker`.
   FIGURE_GROUP_MARKER,
+
+  // The `{` OF AN EDITORIAL COMMENT, `{# … #}`. Appended last for the same
+  // index reason as the tokens above it, and external because the same `{`
+  // can open an id attribute (`{#id}`): the two readings are told apart only
+  // by what closes the braces, which is a forward scan and not a regex - see
+  // `parse_open_curly_bracket`.
+  EDITORIAL_COMMENT_BEGIN,
+
+  // A `#` STANDING IN AN EDITORIAL COMMENT'S BODY - one that is not the `#`
+  // of the closing `#}`. Appended last for the same index reason as the
+  // tokens above it, and external for the reason COMMENT_BODY_PERCENT is:
+  // the decision needs the character AFTER the `#`.
+  COMMENT_BODY_HASH,
+
+  // The `#` that CLOSES an editorial comment, the one a `}` follows.
+  // Appended last for the same index reason as the tokens above it.
+  COMMENT_HASH_END_MARKER,
 } TokenType;
 
 // The different blocks in Carve that we track,
@@ -4796,11 +4813,57 @@ static bool scan_braced_comment_to_close(Scanner *s, TSLexer *lexer) {
   return false;
 }
 
+/// Does the `{#` already consumed reach the `#}` that closes it?
+///
+/// `editorial_comment = "{#", comment_content, "#}"`, and `comment_content` is
+/// "any text until the matching `#}`, preserved literally" (grammar.ebnf): a
+/// lone `#`, a lone `}` and a SOFT LINE BREAK are all body text. Call with the
+/// lexer anywhere inside that body. Scans ahead only - the caller has already
+/// pinned its token end at the `{`, so a false answer leaves the braces to
+/// whatever reading the internal lexer gives the line.
+///
+/// `last_was_hash` says the character just consumed was a `#`. The attribute
+/// loop has to consume one before it can find out its identifier fails, so by
+/// the time this runs on `{#myid#}` half the closer is already behind us.
+///
+/// A BLANK LINE ENDS IT, exactly as for the braced comment: the body may span
+/// the soft line breaks inside ONE paragraph and no further, which is what
+/// carve-js does - `a {# x` / blank / `y #} z` renders as two paragraphs with
+/// the braces literal.
+static bool finish_editorial_comment(Scanner *s, TSLexer *lexer,
+                                     bool last_was_hash) {
+  if (last_was_hash && lexer->lookahead == '}') {
+    lexer->result_symbol = EDITORIAL_COMMENT_BEGIN;
+    return true;
+  }
+  while (!lexer->eof(lexer)) {
+    if (lexer->lookahead == '#') {
+      advance(s, lexer);
+      if (lexer->lookahead == '}') {
+        lexer->result_symbol = EDITORIAL_COMMENT_BEGIN;
+        return true;
+      }
+      continue;
+    }
+    if (at_line_end(lexer)) {
+      consume_line_end(s, lexer);
+      consume_whitespace(s, lexer);
+      if (at_line_end(lexer) || lexer->eof(lexer)) {
+        return false;
+      }
+      continue;
+    }
+    advance(s, lexer);
+  }
+  return false;
+}
+
 static bool parse_open_curly_bracket(Scanner *s, TSLexer *lexer,
                                      const bool *valid_symbols) {
 
   if (!valid_symbols[BLOCK_ATTRIBUTE_BEGIN] &&
-      !valid_symbols[BRACED_COMMENT_BEGIN]) {
+      !valid_symbols[BRACED_COMMENT_BEGIN] &&
+      !valid_symbols[EDITORIAL_COMMENT_BEGIN]) {
     return false;
   }
   if (lexer->lookahead != '{') {
@@ -4812,6 +4875,50 @@ static bool parse_open_curly_bracket(Scanner *s, TSLexer *lexer,
 
   // Match indent to one past the `{`
   uint8_t indent = s->indent + 1;
+
+  // A `#` GLUED TO THE `{` IS EITHER READING, and which one is decided by what
+  // CLOSES the braces: `{#myid}` is an id attribute, `{#myid#}` is an editorial
+  // comment, and carve-js renders them that way in block position and inline
+  // alike. That is one forward scan, not two - the lexer cannot rewind - so the
+  // attribute machine below runs first and the comment reading picks up from
+  // wherever it fails, which is always still BEFORE the `#}`.
+  bool hash_glued =
+      lexer->lookahead == '#' && valid_symbols[EDITORIAL_COMMENT_BEGIN];
+  // The attribute loop consumes a `#` before it can know its identifier fails.
+  // Set where that happens, so `{#myid#}` is not read as an unclosed comment.
+  bool last_was_hash = false;
+
+  // Inline, neither attribute symbol is on the table and only the comment
+  // brought us here; without this the loop would run for every `{` in a
+  // paragraph.
+  if (!hash_glued && !valid_symbols[BLOCK_ATTRIBUTE_BEGIN] &&
+      !valid_symbols[BRACED_COMMENT_BEGIN]) {
+    return false;
+  }
+
+  if (hash_glued) {
+    // The `#` that opens the body.
+    advance(s, lexer);
+    if (lexer->lookahead == '#') {
+      advance(s, lexer);
+      // `{##}` is the EMPTY braced pair (carve#1447) and so literal text. The
+      // grammar has no empty-content alternative to fall back TO, so the token
+      // is refused here and the four characters are left to `_empty_braced_pair`.
+      if (lexer->lookahead == '}') {
+        return false;
+      }
+      // A `#` this early is body text no id attribute can read, so only the
+      // comment reading is left.
+      return finish_editorial_comment(s, lexer, false);
+    }
+    if (!scan_identifier(s, lexer)) {
+      // Not an identifier either, so `{#id}` is off the table as well.
+      return finish_editorial_comment(s, lexer, false);
+    }
+    // Both readings are still alive. Fall through to the attribute loop, which
+    // takes `{#myid}` and `{#myid .c}`; everything it refuses lands in the
+    // comment scan at `no_attribute` below.
+  }
 
   // A braced comment must follow the `{% ... %}` format.
   bool can_be_braced_comment = lexer->lookahead == '%';
@@ -4881,35 +4988,38 @@ static bool parse_open_curly_bracket(Scanner *s, TSLexer *lexer,
           lexer->result_symbol = BLOCK_ATTRIBUTE_BEGIN;
           return true;
         }
-        return false;
+        goto no_attribute;
       } else {
-        return false;
+        goto no_attribute;
       }
     case '.':
       can_be_braced_comment = false;
       advance(s, lexer);
       // Class names may not start with a digit (`.123` is not a class).
       if (!scan_name_no_digit_start(s, lexer)) {
-        return false;
+        goto no_attribute;
       }
       break;
     case '#':
       can_be_braced_comment = false;
       advance(s, lexer);
       if (!scan_identifier(s, lexer)) {
-        return false;
+        // The `#` is consumed; on `{#myid#}` it is the first half of the
+        // closer, so say so rather than letting the comment scan look past it.
+        last_was_hash = true;
+        goto no_attribute;
       }
       break;
     case '%':
       if (!scan_comment(s, lexer, indent, &must_be_braced_comment)) {
-        return false;
+        goto no_attribute;
       }
       break;
     case ':': {
       can_be_braced_comment = false;
       advance(s, lexer);
       if (!scan_language_tag(s, lexer) || !at_attribute_boundary(lexer)) {
-        return false;
+        goto no_attribute;
       }
       break;
     }
@@ -4919,11 +5029,11 @@ static bool parse_open_curly_bracket(Scanner *s, TSLexer *lexer,
       consume_line_end(s, lexer);
       // Need to match indent!
       if (indent != consume_whitespace(s, lexer)) {
-        return false;
+        goto no_attribute;
       }
       // Can only have one newline in a row for a valid attribute.
       if (at_line_end(lexer)) {
-        return false;
+        goto no_attribute;
       }
       break;
     default: {
@@ -4931,7 +5041,7 @@ static bool parse_open_curly_bracket(Scanner *s, TSLexer *lexer,
       // An attribute key may not start with a digit (`12=v` is not a key).
       int32_t first = lexer->lookahead;
       if (!scan_name_no_digit_start(s, lexer)) {
-        return false;
+        goto no_attribute;
       }
       // carve-php Boolean Attribute Shorthand: a bare `key` (no `=value`)
       // is accepted as long as it is followed by a valid attribute boundary
@@ -4943,21 +5053,30 @@ static bool parse_open_curly_bracket(Scanner *s, TSLexer *lexer,
       // were both taken as attribute lines.
       if (lexer->lookahead != '=') {
         if (!valid_bare_boolean_first_char(first)) {
-          return false;
+          goto no_attribute;
         }
         if (lexer->lookahead == '}' || lexer->lookahead == ' ' ||
             lexer->lookahead == '\t' || at_line_end(lexer)) {
           break;
         }
-        return false;
+        goto no_attribute;
       }
       advance(s, lexer);
       // Then scan the value
       if (!scan_value(s, lexer)) {
-        return false;
+        goto no_attribute;
       }
     }
     }
+  }
+
+no_attribute:
+  // NO ATTRIBUTE READING SURVIVED. When the `{` was glued to a `#` the comment
+  // reading still is - the attribute machine gives up strictly before the
+  // `#}` - so ask whether one closes, and leave the braces literal if none
+  // does. Nothing else reaches here, so every other `{` keeps its old answer.
+  if (hash_glued) {
+    return finish_editorial_comment(s, lexer, last_was_hash);
   }
   return false;
 }
@@ -5498,6 +5617,43 @@ static bool parse_newline(Scanner *s, TSLexer *lexer,
 
   // Something should already have matched, but lets not rely on that shall
   // we?
+  return false;
+}
+
+/// The `#` of an editorial comment's body, or the `#` that closes it.
+///
+/// AN EDITORIAL COMMENT CLOSES ON `#}` AND ON NOTHING ELSE (grammar.ebnf:
+/// `editorial_comment = "{#", comment_content, "#}"`, whose content is "any
+/// text until the matching `#}`"). So the `#` in `{# renumber #4 #}` is body
+/// text and the one before the `}` is the closer, told apart only by the
+/// character that FOLLOWS - the same reason COMMENT_BODY_PERCENT exists for the
+/// braced comment.
+///
+/// CALLED BEFORE `parse_heading`, and that placement is the whole reason this
+/// is not another branch of `parse_comment_end`. The heading probe consumes its
+/// `#` run before it can decide anything, and the lexer has no rewind - so a
+/// comment body's `#` reached the comment branch already eaten and the whole
+/// construct came back as ERROR. The braced comment never had to care: nothing
+/// upstream of it wants a `%`.
+static bool parse_editorial_comment_hash(Scanner *s, TSLexer *lexer,
+                                         const bool *valid_symbols) {
+  if (lexer->lookahead != '#') {
+    return false;
+  }
+  if (!valid_symbols[COMMENT_BODY_HASH] &&
+      !valid_symbols[COMMENT_HASH_END_MARKER]) {
+    return false;
+  }
+  advance(s, lexer);
+  lexer->mark_end(lexer);
+  if (lexer->lookahead != '}' && valid_symbols[COMMENT_BODY_HASH]) {
+    lexer->result_symbol = COMMENT_BODY_HASH;
+    return true;
+  }
+  if (lexer->lookahead == '}' && valid_symbols[COMMENT_HASH_END_MARKER]) {
+    lexer->result_symbol = COMMENT_HASH_END_MARKER;
+    return true;
+  }
   return false;
 }
 
@@ -6558,6 +6714,9 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
   if (parse_block_quote(s, lexer, valid_symbols)) {
     return true;
   }
+  if (parse_editorial_comment_hash(s, lexer, valid_symbols)) {
+    return true;
+  }
   if (parse_heading(s, lexer, valid_symbols)) {
     return true;
   }
@@ -6968,6 +7127,12 @@ static char *token_type_s(TokenType t) {
     return "BLOCK_ATTRIBUTE_BEGIN";
   case COMMENT_BODY_PERCENT:
     return "COMMENT_BODY_PERCENT";
+  case EDITORIAL_COMMENT_BEGIN:
+    return "EDITORIAL_COMMENT_BEGIN";
+  case COMMENT_BODY_HASH:
+    return "COMMENT_BODY_HASH";
+  case COMMENT_HASH_END_MARKER:
+    return "COMMENT_HASH_END_MARKER";
   case COMMENT_END_MARKER:
     return "COMMENT_END_MARKER";
   case COMMENT_CLOSE:
