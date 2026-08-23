@@ -767,6 +767,76 @@ mod tests {
         }
     }
 
+    /// A fence opener that carries an info string still opens with TRAILING
+    /// whitespace after it.
+    ///
+    /// PART 2 drops trailing whitespace on a content line before the line is
+    /// read, so ```` ```js ```` is the same opener as ```` ```js ```` without
+    /// the space - which is the reading grammar.ebnf already gives the tab
+    /// (carve#1295). `code_fence_info_is_modeled` agreed and the GRAMMAR did
+    /// not: it had no slot for those characters, so an opener the scanner had
+    /// already committed to came back as an ERROR node covering the rest of the
+    /// document and the whole body parsed as live prose
+    /// (markup-carve/tree-sitter-carve#248).
+    ///
+    /// This lives here rather than in `test/corpus/carve.txt` for the reason
+    /// the two cases at the top of this file do: the whole meaning of every row
+    /// IS a trailing space or tab, and in a fixture file one editor sweep turns
+    /// each of them into the no-trailing-whitespace row it is the counterpart
+    /// of, leaving a case that can no longer fail.
+    ///
+    /// It reaches EVERY info-string shape, not the two the cross-repo sweep
+    /// happens to carry: the language, the quoted header, the label, both raw
+    /// spellings and the tilde fence all took the same ERROR.
+    #[test]
+    fn a_fence_opener_may_carry_trailing_whitespace() {
+        let mut parser = tree_sitter::Parser::new();
+        parser
+            .set_language(&super::language())
+            .expect("Error loading Carve language");
+        for (source, want) in [
+            ("```js \nx\n```\n", "code_block"),
+            ("```js\t\nx\n```\n", "code_block"),
+            ("```js  \nx\n```\n", "code_block"),
+            ("```js \t \nx\n```\n", "code_block"),
+            ("~~~js \nx\n~~~\n", "code_block"),
+            ("```\"T\" \nx\n```\n", "code_block"),
+            ("```[L] \nx\n```\n", "code_block"),
+            ("```js \"T\" \nx\n```\n", "code_block"),
+            ("```js \"T\" [L] \nx\n```\n", "code_block"),
+            ("```=html \nx\n```\n", "raw_block"),
+            ("```=html\t\nx\n```\n", "raw_block"),
+            ("```raw html \nx\n```\n", "raw_block"),
+        ] {
+            let tree = parser.parse(source, None).unwrap();
+            let root = tree.root_node();
+            // The document is named with a positional argument, not an inline
+            // one: this crate is `edition = "2018"`, where `{source:?}` is not
+            // a capture and prints as those nine literal characters - so a
+            // failure would report which ROW failed and not which document.
+            assert!(!root.has_error(), "unexpected ERROR for {:?}", source);
+            let block = root.child(0).expect("document has no child");
+            assert_eq!(block.kind(), want, "for {:?}", source);
+        }
+        // THE CONTROL, in the over-accepting direction. The new slot is
+        // trailing whitespace and nothing else: a tab or a second space in a
+        // SEPARATOR position still leaves the line as prose, which is what
+        // `a_code_fence_slot_takes_a_space_and_the_cardinality_differs` above
+        // is about. Widen the slot to `_whitespace` and these three open a
+        // fence.
+        for source in [
+            "```\tjs\nx\n```\n",
+            "```js\t\"T\"\nx\n```\n",
+            "```  php\nx\n```\n",
+        ] {
+            let tree = parser.parse(source, None).unwrap();
+            let root = tree.root_node();
+            assert!(!root.has_error(), "unexpected ERROR for {:?}", source);
+            let block = root.child(0).expect("document has no child");
+            assert_eq!(block.kind(), "paragraph", "for {:?}", source);
+        }
+    }
+
     /// The frontmatter opener is the third site of the fence's `[space]` slot.
     ///
     /// `---<SP><SP>yaml` is not an opener: the second space reaches the language

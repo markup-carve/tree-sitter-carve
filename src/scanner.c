@@ -158,6 +158,14 @@ typedef enum {
   // real NUL - only a scanner that can ask `lexer->eof` can tell the two
   // apart.
   NUL_BYTE,
+
+  // A `%` STANDING IN A BRACED COMMENT'S BODY - one that is not the `%` of the
+  // closing `%}`. Appended last for the same index reason as the tokens above
+  // it, and external because the decision needs the character AFTER the `%`:
+  // `braced_comment = "{%", {character - "%}"}, "%}"` closes on the two-
+  // character run and on nothing else, and a token regex here cannot look one
+  // character ahead.
+  COMMENT_BODY_PERCENT,
 } TokenType;
 
 // The different blocks in Carve that we track,
@@ -1486,6 +1494,26 @@ static bool code_fence_run_matches_open_block(Scanner *s, uint8_t width,
                                                char fence_char) {
   Block *top = peek_block(s);
   if (!top || top->type != CODE_BLOCK) {
+    return false;
+  }
+  // COLUMN-EXACT DELIMITERS (grammar.ebnf, PART 2, normative). A closer sits
+  // at its container's content column, and "a closing run indented PAST its
+  // opener is not a delimiter but code content -- which is exactly what lets an
+  // indented ``` line appear as sample text inside a fence".
+  //
+  // Without this the run closed the block wherever it sat, so
+  //
+  //     ```
+  //       ```
+  //     *b*
+  //     ```
+  //
+  // ended at the INDENTED run and everything under it was live prose - the
+  // shape every document that writes about Carve in Carve is made of. The
+  // opener is guarded by `has_extra_indent` at the call site; the closer is the
+  // other half of the same rule, and it is `has_surplus_indent` because the
+  // question here is indentation PAST the margin rather than short of it.
+  if (has_surplus_indent(s)) {
     return false;
   }
   bool opened_with_tilde = (top->data & CODE_FENCE_TILDE) != 0;
@@ -4682,6 +4710,45 @@ static bool scan_value(Scanner *s, TSLexer *lexer) {
   }
 }
 
+/// Does a `{%` opener reach the `%}` that closes it?
+///
+/// `braced_comment = "{%", {character - "%}"}, "%}"` (grammar.ebnf): the body
+/// runs to the FIRST `%}` and holds any other character, a lone `%` and a lone
+/// `}` included. The classifier below used `scan_comment` for this, which is
+/// the ATTRIBUTE comment's scan and stops at either character - so `{% 50% off
+/// %}` and `{% a } b %}` were classified as attribute text and never opened a
+/// comment at all.
+///
+/// Call with the lexer on the `%` of `{%`. Scans ahead only; the caller has
+/// already pinned its token end at the `{`, and a false answer leaves the line
+/// to the attribute path's own reading, which is what `{%c% .x}` still needs.
+///
+/// A BLANK LINE ENDS IT. The comment may span the soft line breaks inside one
+/// paragraph (grammar.ebnf) and no more, which is what carve-js does: `a {%
+/// x` / blank / `y %} z` renders as two paragraphs with the braces literal.
+static bool scan_braced_comment_to_close(Scanner *s, TSLexer *lexer) {
+  advance(s, lexer);
+  while (!lexer->eof(lexer)) {
+    if (lexer->lookahead == '%') {
+      advance(s, lexer);
+      if (lexer->lookahead == '}') {
+        return true;
+      }
+      continue;
+    }
+    if (at_line_end(lexer)) {
+      consume_line_end(s, lexer);
+      consume_whitespace(s, lexer);
+      if (at_line_end(lexer) || lexer->eof(lexer)) {
+        return false;
+      }
+      continue;
+    }
+    advance(s, lexer);
+  }
+  return false;
+}
+
 static bool parse_open_curly_bracket(Scanner *s, TSLexer *lexer,
                                      const bool *valid_symbols) {
 
@@ -4702,6 +4769,28 @@ static bool parse_open_curly_bracket(Scanner *s, TSLexer *lexer,
   // A braced comment must follow the `{% ... %}` format.
   bool can_be_braced_comment = lexer->lookahead == '%';
   bool must_be_braced_comment = false;
+
+  // A `%` GLUED TO THE `{` IS A BRACED COMMENT, decided here and not by the
+  // attribute loop below. The loop reads `{...}` as attribute syntax with
+  // comments embedded in it, and that reading ends a comment at a bare `%` or
+  // at the attribute's own `}` - the two characters a braced comment's body is
+  // allowed to hold. So a body carrying either was classified as attribute
+  // text, the `{` token was refused, and the whole span parsed as live inline
+  // markup: `{% 50% off %}` coloured nothing as a comment and `{% a *b* } c %}`
+  // emphasized `b`.
+  //
+  // Scanning ahead here costs the attribute path nothing it can use: on a
+  // FALSE answer the lexer has moved, so the loop cannot run, and the token is
+  // refused - which leaves the line as ordinary text. That is what carve-js
+  // renders for the shapes this reaches: `a {%c% .x} z` has no `%}` and comes
+  // back with its braces literal, on this grammar as on the engine.
+  if (can_be_braced_comment && valid_symbols[BRACED_COMMENT_BEGIN]) {
+    if (!scan_braced_comment_to_close(s, lexer)) {
+      return false;
+    }
+    lexer->result_symbol = BRACED_COMMENT_BEGIN;
+    return true;
+  }
 
   while (!lexer->eof(lexer)) {
     uint8_t space = consume_whitespace(s, lexer);
@@ -5367,6 +5456,29 @@ static bool parse_newline(Scanner *s, TSLexer *lexer,
 
 static bool parse_comment_end(Scanner *s, TSLexer *lexer,
                               const bool *valid_symbols) {
+  // A BRACED COMMENT CLOSES ON `%}` AND ON NOTHING ELSE (grammar.ebnf:
+  // `braced_comment = "{%", {character - "%}"}, "%}"`). So the `%` in
+  // `{% 50% off %}` is body text, and the one in `{% x %}` is the closer -
+  // told apart only by the character after it, which is why this is a scanner
+  // decision and not a token regex.
+  //
+  // COMMENT_BODY_PERCENT is valid only inside `_braced_comment_body`, so the
+  // ATTRIBUTE comment - `{.a %note% .b}`, whose `_comment` ends at a bare `%`
+  // or at the attribute's own `}` - never reaches this branch and keeps the
+  // reading it has. One place decides, for both tokens a `%` can be.
+  if (valid_symbols[COMMENT_BODY_PERCENT] && lexer->lookahead == '%') {
+    advance(s, lexer);
+    lexer->mark_end(lexer);
+    if (lexer->lookahead != '}') {
+      lexer->result_symbol = COMMENT_BODY_PERCENT;
+      return true;
+    }
+    if (valid_symbols[COMMENT_END_MARKER]) {
+      lexer->result_symbol = COMMENT_END_MARKER;
+      return true;
+    }
+    return false;
+  }
   if (valid_symbols[COMMENT_END_MARKER] && lexer->lookahead == '%') {
     advance(s, lexer);
     lexer->mark_end(lexer);
@@ -6744,6 +6856,8 @@ static char *token_type_s(TokenType t) {
     return "TABLE_CAPTION_END";
   case BLOCK_ATTRIBUTE_BEGIN:
     return "BLOCK_ATTRIBUTE_BEGIN";
+  case COMMENT_BODY_PERCENT:
+    return "COMMENT_BODY_PERCENT";
   case COMMENT_END_MARKER:
     return "COMMENT_END_MARKER";
   case COMMENT_CLOSE:
