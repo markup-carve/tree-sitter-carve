@@ -21,7 +21,8 @@
     "a-tabbed-frontmatter-opener-swallows-the-break-below": "`---` followed by a TAB is not a frontmatter opener, and the grammar agrees that far - it builds no frontmatter. But it then reads the closing `---` three lines down as an `em_dash` inside the still-open paragraph rather than as a thematic break, so the `<hr>` the fixture expects between the paragraph and `body` is not built.",
     "an-attribute-line-does-not-end-the-paragraph-above-a-list": "a floating attribute line at column 0 does not end the paragraph above it, so the list it is meant to attach to never opens: `para` / `{.x}` / `- b` is ONE paragraph. The fixture expects the paragraph to end at the attribute line and the run to reach the list below it, as `<ul class=\"x\">`.",
     "fence-on-a-marker-line-builds-nothing": "a code fence opened on a list MARKER line: the item closes with an EMPTY code block and the residue re-parses at document level when the body sits BELOW the item's content column (markup-carve/carve#646). This grammar builds no code_block for any of these, and MEASURED against it, the cause is NOT that the fence is committed to the item with no route out - it is that the fence never opens at all. `parse_backtick` refuses an opener when `has_extra_indent` is true, and on a marker line the fence sits past the line's own indent while the item's content column is only established by the marker itself, so `- ` + fence is read as inline verbatim. The heading marker and the colon fence carry the same column-0 guard and fail the same way on a marker line, while a block quote and a table - which do not - open there correctly. The quote half of that was narrower than it reads and is now closed: its MARKER opened, but the quote took no content and the rest of the line was ejected from the list, repaired in tree-sitter-carve#218 by moving the line's content margin to the quote's own content column when it opens on an item's marker line - the same move this entry's openers need at the LIST marker. So the first half is a column question and the second half, closing the item at the boundary, is the container change; the fully-indented example (-3) needs only the first. Tracked in tree-sitter-carve#160.",
-    "lone-cr-strands-a-column-probe": "a lone carriage return still changes this document's tree. The scanner now treats all three spellings of `newline` as terminators, and 428 of 672 corpus documents that diverged before this do not any more, but these are the remainder: every one of them is a REFERENCE DEFINITION, an ATTRIBUTE BLOCK or a trailing block inside a list item - constructs whose probes read a column, and tree-sitter advances the row and resets the column on '\\n' and on nothing else (`lib/src/lexer.c`), so a scanner-maintained base carries them and does not carry every probe that reads one. tree-sitter-carve#143. The same mechanism has one reachable shape outside the corpus: `comment_line` in grammar.js consumes its own terminator in the internal lexer, so a comment line ended by a lone '\\r' strands the base for an indented construct below it. The corpus bump to 287b4b8 adds two more, and one of them widens the enumeration above: a-bracketed-construct-s-identifiers-stay-on-one-line is a REFERENCE DEFINITION and fits it as written, but a-container-whose-table-ends-on-a-joined-header-row-3 is a table CONTINUATION ROW reached through a block quote - a column probe inside a container rather than any of the three construct classes originally listed. The mechanism is unchanged; the list of constructs that read a column is simply longer than it was when this was written.",
+    "lone-cr-joins-a-wrapped-identifier": "a lone carriage return still changes this document's tree, and NOT because a probe read a column. A bracketed construct's identifier - a reference label, or an inline destination - is written on one line, and the LF and CRLF spellings enforce that by having no rule that admits a terminator inside it: `_inline_single_line` is `repeat1` over inline elements with no `_newline_inline` among them, and `_inline_link_url` is `repeat1` over a regex that excludes `\r` and `\n`. Neither says anything about the gap BETWEEN two repetitions, and a lone carriage return is this grammar's one extra, skipped wherever a token can start - so under `\r` the identifier runs on to the next line and the construct forms across the wrap. Measured: `[t][r` / `x]` builds a full_reference_link under `\r` and a bare paragraph under `\n`; `![a](/i` / `q)` builds an inline_image the same way. This is the seam tree-sitter-carve#262 closed for the ADJACENCY between `]` and `[` - `token.immediate` refuses the skip where two tokens must touch - and the same trick does not reach here, because what has to be refused is a skip in the middle of an arbitrary `repeat1`, not at a fixed join. Tracked in tree-sitter-carve#265.",
+    "lone-cr-strands-a-column-probe": "a lone carriage return still changes this document's tree. The scanner now treats all three spellings of `newline` as terminators, and 428 of 672 corpus documents that diverged before this do not any more, but these are the remainder: every one of them is a REFERENCE DEFINITION, an ATTRIBUTE BLOCK or a trailing block inside a list item - constructs whose probes read a column, and tree-sitter advances the row and resets the column on '\\n' and on nothing else (`lib/src/lexer.c`), so a scanner-maintained base carries them and does not carry every probe that reads one. tree-sitter-carve#143. The same mechanism has one reachable shape outside the corpus: `comment_line` in grammar.js consumes its own terminator in the internal lexer, so a comment line ended by a lone '\\r' strands the base for an indented construct below it. The corpus bump to 287b4b8 added two more, and one of them widens the enumeration above: a-container-whose-table-ends-on-a-joined-header-row-3 is a table CONTINUATION ROW reached through a block quote - a column probe inside a container rather than any of the three construct classes originally listed. The mechanism is unchanged; the list of constructs that read a column is simply longer than it was when this was written. The other one, a-bracketed-construct-s-identifiers-stay-on-one-line, was recorded here as a REFERENCE DEFINITION and is not one: nothing about it reads a column, and it is now filed under lone-cr-joins-a-wrapped-identifier with the rest of its family. That misfiling is what tree-sitter-carve#262 reported - two mechanisms sharing one reason, and the reason is what a reader would use to decide the fix.",
     "marker-line-block-opener-builds-nothing": "a block opener written on a list MARKER line builds nothing. `- # H` gives a list item whose content is a PARAGRAPH, not a heading; `- ---` is read as a document-level thematic break that consumes the marker, so no list is built at all. Verified against the indented spelling, which works: `- a` / `  # H` does build the heading. This is the same shape as the recorded `fence-on-a-marker-line-builds-nothing` - the marker line is one position this grammar does not run block-opener recognition in - now reached by the heading and thematic-break openers too. A TASK checkbox does not change which openers reach it, but it does change what the thematic break degrades INTO, and the sentence above is wrong for that spelling: `- [x] # h` is still a paragraph, while `- [ ] ---` no longer consumes the marker - the list and the item ARE built and `---` becomes an inline `em_dash` inside the item's paragraph. Measured against the neighbour that works, which is what keeps the checkbox out of it: `- [ ] > q` opens its quote with content, so the checkbox does not disturb an opener the marker line already admits. That is why a-task-item-s-checkbox-is-not-decided-by-its-first-block reports `heading: want 1 have 0; thematic_break: want 1 have 0` and no gap for its quote."
   },
   "covered": [
@@ -641,7 +642,7 @@
     },
     "a-bracketed-construct-s-identifiers-stay-on-one-line": {
       "spellings": "the cr spelling(s) parse to a different tree than lf",
-      "reason": "ref:lone-cr-strands-a-column-probe"
+      "reason": "ref:lone-cr-joins-a-wrapped-identifier"
     },
     "a-container-whose-table-ends-on-a-joined-header-row-3": {
       "spellings": "the cr spelling(s) parse to a different tree than lf",
@@ -655,27 +656,11 @@
       "spellings": "the cr spelling(s) parse to a different tree than lf",
       "reason": "ref:lone-cr-strands-a-column-probe"
     },
-    "a-link-definition-written-before-a-footnote-stays-before-it": {
-      "spellings": "the cr spelling(s) parse to a different tree than lf",
-      "reason": "ref:lone-cr-strands-a-column-probe"
-    },
-    "a-note-body-s-own-references-resolve": {
-      "spellings": "the cr spelling(s) parse to a different tree than lf",
-      "reason": "ref:lone-cr-strands-a-column-probe"
-    },
-    "a-note-body-s-own-references-resolve-3": {
-      "spellings": "the cr spelling(s) parse to a different tree than lf",
-      "reason": "ref:lone-cr-strands-a-column-probe"
-    },
     "a-quoted-attribute-value-stops-at-the-newline-3": {
       "spellings": "the cr spelling(s) parse to a different tree than lf",
       "reason": "the cr spelling parses to a different tree because the LF spelling already parses to ERROR - the quoted attribute value carrying a newline is the skip recorded for this example. It arrived as one of three example-level skips on the same corpus bump; the other two - a line holding only a vertical tab, form feed, NEL, LS or PS, and a content line ending in NBSP, ZWSP, BOM or U+2000 - were both control characters with no line-content route, and both are closed. This one is not a character the text token can admit: the attribute block commits on the opening brace and has no route back to a paragraph when the value never closes on its line. The terminator is not the defect here, the unmodeled construct is, and the divergence goes away with it. Tracked in tree-sitter-carve#160."
     },
     "an-attribute-name-admits-no-colon": {
-      "spellings": "the cr spelling(s) parse to a different tree than lf",
-      "reason": "ref:lone-cr-strands-a-column-probe"
-    },
-    "an-image-takes-a-reference-the-way-a-link-does": {
       "spellings": "the cr spelling(s) parse to a different tree than lf",
       "reason": "ref:lone-cr-strands-a-column-probe"
     },
@@ -691,39 +676,11 @@
       "spellings": "the cr spelling(s) parse to a different tree than lf",
       "reason": "ref:lone-cr-strands-a-column-probe"
     },
-    "paragraph-interruption-17": {
-      "spellings": "the cr spelling(s) parse to a different tree than lf",
-      "reason": "ref:lone-cr-strands-a-column-probe"
-    },
     "paragraph-interruption-2": {
       "spellings": "the cr spelling(s) parse to a different tree than lf",
       "reason": "ref:lone-cr-strands-a-column-probe"
     },
-    "reference-labels-are-case-sensitive": {
-      "spellings": "the cr spelling(s) parse to a different tree than lf",
-      "reason": "ref:lone-cr-strands-a-column-probe"
-    },
-    "reference-link-5": {
-      "spellings": "the cr spelling(s) parse to a different tree than lf",
-      "reason": "ref:lone-cr-strands-a-column-probe"
-    },
-    "reference-link-6": {
-      "spellings": "the cr spelling(s) parse to a different tree than lf",
-      "reason": "ref:lone-cr-strands-a-column-probe"
-    },
-    "reference-link-7": {
-      "spellings": "the cr spelling(s) parse to a different tree than lf",
-      "reason": "ref:lone-cr-strands-a-column-probe"
-    },
-    "scheme-probe-strips-unicode-whitespace": {
-      "spellings": "the cr spelling(s) parse to a different tree than lf",
-      "reason": "ref:lone-cr-strands-a-column-probe"
-    },
     "tight-list-item-keeps-trailing-text-after-a-block-bare": {
-      "spellings": "the cr spelling(s) parse to a different tree than lf",
-      "reason": "ref:lone-cr-strands-a-column-probe"
-    },
-    "trailing-attributes-on-a-link-reference-definition": {
       "spellings": "the cr spelling(s) parse to a different tree than lf",
       "reason": "ref:lone-cr-strands-a-column-probe"
     },
@@ -753,11 +710,11 @@
     },
     "a-bracketed-construct-s-identifiers-stay-on-one-line-3": {
       "spellings": "the cr spelling(s) parse to a different tree than lf",
-      "reason": "ref:lone-cr-strands-a-column-probe"
+      "reason": "ref:lone-cr-joins-a-wrapped-identifier"
     },
     "a-bracketed-construct-s-identifiers-stay-on-one-line-4": {
       "spellings": "the cr spelling(s) parse to a different tree than lf",
-      "reason": "ref:lone-cr-strands-a-column-probe"
+      "reason": "ref:lone-cr-joins-a-wrapped-identifier"
     },
     "a-quote-inside-a-quote-is-asked-what-it-ends-on-8": {
       "spellings": "the cr spelling(s) parse to a different tree than lf",
@@ -772,14 +729,6 @@
       "reason": "ref:lone-cr-strands-a-column-probe"
     },
     "a-terminal-comment-in-a-quote-leaves-no-paragraph-open": {
-      "spellings": "the cr spelling(s) parse to a different tree than lf",
-      "reason": "ref:lone-cr-strands-a-column-probe"
-    },
-    "a-lone-indented-image-is-a-paragraph-and-its-html-cannot-say-so-2": {
-      "spellings": "the cr spelling(s) parse to a different tree than lf",
-      "reason": "ref:lone-cr-strands-a-column-probe"
-    },
-    "a-lone-reference-image-at-column-0-in-every-spelling": {
       "spellings": "the cr spelling(s) parse to a different tree than lf",
       "reason": "ref:lone-cr-strands-a-column-probe"
     }
