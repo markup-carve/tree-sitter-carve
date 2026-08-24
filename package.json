@@ -30,7 +30,8 @@
     "test:line-terminators": "node scripts/line-terminators.mjs",
     "test:highlights": "node scripts/highlight-captures.mjs",
     "test:binding-parity": "node scripts/binding-parity.mjs",
-    "test:marker-separators": "node scripts/marker-separators.mjs"
+    "test:marker-separators": "node scripts/marker-separators.mjs",
+    "test:nesting-depth": "node scripts/nesting-depth.mjs"
   },
   "author": "",
   "license": "MIT",

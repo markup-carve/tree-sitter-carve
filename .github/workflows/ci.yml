@@ -68,6 +68,15 @@ jobs:
       - name: Marker separators are runs, and none of a run is content
         run: npm run test:marker-separators
 
+      # THE ONE CLASS EVERY GATE ABOVE IS BLIND TO. All of them drive the
+      # tree-sitter CLI, which builds src/scanner.c at -O2 into its own cached
+      # shared object; node-gyp builds the same file at -O3, and that is what an
+      # editor loads. A write past an allocation that only the -O3 build makes
+      # left the CLI parsing happily and every check green, while eleven nested
+      # `:::: note` openers aborted the Node binding (#266).
+      - name: Nesting depth through the Node binding
+        run: npm run test:nesting-depth
+
       - name: The vendored battery is still carve-grammars' copy
         run: npm run test:battery-drift
       - name: Build WASM grammar
