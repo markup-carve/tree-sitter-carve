@@ -14,6 +14,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - The local hard-break block's type token is a `local_hard_break_marker` node,
   as the line block's bar already was. A `hardbreaks` div and a plain `:::` div
   are distinguishable by node name for the first time (#245).
+- A bare `::: figure` opener carries its own `figure_group_marker` node, so a
+  composite figure group is a node name rather than a wildcard chain in a
+  highlight query. Groups do not nest at any depth, and a nested bare opener is
+  an admonition in the tree (#245, markup-carve/carve-grammars#284).
+- An editorial comment is a structured node with a `content` field instead of a
+  single anonymous token, so a query can capture the comment body on its own
+  (#250).
 
 ### Fixed
 
@@ -40,6 +47,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   markup inside its body stays inert. The body may span the soft line breaks
   inside one paragraph and ends at a blank line, and a block quote's or list
   item's prefix no longer lands in it (#250).
+- A fence opener carrying an info string admits trailing whitespace instead of
+  returning an ERROR node over the rest of the document, with the whole body
+  parsed as live prose. Every info-string shape reaches it: the language, the
+  quoted header, the label, both raw spellings and the tilde fence (#248).
+- A closing fence run indented past its opener is code content rather than a
+  delimiter, which is what lets an indented fence line stand as sample text
+  inside a fence (#248).
+- A braced comment's body may hold a lone `%` and a lone `}`, ending only at
+  the two-character closer. It shared the attribute comment's rule, so a body
+  carrying either character built no comment at all and the markup inside it
+  stayed live (#248, markup-carve/carve-grammars#312).
+- An editorial comment's body may hold a `#` that does not close it, so
+  `{# renumber #4 #}` is one comment (#248,
+  markup-carve/carve-grammars#320).
 
 ### Changed
 
@@ -49,6 +70,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the other construct, so a consumer reading node names got a false answer
   about which comment it had. Queries naming `inline_comment` need updating
   (#245, markup-carve/carve-grammars#311).
+- BREAKING: the colon fence's type word is an `admonition_type` node held in a
+  `type` field, renamed from `class_name` in a `class` field. Any word after
+  the separator opens an admonition and a generic div is the opener with no
+  word at all, while `class_name` names a different construct that keeps it:
+  the dotted class inside an attribute block. Queries and field lookups naming
+  `class_name`, or the `class` field on a `:::` opener, need updating (#245,
+  markup-carve/carve-grammars#284).
 
 ## [0.1.3] - 2026-08-18
 
