@@ -630,6 +630,40 @@ static uint8_t consume_whitespace(Scanner *s, TSLexer *lexer) {
   return indent;
 }
 
+/// Append to one of the scanner's two open-element stacks, growing it when it
+/// is full.
+///
+/// This deliberately does NOT use `array_push`. That macro reaches the same
+/// object through two INCOMPATIBLE struct types: `_array__grow` takes
+/// `struct Array` (the `Array(void)` typedef) and reads `size` and `capacity`
+/// through it, while the macro's own `(self)->contents[(self)->size++]` writes
+/// them back through the element-typed `Array(Block *)`. C says accesses
+/// through incompatible struct types do not alias, and GCC believes it.
+///
+/// At `-O3` - which is what node-gyp compiles this file with, and what every
+/// consumer of the Node binding therefore runs - it took `size` and `capacity`
+/// to be loop-invariant across the push loop in
+/// `tree_sitter_carve_external_scanner_deserialize`, hoisted the capacity test
+/// out of the loop, and emitted a second copy of the loop that appends WITHOUT
+/// ever growing. Eleven nested `:::: note` openers then wrote a ninth pointer
+/// into an eight-pointer buffer; glibc noticed the smashed chunk header at the
+/// next `realloc` and aborted the process (tree-sitter-carve#266). Blockquote
+/// and list nesting reached the same loop and overran at their own depths.
+///
+/// Every access below goes through the array's OWN type, so the growth is
+/// something the optimizer has to keep. Keep it that way: `array_push` on
+/// either of these stacks reintroduces the mix.
+#define stack_push(stack, element)                                             \
+  do {                                                                         \
+    if ((stack)->size == (stack)->capacity) {                                  \
+      uint32_t grown = (stack)->capacity ? (stack)->capacity * 2 : 8;          \
+      (stack)->contents =                                                      \
+          ts_realloc((stack)->contents, grown * sizeof *(stack)->contents);    \
+      (stack)->capacity = grown;                                               \
+    }                                                                          \
+    (stack)->contents[(stack)->size++] = (element);                            \
+  } while (0)
+
 static Block *create_block(BlockType type, uint8_t data) {
   Block *b = ts_malloc(sizeof(Block));
   b->type = type;
@@ -646,11 +680,11 @@ static Inline *create_inline(InlineType type, uint8_t data) {
 }
 
 static void push_block(Scanner *s, BlockType type, uint8_t data) {
-  array_push(s->open_blocks, create_block(type, data));
+  stack_push(s->open_blocks, create_block(type, data));
 }
 
 static void push_inline(Scanner *s, InlineType type, uint8_t data) {
-  array_push(s->open_inline, create_inline(type, data));
+  stack_push(s->open_inline, create_inline(type, data));
 }
 
 static void remove_block(Scanner *s) {
@@ -6982,15 +7016,44 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
   return false;
 }
 
-static void init(Scanner *s) {
-  array_init(s->open_inline);
-  array_init(s->open_blocks);
+/// The scalar half of a fresh scanner. Split out because the two stacks need
+/// different treatment depending on who is asking: `create` gets raw
+/// `ts_malloc` memory that must be initialized, `deserialize` gets live state
+/// that must be released first.
+static void init_scalars(Scanner *s) {
   s->blocks_to_close = 0;
   s->block_quote_level = 0;
   s->indent = 0;
   s->marker_end_col = 0;
   s->col_base = 0;
   s->state = 0;
+}
+
+static void init(Scanner *s) {
+  array_init(s->open_inline);
+  array_init(s->open_blocks);
+  init_scalars(s);
+}
+
+/// Return the scanner to an empty state that a serialized one can be read into.
+///
+/// `init` cannot do this job. It calls `array_init`, which drops the `contents`
+/// pointer on the floor without freeing it OR the `Block`s and `Inline`s it
+/// holds, and tree-sitter calls `deserialize` on nearly every lexer step - so a
+/// twelve-line document leaked several kilobytes and a real file leaks in
+/// proportion to how hard the parser backtracks. Freeing the elements and
+/// keeping the allocation also spares the next `deserialize` its first two
+/// growths.
+static void reset(Scanner *s) {
+  for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
+    ts_free(s->open_blocks->contents[i]);
+  }
+  s->open_blocks->size = 0;
+  for (uint32_t i = 0; i < s->open_inline->size; ++i) {
+    ts_free(s->open_inline->contents[i]);
+  }
+  s->open_inline->size = 0;
+  init_scalars(s);
 }
 
 void *tree_sitter_carve_external_scanner_create() {
@@ -7003,14 +7066,13 @@ void *tree_sitter_carve_external_scanner_create() {
 
 void tree_sitter_carve_external_scanner_destroy(void *payload) {
   Scanner *s = (Scanner *)payload;
-  for (size_t i = 0; i < s->open_blocks->size; ++i) {
-    ts_free(*array_get(s->open_blocks, i));
-  }
-  array_delete(s->open_blocks);
-  for (size_t i = 0; i < s->open_inline->size; ++i) {
-    ts_free(*array_get(s->open_inline, i));
-  }
-  array_delete(s->open_inline);
+  reset(s);
+  // Not `array_delete`: that reaches the object through `struct Array`, which
+  // is the type mix `stack_push` exists to keep out of these two stacks.
+  ts_free(s->open_blocks->contents);
+  ts_free(s->open_blocks);
+  ts_free(s->open_inline->contents);
+  ts_free(s->open_inline);
   ts_free(s);
 }
 
@@ -7049,7 +7111,7 @@ unsigned tree_sitter_carve_external_scanner_serialize(void *payload,
 void tree_sitter_carve_external_scanner_deserialize(void *payload, char *buffer,
                                                    unsigned length) {
   Scanner *s = (Scanner *)payload;
-  init(s);
+  reset(s);
   if (length > 0) {
     size_t size = 0;
     s->blocks_to_close = (uint8_t)buffer[size++];
@@ -7070,12 +7132,12 @@ void tree_sitter_carve_external_scanner_deserialize(void *payload, char *buffer,
       uint8_t content_col = (uint8_t)buffer[size++];
       Block *b = create_block(type, level);
       b->content_col = content_col;
-      array_push(s->open_blocks, b);
+      stack_push(s->open_blocks, b);
     }
     while (size < length) {
       InlineType type = (InlineType)buffer[size++];
       uint8_t data = (uint8_t)buffer[size++];
-      array_push(s->open_inline, create_inline(type, data));
+      stack_push(s->open_inline, create_inline(type, data));
     }
   }
 }
