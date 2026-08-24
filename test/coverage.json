@@ -2,11 +2,11 @@
   "_comment": "Coverage matrix for the shared Carve spec corpus (spec/tests/corpus/*.crv). Every NN-slug base category must appear in covered or skip; the coverage-matrix test fails otherwise so a new spec category forces a classify decision. covered = grammar parses every file in the category with no ERROR/MISSING node. skip = at least one file currently produces an ERROR/MISSING node; reason records the unmodeled construct (a grammar gap to surface, not to hack around). A skip key is a CATEGORY (NN-slug) or a single EXAMPLE (NN-slug-2) — use the example form when the rest of the category parses cleanly, so one gap does not drop assertion for its siblings. A key equal to a category name is read as the CATEGORY, so the first example of a category cannot be skipped on its own. REASONS: a ledger entry's `reason` may be `ref:<key>`, resolving against the top-level `reasons` map, so one grammar gap spanning a whole category states its explanation once. coverage-matrix gates it both ways - a ref with no entry fails, and a reasons entry nothing references fails, because a reason nobody points at is an excuse that outlived the gap it excused.",
   "comparisonPopulation": {
     "thematic_break": { "documents": 9, "nodes": 11 },
-    "block_quote": { "documents": 137, "nodes": 162 },
+    "block_quote": { "documents": 139, "nodes": 164 },
     "table": { "documents": 131, "nodes": 132 },
     "heading": { "documents": 108, "nodes": 140 },
     "code_block": { "documents": 69, "nodes": 69 },
-    "list": { "documents": 367, "nodes": 464 },
+    "list": { "documents": 369, "nodes": 466 },
     "definition_list": { "documents": 43, "nodes": 43 },
     "line_block": { "documents": 33, "nodes": 33 },
     "div": { "documents": 23, "nodes": 25 },
@@ -434,7 +434,9 @@
     "pipe-tables-can-state-head-and-foot-row-counts",
     "the-doubled-run-is-the-canonical-arrow-in-both-families",
     "an-empty-brace-pair-is-not-a-construct",
-    "a-null-byte-is-replaced-before-the-document-is-read"
+    "a-null-byte-is-replaced-before-the-document-is-read",
+    "a-lone-indented-image-is-a-paragraph-and-its-html-cannot-say-so",
+    "a-lone-reference-image-at-column-0-in-every-spelling"
   ],
   "skip": {
     "a-continuation-marker-attaches-one-block-and-the-boundary-is-that-block-s-extent-5": "a `+` continuation marker that attaches NOTHING - the line after it opens a sibling item rather than a block to attach - leaves the first item unclosed and the whole document parses to one top-level ERROR. `- a` / `+` / `- x` / `- y` is three flat items in the fixture. The category's other eight examples, where the marker does attach a block, parse cleanly.",
@@ -770,6 +772,14 @@
       "reason": "ref:lone-cr-strands-a-column-probe"
     },
     "a-terminal-comment-in-a-quote-leaves-no-paragraph-open": {
+      "spellings": "the cr spelling(s) parse to a different tree than lf",
+      "reason": "ref:lone-cr-strands-a-column-probe"
+    },
+    "a-lone-indented-image-is-a-paragraph-and-its-html-cannot-say-so-2": {
+      "spellings": "the cr spelling(s) parse to a different tree than lf",
+      "reason": "ref:lone-cr-strands-a-column-probe"
+    },
+    "a-lone-reference-image-at-column-0-in-every-spelling": {
       "spellings": "the cr spelling(s) parse to a different tree than lf",
       "reason": "ref:lone-cr-strands-a-column-probe"
     }
