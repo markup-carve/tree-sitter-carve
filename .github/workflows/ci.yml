@@ -60,6 +60,14 @@ jobs:
       - name: Highlight captures resolve the way an editor resolves them
         run: npm run test:highlights
 
+      # WHERE A MARKER ENDS AND ITS CONTENT BEGINS. Every check above reads the
+      # SHAPE of the tree - which nodes, in what order, with or without an
+      # ERROR - and a tree-sitter grammar's deliverable is EXTENTS. A caption
+      # whose marker stopped one space early built the right nodes in the right
+      # order with no ERROR, and all of them stayed green.
+      - name: Marker separators are runs, and none of a run is content
+        run: npm run test:marker-separators
+
       - name: The vendored battery is still carve-grammars' copy
         run: npm run test:battery-drift
       - name: Build WASM grammar

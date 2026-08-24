@@ -2,27 +2,27 @@
 
 ((heading
   (marker) @_heading.marker) @markup.heading.1
-  (#eq? @_heading.marker "# "))
+  (#match? @_heading.marker "^# +$"))
 
 ((heading
   (marker) @_heading.marker) @markup.heading.2
-  (#eq? @_heading.marker "## "))
+  (#match? @_heading.marker "^## +$"))
 
 ((heading
   (marker) @_heading.marker) @markup.heading.3
-  (#eq? @_heading.marker "### "))
+  (#match? @_heading.marker "^### +$"))
 
 ((heading
   (marker) @_heading.marker) @markup.heading.4
-  (#eq? @_heading.marker "#### "))
+  (#match? @_heading.marker "^#### +$"))
 
 ((heading
   (marker) @_heading.marker) @markup.heading.5
-  (#eq? @_heading.marker "##### "))
+  (#match? @_heading.marker "^##### +$"))
 
 ((heading
   (marker) @_heading.marker) @markup.heading.6
-  (#eq? @_heading.marker "###### "))
+  (#match? @_heading.marker "^###### +$"))
 
 (thematic_break) @string.special
 

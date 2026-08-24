@@ -326,6 +326,34 @@ const CASES = [
         at: [0, 2],
         expect: 'punctuation.delimiter',
     },
+    /*
+     * MARKER SEPARATORS ARE RUNS (markup-carve/carve#1583 and #1587), read
+     * here as what an editor PAINTS. The extents themselves are asserted in
+     * scripts/marker-separators.mjs; these two rows are the consequence that
+     * reaches a user - a caption whose marker stopped one space early
+     * italicized the writer's column alignment along with the text.
+     */
+    {
+        name: "a caption's content is painted from past the separator run",
+        source: '![a](i.png)\n^   cap\n',
+        at: [1, 4],
+        expect: 'markup.italic',
+    },
+    {
+        name: 'and no part of that run is painted as content',
+        source: '![a](i.png)\n^   cap\n',
+        at: [1, 2],
+        expect: null,
+    },
+    {
+        // The heading level is resolved from the MARKER'S TEXT, so widening
+        // the marker to the whole run broke every `#eq?` in the file: `##   h`
+        // fell back to the generic `markup.heading` and lost its level.
+        name: "a heading's level survives a separator run",
+        source: '##   h\n',
+        at: [0, 0],
+        expect: 'markup.heading.2',
+    },
 ];
 
 const fails = [];
