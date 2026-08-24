@@ -2008,9 +2008,27 @@ module.exports = grammar({
         $._square_bracket_span_end,
       ),
 
+    // The `[` is IMMEDIATE. A full reference is `[text][label]` with the two
+    // bracket pairs touching: under `\n` and `\r\n` no spelling of a space, a
+    // tab or a line break has ever been allowed between them, and
+    // `collapsed_reference_link` already says so with its own
+    // `token.immediate("[]")`. A plain `"["` said it only by accident. A lone
+    // carriage return is this grammar's one EXTRA (see `extras` above), and an
+    // extra is skipped wherever a token can start - so between the `]` that
+    // closed the text and this `[` the whole blank line of a
+    //
+    //     [Apollo][moon]
+    //
+    //     [moon]: a.jpg
+    //
+    // written with lone carriage returns was skipped, and the label bound to
+    // the DEFINITION's bracket instead of its own. Marking the bracket
+    // immediate refuses the skip and costs nothing anywhere else: `\r` is the
+    // only extra there is, so this is the same adjacency the other two
+    // spellings already enforce.
     _link_label: ($) =>
       seq(
-        "[",
+        token.immediate("["),
         field("label", alias($._inline_single_line, $.link_label)),
         token.immediate("]"),
       ),

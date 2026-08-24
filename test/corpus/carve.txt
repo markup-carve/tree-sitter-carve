@@ -6159,3 +6159,104 @@ A heading's marker separator is a run, and none of it is content
       content: (content))
     content: (section_content
       (paragraph))))
+
+===============================================================================
+A lone carriage return does not fuse a full reference with the definition below it (tree-sitter-carve#262)
+;; The body of this test and of the three below it is written with LONE
+;; CARRIAGE RETURNS, so what looks like one line here is three. `newline` is
+;; `'\n' | '\r\n' | '\r'` (spec resources/grammar.ebnf) and the three
+;; spellings must build the same tree; scripts/line-terminators.mjs measures
+;; that over the whole spec corpus, and these pin the shape here, where the
+;; input is a reader's to see.
+;;
+;; A `\r` is this grammar's one EXTRA, and an extra is skipped wherever a
+;; token can start. `_link_label` opened with a plain `"["`, so between the
+;; `]` closing the description and the `[` opening the label the whole blank
+;; line was skipped, and the label bound to the DEFINITION's bracket three
+;; characters later: one paragraph, no definition, no image, and a
+;; `full_reference_link` that is in no spelling of the source.
+===============================================================================
+![Apollo][moon][moon]: a.jpg
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (full_reference_image
+      description: (image_description)
+      label: (link_label)))
+  (link_reference_definition
+    label: (link_label)
+    destination: (link_destination)))
+
+===============================================================================
+A lone carriage return does not fuse a full reference link with the definition below it (tree-sitter-carve#262)
+;; The image is not what failed, and neither was the reference resolving: a
+;; full reference LINK fused identically, and so did a definition whose label
+;; matches nothing in the paragraph above it.
+===============================================================================
+[Apollo][moon][other]: a.jpg
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (full_reference_link
+      text: (link_text)
+      label: (link_label)))
+  (link_reference_definition
+    label: (link_label)
+    destination: (link_destination)))
+
+===============================================================================
+A lone carriage return does not carry a full reference's label down a line (tree-sitter-carve#262)
+;; Not only across a BLANK line. A single lone `\r` between the two bracket
+;; pairs was skipped just the same. Under `\n` and `\r\n` this is a plain
+;; paragraph, because a full reference is `[text][label]` with the pairs
+;; touching, and under `\r` it has to be one too.
+===============================================================================
+[Apollo][moon]
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph))
+
+===============================================================================
+A collapsed reference is unaffected by a lone carriage return (tree-sitter-carve#262)
+;; The control that named the fix. `collapsed_reference_image` already wrote
+;; its bracket as `token.immediate("[]")`, so it never admitted the skip and
+;; split correctly all along - which is what made `_link_label` saying the
+;; same thing about its own `[` the whole change.
+===============================================================================
+![Apollo][][Apollo]: a.jpg
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (collapsed_reference_image
+      description: (image_description)))
+  (link_reference_definition
+    label: (link_label)
+    destination: (link_destination)))
+
+===============================================================================
+A full reference needs its bracket pairs to touch (tree-sitter-carve#262)
+;; The contract the immediate bracket enforces, in a spelling whose bytes a
+;; reader can see: no whitespace of any kind may sit between the `]` and the
+;; `[`. This held before the fix too - it is the rule the `\r` spelling was
+;; not being held to.
+===============================================================================
+[a][b]
+
+[a] [b]
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (full_reference_link
+      text: (link_text)
+      label: (link_label)))
+  (paragraph))
