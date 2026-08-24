@@ -189,6 +189,11 @@ typedef enum {
   // The `#` that CLOSES an editorial comment, the one a `}` follows.
   // Appended last for the same index reason as the tokens above it.
   COMMENT_HASH_END_MARKER,
+
+  // The `^` OF A CAPTION together with its whole separator run. Appended last
+  // for the same index reason as the tokens above it, and external because the
+  // decision needs the REST OF THE LINE - see `parse_caption_begin`.
+  CAPTION_BEGIN,
 } TokenType;
 
 // The different blocks in Carve that we track,
@@ -4217,7 +4222,17 @@ static bool parse_heading(Scanner *s, TSLexer *lexer,
       return false;
     }
 
-    advance(s, lexer); // Consume the ' '.
+    // A HEADING'S MARKER SEPARATOR IS A RUN, AND NONE OF IT IS CONTENT
+    // (carve#1587). `heading_first_line = heading_marker, space+,
+    // inline_content, newline`: every ASCII space after the hashes is
+    // separator and the first character that is not one BEGINS the heading, so
+    // `##<SP><SP>h` is the heading `h`, not `<SP>h`. `space = ' '`, so a TAB is
+    // content - `#<SP><TAB>x` keeps the tab, and `#<TAB>x` is no heading at
+    // all. Nothing has marked the token end yet, so the extra advances are free
+    // here and the zero-width BLOCK_CLOSE branches below stay zero-width.
+    while (lexer->lookahead == ' ') {
+      advance(s, lexer);
+    }
 
     if (valid_symbols[BLOCK_CLOSE] && top_heading &&
         s->open_inline->size == 0) {
@@ -4277,6 +4292,56 @@ static bool parse_heading(Scanner *s, TSLexer *lexer,
   }
 
   return false;
+}
+
+/// A CAPTION'S MARKER SEPARATOR IS A RUN, AND NONE OF IT IS CONTENT
+/// (carve#1583, corpus
+/// `404-a-caption-s-marker-separator-is-a-run-and-none-of-it-is-content`).
+///
+/// `caption = '^', space+, inline_content, newline`, so every ASCII space after
+/// the caret is separator and the first character that is not one begins the
+/// caption. `space = ' '`, so a TAB is content: `^<SP><TAB>cap` captions
+/// `<TAB>cap`, and `^<TAB>cap` opens no caption at all.
+///
+/// MARKER REQUIRES CONTENT (PART 2) applies after the run as well: a caret, its
+/// separator and nothing but whitespace opens NO caption, and the line is
+/// ordinary paragraph text. That is why the marker is external. An internal
+/// token is chosen by longest match, so once `^` and the run are taken there is
+/// no lexing left that reads the caret as text - measured on
+/// tree-sitter-carve#257, requiring a non-blank first content character turned
+/// the one ERROR into two rather than into a paragraph. Refusing here happens
+/// before anything is committed, so the line falls back cleanly.
+static bool parse_caption_begin(Scanner *s, TSLexer *lexer) {
+  if (lexer->lookahead != '^') {
+    return false;
+  }
+  // THE MARKER COLUMN, the same rule the heading marker follows: a `^` is only
+  // a caption marker where it sits at its block's content column with no extra
+  // leading whitespace. Corpus `158-indented-image-and-caption-stay-literal`
+  // pins both halves - ` ![a](a.jpg)` + ` ^ Figure 1: moon` is ONE paragraph
+  // ending in the literal text `^ Figure 1: moon`, while the flush-left
+  // spelling of the same two lines is a figure with a caption.
+  uint32_t marker_column = line_column(s, lexer);
+  if (has_extra_indent(s) && s->block_quote_level == 0 &&
+      !at_block_opener_margin(s, marker_column)) {
+    return false;
+  }
+  advance(s, lexer);
+  if (lexer->lookahead != ' ') {
+    return false;
+  }
+  // ALL of the run, and only U+0020: a tab ends it and belongs to the content.
+  while (lexer->lookahead == ' ') {
+    advance(s, lexer);
+  }
+  // Pin the token at the end of the run BEFORE the content probe, so the
+  // scratch advances it makes over trailing blanks cannot extend the marker.
+  lexer->mark_end(lexer);
+  if (!marker_line_has_content(s, lexer)) {
+    return false;
+  }
+  lexer->result_symbol = CAPTION_BEGIN;
+  return true;
 }
 
 static bool parse_footnote_end(Scanner *s, TSLexer *lexer) {
@@ -6839,6 +6904,19 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
     return true;
   }
 
+  // A STANDALONE caption's `^`, AFTER the table caption's. Both read a caret
+  // at a block's start, and a caret that follows a table is the TABLE's
+  // caption: offered first, this took it and the official lists-and-tables
+  // corpus case built a bare `caption` where a `table_caption` belongs. It sits
+  // after the span parsers for the same reason `_inline_note_begin` does - a
+  // refusal here has already advanced past the caret, so it must not run before
+  // a reader that needs that position. Nothing above it can claim this shape
+  // anyway: a braced superscript closes on `^}` and a note opens on `^[`,
+  // neither of which is the `^` plus SPACE this reads.
+  if (valid_symbols[CAPTION_BEGIN] && parse_caption_begin(s, lexer)) {
+    return true;
+  }
+
   // An open verbatim-family run inside a table ROW is closed by the row's
   // closing pipe and has no closer of its own - the same implicit close a
   // blank line performs for a paragraph, taken at the position the row ends
@@ -7133,6 +7211,8 @@ static char *token_type_s(TokenType t) {
     return "COMMENT_BODY_HASH";
   case COMMENT_HASH_END_MARKER:
     return "COMMENT_HASH_END_MARKER";
+  case CAPTION_BEGIN:
+    return "CAPTION_BEGIN";
   case COMMENT_END_MARKER:
     return "COMMENT_END_MARKER";
   case COMMENT_CLOSE:

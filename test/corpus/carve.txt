@@ -6082,3 +6082,80 @@ z
         (block_quote_marker)
         (div_marker_end))))
   (paragraph))
+
+===============================================================================
+A caption's marker separator is a run, and none of it is content
+;; markup-carve/carve#1583. READ WHAT THIS CAN AND CANNOT SEE. A corpus test
+;; compares node types and fields, never extents, so the first document here
+;; parses to exactly this tree whether the run is marker or content - it pins
+;; the SHAPE and nothing about the boundary. The boundary is asserted in
+;; scripts/marker-separators.mjs, which is the only check in this repository
+;; that reads one; measured by reverting the fix, that script failed and this
+;; case did not.
+;;
+;; What the tree does pin is the marker's reach: `^` followed by a TAB is not a
+;; marker, and neither is an INDENTED caret (corpus 158). The second held before
+;; this rule landed; the third did not survive the marker's move to the external
+;; scanner on its own, and is here because the scanner has no column rule unless
+;; one is written.
+;;
+;; The remaining half - a caret whose separator run reaches the end of the line
+;; opens no caption - cannot live in this file at all: it needs a line ending in
+;; spaces, and .editorconfig trims trailing whitespace from every file in the
+;; repository. It is pinned twice instead, by the un-skipped corpus document
+;; 404-...-2 and by a string literal in scripts/marker-separators.mjs.
+===============================================================================
+
+![a](i.png)
+^   cap
+
+![a](i.png)
+^	cap
+
+ ![a](i.png)
+ ^ cap
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (inline_image
+      description: (image_description)
+      destination: (inline_link_destination)))
+  (caption
+    (caption_marker)
+    content: (caption_content))
+  (paragraph
+    (inline_image
+      description: (image_description)
+      destination: (inline_link_destination)))
+  (paragraph
+    (inline_image
+      description: (image_description)
+      destination: (inline_link_destination)))
+  (paragraph))
+
+===============================================================================
+A heading's marker separator is a run, and none of it is content
+;; markup-carve/carve#1587, the same rule at the other marker, and the same
+;; reading limit: a heading whose separator is a run parses to this tree under
+;; both the old rule and the new one, so what is pinned here is that the run
+;; does not DISQUALIFY the marker, not where the marker ends. The extent is in
+;; scripts/marker-separators.mjs. A TAB in the separator's place opens no
+;; heading, because `space` is U+0020 and the run ends at the first character
+;; that is not one.
+===============================================================================
+
+##   h
+
+#	x
+
+-------------------------------------------------------------------------------
+
+(document
+  (section
+    heading: (heading
+      marker: (marker)
+      content: (content))
+    content: (section_content
+      (paragraph))))

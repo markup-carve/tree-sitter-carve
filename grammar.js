@@ -1296,9 +1296,25 @@ module.exports = grammar({
     //
     // Table captions remain handled by the existing table_caption rule via
     // the external scanner — this caption block is the standalone form.
+    // A CAPTION'S MARKER SEPARATOR IS A RUN, AND NONE OF IT IS CONTENT
+    // (carve#1583). `caption = '^', space+, inline_content, newline`, so every
+    // ASCII space after the caret is separator and the first character that is
+    // not one begins the caption: `^` + three spaces + `cap` captions `cap`,
+    // not `<SP><SP>cap`. `space = ' '`, so a TAB is content - `^<SP><TAB>cap`
+    // keeps the tab, and `^<TAB>cap` opens no caption at all.
+    //
+    // The marker is EXTERNAL because MARKER REQUIRES CONTENT (PART 2) applies
+    // after the run as well: a caret, its separator and nothing but whitespace
+    // opens no caption and the line is ordinary paragraph text. An internal
+    // token cannot express that - it is chosen by longest match, so once `^`
+    // and the run are taken there is no lexing left that reads the caret as
+    // text, and a content pattern that then refuses only turns one ERROR into
+    // two (measured, tree-sitter-carve#257). The scanner refuses BEFORE
+    // anything is committed, which is the same reason `_inline_note_begin` is
+    // external.
     caption: ($) =>
       seq(
-        alias(token(seq("^", " ")), $.caption_marker),
+        alias($._caption_begin, $.caption_marker),
         field("content", alias(/[^\r\n]+/, $.caption_content)),
         $._newline,
       ),
@@ -2419,5 +2435,12 @@ module.exports = grammar({
     // The `#` that closes an editorial comment, the one a `}` follows.
     // Appended last for the same index reason.
     $._comment_hash_end_marker,
+
+    // The `^` OF A CAPTION together with its whole separator run. Appended
+    // last for the same index reason as the tokens above it, and external
+    // because the decision needs the REST OF THE LINE: a caret whose run
+    // reaches the end of the line opens no caption - see
+    // `parse_caption_begin` in src/scanner.c.
+    $._caption_begin,
   ],
 });

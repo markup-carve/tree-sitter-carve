@@ -3507,20 +3507,8 @@
         {
           "type": "ALIAS",
           "content": {
-            "type": "TOKEN",
-            "content": {
-              "type": "SEQ",
-              "members": [
-                {
-                  "type": "STRING",
-                  "value": "^"
-                },
-                {
-                  "type": "STRING",
-                  "value": " "
-                }
-              ]
-            }
+            "type": "SYMBOL",
+            "name": "_caption_begin"
           },
           "named": true,
           "value": "caption_marker"
@@ -8270,6 +8258,10 @@
     {
       "type": "SYMBOL",
       "name": "_comment_hash_end_marker"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_caption_begin"
     }
   ],
   "inline": [],
