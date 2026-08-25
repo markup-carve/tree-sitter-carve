@@ -6333,3 +6333,217 @@ y
 
 (document
   (paragraph))
+
+===============================================================================
+A lone carriage return does not carry a reference label onto the next line (tree-sitter-carve#265)
+;; The body of this test and of the four below it is written with LONE
+;; CARRIAGE RETURNS, so what looks like one line here is three.
+;;
+;; A bracketed construct's IDENTIFIER is written on one line, and the two
+;; rules that carry one say so by admitting no terminator:
+;; `_inline_single_line` is a `repeat1` with no `_newline_inline` among its
+;; alternatives, and `_inline_link_url`'s regex excludes both `\r` and `\n`.
+;; Neither says anything about the gap BETWEEN two repetitions, and a lone
+;; `\r` is this grammar's one EXTRA, skipped wherever a token can start -
+;; which a repetition boundary is. So the label ran on to the next line and
+;; the reference formed across the wrap, where `\n` and `\r\n` both leave a
+;; bare paragraph and the definition below it.
+===============================================================================
+[t][rx][r x]: /u
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph)
+  (link_reference_definition
+    label: (link_label)
+    destination: (link_destination)))
+
+===============================================================================
+A lone carriage return does not carry an image's reference label onto the next line (tree-sitter-carve#265)
+;; The image spelling of the same label. `full_reference_image` reaches its
+;; label through the same `_link_label`, so it wrapped identically.
+===============================================================================
+![a][rx]
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph))
+
+===============================================================================
+A lone carriage return does not carry an inline destination onto the next line (tree-sitter-carve#265)
+;; The other identifier, and the other rule. Here the wrap is inside
+;; `_inline_link_url` rather than inside a label, and the `\r` was skipped
+;; between two repetitions of its regex.
+===============================================================================
+![a](/iq)
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph))
+
+===============================================================================
+A lone carriage return at either edge of an inline destination (tree-sitter-carve#265)
+;; The destination's two other seams, which a `token` around the url would
+;; not have reached: the skip between the `(` and the first character of the
+;; url, and the skip between the last one and the `)`. Both are the same
+;; extra taken at the same kind of boundary, and under `\n` both are a bare
+;; paragraph too.
+===============================================================================
+![a](/i)![b](q)
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph)
+  (paragraph))
+
+===============================================================================
+An identifier that closes on its line is unaffected by lone carriage returns (tree-sitter-carve#265)
+;; The control. The refusal is asked only of an identifier that does NOT
+;; reach its closer before a lone carriage return, so a label written on one
+;; line still resolves in a document whose terminators are all `\r`.
+===============================================================================
+[t][r x][r x]: /u
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (full_reference_link
+      text: (link_text)
+      label: (link_label)))
+  (link_reference_definition
+    label: (link_label)
+    destination: (link_destination)))
+
+===============================================================================
+A lone carriage return does not carry a link's inline destination onto the next line (tree-sitter-carve#265)
+;; The link spelling of the destination above, and the one that was recorded
+;; under the COLUMN PROBE reason rather than this mechanism: nothing in
+;; `[t](url` / `more)` reads a column, and the fix for the four documents that
+;; were filed correctly closed it without being aimed at it. It is the same
+;; misfiling tree-sitter-carve#262 reported for the label, one entry further
+;; down the same ledger.
+===============================================================================
+[t](urlmore)
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph))
+
+===============================================================================
+A lone carriage return does not bind an inline destination to the bracket above it (tree-sitter-carve#265)
+;; The ADJACENCY seam, for the `(` this time. tree-sitter-carve#262 closed it
+;; for the `[` of a reference label and left the `(` of an inline destination
+;; open, so a lone carriage return between the `]` and the `(` was still
+;; skipped as an extra and the next line's parentheses became this bracket's
+;; destination. `[t]` with a SPACE before `(/u)` was already a paragraph, and
+;; so is `[t]` on one line with `(/u)` on the next. The scanner refuses it
+;; where it already refuses the same thing for a `{`.
+===============================================================================
+[t](/u)
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph))
+
+===============================================================================
+An identifier with a nested pair still resolves on one line (tree-sitter-carve#265)
+;; A NESTED PAIR IS NOT REFUSED. A destination's reader stops at the FIRST
+;; closer rather than counting pairs, and a label holding a bracket is not
+;; plain text and so is never refused at all. Both shapes are written on one
+;; line here, in a document whose terminators are all lone carriage returns,
+;; and both still build their construct.
+===============================================================================
+[t][a[b]{.x}c][t](a(b)c)
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (full_reference_link
+      text: (link_text)
+      label: (link_label
+        (span
+          content: (content)
+          attribute: (inline_attribute
+            (args
+              (class)))))))
+  (paragraph
+    (inline_link
+      text: (link_text)
+      destination: (inline_link_destination))))
+
+===============================================================================
+A label that is not plain text is left reading as it did (tree-sitter-carve#265)
+;; THE BOUND ON THE REFUSAL, stated as a document. A label is inline CONTENT,
+;; and a span's content admits a line break the label's own level does not -
+;; `[t][a *b` / `c* d]` resolves under `\n` with the break inside the strong
+;; span. Telling that from a wrap at the label's own level is a question for
+;; the inline grammar, so the scanner refuses only a label in whose text up to
+;; the carriage return no character is part of an inline delimiter. Everything
+;; richer is accepted, and this label - which holds a verbatim, and closes on
+;; its own line anyway - still resolves against its definition.
+===============================================================================
+[t][a `]` c][a `]` c]: /u
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (full_reference_link
+      text: (link_text)
+      label: (link_label
+        (verbatim
+          begin_marker: (verbatim_marker_begin)
+          content: (content)
+          end_marker: (verbatim_marker_end)))))
+  (link_reference_definition
+    label: (link_label
+      (verbatim
+        begin_marker: (verbatim_marker_begin)
+        content: (content)
+        end_marker: (verbatim_marker_end)))
+    destination: (link_destination)))
+
+===============================================================================
+A destination whose nested pair closes on the next line is a link in every spelling (tree-sitter-carve#265)
+;; The shape that decides the reader's shape. Counting nested pairs was written
+;; first, and this is what it broke: `[t](/a(b)c` / `SECOND)` builds an
+;; inline_link under `\n` and `\r\n` too, so a reader that walked past the
+;; inner `)` to the outer one met the carriage return and refused a construct
+;; the other two spellings keep - a divergence where there had been none.
+;; Stopping at the FIRST closer leaves this reading untouched.
+===============================================================================
+[t](/a(b)cSECOND)
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (inline_link
+      text: (link_text)
+      destination: (inline_link_destination))))
+
+===============================================================================
+A label of ordinary punctuation is still plain text (tree-sitter-carve#265)
+;; The other side of the bound. A hyphen is not a delimiter on its own - `{-`
+;; is, and its brace is what the reader looks for - so `foo-bar` opens nothing
+;; and the wrap is the label's own. The same holds for `+`, `,`, `:`, `^`, `!`,
+;; `$`, `%` and `#`, each of which reaches its construct only through a brace,
+;; a bracket or a tick.
+===============================================================================
+[t][foo-barbaz][foo-bar baz]: /u
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph)
+  (link_reference_definition
+    label: (link_label)
+    destination: (link_destination)))
