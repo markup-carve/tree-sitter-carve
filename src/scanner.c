@@ -6353,10 +6353,21 @@ static bool mark_span_begin(Scanner *s, TSLexer *lexer,
     } else if (inline_type == CURLY_BRACKET_SPAN) {
       s->state &= ~STATE_BRACKET_STARTS_SPAN;
     }
-    // The `{` is not adjacent to the `]` it would qualify - a carriage return
-    // sits between them, skipped as an extra. Refuse the attribute list so the
+    // The `{` or the `(` is not adjacent to the `]` it would qualify - a
+    // carriage return sits between them, skipped as an extra. Refuse it so the
     // brackets stay literal text and the CR keeps its line break.
-    if (inline_type == CURLY_BRACKET_SPAN && (s->state & STATE_SPAN_END_AT_CR)) {
+    //
+    // The `(` was added with tree-sitter-carve#265. An inline destination binds
+    // to the bracket it TOUCHES - `[t] (/u)` is a paragraph, and so is `[t]` on
+    // one line with `(/u)` on the next - and the attribute list's rule was
+    // already exactly this one. Said in `grammar.js` instead, as
+    // `token.immediate("(")`, it works and costs more than it is worth: the
+    // immediate token is a SEPARATE symbol from the plain `(` the fallback
+    // spells, so `queries/highlights.scm` stops resolving
+    // `(inline_link_destination ["(" ")"])` and `tree-sitter test` reports an
+    // impossible pattern.
+    if ((inline_type == CURLY_BRACKET_SPAN || inline_type == PARENS_SPAN) &&
+        (s->state & STATE_SPAN_END_AT_CR)) {
       s->state &= ~STATE_SPAN_END_AT_CR;
       return false;
     }
@@ -6365,6 +6376,165 @@ static bool mark_span_begin(Scanner *s, TSLexer *lexer,
     push_inline(s, inline_type, 0);
     return true;
   }
+}
+
+/// Can this character be part of an inline DELIMITER?
+///
+/// Read by the label half of `identifier_after_bracket_stays_on_one_line`, which
+/// may only refuse a wrapped label when it is certain the wrap is at the label's
+/// own level. Every character here opens, closes or escapes something whose
+/// content is `_inline` and may therefore hold a line break of its own: the bare
+/// span markers `_ * ~ = /`, the verbatim tick, the brace that opens every
+/// braced form, the brackets and parentheses, the autolink's angles, and the
+/// backslash that escapes any of them. Anything else - a letter, a digit, a
+/// space, a tab, ordinary punctuation, a character outside ASCII - is content
+/// and nothing more.
+///
+/// The BRACED-ONLY markers are absent on purpose. `{^ ^}`, `{, ,}`, `{+ +}`,
+/// `{- -}`, `{: :}` and the rest reach their content only through a brace, and
+/// `^[`, `![`, `` !` ``, `$` ` `` and `{%` reach theirs only through a bracket, a
+/// tick or a brace. Every one of those characters is already here, so a label
+/// holding `-`, `+`, `,`, `:`, `^`, `!`, `$`, `%` or `#` and nothing else from
+/// this list cannot be holding a construct at all - which is what lets
+/// `[t][foo-bar` / `baz]` be refused.
+///
+/// The list is deliberately GENEROUS. A character wrongly called a delimiter
+/// costs a refusal this reader could have made; a character wrongly called
+/// content costs a construct the other two spellings of `newline` keep, which is
+/// the defect being fixed pointing the other way.
+static bool label_char_opens_nothing(int32_t c) {
+  switch (c) {
+  case '_':
+  case '*':
+  case '~':
+  case '=':
+  case '/':
+  case '`':
+  case '{':
+  case '}':
+  case '[':
+  case ']':
+  case '(':
+  case ')':
+  case '<':
+  case '>':
+  case '\\':
+    return false;
+  default:
+    // Control characters are not content either: the ones this grammar models
+    // have their own tokens, and refusing to call them plain only ever declines
+    // to refuse.
+    return c >= ' ' || c == '\t';
+  }
+}
+
+/// A BRACKETED CONSTRUCT'S IDENTIFIER STAYS ON ONE LINE, asked at the `]` the
+/// identifier follows, with that `]` already consumed.
+///
+/// `[text][label]` and `[text](destination)` are each written with the
+/// identifier on ONE line, and the two rules that carry one say so by admitting
+/// no terminator: `_inline_single_line` is a `repeat1` with no
+/// `_newline_inline` among its alternatives, and `_inline_link_url` is a
+/// `repeat1` over a regex that excludes both '\r' and '\n'. Neither says
+/// anything about the gap BETWEEN two repetitions, and a lone '\r' is this
+/// grammar's one EXTRA, skipped wherever a token can start - which a repetition
+/// boundary is. So under lone carriage returns the identifier ran on to the next
+/// line and the construct formed across the wrap: `[t][r` / `x]` built a
+/// full_reference_link and `![a](/i` / `q)` an inline_image, where both are a
+/// bare paragraph under '\n' (tree-sitter-carve#265).
+///
+/// `token.immediate` is the wrong instrument for it. That closed the ADJACENCY
+/// between `]` and `[` (tree-sitter-carve#262), where two tokens must TOUCH and
+/// an immediate token refuses the extra between them; here the skip to refuse
+/// sits in the MIDDLE of an arbitrary repetition, with no fixed join to attach
+/// it to. Saying it in `grammar.js` at all was tried and does not work either: a
+/// zero-width check between the label's `[` and its content re-shapes the state
+/// the parser is in when it reads that `[`, and `see [text][^]` - a caret label,
+/// which is a reference label and not an empty footnote - lexed `[^` there and
+/// stopped resolving.
+///
+/// So the question is asked one character EARLIER, at the `]` that closes the
+/// text or the description, where no grammar rule moves and the scanner can see
+/// the character the grammar cannot. It is the same place the sibling case is
+/// already decided: STATE_SPAN_END_AT_CR, just above, is this rule for a `{`
+/// rather than a `[` or a `(`. Refusing the `]` leaves the whole bracket run to
+/// the fallback, which is what '\n' and '\r\n' already build.
+///
+/// ONLY '\r' refuses. A '\n', a '\r\n' and end-of-input all ACCEPT and leave the
+/// verdict where it already is - with the rules above, which stop at those on
+/// their own. This is not a second opinion on what they decide; it is the one
+/// terminator they cannot be shown.
+///
+/// THE TWO IDENTIFIERS ARE READ DIFFERENTLY, because only one of them is flat.
+///
+/// A DESTINATION is `_inline_link_url`, a regex over characters, so the first
+/// unescaped `)` ends it and nothing in between can hold a line break of its
+/// own. Nested pairs are deliberately NOT counted: `[t](/a(b)c` / `SECOND)`
+/// builds an inline_link under every spelling of `newline`, so a reader that
+/// walked past the inner `)` to the outer one would meet the carriage return and
+/// refuse a construct the other two spellings keep.
+///
+/// A LABEL is inline CONTENT, and that changes the question. `_inline_single_line`
+/// forbids a terminator at its own level and says nothing about the levels below
+/// it: a span's content is `_inline`, which admits one. `[t][a *b` / `c* d]`
+/// therefore resolves under '\n' with the break inside the strong span, and so
+/// do an inline note, a braced comment and an editorial comment. Telling a wrap
+/// at the label's own level from a wrap inside something it contains is a
+/// question for the inline grammar, and a lexical scan that guessed at it
+/// refused four such labels that '\n' and '\r\n' both keep.
+///
+/// So the label is refused only where the answer needs no guessing: when no
+/// character from the label's `[` to the carriage return is part of an inline
+/// DELIMITER - see `label_char_opens_nothing`. With none of them present there
+/// is no level below the label's own for the break to belong to, and the wrap is
+/// the label's. That is what the corpus asks - `[t][r` / `x]`, `![a][r` / `x]` -
+/// and everything richer is left reading exactly as it did.
+///
+/// WHAT THAT LEAVES. A delimiter DECLINES the refusal wherever it stands, so a
+/// construct that opened and CLOSED before the break declines it too: the wrap
+/// in `[t][a *b* c` / `d]` is the label's own, and this reader will not say so.
+/// The same holds for a label whose nested bracket pair wraps the line. Both are
+/// lone-carriage-return divergences of exactly the shape this function exists to
+/// refuse, and neither is in the spec corpus. Closing them needs the reader to
+/// know which constructs are OPEN at the break, which is the inline grammar's
+/// question - answering it here would mean keeping a second copy of that
+/// grammar in a lookahead, and a second copy drifts from the first.
+static bool identifier_after_bracket_stays_on_one_line(Scanner *s,
+                                                       TSLexer *lexer) {
+  char closer;
+  if (lexer->lookahead == '[') {
+    closer = ']';
+  } else if (lexer->lookahead == '(') {
+    closer = ')';
+  } else {
+    // Nothing that has to stay on one line follows this bracket.
+    return true;
+  }
+  advance(s, lexer);
+
+  bool plain = true;
+  while (!lexer->eof(lexer)) {
+    if (lexer->lookahead == '\r') {
+      return closer == ']' && !plain;
+    }
+    if (lexer->lookahead == '\n' || lexer->lookahead == closer) {
+      return true;
+    }
+    if (closer == ']' && !label_char_opens_nothing(lexer->lookahead)) {
+      plain = false;
+    }
+    if (lexer->lookahead == '\\') {
+      advance(s, lexer);
+      if (lexer->lookahead == '\r') {
+        return closer == ']' && !plain;
+      }
+      if (lexer->eof(lexer) || lexer->lookahead == '\n') {
+        return true;
+      }
+    }
+    advance(s, lexer);
+  }
+  return true;
 }
 
 // Parse a span ending token, either `_` or `_}`.
@@ -6402,6 +6572,14 @@ static bool parse_span_end(Scanner *s, TSLexer *lexer, InlineType element,
     s->state |= STATE_SPAN_END_AT_CR;
   } else {
     s->state &= ~STATE_SPAN_END_AT_CR;
+  }
+  // The identifier that FOLLOWS this bracket, when there is one, has to close
+  // on this line - see `identifier_after_bracket_stays_on_one_line`. Read after
+  // the flag above, which needs the character immediately behind the `]` and
+  // this reader moves past it.
+  if (element == SQUARE_BRACKET_SPAN &&
+      !identifier_after_bracket_stays_on_one_line(s, lexer)) {
+    return false;
   }
   remove_inline(s);
   return true;
@@ -6913,6 +7091,23 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
   if (valid_symbols[INLINE_NOTE_MARK_BEGIN] &&
       parse_inline_note_mark_begin(s, lexer, valid_symbols)) {
     return true;
+  }
+  // The square-bracket span's END, read here rather than through `parse_span`
+  // below, because a REFUSAL has to end the scan. `parse_span_end` reads past
+  // the `]` to ask whether the identifier behind it stays on one line, and a
+  // probe that read and then declined would leave every probe after this one in
+  // the same call starting from where it stopped. Under these three conditions
+  // `parse_span_end` decides both ways and never falls through: the marker
+  // scan for this span is `lookahead == ']'`, which is already established.
+  // Returning false hands the `]` to the internal lexer, which takes it as
+  // text - the fallback reading, and the one the other two spellings of
+  // `newline` already produce.
+  if (valid_symbols[SQUARE_BRACKET_SPAN_END] && lexer->lookahead == ']') {
+    Inline *bracket = peek_inline(s);
+    if (bracket && bracket->type == SQUARE_BRACKET_SPAN && bracket->data == 0) {
+      return parse_span_end(s, lexer, SQUARE_BRACKET_SPAN,
+                            SQUARE_BRACKET_SPAN_END);
+    }
   }
   if (parse_span(s, lexer, valid_symbols, SQUARE_BRACKET_SPAN)) {
     return true;
