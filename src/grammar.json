@@ -2318,6 +2318,24 @@
                   "members": [
                     {
                       "type": "FIELD",
+                      "name": "block_quote_fence_marker",
+                      "content": {
+                        "type": "ALIAS",
+                        "content": {
+                          "type": "STRING",
+                          "value": ">"
+                        },
+                        "named": true,
+                        "value": "block_quote_fence_marker"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "type": "SEQ",
+                  "members": [
+                    {
+                      "type": "FIELD",
                       "name": "local_hard_break_marker",
                       "content": {
                         "type": "ALIAS",

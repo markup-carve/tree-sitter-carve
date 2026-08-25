@@ -1454,14 +1454,18 @@ static bool colon_fence_tail_opens_block(Scanner *s, TSLexer *lexer, bool bare,
     }
     return at_line_end(lexer) || lexer->eof(lexer);
   }
-  bool named = c == '|' || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
-               c == '_';
+  bool named = c == '|' || c == '>' || (c >= 'A' && c <= 'Z') ||
+               (c >= 'a' && c <= 'z') || c == '_';
   if (!named || !spaced) {
     return false;
   }
   // The line block takes its bar and nothing else: `::: | x` is a paragraph in
-  // every engine (`line_block_open = colon_fence:open, space, "|"`).
-  if (c == '|') {
+  // every engine (`line_block_open = colon_fence:open, space, "|"`). The fenced
+  // BLOCK QUOTE is the same shape one character over - `quote_block_open =
+  // colon_fence:open, space, ">"` (markup-carve/carve#1718) - so it takes the
+  // same separator and the same empty tail, and `::: > x` is a paragraph for
+  // the same reason `::: | x` is.
+  if (c == '|' || c == '>') {
     advance(s, lexer);
     return colon_fence_tail_is_only_trailing_whitespace(s, lexer);
   }

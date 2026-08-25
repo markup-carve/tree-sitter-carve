@@ -1008,6 +1008,16 @@
     "type": "div",
     "named": true,
     "fields": {
+      "block_quote_fence_marker": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "block_quote_fence_marker",
+            "named": true
+          }
+        ]
+      },
       "content": {
         "multiple": false,
         "required": false,
@@ -4238,6 +4248,10 @@
   },
   {
     "type": "backslash_escape",
+    "named": true
+  },
+  {
+    "type": "block_quote_fence_marker",
     "named": true
   },
   {
