@@ -807,6 +807,24 @@ module.exports = grammar({
             // Line block: `::: |` (the separator space is required before the
             // bar, and enforced there).
             seq(field("line_block_marker", alias("|", $.line_block_marker))),
+            // Fenced block quote: `::: >` (grammar.ebnf `quote_block_open =
+            // colon_fence:open, space, ">"`, markup-carve/carve#1718). The
+            // third member of the sigil family beside the bar and the
+            // backslash, and modeled exactly as they are: the separator space
+            // is required and the marker has to be the last thing on the line,
+            // both enforced in `colon_fence_tail_opens_block`.
+            //
+            // The marker is NAMED for the reason the bar and the backslash are
+            // (markup-carve/carve-grammars#311): the token that selects the
+            // container is the construct's name, and without it a fenced quote
+            // and a plain div differ only by the width of `div_marker_begin`,
+            // which no query and no consumer can read.
+            seq(
+              field(
+                "block_quote_fence_marker",
+                alias(">", $.block_quote_fence_marker),
+              ),
+            ),
             // Local hard-break block: `::: \` (grammar.ebnf
             // `local_hard_break_block_open = colon_fence:open, space,
             // backslash`). The separator space is required and the backslash

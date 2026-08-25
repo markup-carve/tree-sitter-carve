@@ -6260,3 +6260,76 @@ A full reference needs its bracket pairs to touch (tree-sitter-carve#262)
       text: (link_text)
       label: (link_label)))
   (paragraph))
+
+===============================================================================
+A fenced block quote is the colon fence's third sigil (markup-carve/carve#1718)
+;; `quote_block_open = colon_fence:open, space, ">"` - the same shape as the
+;; line block one character over, so the marker is NAMED for the same reason:
+;; the token that selects the container is the construct's name, and without it
+;; a fenced quote and a plain div differ only by the width of
+;; `div_marker_begin`, which no query and no consumer can read.
+===============================================================================
+::: >
+Notes:
+
+- ship the parser
+:::
+
+-------------------------------------------------------------------------------
+
+(document
+  (div
+    (div_marker_begin)
+    block_quote_fence_marker: (block_quote_fence_marker)
+    content: (content
+      (paragraph)
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (paragraph)))))
+    (div_marker_end)))
+
+===============================================================================
+A fenced block quote nests in itself at constant width
+;; A typed opener is never bare and only a bare equal-length line closes, so
+;; re-quoting is prepend-and-append and nothing already inside is rewritten.
+===============================================================================
+::: >
+Carol
+::: >
+Bob
+:::
+:::
+
+-------------------------------------------------------------------------------
+
+(document
+  (div
+    (div_marker_begin)
+    block_quote_fence_marker: (block_quote_fence_marker)
+    content: (content
+      (paragraph)
+      (div
+        (div_marker_begin)
+        block_quote_fence_marker: (block_quote_fence_marker)
+        content: (content
+          (paragraph))
+        (div_marker_end)))
+    (div_marker_end)))
+
+===============================================================================
+A fenced block quote takes its marker and nothing else
+;; The separator is a space and the marker is the last thing on the line, both
+;; the line block's rules. A glued marker, a tab-separated one and a trailing
+;; word each leave the line as paragraph text - measured in carve-js, carve-php
+;; and carve-rs alike.
+===============================================================================
+::: > x
+y
+:::
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph))
