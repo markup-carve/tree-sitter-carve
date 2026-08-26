@@ -417,7 +417,7 @@ module.exports = grammar({
     // A definition list is its own node, not a `list`: it renders `<dl>` and
     // its items are `<dt>`/`<dd>`, so a consumer that highlights or folds lists
     // wants to tell them apart. It holds TERMS (`:: t`) and DESCRIPTIONS
-    // (`:  d`) as sibling items, because the language lets either stand alone:
+    // (`: d`, with one canonical separator space) as sibling items, because the language lets either stand alone:
     // a term with no description is a `<dl>` holding one `<dt>`, and a run of
     // terms shares the description that follows them (corpus
     // 25-definition-lists).

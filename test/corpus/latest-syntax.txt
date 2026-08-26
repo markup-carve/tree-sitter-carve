@@ -1,0 +1,41 @@
+==================
+Delimited comments stay inert inside prose and strong content
+==================
+
+Prose flows {% a delimited comment %} around a hidden note.
+
+Even *bo{% hidden %}ld* stays one strong span.
+
+---
+
+(document
+  (paragraph
+    (braced_comment
+      content: (content)))
+  (paragraph
+    (strong
+      begin_marker: (strong_begin)
+      content: (content
+        attribute: (inline_attribute
+          (args
+            (comment
+              content: (content)))))
+      end_marker: (strong_end))))
+
+==================
+A definition description takes one canonical space
+==================
+
+:: x
+: y
+
+---
+
+(document
+  (definition_list
+    (list_item
+      marker: (list_marker_definition)
+      term: (term))
+    (list_item
+      marker: (list_marker_description)
+      definition: (definition))))

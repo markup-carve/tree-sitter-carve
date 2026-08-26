@@ -29,6 +29,8 @@ jobs:
         run: npm test
       - name: Coverage matrix and shared-corpus conformance
         run: npm run test:corpus
+      - name: Divergence reasons describe their documents
+        run: npm run test:reason-predicates
 
       # The shape-level counterpart to corpus conformance. The corpus checks
       # whole documents the spec ships; the battery checks the one-line forms
@@ -77,6 +79,9 @@ jobs:
       - name: Nesting depth through the Node binding
         run: npm run test:nesting-depth
 
+      - name: Scanner serialization boundary
+        run: npm run test:scanner-serialization
+
       - name: The vendored battery is still carve-grammars' copy
         run: npm run test:battery-drift
       - name: Build WASM grammar
@@ -91,6 +96,26 @@ jobs:
           NODE
       - name: Node binding agrees with the CLI over the corpus
         run: npm run test:binding-parity
+
+  address-sanitizer:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        optimization: [2, 3]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Parse the corpus and deep nesting with ASAN at -O${{ matrix.optimization }}
+        env:
+          ASAN_OPTIMIZATION: ${{ matrix.optimization }}
+        run: npm run test:asan
 
   rust:
     runs-on: ubuntu-latest
