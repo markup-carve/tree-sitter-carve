@@ -31,7 +31,10 @@
     "test:highlights": "node scripts/highlight-captures.mjs",
     "test:binding-parity": "node scripts/binding-parity.mjs",
     "test:marker-separators": "node scripts/marker-separators.mjs",
-    "test:nesting-depth": "node scripts/nesting-depth.mjs"
+    "test:nesting-depth": "node scripts/nesting-depth.mjs",
+    "test:scanner-serialization": "node scripts/scanner-serialization.mjs",
+    "test:asan": "node scripts/asan.mjs",
+    "test:reason-predicates": "node --test tests/reason-predicates.test.mjs"
   },
   "author": "",
   "license": "MIT",

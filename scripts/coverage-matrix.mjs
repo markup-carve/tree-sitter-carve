@@ -14,6 +14,7 @@
 
 import { readFileSync, readdirSync } from 'node:fs';
 import { refuseShortRun } from './participants.mjs';
+import { validateReasonPredicates } from './reason-predicates.mjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -166,6 +167,11 @@ for (const key of Object.keys(reasons)) {
     );
   }
 }
+
+// 6. A shared reason is a claim about the documents filed under it, not merely
+// a label. Validate that claim against each source so a still-divergent document
+// cannot remain parked under the wrong mechanism (#273).
+errors.push(...validateReasonPredicates({ coverage, corpusDir }));
 
 if (errors.length) {
   console.error('\nCoverage-matrix failures:');

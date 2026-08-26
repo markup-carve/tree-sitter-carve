@@ -2127,7 +2127,7 @@ static bool scan_bullet_list_marker(Scanner *s, TSLexer *lexer, char marker) {
 }
 
 /// Classify a COLON-led line in ONE pass: `:: ` opens a definition TERM, `:`
-/// plus two or more spaces a DESCRIPTION, anything else neither.
+/// plus one or more spaces a DESCRIPTION, anything else neither.
 ///
 /// One pass, because the lexer cannot rewind and both markers begin with the
 /// same character: asking "is it a term?" and then "is it a description?"
@@ -2136,9 +2136,8 @@ static bool scan_bullet_list_marker(Scanner *s, TSLexer *lexer, char marker) {
 ///
 /// The separator is a space and only a space - `::t` is a paragraph, and a tab
 /// in its place is one too, the rule every other marker follows. A description
-/// needs TWO spaces because ONE is what a term's own lazy continuation looks
-/// like: `:: t` / `: d` renders `<dt>t\n: d</dt>` in every engine. Spaces past
-/// the second belong to the marker, so `:  d` and `:   d` are the same item.
+/// takes the complete run, with one space canonical; its width establishes the
+/// authored content column (carve#1757).
 static TokenType scan_definition_marker_token(Scanner *s, TSLexer *lexer) {
   if (lexer->lookahead != ':') {
     return IGNORED;
@@ -2156,9 +2155,6 @@ static TokenType scan_definition_marker_token(Scanner *s, TSLexer *lexer) {
     return IGNORED;
   }
   advance(s, lexer);
-  if (lexer->lookahead != ' ') {
-    return IGNORED;
-  }
   while (lexer->lookahead == ' ') {
     advance(s, lexer);
   }
@@ -3018,15 +3014,12 @@ static bool scan_paragraph_closing_marker(Scanner *s, TSLexer *lexer) {
     if (open_list == NULL) {
       return false;
     }
-    // A description needs a SECOND space, since one space is the term's own
-    // lazy continuation.
+    // A description takes one or more spaces. The separator width sets the
+    // body's authored content column; one space is canonical (carve#1757).
     if (lexer->lookahead != ' ') {
       return false;
     }
     advance(s, lexer);
-    if (lexer->lookahead != ' ') {
-      return false;
-    }
     return in_definition_list || marker_line_has_content(s, lexer);
   }
   if (find_list(s) == NULL) {
@@ -4048,13 +4041,10 @@ static bool parse_colon(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     colons_consumed = 2;
   } else if (lexer->lookahead == ' ') {
 
-    // A definition DESCRIPTION: `:` plus TWO or more spaces. ONE space is a
-    // term's own lazy continuation (`:: t` / `: d` is `<dt>t\n: d</dt>` in
-    // every engine), so the second space is what makes this a marker at all.
+    // A definition DESCRIPTION: `:` plus one or more spaces. The full run is
+    // marker padding and sets the body's authored content column; writers use
+    // one canonical space (carve#1757).
     advance(s, lexer);
-    if (lexer->lookahead != ' ') {
-      return false;
-    }
     if (!valid_symbols[LIST_MARKER_DESCRIPTION]) {
       return false;
     }
@@ -7278,6 +7268,29 @@ void tree_sitter_carve_external_scanner_destroy(void *payload) {
 unsigned tree_sitter_carve_external_scanner_serialize(void *payload,
                                                      char *buffer) {
   Scanner *s = (Scanner *)payload;
+  // The wire format stores the block count in one byte.  Do not let 256 wrap
+  // to zero and turn the following block payload into invented inline state on
+  // deserialize (#269).  Returning zero is tree-sitter's documented way for
+  // an external scanner to decline caching a state that it cannot represent.
+  // Keep the complete-state size check beside it so this function never writes
+  // past tree-sitter's fixed serialization buffer either.
+  const size_t scalar_bytes = 10;
+  const size_t block_count_bytes = 1;
+  const size_t block_bytes = 3;
+  const size_t inline_bytes = 2;
+  if (s->open_blocks->size > UINT8_MAX ||
+      s->open_blocks->size >
+          (SIZE_MAX - scalar_bytes - block_count_bytes) / block_bytes ||
+      s->open_inline->size >
+          (SIZE_MAX - scalar_bytes - block_count_bytes -
+           s->open_blocks->size * block_bytes) /
+              inline_bytes ||
+      scalar_bytes + block_count_bytes +
+              s->open_blocks->size * block_bytes +
+              s->open_inline->size * inline_bytes >
+          TREE_SITTER_SERIALIZATION_BUFFER_SIZE) {
+    return 0;
+  }
   unsigned size = 0;
   buffer[size++] = (char)s->blocks_to_close;
   buffer[size++] = (char)s->block_quote_level;

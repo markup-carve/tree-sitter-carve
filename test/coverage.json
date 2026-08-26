@@ -2,18 +2,18 @@
   "_comment": "Coverage matrix for the shared Carve spec corpus (spec/tests/corpus/*.crv). Every NN-slug base category must appear in covered or skip; the coverage-matrix test fails otherwise so a new spec category forces a classify decision. covered = grammar parses every file in the category with no ERROR/MISSING node. skip = at least one file currently produces an ERROR/MISSING node; reason records the unmodeled construct (a grammar gap to surface, not to hack around). A skip key is a CATEGORY (NN-slug) or a single EXAMPLE (NN-slug-2) — use the example form when the rest of the category parses cleanly, so one gap does not drop assertion for its siblings. A key equal to a category name is read as the CATEGORY, so the first example of a category cannot be skipped on its own. REASONS: a ledger entry's `reason` may be `ref:<key>`, resolving against the top-level `reasons` map, so one grammar gap spanning a whole category states its explanation once. coverage-matrix gates it both ways - a ref with no entry fails, and a reasons entry nothing references fails, because a reason nobody points at is an excuse that outlived the gap it excused.",
   "comparisonPopulation": {
     "thematic_break": { "documents": 9, "nodes": 11 },
-    "block_quote": { "documents": 139, "nodes": 164 },
-    "table": { "documents": 131, "nodes": 132 },
-    "heading": { "documents": 108, "nodes": 140 },
+    "block_quote": { "documents": 152, "nodes": 177 },
+    "table": { "documents": 132, "nodes": 133 },
+    "heading": { "documents": 115, "nodes": 147 },
     "code_block": { "documents": 69, "nodes": 69 },
-    "list": { "documents": 369, "nodes": 466 },
-    "definition_list": { "documents": 43, "nodes": 43 },
-    "line_block": { "documents": 33, "nodes": 33 },
-    "div": { "documents": 23, "nodes": 25 },
+    "list": { "documents": 408, "nodes": 506 },
+    "definition_list": { "documents": 62, "nodes": 62 },
+    "line_block": { "documents": 35, "nodes": 35 },
+    "div": { "documents": 27, "nodes": 29 },
     "raw_block": { "documents": 8, "nodes": 8 },
     "figure_group": { "documents": 9, "nodes": 9 },
     "citation_definition": { "documents": 0, "nodes": 0 },
-    "admonition": { "documents": 58, "nodes": 265 }
+    "admonition": { "documents": 59, "nodes": 266 }
   },
   "reasons": {
     "a-column-0-opener-does-not-close-an-open-list": "a column-0 block opener does not close an open LIST; it folds into the item as lazy paragraph text. `- a` / `# H` builds no heading, while `> q` / `# H` does - so the block quote closes correctly and only the list does not. Both documents here reach it through a `+` continuation marker, which this grammar opens as an ordinary bullet list, after which the column-0 heading below is swallowed the same way.",
@@ -24,7 +24,55 @@
     "lone-cr-strands-a-column-probe": "a lone carriage return still changes this document's tree. The scanner now treats all three spellings of `newline` as terminators, and 428 of 672 corpus documents that diverged before this do not any more, but these are the remainder: every one of them is a REFERENCE DEFINITION, an ATTRIBUTE BLOCK or a trailing block inside a list item - constructs whose probes read a column, and tree-sitter advances the row and resets the column on '\\n' and on nothing else (`lib/src/lexer.c`), so a scanner-maintained base carries them and does not carry every probe that reads one. tree-sitter-carve#143. The same mechanism has one reachable shape outside the corpus: `comment_line` in grammar.js consumes its own terminator in the internal lexer, so a comment line ended by a lone '\\r' strands the base for an indented construct below it. The corpus bump to 287b4b8 added two more, and one of them widens the enumeration above: a-container-whose-table-ends-on-a-joined-header-row-3 is a table CONTINUATION ROW reached through a block quote - a column probe inside a container rather than any of the three construct classes originally listed. The mechanism is unchanged; the list of constructs that read a column is simply longer than it was when this was written. The other one, a-bracketed-construct-s-identifiers-stay-on-one-line, was recorded here as a REFERENCE DEFINITION and is not one: nothing about it reads a column, and it was refiled under a reason of its own. That misfiling is what tree-sitter-carve#262 reported - two mechanisms sharing one reason, and the reason is what a reader would use to decide the fix. The family it was refiled into is CLOSED: tree-sitter-carve#265 fixed the wrapped identifier, and its entries and its reason left this file with it. link-destination-parentheses-balance-4 went with them - `[t](url` / `more)` is an inline destination that wraps a line and reads no column either, so it was a fifth entry sitting under this reason without belonging to it, and the fix for the other four closed it untouched. Which is the argument for splitting a reason rather than widening one: a mechanism nobody has named is a fix nobody can scope.",
     "marker-line-block-opener-builds-nothing": "a block opener written on a list MARKER line builds nothing. `- # H` gives a list item whose content is a PARAGRAPH, not a heading; `- ---` is read as a document-level thematic break that consumes the marker, so no list is built at all. Verified against the indented spelling, which works: `- a` / `  # H` does build the heading. This is the same shape as the recorded `fence-on-a-marker-line-builds-nothing` - the marker line is one position this grammar does not run block-opener recognition in - now reached by the heading and thematic-break openers too. A TASK checkbox does not change which openers reach it, but it does change what the thematic break degrades INTO, and the sentence above is wrong for that spelling: `- [x] # h` is still a paragraph, while `- [ ] ---` no longer consumes the marker - the list and the item ARE built and `---` becomes an inline `em_dash` inside the item's paragraph. Measured against the neighbour that works, which is what keeps the checkbox out of it: `- [ ] > q` opens its quote with content, so the checkbox does not disturb an opener the marker line already admits. That is why a-task-item-s-checkbox-is-not-decided-by-its-first-block reports `heading: want 1 have 0; thematic_break: want 1 have 0` and no gap for its quote."
   },
+  "reasonPredicates": {
+    "a-column-0-opener-does-not-close-an-open-list": {
+      "ledger": "underAcceptance",
+      "sourcePattern": "^\\+[ \\t]*\\n#{1,6}[ \\t]"
+    },
+    "a-heading-in-a-description-body-builds-nothing": {
+      "ledger": "underAcceptance",
+      "sourcePattern": "^::? .*(?:\\n[ \\t]+.*)*\\n[ \\t]+#{1,6}[ \\t]"
+    },
+    "a-tabbed-frontmatter-opener-swallows-the-break-below": {
+      "ledger": "underAcceptance",
+      "sourcePattern": "^---\\t"
+    },
+    "an-attribute-line-does-not-end-the-paragraph-above-a-list": {
+      "ledger": "underAcceptance",
+      "sourcePattern": "^\\{[^\\n]*\\}\\n[-*+] "
+    },
+    "fence-on-a-marker-line-builds-nothing": {
+      "ledger": "underAcceptance",
+      "sourcePattern": "^[-*+] (?:`{3,}|~{3,}|:{3,})"
+    },
+    "lone-cr-strands-a-column-probe": {
+      "ledger": "lineTerminatorGaps",
+      "sourcePattern": "(^[ \\t]+\\S|^> |^::? |^\\[[^\\]\\n]+\\]:|\\{[^\\n]*\\}|\\||`{3,}|~{3,}|%%)"
+    },
+    "marker-line-block-opener-builds-nothing": {
+      "ledger": "underAcceptance",
+      "sourcePattern": "^[-*+] (?:\\[[ xX]\\] )?(?:#{1,6}[ \\t]|-{3,}[ \\t]*(?:\\n|$))"
+    }
+  },
   "covered": [
+    "a-definition-body-opener-at-or-past-its-column-stays-structural",
+    "a-definition-body-s-separator-width-sets-its-content-column",
+    "a-definition-list-inside-a-footnote-body-carries-its-authored-base",
+    "a-definition-past-a-footnote-body-s-column-registers-from-its-authored-base",
+    "a-fenced-block-quote-is-the-block-quote-written-another-way",
+    "a-floating-attribute-does-not-widen-a-list-item-s-content-column",
+    "a-footnote-body-s-authored-base-can-open-a-table-past-column-two",
+    "a-recognized-opener-in-a-body-needs-no-blank-line-above-it",
+    "a-sigil-fence-takes-its-attribute-line",
+    "an-authored-base-carries-opaque-payload-captions-and-nested-metadata",
+    "an-invisible-fenced-block-is-not-a-list-paragraph",
+    "an-item-s-attribute-block-moves-its-content-column-its-checkbox-does-not",
+    "an-ordered-item-s-separator-width-sets-its-content-column",
+    "an-unclosed-bare-colon-fence-opens-a-div",
+    "below-a-definition-body-s-column-the-body-ends",
+    "one-authored-base-rule-reaches-a-definition-nested-in-a-list-item",
+    "text-block-alignment-renders-the-css-declaration",
+    "the-continuation-marker-attaches-one-block-in-every-container",
     "a-blank-line-loosens-an-item-only-when-a-paragraph-follows-it",
     "a-caption-s-marker-separator-is-a-run-and-none-of-it-is-content",
     "a-container-ends-at-the-markup-that-closes-it-even-where-its-last-child-is-unplaced",
@@ -101,13 +149,11 @@
     "a-definition-behind-an-alternating-container-prefix-registers-at-the-innermost-content-column",
     "a-definition-below-a-footnote-body-s-column-is-the-document-s-own-text",
     "a-definition-below-every-content-column-folds-as-text",
-    "a-definition-body-continuation-indented-past-its-column-is-lazy-text",
     "a-definition-inside-a-comment-registers-nothing",
     "a-definition-inside-a-container-is-collected-at-that-container-s-content-column",
     "a-definition-inside-a-definition-list-dd-is-collected-and-the-entry-keeps-no-trace",
     "a-definition-marker-s-separator-is-a-space-and-it-is-a-run",
     "a-definition-on-a-footnote-body-s-continuation-line-is-collected",
-    "a-definition-past-a-footnote-body-s-column-is-the-body-s-own-text",
     "a-derived-title-yields-to-an-authored-one",
     "a-description-line-needs-a-term-above-it",
     "a-div-does-not-define-an-abbreviation-either",
@@ -119,7 +165,6 @@
     "a-flush-left-line-needs-an-open-paragraph-to-fold-into",
     "a-footnote-body-holds-blocks-and-they-render-where-they-were-written",
     "a-footnote-body-s-last-block-when-it-is-not-a-paragraph-gets-a-synthesized-paragraph-for-the-backlink",
-    "a-footnote-body-s-own-column-is-two-and-a-third-column-is-its-text",
     "a-footnote-definition-inside-an-item-s-comment-registers-nothing",
     "a-footnote-definition-s-block-runs-to-the-end-of-its-body",
     "a-footnote-in-an-unresolved-reference-is-not-a-reference",
@@ -534,6 +579,10 @@
     "a-paragraph-opened-after-a-block-in-an-item-is-still-open-for-a-lazy-line-3": {
       "gaps": "code_block: want 1 have 0",
       "reason": "ref:fence-on-a-marker-line-builds-nothing"
+    },
+    "a-recognized-opener-in-a-body-needs-no-blank-line-above-it-2": {
+      "gaps": "heading: want 1 have 0",
+      "reason": "a heading at a definition body's content column immediately after an unmarked block-quote line is swallowed as lazy quote text. The scanner recognizes the same heading after a blank line and at the document margin, but its paragraph-end probe measures this nested unmarked line against the open quote rather than the definition body that holds the quote. The document remains ERROR-free and the other eight examples in the category build every expected block."
     },
     "a-tab-after-a-fence-or-a-frontmatter-opener-depends-on-where-it-sits-3": {
       "gaps": "thematic_break: want 1 have 0",
