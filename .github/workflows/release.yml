@@ -135,15 +135,18 @@ jobs:
         # windows-latest again. It was pinned to windows-2022 on 2026-08-18,
         # when the rehearsal failed with "could not find a version of Visual
         # Studio 2017 or newer" on image windows-2025-vs2026 using
-        # node-gyp@10.1.0. The runner's bundled node-gyp has since moved to
-        # 12.4.0 on Node 20 and the failure is gone (#231, probe run
-        # 32239736653).
+        # node-gyp@10.1.0. The runner's bundled node-gyp later moved to 12.4.0
+        # and the failure disappeared (#231, probe run 32239736653).
         #
         # The probe also disproved the diagnosis in that ticket, which is worth
         # keeping: a NEWER node-gyp was not the fix. Installed globally on Node
         # 20, node-gyp 10.1.0, 10.3.1, 11.0.0 and latest (13.0.1) ALL failed on
-        # this image, while the bundled 12.4.0 succeeded - and bundled 13.0.1 on
-        # Node 22 and 24 succeeded too. The same version passes bundled and
+        # this image, while the bundled 12.4.0 succeeded. The 0.1.4 release
+        # found setup-node's Node 20 distribution back on bundled node-gyp
+        # 10.1.0, recreating the exact failure. npm 11.19.1 is pinned because
+        # it supports Node 20 and bundles the measured node-gyp 12.4.0; Node 24
+        # is not an alternative because tree-sitter 0.25.0 does not compile
+        # against its V8 headers. The same node-gyp version passes bundled and
         # fails standalone, so the variable is how npm invokes it, not which
         # version it is. Anyone tempted to "fix" a future recurrence by pinning
         # node-gyp should read that result first.
@@ -153,6 +156,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+      - run: npm install --global npm@11.19.1
       - run: npm ci
       - run: npm run prebuildify
       - name: The prebuild exists and is not empty
