@@ -354,6 +354,32 @@ const CASES = [
         at: [0, 0],
         expect: 'markup.heading.2',
     },
+
+    /*
+     * THE COLON FENCE'S SIGIL FAMILY, one row per member. The sigil is the only
+     * character on the opener that says which container it is, and the body of
+     * each already carries its own capture - so an unpainted sigil still looks
+     * like a working query from inside the body, which is how all three stayed
+     * unpainted while every other marker node in this file was covered.
+     */
+    {
+        name: 'the line block sigil is painted',
+        source: '::: |\na\n:::\n',
+        at: [0, 4],
+        expect: 'punctuation.special',
+    },
+    {
+        name: 'the fenced block quote sigil is painted',
+        source: '::: >\na\n:::\n',
+        at: [0, 4],
+        expect: 'punctuation.special',
+    },
+    {
+        name: 'the local hard-break sigil is painted',
+        source: '::: \\\na\n:::\n',
+        at: [0, 4],
+        expect: 'punctuation.special',
+    },
 ];
 
 const fails = [];

@@ -66,6 +66,16 @@
 
 (block_quote_marker) @punctuation.special
 
+; The colon fence's sigil family: `::: |`, `::: >` and `::: \`. Each
+; opens a container whose body already carries its own color, so the sigil is
+; the only character saying which one opened - and none of the three was
+; painted, while every other marker node in this file is.
+(line_block_marker) @punctuation.special
+
+(block_quote_fence_marker) @punctuation.special
+
+(local_hard_break_marker) @punctuation.special
+
 (table_header) @markup.heading
 
 (table_header

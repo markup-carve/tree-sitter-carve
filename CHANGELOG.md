@@ -6,6 +6,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- The colon fence's sigil family is highlighted: the `|` of a line block, the
+  `>` of a fenced block quote and the `\` of a local hard-break block each
+  take `punctuation.special`, as every other marker node in
+  `queries/highlights.scm` already did. All three were unpainted.
+
 ## [0.1.4] - 2026-08-27
 
 ### Added
