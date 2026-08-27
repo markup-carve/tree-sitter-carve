@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-08-27
+
 ### Added
 
 - A cross-reference with auto text is its own `auto_text_link` node, captured as
