@@ -6815,6 +6815,22 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
   // repeated scanner calls tree-sitter makes at one position agree.
   if (at_line_start && is_newline) {
     s->state |= STATE_AFTER_BLANK_LINE;
+    // A `+` CONTINUATION ATTACHES EXACTLY ONE BLOCK (PART 9 section 17), and a
+    // blank line ends that block whatever it is. The flag has to go with it.
+    //
+    // `parse_list_item_end` keeps the item open for an indent-0 `|` line while
+    // the flag is set, because a `+`-attached TABLE has no terminator and its
+    // later rows would otherwise detach. That rule is right for the row AFTER
+    // a row; it was reached for any `|` line at all, because nothing cleared
+    // the flag when the attached block was a PARAGRAPH - a paragraph is not on
+    // the open-block stack, so `remove_block` never fires for it. A table one
+    // blank line below such a paragraph was read as the attached table's next
+    // row and the whole item landed in ERROR (markup-carve/tree-sitter-carve#279).
+    //
+    // Clearing here rather than in `remove_block` covers every attached block
+    // kind at once, and leaves the multi-row case alone: rows of one table
+    // carry no blank line between them.
+    s->state &= ~STATE_LIST_CONTINUATION;
   }
 
 #ifdef DEBUG
