@@ -39,3 +39,51 @@ A definition description takes one canonical space
     (list_item
       marker: (list_marker_description)
       definition: (definition))))
+
+==================
+A blank line ends a continuation-attached block, so a table below it detaches
+==================
+
+- a
++
+b
+
+| A |
+
+---
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)
+        (list_continuation_marker)
+        (paragraph))))
+  (table
+    (table_row
+      (table_cell))))
+
+==================
+A continuation-attached table keeps its later rows
+==================
+
+- a
++
+| A |
+| B |
+
+---
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)
+        (list_continuation_marker)
+        (table
+          (table_row
+            (table_cell))
+          (table_row
+            (table_cell)))))))

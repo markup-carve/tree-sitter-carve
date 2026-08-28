@@ -12,6 +12,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `>` of a fenced block quote and the `\` of a local hard-break block each
   take `punctuation.special`, as every other marker node in
   `queries/highlights.scm` already did. All three were unpainted.
+- A blank line ends a `+`-attached block, so a table below one no longer lands
+  in an `ERROR` node. The scanner kept the list-continuation flag set after the
+  attached block finished, and the rule that holds an item open for an indent-0
+  `|` line - which a multi-row attached table needs - was reached for any `|`
+  line at all (#279).
 
 ## [0.1.4] - 2026-08-27
 
