@@ -41,6 +41,10 @@ const coverage = JSON.parse(
 // null carries its reason.
 const NODE_FOR = {
   thematic_break: 'thematic_break',
+  // A marker quote and its fenced spelling are the same AST block. The source
+  // grammar deliberately models the latter as a `div` carrying a named fence
+  // marker, so count either spelling instead of reporting every fenced quote
+  // as absent merely because the two trees name their containers differently.
   block_quote: 'block_quote',
   table: 'table',
   heading: 'heading',
@@ -212,7 +216,11 @@ files.forEach((file, i) => {
   const tree = perFile[i];
   const gaps = [];
   for (const [node, n] of [...want].sort()) {
-    const have = (tree.match(new RegExp(`\\(${node}[\\s[]`, 'g')) ?? []).length;
+    const pattern =
+      node === 'block_quote'
+        ? '(?:block_quote|block_quote_fence_marker)'
+        : node;
+    const have = (tree.match(new RegExp(`\\(${pattern}[\\s[]`, 'g')) ?? []).length;
     if (n > have) gaps.push(`${node}: want ${n} have ${have}`);
   }
   // Keyed WITHOUT the corpus order number. The leading digits are the spec's

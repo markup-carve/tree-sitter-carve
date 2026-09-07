@@ -4427,12 +4427,13 @@ static bool parse_footnote_continuation(Scanner *s, TSLexer *lexer) {
 /// so there is no next cell to scan and the caller has to count this one
 /// itself. See `scan_verbatim_run_in_cell`.
 static bool scan_table_cell(Scanner *s, TSLexer *lexer, bool *separator,
-                            bool *empty, bool *unterminated,
+                            bool *empty, bool *meaningful, bool *unterminated,
                             bool *closed_by_open_run) {
   uint8_t leading_ws = consume_whitespace(s, lexer);
 
   *separator = true;
   *empty = false;
+  *meaningful = false;
   *unterminated = false;
 
   bool first_char = true;
@@ -4440,6 +4441,7 @@ static bool scan_table_cell(Scanner *s, TSLexer *lexer, bool *separator,
     switch (lexer->lookahead) {
     case '\\':
       *separator = false;
+      *meaningful = true;
       advance(s, lexer);
       advance(s, lexer);
       break;
@@ -4449,6 +4451,7 @@ static bool scan_table_cell(Scanner *s, TSLexer *lexer, bool *separator,
       return false;
     case '`': {
       *separator = false;
+      *meaningful = true;
       // Ending ticks make this an ordinary cell. Without them the row is still
       // a row, as long as it has a closing pipe for the open run to end at.
       bool row_closer_seen = false;
@@ -4471,6 +4474,7 @@ static bool scan_table_cell(Scanner *s, TSLexer *lexer, bool *separator,
       }
       return true;
     case ':':
+      *meaningful = true;
       advance(s, lexer);
 
       consume_whitespace(s, lexer);
@@ -4482,11 +4486,22 @@ static bool scan_table_cell(Scanner *s, TSLexer *lexer, bool *separator,
       }
       break;
     case '-':
+      *meaningful = true;
       advance(s, lexer);
       break;
     default:
       *separator = false;
-      advance(s, lexer);
+      // `=` in the first slot is the header marker, not cell content. A row
+      // containing only that marker and whitespace is therefore just as blank
+      // as `| |`; alignment markers and attributes remain meaningful metadata
+      // and keep their rows structural (carve#1950).
+      if (first_char && lexer->lookahead == '=') {
+        advance(s, lexer);
+        consume_whitespace(s, lexer);
+      } else {
+        *meaningful = true;
+        advance(s, lexer);
+      }
       break;
     }
 
@@ -4500,14 +4515,15 @@ static bool scan_separator_row(Scanner *s, TSLexer *lexer) {
   bool any_content = false;
   bool curr_separator;
   bool curr_empty;
+  bool curr_meaningful;
   bool unterminated = false;
   bool attr_after_pipe = false;
   while (true) {
     attr_after_pipe = lexer->lookahead == '{';
     // A cell holding a verbatim run is not a separator cell, so an unclosed
     // one cannot save a separator row: NULL.
-    if (!scan_table_cell(s, lexer, &curr_separator, &curr_empty, &unterminated,
-                         NULL)) {
+    if (!scan_table_cell(s, lexer, &curr_separator, &curr_empty,
+                         &curr_meaningful, &unterminated, NULL)) {
       break;
     }
     if (!curr_separator) {
@@ -4547,6 +4563,7 @@ static bool scan_table_row(Scanner *s, TSLexer *lexer, TokenType *row_type) {
   bool unterminated = false;
   bool curr_separator;
   bool curr_empty;
+  bool curr_meaningful;
   // A row attribute block glued to the closing pipe (`| a |{.head}`) sits where
   // a next cell would start. It is not an unterminated final cell; the row-end
   // token validates and consumes it (parse_table_end_newline).
@@ -4557,14 +4574,15 @@ static bool scan_table_row(Scanner *s, TSLexer *lexer, TokenType *row_type) {
   bool closed_by_open_run = false;
   while (true) {
     attr_after_pipe = lexer->lookahead == '{';
-    if (!scan_table_cell(s, lexer, &curr_separator, &curr_empty, &unterminated,
+    if (!scan_table_cell(s, lexer, &curr_separator, &curr_empty,
+                         &curr_meaningful, &unterminated,
                          &closed_by_open_run)) {
       break;
     }
     if (!curr_separator) {
       all_separators = false;
     }
-    if (!curr_empty) {
+    if (curr_meaningful) {
       any_content = true;
     }
     ++cell_count;
