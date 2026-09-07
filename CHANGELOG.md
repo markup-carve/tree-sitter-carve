@@ -6,7 +6,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-09-07
+
 ### Fixed
+
+- A row whose every cell is blank remains paragraph text. This now includes
+  multi-cell whitespace-only rows and a header-only row such as `|= |`, while
+  rows carrying alignment, attributes or any cell content remain tables
+  (markup-carve/carve#1950).
+- Fenced block quotes count as block quotes in the under-acceptance gate. The
+  source grammar intentionally represents `::: >` as a `div` carrying a
+  `block_quote_fence_marker`; the gate no longer reports that alternate source
+  model as a missing marker quote.
 
 - The colon fence's sigil family is highlighted: the `|` of a line block, the
   `>` of a fenced block quote and the `\` of a local hard-break block each
@@ -17,6 +28,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   attached block finished, and the rule that holds an item open for an indent-0
   `|` line - which a multi-row attached table needs - was reached for any `|`
   line at all (#279).
+
+### Changed
+
+- The spec corpus pin moves from carve `549f2a5` to `1b27b68`: 1,545 to 1,685
+  documents and 442 to 459 categories. Every new category is classified; five
+  documents expose three existing nested definition/container limitations and
+  are recorded explicitly rather than failing as unclassified input.
+- The engine oracle moves from the published 0.1.4 package to immutable
+  carve-js revision `9e5319f2`. The under-acceptance population and 26 newly
+  visible gaps are ratcheted to that revision, including authored content
+  columns after item attributes and block openers inside description bodies.
 
 ## [0.1.4] - 2026-08-27
 

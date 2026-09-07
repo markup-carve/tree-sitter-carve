@@ -1,19 +1,19 @@
 {
   "_comment": "Coverage matrix for the shared Carve spec corpus (spec/tests/corpus/*.crv). Every NN-slug base category must appear in covered or skip; the coverage-matrix test fails otherwise so a new spec category forces a classify decision. covered = grammar parses every file in the category with no ERROR/MISSING node. skip = at least one file currently produces an ERROR/MISSING node; reason records the unmodeled construct (a grammar gap to surface, not to hack around). A skip key is a CATEGORY (NN-slug) or a single EXAMPLE (NN-slug-2) — use the example form when the rest of the category parses cleanly, so one gap does not drop assertion for its siblings. A key equal to a category name is read as the CATEGORY, so the first example of a category cannot be skipped on its own. REASONS: a ledger entry's `reason` may be `ref:<key>`, resolving against the top-level `reasons` map, so one grammar gap spanning a whole category states its explanation once. coverage-matrix gates it both ways - a ref with no entry fails, and a reasons entry nothing references fails, because a reason nobody points at is an excuse that outlived the gap it excused.",
   "comparisonPopulation": {
-    "thematic_break": { "documents": 9, "nodes": 11 },
-    "block_quote": { "documents": 159, "nodes": 184 },
-    "table": { "documents": 132, "nodes": 133 },
-    "heading": { "documents": 115, "nodes": 147 },
-    "code_block": { "documents": 69, "nodes": 69 },
-    "list": { "documents": 425, "nodes": 527 },
-    "definition_list": { "documents": 94, "nodes": 94 },
+    "thematic_break": { "documents": 10, "nodes": 12 },
+    "block_quote": { "documents": 189, "nodes": 220 },
+    "table": { "documents": 138, "nodes": 139 },
+    "heading": { "documents": 133, "nodes": 166 },
+    "code_block": { "documents": 80, "nodes": 80 },
+    "list": { "documents": 500, "nodes": 626 },
+    "definition_list": { "documents": 153, "nodes": 153 },
     "line_block": { "documents": 35, "nodes": 35 },
-    "div": { "documents": 27, "nodes": 29 },
+    "div": { "documents": 26, "nodes": 28 },
     "raw_block": { "documents": 9, "nodes": 9 },
     "figure_group": { "documents": 9, "nodes": 9 },
     "citation_definition": { "documents": 0, "nodes": 0 },
-    "admonition": { "documents": 59, "nodes": 266 }
+    "admonition": { "documents": 68, "nodes": 275 }
   },
   "reasons": {
     "a-column-0-opener-does-not-close-an-open-list": "a column-0 block opener does not close an open LIST; it folds into the item as lazy paragraph text. `- a` / `# H` builds no heading, while `> q` / `# H` does - so the block quote closes correctly and only the list does not. Both documents here reach it through a `+` continuation marker, which this grammar opens as an ordinary bullet list, after which the column-0 heading below is swallowed the same way.",
@@ -55,6 +55,21 @@
     }
   },
   "covered": [
+    "a-block-opener-past-a-nested-footnote-definition-opens-in-the-item",
+    "a-closed-fence-in-a-description-body-ends-it",
+    "a-comment-below-a-description-body-s-column-ends-the-body",
+    "a-definition-nested-past-a-footnote-body-is-a-note-and-a-reference-below-it-resolves",
+    "a-degraded-comment-fence-at-a-container-s-column-0-keeps-the-follower-in-the-item",
+    "a-degraded-comment-fence-leaves-a-lazy-follower-where-the-line-form-does",
+    "a-marker-folds-into-a-quote-below-it",
+    "a-marker-folds-only-strictly-between-the-item-s-base-and-content-column",
+    "a-row-whose-every-cell-is-blank-is-not-a-table",
+    "a-wrapped-attribute-block-ends-at-its-quote-and-reaches-no-line-below-it",
+    "an-empty-unterminated-container-ends-at-a-flush-left-line",
+    "an-opener-at-or-past-a-description-body-s-column-closes-its-paragraph",
+    "an-unterminated-comment-fence-in-a-list-item-is-the-line-form",
+    "an-unterminated-fence-on-a-nested-lead-in-a-description-body-owns-its-body",
+    "the-host-does-not-change-which-column-a-definition-reaches",
     "a-definition-body-opener-at-or-past-its-column-stays-structural",
     "a-definition-body-s-separator-width-sets-its-content-column",
     "a-definition-list-inside-a-footnote-body-carries-its-authored-base",
@@ -499,6 +514,9 @@
     "the-continuation-marker-s-column-gate-reaches-every-container"
   ],
   "skip": {
+    "a-container-closer-closes-its-container-in-a-footnote-body-too": "a colon container nested in a definition or footnote body parses to a top-level ERROR when its payload contains an indented reference definition and its explicit closer returns to the host body's content column. The grammar commits to the host body and container markers but cannot reconcile the definition's authored base with the closer boundary. Both examples in this new category reach the same gap.",
+    "a-container-in-a-host-body-owns-a-line-past-its-own-content-column": "a colon container nested in a list or definition body parses to a top-level ERROR when an indented reference definition sits one column past the container's own content column. The grammar recognizes the list/definition and container markers but does not carry the container's authored base through the reference-definition probe. Both examples in this new category reach the same gap.",
+    "the-host-does-not-change-which-column-a-definition-reaches-6": "a reference definition nested inside a definition list whose term is itself nested in another definition list parses to a top-level ERROR. The grammar builds both definition-list layers but cannot attach the reference definition at the authored base selected by the language. The category's other examples parse cleanly.",
     "a-continuation-marker-attaches-one-block-and-the-boundary-is-that-block-s-extent-5": "a `+` continuation marker that attaches NOTHING - the line after it opens a sibling item rather than a block to attach - leaves the first item unclosed and the whole document parses to one top-level ERROR. `- a` / `+` / `- x` / `- y` is three flat items in the fixture. The category's other eight examples, where the marker does attach a block, parse cleanly.",
     "a-quoted-attribute-value-stops-at-the-newline-3": "a quoted attribute value carrying a newline (`{k=\"a` / `b\"}`) parses to ERROR. The corpus pins it as literal text - the inline block does not span lines - but this grammar commits to an attribute block on the opening brace and has no route back to a paragraph when the value never closes on its line. Same class as an-attribute-name-admits-no-colon-3. The category's other examples parse cleanly.",
     "delimited-comments-8": "a `%%` trailing comment inside a TABLE ROW swallows the rest of the line, closing pipes included, so `| d %% tail | e |` parses to a `trailing_comment` followed by ERROR. The fixture keeps the row: it expects `<td>d</td><td>e</td>`, the comment stripped from the first cell and the second cell intact. The category's other seven examples parse cleanly - including `{% ... %}`, which this grammar models as `braced_comment` and the pinned carve-js engine does not model at all."
@@ -533,6 +551,110 @@
   "invisibleOverAcceptance": {},
   "batteryDisagreements": {},
   "underAcceptance": {
+    "generic-divs-4": {
+      "gaps": "admonition_type: want 1 have 0",
+      "reason": "the current engine accepts a numeric custom admonition kind in `::: 123`, while the grammar's admonition identifier begins with a letter and leaves the fence as paragraph text. The grammar and its named `admonition_type` token need a deliberate identifier-policy update rather than silently widening during a corpus bump."
+    },
+    "an-item-s-attribute-block-moves-its-content-column-its-checkbox-does-not-4": {
+      "gaps": "heading: want 1 have 0",
+      "reason": "a marker attribute lengthens the list item's authored content column, but the scanner keeps the pre-attribute margin and folds the following heading into the paragraph."
+    },
+    "an-item-s-attribute-block-moves-its-content-column-its-checkbox-does-not-5": {
+      "gaps": "heading: want 1 have 0",
+      "reason": "a marker attribute lengthens the list item's authored content column, but the scanner keeps the pre-attribute margin and folds the following heading into the paragraph."
+    },
+    "an-item-s-attribute-block-moves-its-content-column-its-checkbox-does-not-7": {
+      "gaps": "heading: want 2 have 0",
+      "reason": "marker attributes on the nested items move both authored content columns; the scanner retains the shorter margins and folds both headings into paragraph text."
+    },
+    "an-item-s-attribute-block-moves-its-content-column-its-checkbox-does-not-9": {
+      "gaps": "heading: want 1 have 0",
+      "reason": "a marker attribute lengthens the list item's authored content column, but the scanner keeps the pre-attribute margin and folds the following heading into the paragraph."
+    },
+    "an-item-s-attribute-block-moves-its-content-column-its-checkbox-does-not": {
+      "gaps": "heading: want 1 have 0",
+      "reason": "a marker attribute lengthens the list item's authored content column, but the scanner keeps the pre-attribute margin and folds the following heading into the paragraph."
+    },
+    "a-floating-attribute-does-not-widen-a-list-item-s-content-column-2": {
+      "gaps": "heading: want 1 have 0",
+      "reason": "the marker attribute sets the item margin while the floating attribute belongs to its content; the scanner conflates their widths and folds the heading instead of opening it at the authored content column."
+    },
+    "a-floating-attribute-does-not-widen-a-list-item-s-content-column-3": {
+      "gaps": "heading: want 1 have 0",
+      "reason": "the marker attribute sets the item margin while the floating attribute belongs to its content; the scanner conflates their widths and folds the heading instead of opening it at the authored content column."
+    },
+    "a-floating-attribute-does-not-widen-a-list-item-s-content-column": {
+      "gaps": "heading: want 1 have 0",
+      "reason": "the marker attribute sets the item margin while the floating attribute belongs to its content; the scanner conflates their widths and folds the heading instead of opening it at the authored content column."
+    },
+    "the-continuation-marker-attaches-one-block-in-every-container-4": {
+      "gaps": "block_quote: want 2 have 1",
+      "reason": "a continuation marker inside a block quote attaches another quote, but the grammar builds only the outer marker quote and does not open the attached inner quote."
+    },
+    "an-opener-at-or-past-a-description-body-s-column-closes-its-paragraph-12": {
+      "gaps": "heading: want 1 have 0",
+      "reason": "a heading at or past a description body's content column is swallowed by the undivided definition span instead of ending its paragraph."
+    },
+    "an-opener-at-or-past-a-description-body-s-column-closes-its-paragraph-13": {
+      "gaps": "heading: want 1 have 0",
+      "reason": "a heading at or past a description body's content column is swallowed by the undivided definition span instead of ending its paragraph."
+    },
+    "an-opener-at-or-past-a-description-body-s-column-closes-its-paragraph-14": {
+      "gaps": "heading: want 1 have 0",
+      "reason": "a heading at or past a description body's content column is swallowed by the undivided definition span instead of ending its paragraph."
+    },
+    "an-opener-at-or-past-a-description-body-s-column-closes-its-paragraph-15": {
+      "gaps": "heading: want 1 have 0",
+      "reason": "a heading at or past a description body's content column is swallowed by the undivided definition span instead of ending its paragraph."
+    },
+    "an-opener-at-or-past-a-description-body-s-column-closes-its-paragraph-3": {
+      "gaps": "heading: want 1 have 0",
+      "reason": "a heading at or past a description body's content column is swallowed by the undivided definition span instead of ending its paragraph."
+    },
+    "an-opener-at-or-past-a-description-body-s-column-closes-its-paragraph-4": {
+      "gaps": "heading: want 1 have 0",
+      "reason": "a heading at or past a description body's content column is swallowed by the undivided definition span instead of ending its paragraph."
+    },
+    "an-opener-at-or-past-a-description-body-s-column-closes-its-paragraph-5": {
+      "gaps": "thematic_break: want 1 have 0",
+      "reason": "a thematic break at a description body's block boundary is swallowed by the undivided definition span."
+    },
+    "an-opener-at-or-past-a-description-body-s-column-closes-its-paragraph-6": {
+      "gaps": "table: want 1 have 0",
+      "reason": "a table at a description body's block boundary is swallowed by the undivided definition span."
+    },
+    "a-closed-fence-in-a-description-body-ends-it-2": {
+      "gaps": "code_block: want 1 have 0",
+      "reason": "a code fence at the description body's content column is consumed as inline verbatim inside the undivided definition span instead of opening a block."
+    },
+    "an-empty-unterminated-container-ends-at-a-flush-left-line-3": {
+      "gaps": "admonition_type: want 1 have 0",
+      "reason": "an admonition opened on a description marker line is treated as definition text; the marker-line block-opener path does not open the container."
+    },
+    "a-block-opener-past-a-nested-footnote-definition-opens-in-the-item": {
+      "gaps": "heading: want 1 have 0",
+      "reason": "after collecting a footnote definition inside a list item, the scanner leaves the following heading inside the footnote paragraph instead of returning to the item at its authored column."
+    },
+    "an-unterminated-fence-on-a-nested-lead-in-a-description-body-owns-its-body-2": {
+      "gaps": "code_block: want 1 have 0",
+      "reason": "a fence on a nested list marker line inside a description body is parsed as paragraph text; marker-line fence recognition never opens the code block."
+    },
+    "an-unterminated-fence-on-a-nested-lead-in-a-description-body-owns-its-body-3": {
+      "gaps": "code_block: want 1 have 0",
+      "reason": "a fence on a nested list marker line inside a description body is parsed as paragraph text; marker-line fence recognition never opens the code block."
+    },
+    "an-unterminated-fence-on-a-nested-lead-in-a-description-body-owns-its-body-4": {
+      "gaps": "code_block: want 1 have 0",
+      "reason": "a fence on a nested list marker line inside a description body is parsed as paragraph text; marker-line fence recognition never opens the code block."
+    },
+    "an-unterminated-fence-on-a-nested-lead-in-a-description-body-owns-its-body": {
+      "gaps": "code_block: want 1 have 0",
+      "reason": "a fence on a nested list marker line inside a description body is parsed as paragraph text; marker-line fence recognition never opens the code block."
+    },
+    "list-nesting-and-looseness-9": {
+      "gaps": "heading: want 1 have 0",
+      "reason": "extra marker padding before a task checkbox sets a wider item content column than the scanner records, so the heading aligned to that column folds into paragraph text."
+    },
     "a-raw-block-keeps-the-blank-line-at-the-end-of-its-payload-too-2": {
       "gaps": "raw_block: want 1 have 0",
       "reason": "ref:fence-on-a-marker-line-builds-nothing"
@@ -700,6 +822,54 @@
     }
   },
   "lineTerminatorGaps": {
+    "an-unterminated-comment-fence-in-a-list-item-is-the-line-form-5": {
+      "spellings": "the cr spelling(s) parse to a different tree than lf",
+      "reason": "ref:lone-cr-strands-a-column-probe"
+    },
+    "an-unterminated-comment-fence-in-a-list-item-is-the-line-form-6": {
+      "spellings": "the cr spelling(s) parse to a different tree than lf",
+      "reason": "ref:lone-cr-strands-a-column-probe"
+    },
+    "an-unterminated-comment-fence-in-a-list-item-is-the-line-form-7": {
+      "spellings": "the cr spelling(s) parse to a different tree than lf",
+      "reason": "ref:lone-cr-strands-a-column-probe"
+    },
+    "an-unterminated-comment-fence-in-a-list-item-is-the-line-form-9": {
+      "spellings": "the cr spelling(s) parse to a different tree than lf",
+      "reason": "ref:lone-cr-strands-a-column-probe"
+    },
+    "an-unterminated-comment-fence-in-a-list-item-is-the-line-form": {
+      "spellings": "the cr spelling(s) parse to a different tree than lf",
+      "reason": "ref:lone-cr-strands-a-column-probe"
+    },
+    "the-host-does-not-change-which-column-a-definition-reaches-21": {
+      "spellings": "the cr spelling(s) parse to a different tree than lf",
+      "reason": "ref:lone-cr-strands-a-column-probe"
+    },
+    "the-host-does-not-change-which-column-a-definition-reaches-6": {
+      "spellings": "the cr spelling(s) parse to a different tree than lf",
+      "reason": "ref:lone-cr-strands-a-column-probe"
+    },
+    "a-marker-folds-into-a-quote-below-it-8": {
+      "spellings": "the cr spelling(s) parse to a different tree than lf",
+      "reason": "ref:lone-cr-strands-a-column-probe"
+    },
+    "a-container-in-a-host-body-owns-a-line-past-its-own-content-column-2": {
+      "spellings": "the cr spelling(s) parse to a different tree than lf",
+      "reason": "ref:lone-cr-strands-a-column-probe"
+    },
+    "a-container-in-a-host-body-owns-a-line-past-its-own-content-column": {
+      "spellings": "the cr spelling(s) parse to a different tree than lf",
+      "reason": "ref:lone-cr-strands-a-column-probe"
+    },
+    "a-container-closer-closes-its-container-in-a-footnote-body-too-2": {
+      "spellings": "the cr spelling(s) parse to a different tree than lf",
+      "reason": "ref:lone-cr-strands-a-column-probe"
+    },
+    "a-container-closer-closes-its-container-in-a-footnote-body-too": {
+      "spellings": "the crlf and cr spelling(s) parse to a different tree than lf",
+      "reason": "ref:lone-cr-strands-a-column-probe"
+    },
     "an-empty-description-body-claims-no-line-below-column-0": {
       "spellings": "the cr spelling(s) parse to a different tree than lf",
       "reason": "ref:lone-cr-strands-a-column-probe"
