@@ -879,6 +879,40 @@ static bool has_extra_indent(Scanner *s) {
   return s->indent > 0;
 }
 
+/// TRUE when the current line sits PAST the innermost container's content
+/// column, so a definition marker on it is indented text rather than an opener.
+///
+/// A definition opens only AT its container's content column: an indented
+/// `[x]:` / `[^x]:` is ordinary paragraph text, not a definition with a stray
+/// space (the spec's column rule, corpus 157). `has_extra_indent` catches the
+/// SHORT-OF-margin (lazy) side of that and the top-level indented side, but it
+/// measures a list/footnote against `data` - a minimum indent, not a column -
+/// so it cannot see a line that is one column PAST the margin. That gap only
+/// surfaced once a `:::` container recorded its own column: a definition marker
+/// one space past a div nested in a list or footnote opened a definition the
+/// tree could not then reconcile with the padding before it
+/// (tree-sitter-carve#282). The walk stops at the innermost container of any
+/// indenting kind - div, figure group, list, footnote, table caption - because
+/// that is the one whose margin the line belongs to; a block quote continues by
+/// its own markers, so it sets no indentation margin here. A FIGURE_GROUP is a
+/// DIV wearing the reserved kind word (see `parse_figure_group_marker`), so it
+/// carries the same recorded `content_col` and must gate a nested definition
+/// the same way - without it a `::: figure` in a footnote body reproduced the
+/// very ERROR this guard removes for a plain `:::`.
+static bool past_container_content_col(Scanner *s) {
+  for (int i = s->open_blocks->size - 1; i >= 0; --i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (b->type == DIV || b->type == FIGURE_GROUP || is_list(b->type) ||
+        b->type == FOOTNOTE || b->type == TABLE_CAPTION) {
+      return b->content_col != 0 && s->indent > b->content_col;
+    }
+    if (b->type == BLOCK_QUOTE) {
+      return false;
+    }
+  }
+  return false;
+}
+
 static uint8_t count_blocks(Scanner *s, BlockType type) {
   uint8_t count = 0;
   for (int i = s->open_blocks->size - 1; i >= 0; --i) {
@@ -3758,8 +3792,11 @@ static bool parse_open_bracket(Scanner *s, TSLexer *lexer,
   // COLUMN ZERO, same rule the heading marker follows. A definition opens only
   // at its container's content column; an indented `[x]:` / `[^x]:` is ordinary
   // paragraph text, not a definition with a stray space (corpus
-  // 157-indented-reference-and-footnote-definitions-stay-literal).
-  if (has_extra_indent(s)) {
+  // 157-indented-reference-and-footnote-definitions-stay-literal). Both sides
+  // of the margin disqualify it: SHORT of it (a lazy/top-level indent, via
+  // `has_extra_indent`) and PAST it (one column into a nested container, via
+  // `past_container_content_col`; tree-sitter-carve#282).
+  if (has_extra_indent(s) || past_container_content_col(s)) {
     return false;
   }
 
@@ -4188,6 +4225,17 @@ static bool parse_colon(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     // uncovered on invalid ones.
     //
     push_block(s, DIV, colons);
+    // A div's content is FLUSH with its marker, so the marker column - the
+    // leading whitespace this line opened with - IS the content column. A
+    // top-level div opens at column 0, which stays 0 ("no opinion"), so the
+    // document-root fallback keeps answering for it. A div nested in a list or
+    // footnote records its real column, which is what lets a definition opener
+    // one space past it fall back to a paragraph rather than opening a
+    // definition the line does not spell (tree-sitter-carve#282).
+    Block *opened_div = peek_block(s);
+    if (opened_div) {
+      opened_div->content_col = s->indent;
+    }
     lexer->result_symbol = DIV_BEGIN;
     return true;
   }

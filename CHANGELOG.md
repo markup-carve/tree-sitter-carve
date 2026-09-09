@@ -6,6 +6,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- A colon fence nested inside a description-list definition body or a footnote
+  body now parses instead of landing in an `ERROR` node. A div records its own
+  content column, so its closer and an inner reference definition are measured
+  against the column the opener established, and a definition marker one column
+  past that column folds as text rather than opening a stray definition it
+  cannot reconcile. The two categories 0.1.5 recorded as skips -
+  `a-container-in-a-host-body-owns-a-line-past-its-own-content-column` and
+  `a-container-closer-closes-its-container-in-a-footnote-body-too` - are
+  covered again. This matches the container reading the engines took, where a
+  bare `:::` opener with no body opens an empty container and a wrong-width
+  bare run is an ordinary opener, not a closer (markup-carve/carve#1970, #282).
+
 ## [0.1.5] - 2026-09-07
 
 ### Fixed
