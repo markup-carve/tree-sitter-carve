@@ -60,6 +60,7 @@ function inlineElement($, options) {
           prec.dynamic(ELEMENT_PRECEDENCE, $._image),
           prec.dynamic(ELEMENT_PRECEDENCE, $._link),
           prec.dynamic(ELEMENT_PRECEDENCE, $.extension_inline),
+          $.include_directive,
           prec.dynamic(ELEMENT_PRECEDENCE, $.mention),
           prec.dynamic(ELEMENT_PRECEDENCE, $.tag),
           prec.dynamic(ELEMENT_PRECEDENCE, $.citation_group),
@@ -1873,6 +1874,15 @@ module.exports = grammar({
     //
     // `{--}` is deliberately absent: it is the braced en dash (carve#1447),
     // a construct of its own rather than an empty deletion.
+    // RESERVED SYNTAX, not a core construct (PART 6 of the grammar, PART 9
+    // section 19). The core leaves a directive literal; recognizing it here is
+    // what stops its own selector from being highlighted as something else -
+    // `#section` is TAG syntax and an option slot is MENTION syntax, so without
+    // this rule `{{ ch.crv #intro }}` highlights `#intro` as a tag.
+    //
+    // One token, so it cannot span a line break and cannot nest.
+    include_directive: (_) => token(seq("{{", /[^{}\n]*/, "}}")),
+
     _empty_braced_pair: (_) =>
       token(
         choice(

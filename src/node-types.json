@@ -560,6 +560,10 @@
           "named": true
         },
         {
+          "type": "include_directive",
+          "named": true
+        },
+        {
           "type": "inline_image",
           "named": true
         },
@@ -831,6 +835,10 @@
         },
         {
           "type": "highlighted",
+          "named": true
+        },
+        {
+          "type": "include_directive",
           "named": true
         },
         {
@@ -1728,6 +1736,10 @@
           "named": true
         },
         {
+          "type": "include_directive",
+          "named": true
+        },
+        {
           "type": "inline_image",
           "named": true
         },
@@ -2128,6 +2140,10 @@
           "named": true
         },
         {
+          "type": "include_directive",
+          "named": true
+        },
+        {
           "type": "inline_image",
           "named": true
         },
@@ -2365,6 +2381,10 @@
         },
         {
           "type": "highlighted",
+          "named": true
+        },
+        {
+          "type": "include_directive",
           "named": true
         },
         {
@@ -2961,6 +2981,10 @@
         },
         {
           "type": "highlighted",
+          "named": true
+        },
+        {
+          "type": "include_directive",
           "named": true
         },
         {
@@ -3659,6 +3683,10 @@
           "named": true
         },
         {
+          "type": "include_directive",
+          "named": true
+        },
+        {
           "type": "inline_image",
           "named": true
         },
@@ -3904,6 +3932,10 @@
         },
         {
           "type": "highlighted",
+          "named": true
+        },
+        {
+          "type": "include_directive",
           "named": true
         },
         {
@@ -4368,6 +4400,10 @@
   },
   {
     "type": "identifier",
+    "named": true
+  },
+  {
+    "type": "include_directive",
     "named": true
   },
   {

@@ -87,3 +87,65 @@ A continuation-attached table keeps its later rows
             (table_cell))
           (table_row
             (table_cell)))))))
+
+==================
+An include directive is one reserved token
+==================
+
+{{ chapters/intro.crv }}
+
+---
+
+(document
+  (paragraph
+    (include_directive)))
+
+==================
+A directive's selector and options stay inside it
+==================
+
+{{ chapters/intro.crv #intro @shift:auto }}
+
+---
+
+(document
+  (paragraph
+    (include_directive)))
+
+==================
+A quoted path carries its spaces
+==================
+
+See {{ "my chapter.crv" }} inline.
+
+---
+
+(document
+  (paragraph
+    (include_directive)))
+
+==================
+An unterminated directive is ordinary text
+==================
+
+{{ not closed
+
+---
+
+(document
+  (paragraph))
+
+==================
+A directive inside a code span is verbatim
+==================
+
+`{{ ch.crv }}`
+
+---
+
+(document
+  (paragraph
+    (verbatim
+      begin_marker: (verbatim_marker_begin)
+      content: (content)
+      end_marker: (verbatim_marker_end))))

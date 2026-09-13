@@ -144,6 +144,15 @@ function effectiveCapture(text, row, column) {
  */
 const CASES = [
     {
+        // The whole directive, selector included. Without the rule behind it
+        // `#intro` is a tag and paints as one, inside what is a single
+        // reserved token.
+        name: 'an include directive is captured as a whole',
+        source: '{{ chapters/intro.crv #intro }}\n',
+        at: [0, 0],
+        expect: 'function.macro',
+    },
+    {
         // The note's own capture, which nothing else here would exercise: its
         // content highlights as ordinary inline whatever the note does, so a
         // query that never matched would look exactly like one that did.

@@ -183,6 +183,11 @@
 
 (extension_inline) @function.macro
 
+; Reserved processor syntax (PART 9 section 19). Captured as a whole so its own
+; selector is not painted as the construct it looks like: `#section` is tag
+; syntax and an option slot is mention syntax.
+(include_directive) @function.macro
+
 (mention) @constant
 
 (tag) @tag
