@@ -89,7 +89,7 @@ A continuation-attached table keeps its later rows
             (table_cell)))))))
 
 ==================
-An include directive is one reserved token
+An include directive names its parts
 ==================
 
 {{ chapters/intro.crv }}
@@ -98,10 +98,13 @@ An include directive is one reserved token
 
 (document
   (paragraph
-    (include_directive)))
+    (include_directive
+      (include_open)
+      path: (include_path)
+      (include_close))))
 
 ==================
-A directive's selector and options stay inside it
+A directive's selector and options are their own nodes
 ==================
 
 {{ chapters/intro.crv #intro @shift:auto }}
@@ -110,7 +113,15 @@ A directive's selector and options stay inside it
 
 (document
   (paragraph
-    (include_directive)))
+    (include_directive
+      (include_open)
+      path: (include_path)
+      section: (include_section)
+      option: (include_option
+        name: (include_option_name)
+        (include_option_separator)
+        value: (include_option_value))
+      (include_close))))
 
 ==================
 A quoted path carries its spaces
@@ -122,7 +133,27 @@ See {{ "my chapter.crv" }} inline.
 
 (document
   (paragraph
-    (include_directive)))
+    (include_directive
+      (include_open)
+      path: (include_path)
+      (include_close))))
+
+==================
+An unrecognized part does not break the directive
+==================
+
+{{ ch.crv #intro +1 }}
+
+---
+
+(document
+  (paragraph
+    (include_directive
+      (include_open)
+      path: (include_path)
+      section: (include_section)
+      (include_extra)
+      (include_close))))
 
 ==================
 An unterminated directive is ordinary text

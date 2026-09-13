@@ -1831,6 +1831,106 @@
     }
   },
   {
+    "type": "include_directive",
+    "named": true,
+    "fields": {
+      "option": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "include_option",
+            "named": true
+          }
+        ]
+      },
+      "path": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "include_path",
+            "named": true
+          }
+        ]
+      },
+      "section": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "include_section",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "include_close",
+          "named": true
+        },
+        {
+          "type": "include_extra",
+          "named": true
+        },
+        {
+          "type": "include_open",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "include_extra",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "include_option",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "include_option_name",
+            "named": true
+          }
+        ]
+      },
+      "value": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "include_option_value",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "include_option_separator",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "include_option_value",
+    "named": true,
+    "fields": {}
+  },
+  {
     "type": "inline_attribute",
     "named": true,
     "fields": {},
@@ -4403,7 +4503,27 @@
     "named": true
   },
   {
-    "type": "include_directive",
+    "type": "include_close",
+    "named": true
+  },
+  {
+    "type": "include_open",
+    "named": true
+  },
+  {
+    "type": "include_option_name",
+    "named": true
+  },
+  {
+    "type": "include_option_separator",
+    "named": true
+  },
+  {
+    "type": "include_path",
+    "named": true
+  },
+  {
+    "type": "include_section",
     "named": true
   },
   {
@@ -4656,6 +4776,10 @@
   },
   {
     "type": "{_",
+    "named": false
+  },
+  {
+    "type": "{{",
     "named": false
   },
   {
