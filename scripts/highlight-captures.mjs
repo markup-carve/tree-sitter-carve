@@ -158,7 +158,7 @@ const CASES = [
         // a selector into another document, not a hashtag.
         name: "an include directive's selector is a label, not a tag",
         source: '{{ chapters/intro.crv#intro }}\n',
-        at: [0, 22],
+        at: [0, 21],
         expect: 'label',
     },
     {
