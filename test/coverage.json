@@ -6,8 +6,8 @@
     "table": { "documents": 138, "nodes": 139 },
     "heading": { "documents": 133, "nodes": 166 },
     "code_block": { "documents": 80, "nodes": 80 },
-    "list": { "documents": 504, "nodes": 630 },
-    "definition_list": { "documents": 156, "nodes": 156 },
+    "list": { "documents": 505, "nodes": 631 },
+    "definition_list": { "documents": 160, "nodes": 160 },
     "line_block": { "documents": 35, "nodes": 35 },
     "div": { "documents": 26, "nodes": 28 },
     "raw_block": { "documents": 9, "nodes": 9 },
@@ -513,7 +513,11 @@
     "an-invisible-line-before-the-blank-does-not-cancel-the-separation",
     "an-unresolved-image-gives-its-whole-caption-slot-back-at-any-depth",
     "below-a-definition-body-s-column-an-invisible-line-folds-as-text",
-    "the-continuation-marker-s-column-gate-reaches-every-container"
+    "the-continuation-marker-s-column-gate-reaches-every-container",
+    "a-column-0-line-after-a-description-hosted-note-is-a-document-sibling",
+    "a-nested-note-s-floor-is-two-columns-past-its-own-marker",
+    "a-trailing-line-after-a-consumed-definition-is-placed-by-column-reach",
+    "include-directive-with-no-resolver-renders-literal"
   ],
   "skip": {
     "the-host-does-not-change-which-column-a-definition-reaches-6": "a reference definition nested inside a definition list whose term is itself nested in another definition list parses to a top-level ERROR. The grammar builds both definition-list layers but cannot attach the reference definition at the authored base selected by the language. The category's other examples parse cleanly.",
