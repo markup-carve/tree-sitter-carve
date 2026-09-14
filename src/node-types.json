@@ -1885,11 +1885,6 @@
     }
   },
   {
-    "type": "include_extra",
-    "named": true,
-    "fields": {}
-  },
-  {
     "type": "include_option",
     "named": true,
     "fields": {
@@ -1924,11 +1919,6 @@
         }
       ]
     }
-  },
-  {
-    "type": "include_option_value",
-    "named": true,
-    "fields": {}
   },
   {
     "type": "inline_attribute",
@@ -4507,6 +4497,10 @@
     "named": true
   },
   {
+    "type": "include_extra",
+    "named": true
+  },
+  {
     "type": "include_open",
     "named": true
   },
@@ -4516,6 +4510,10 @@
   },
   {
     "type": "include_option_separator",
+    "named": true
+  },
+  {
+    "type": "include_option_value",
     "named": true
   },
   {

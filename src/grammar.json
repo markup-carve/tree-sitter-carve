@@ -5902,8 +5902,21 @@
     "include_option_value": {
       "type": "TOKEN",
       "content": {
-        "type": "PATTERN",
-        "value": "[^\\s}]+"
+        "type": "CHOICE",
+        "members": [
+          {
+            "type": "PATTERN",
+            "value": "\"(?:\\\\.|[^\"\\\\\\n}])*\""
+          },
+          {
+            "type": "PATTERN",
+            "value": "'(?:\\\\.|[^'\\\\\\n}])*'"
+          },
+          {
+            "type": "PATTERN",
+            "value": "[^\\s}]+"
+          }
+        ]
       }
     },
     "_empty_braced_pair": {
