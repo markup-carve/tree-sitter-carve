@@ -156,6 +156,122 @@ An unrecognized part does not break the directive
       (include_close))))
 
 ==================
+A double-quoted option value holding a space is one value
+==================
+
+{{ ch.crv @label:"two words" }}
+
+---
+
+(document
+  (paragraph
+    (include_directive
+      (include_open)
+      path: (include_path)
+      option: (include_option
+        name: (include_option_name)
+        (include_option_separator)
+        value: (include_option_value))
+      (include_close))))
+
+==================
+A single-quoted option value holding a space is one value
+==================
+
+{{ ch.crv @label:'two words' }}
+
+---
+
+(document
+  (paragraph
+    (include_directive
+      (include_open)
+      path: (include_path)
+      option: (include_option
+        name: (include_option_name)
+        (include_option_separator)
+        value: (include_option_value))
+      (include_close))))
+
+==================
+A quoted option value may hold the other quote character
+==================
+
+{{ ch.crv @label:"it's here" }}
+
+---
+
+(document
+  (paragraph
+    (include_directive
+      (include_open)
+      path: (include_path)
+      option: (include_option
+        name: (include_option_name)
+        (include_option_separator)
+        value: (include_option_value))
+      (include_close))))
+
+==================
+A backslash escapes a quote inside an option value
+==================
+
+{{ ch.crv @label:"a\" b" }}
+
+---
+
+(document
+  (paragraph
+    (include_directive
+      (include_open)
+      path: (include_path)
+      option: (include_option
+        name: (include_option_name)
+        (include_option_separator)
+        value: (include_option_value))
+      (include_close))))
+
+==================
+An unterminated quote does not swallow the rest of the line
+==================
+
+{{ ch.crv @label:"two words }}
+
+---
+
+(document
+  (paragraph
+    (include_directive
+      (include_open)
+      path: (include_path)
+      option: (include_option
+        name: (include_option_name)
+        (include_option_separator)
+        value: (include_option_value))
+      (include_extra)
+      (include_close))))
+
+==================
+An unquoted option value still stops at the space
+==================
+
+{{ ch.crv @label:plain tail }}
+
+---
+
+(document
+  (paragraph
+    (include_directive
+      (include_open)
+      path: (include_path)
+      option: (include_option
+        name: (include_option_name)
+        (include_option_separator)
+        value: (include_option_value))
+      (include_extra)
+      (include_close))))
+
+==================
 An unterminated directive is ordinary text
 ==================
 

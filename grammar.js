@@ -1952,7 +1952,20 @@ module.exports = grammar({
       ),
     include_option_name: (_) =>
       token(prec(1, seq("@", /[A-Za-z_][A-Za-z0-9_-]*/))),
-    include_option_value: (_) => token(/[^\s}]+/),
+    // A value is an `attribute_value`, so the QUOTED forms are one value even
+    // when they hold a space - grammar PART 6 `include_options` reads
+    // `attribute_value`, and `quoted_value` admits both quote characters with a
+    // backslash escape inside. The run stops at the newline, normative
+    // [CARVE-P4-006]. Longest-match picks the quoted alternative when it
+    // closes; an unterminated quote falls back to the unquoted run and still
+    // stops at the space rather than pairing with a quote further along.
+    //
+    // `}` is excluded from the quoted alternatives too, so a value can never
+    // eat the directive's own `}}`. That leaves `@label:"a}b"` unrecognized,
+    // which is the shape tracked upstream in markup-carve/carve-grammars#412 -
+    // admitting it needs its own measurement, not a ride on this rule.
+    include_option_value: (_) =>
+      token(choice(/"(?:\\.|[^"\\\n}])*"/, /'(?:\\.|[^'\\\n}])*'/, /[^\s}]+/)),
 
     _empty_braced_pair: (_) =>
       token(
