@@ -60,14 +60,10 @@ function inlineElement($, options) {
           prec.dynamic(ELEMENT_PRECEDENCE, $._image),
           prec.dynamic(ELEMENT_PRECEDENCE, $._link),
           prec.dynamic(ELEMENT_PRECEDENCE, $.extension_inline),
-          // WEIGHTED ABOVE THE SUM, not just above one element. Dynamic
-          // precedence adds up along a parse, and the text reading of a
-          // directive contains one element per part it was shredded into - a
-          // tag for the selector, a mention per option - so a plain
-          // ELEMENT_PRECEDENCE lost to any directive carrying two or more
-          // parts. A directive has a handful of parts by grammar, so a
-          // hundredfold margin cannot be reached by adding more of them.
-          prec.dynamic(100 * ELEMENT_PRECEDENCE, $.include_directive),
+          // Dynamic precedence is additive on the shredded mention/tag parse.
+          // Keep the directive margin above any realistically parseable source
+          // while retaining named child nodes (a lexical token cannot do that).
+          prec.dynamic(10_000 * ELEMENT_PRECEDENCE, $.include_directive),
           $._include_open_fallback,
           prec.dynamic(ELEMENT_PRECEDENCE, $.mention),
           prec.dynamic(ELEMENT_PRECEDENCE, $.tag),

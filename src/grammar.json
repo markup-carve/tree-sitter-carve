@@ -4437,7 +4437,7 @@
                   },
                   {
                     "type": "PREC_DYNAMIC",
-                    "value": 10000,
+                    "value": 1000000,
                     "content": {
                       "type": "SYMBOL",
                       "name": "include_directive"
@@ -4722,7 +4722,7 @@
                   },
                   {
                     "type": "PREC_DYNAMIC",
-                    "value": 10000,
+                    "value": 1000000,
                     "content": {
                       "type": "SYMBOL",
                       "name": "include_directive"
