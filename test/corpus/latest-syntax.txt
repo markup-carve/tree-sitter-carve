@@ -107,7 +107,7 @@ An include directive names its parts
 A directive's selector and options are their own nodes
 ==================
 
-{{ chapters/intro.crv #intro @shift:auto }}
+{{ chapters/intro.crv#intro @shift:auto }}
 
 ---
 
@@ -142,7 +142,7 @@ See {{ "my chapter.crv" }} inline.
 An unrecognized part does not break the directive
 ==================
 
-{{ ch.crv #intro +1 }}
+{{ ch.crv#intro +1 }}
 
 ---
 

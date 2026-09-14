@@ -1898,6 +1898,7 @@ module.exports = grammar({
         alias("{{", $.include_open),
         $._include_pad,
         field("path", $.include_path),
+        optional(field("section", $.include_section)),
         repeat(seq($._include_pad, $._include_part)),
         $._include_pad,
         alias("}}", $.include_close),

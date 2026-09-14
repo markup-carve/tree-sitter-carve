@@ -148,7 +148,7 @@ const CASES = [
         // `#intro` is a tag and paints as one, inside what is a single
         // reserved token.
         name: 'an include directive paints its own delimiters',
-        source: '{{ chapters/intro.crv #intro }}\n',
+        source: '{{ chapters/intro.crv#intro }}\n',
         at: [0, 0],
         expect: 'punctuation.special',
     },
@@ -157,13 +157,13 @@ const CASES = [
         // painted as one before the directive had a rule. It is now a label -
         // a selector into another document, not a hashtag.
         name: "an include directive's selector is a label, not a tag",
-        source: '{{ chapters/intro.crv #intro }}\n',
+        source: '{{ chapters/intro.crv#intro }}\n',
         at: [0, 22],
         expect: 'label',
     },
     {
         name: "an include directive's path reads as a path",
-        source: '{{ chapters/intro.crv #intro }}\n',
+        source: '{{ chapters/intro.crv#intro }}\n',
         at: [0, 3],
         expect: 'string.special.path',
     },
