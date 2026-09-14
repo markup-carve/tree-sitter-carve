@@ -87,3 +87,96 @@ A continuation-attached table keeps its later rows
             (table_cell))
           (table_row
             (table_cell)))))))
+
+==================
+An include directive names its parts
+==================
+
+{{ chapters/intro.crv }}
+
+---
+
+(document
+  (paragraph
+    (include_directive
+      (include_open)
+      path: (include_path)
+      (include_close))))
+
+==================
+A directive's selector and options are their own nodes
+==================
+
+{{ chapters/intro.crv#intro @shift:auto }}
+
+---
+
+(document
+  (paragraph
+    (include_directive
+      (include_open)
+      path: (include_path)
+      section: (include_section)
+      option: (include_option
+        name: (include_option_name)
+        (include_option_separator)
+        value: (include_option_value))
+      (include_close))))
+
+==================
+A quoted path carries its spaces
+==================
+
+See {{ "my chapter.crv" }} inline.
+
+---
+
+(document
+  (paragraph
+    (include_directive
+      (include_open)
+      path: (include_path)
+      (include_close))))
+
+==================
+An unrecognized part does not break the directive
+==================
+
+{{ ch.crv#intro +1 }}
+
+---
+
+(document
+  (paragraph
+    (include_directive
+      (include_open)
+      path: (include_path)
+      section: (include_section)
+      (include_extra)
+      (include_close))))
+
+==================
+An unterminated directive is ordinary text
+==================
+
+{{ not closed
+
+---
+
+(document
+  (paragraph))
+
+==================
+A directive inside a code span is verbatim
+==================
+
+`{{ ch.crv }}`
+
+---
+
+(document
+  (paragraph
+    (verbatim
+      begin_marker: (verbatim_marker_begin)
+      content: (content)
+      end_marker: (verbatim_marker_end))))

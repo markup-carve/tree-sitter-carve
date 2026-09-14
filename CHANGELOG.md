@@ -6,6 +6,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- A `{{ path }}` include directive is its own `include_directive` node, with its
+  parts as named children: `include_path`, `include_section` and an
+  `include_option` per slot (each with `name` and `value` fields). It used to
+  shred into the constructs its own selector looks like, so
+  `{{ ch.crv #intro }}` colored `#intro` as a tag (markup-carve/carve#291,
+  PART 9 section 19). The parts are what a structural editor selects by and what
+  a language server can anchor path or section completion on.
+
 ### Fixed
 
 - A colon fence nested inside a description-list definition body or a footnote

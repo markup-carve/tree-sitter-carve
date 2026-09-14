@@ -183,6 +183,18 @@
 
 (extension_inline) @function.macro
 
+; Reserved processor syntax (PART 9 section 19). The PARTS are captured, not the
+; whole run: the directive's own context already keeps `#section` away from the
+; tag rule and an option away from the mention rule, so there is nothing to gain
+; by painting it one colour - and a reader wants the path to look like a path.
+(include_open) @punctuation.special
+(include_close) @punctuation.special
+(include_path) @string.special.path
+(include_section) @label
+(include_option_name) @variable.parameter
+(include_option_separator) @punctuation.delimiter
+(include_option_value) @constant
+
 (mention) @constant
 
 (tag) @tag

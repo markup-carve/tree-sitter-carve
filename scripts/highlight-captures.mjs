@@ -144,6 +144,36 @@ function effectiveCapture(text, row, column) {
  */
 const CASES = [
     {
+        // The whole directive, selector included. Without the rule behind it
+        // `#intro` is a tag and paints as one, inside what is a single
+        // reserved token.
+        name: 'an include directive paints its own delimiters',
+        source: '{{ chapters/intro.crv#intro }}\n',
+        at: [0, 0],
+        expect: 'punctuation.special',
+    },
+    {
+        // The part that matters: `#intro` is genuinely tag syntax, and was
+        // painted as one before the directive had a rule. It is now a label -
+        // a selector into another document, not a hashtag.
+        name: "an include directive's selector is a label, not a tag",
+        source: '{{ chapters/intro.crv#intro }}\n',
+        at: [0, 21],
+        expect: 'label',
+    },
+    {
+        name: "an include directive's path reads as a path",
+        source: '{{ chapters/intro.crv#intro }}\n',
+        at: [0, 3],
+        expect: 'string.special.path',
+    },
+    {
+        name: "an include directive's option name is a parameter",
+        source: '{{ ch.crv @shift:auto }}\n',
+        at: [0, 10],
+        expect: 'variable.parameter',
+    },
+    {
         // The note's own capture, which nothing else here would exercise: its
         // content highlights as ordinary inline whatever the note does, so a
         // query that never matched would look exactly like one that did.

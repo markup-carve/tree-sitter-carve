@@ -60,6 +60,11 @@ function inlineElement($, options) {
           prec.dynamic(ELEMENT_PRECEDENCE, $._image),
           prec.dynamic(ELEMENT_PRECEDENCE, $._link),
           prec.dynamic(ELEMENT_PRECEDENCE, $.extension_inline),
+          // Dynamic precedence is additive on the shredded mention/tag parse.
+          // Keep the directive margin above any realistically parseable source
+          // while retaining named child nodes (a lexical token cannot do that).
+          prec.dynamic(10_000 * ELEMENT_PRECEDENCE, $.include_directive),
+          $._include_open_fallback,
           prec.dynamic(ELEMENT_PRECEDENCE, $.mention),
           prec.dynamic(ELEMENT_PRECEDENCE, $.tag),
           prec.dynamic(ELEMENT_PRECEDENCE, $.citation_group),
@@ -219,6 +224,10 @@ module.exports = grammar({
     // `^[` opener does not need a declared conflict against the plain
     // fallback either: it is an external token offered last, and its refusal
     // restores the position for the caret's own fallback.
+    // The directive against a plain-text reading of its own opener: GLR explores
+    // both and the directive wins by dynamic precedence, but only when it
+    // completes. An unterminated `{{` therefore stays text instead of erroring.
+    [$.include_directive, $._include_open_fallback],
     [$.bold_italic_begin, $._symbol_fallback],
     [$.bold_italic_begin, $._note_symbol_fallback],
     [$.emphasis_begin, $._symbol_fallback],
@@ -1873,6 +1882,78 @@ module.exports = grammar({
     //
     // `{--}` is deliberately absent: it is the braced en dash (carve#1447),
     // a construct of its own rather than an empty deletion.
+    // RESERVED SYNTAX, not a core construct (PART 6 of the grammar, PART 9
+    // section 19). The core leaves a directive literal; recognizing it here is
+    // what stops its own selector from being highlighted as something else -
+    // `#section` is TAG syntax and an option slot is MENTION syntax, so without
+    // this rule `{{ ch.crv #intro }}` highlights `#intro` as a tag.
+    //
+    // One token, so it cannot span a line break and cannot nest.
+    include_directive: ($) =>
+      seq(
+        alias("{{", $.include_open),
+        $._include_pad,
+        field("path", $.include_path),
+        optional(field("section", $.include_section)),
+        repeat(seq($._include_pad, $._include_part)),
+        $._include_pad,
+        alias("}}", $.include_close),
+      ),
+
+    // TOLERANT after the path, deliberately. The one-token rule this replaces
+    // matched anything between the braces, and a grammar that ERRORS on a
+    // malformed directive is worse than one that over-matches: the no-error
+    // sweep treats an ERROR node as a defect, and the processor's own answer to
+    // a malformed directive is to leave it as text rather than to complain.
+    // `include_extra` is what a part that is neither a section nor an option
+    // lands in, so the shape stays parseable and a consumer can still tell the
+    // recognized parts from the rest.
+    _include_part: ($) =>
+      choice(
+        field("section", $.include_section),
+        field("option", $.include_option),
+        $.include_extra,
+      ),
+    include_extra: (_) => token(/[^\s}]+/),
+
+    // An UNTERMINATED `{{` is ordinary text (I1), and a grammar that reports it
+    // as an ERROR is worse than one that mis-highlights: the no-error sweep
+    // treats an ERROR node as a defect, and the processor's answer to a
+    // malformed directive is to leave it alone. So the opener is also readable
+    // as plain text, and the directive - which cannot complete without its
+    // closer - wins by dynamic precedence whenever it does complete. Same shape
+    // as `_symbol_fallback` above, for the same reason.
+    _include_open_fallback: (_) => token("{{"),
+
+    // Whitespace is not an `extra` in this grammar - it is content almost
+    // everywhere - so the directive's padding is spelled. A RUN, and required
+    // on both sides: `{{path}}` is ordinary text (grammar PART 6).
+    _include_pad: (_) => token.immediate(/[ \t]+/),
+
+    // The PARTS, not one opaque run. Highlighting only needs the directive not
+    // to be shredded into `tag` and `mention`, which the context already
+    // guarantees - but a structural editor selects and navigates by NODE, so a
+    // single token leaves helix, neovim and zed with nothing to aim at, and a
+    // language server has no anchor to offer path or section completion on.
+    //
+    // Every part is a token, so the `#` and `@` inside stay part of the
+    // directive rather than reaching the inline rules.
+    include_path: (_) =>
+      token(choice(/[^#@}\s"][^#@}\s]*/, /"(?:\\.|[^"\\\n])*"/)),
+    // Higher token precedence than `include_extra`, which matches the same
+    // characters: without it the tolerant catch-all wins the tie and a valid
+    // selector is reported as "something else".
+    include_section: (_) => token(prec(1, seq("#", /[A-Za-z_][A-Za-z0-9_-]*/))),
+    include_option: ($) =>
+      seq(
+        field("name", $.include_option_name),
+        alias(":", $.include_option_separator),
+        field("value", $.include_option_value),
+      ),
+    include_option_name: (_) =>
+      token(prec(1, seq("@", /[A-Za-z_][A-Za-z0-9_-]*/))),
+    include_option_value: (_) => token(/[^\s}]+/),
+
     _empty_braced_pair: (_) =>
       token(
         choice(
