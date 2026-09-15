@@ -232,6 +232,104 @@ A backslash escapes a quote inside an option value
       (include_close))))
 
 ==================
+A `}}` inside a quoted option value is the value's, and the closer is the next pair
+==================
+
+{{ ch.crv @label:"a }} more" extra }}
+
+---
+
+(document
+  (paragraph
+    (include_directive
+      (include_open)
+      path: (include_path)
+      option: (include_option
+        name: (include_option_name)
+        (include_option_separator)
+        value: (include_option_value))
+      (include_extra)
+      (include_close))))
+
+==================
+The same in a single-quoted option value
+==================
+
+{{ ch.crv @label:'a }} more' extra }}
+
+---
+
+(document
+  (paragraph
+    (include_directive
+      (include_open)
+      path: (include_path)
+      option: (include_option
+        name: (include_option_name)
+        (include_option_separator)
+        value: (include_option_value))
+      (include_extra)
+      (include_close))))
+
+==================
+A `}}` inside a quoted path is the path's, and the closer is the next pair
+==================
+
+{{ "a }} more" @k:v extra }}
+
+---
+
+(document
+  (paragraph
+    (include_directive
+      (include_open)
+      path: (include_path)
+      option: (include_option
+        name: (include_option_name)
+        (include_option_separator)
+        value: (include_option_value))
+      (include_extra)
+      (include_close))))
+
+==================
+A lone `}` inside a quoted option value is the value's
+==================
+
+{{ ch.crv @label:"a}b" }}
+
+---
+
+(document
+  (paragraph
+    (include_directive
+      (include_open)
+      path: (include_path)
+      option: (include_option
+        name: (include_option_name)
+        (include_option_separator)
+        value: (include_option_value))
+      (include_close))))
+
+==================
+An unterminated quote opens no run, so the closer is the first `}}`
+==================
+
+{{ ch.crv @label:"a }} more }}
+
+---
+
+(document
+  (paragraph
+    (include_directive
+      (include_open)
+      path: (include_path)
+      option: (include_option
+        name: (include_option_name)
+        (include_option_separator)
+        value: (include_option_value))
+      (include_close))))
+
+==================
 An unterminated quote does not swallow the rest of the line
 ==================
 

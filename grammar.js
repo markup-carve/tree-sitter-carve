@@ -1960,12 +1960,19 @@ module.exports = grammar({
     // closes; an unterminated quote falls back to the unquoted run and still
     // stops at the space rather than pairing with a quote further along.
     //
-    // `}` is excluded from the quoted alternatives too, so a value can never
-    // eat the directive's own `}}`. That leaves `@label:"a}b"` unrecognized,
-    // which is the shape tracked upstream in markup-carve/carve-grammars#412 -
-    // admitting it needs its own measurement, not a ride on this rule.
+    // `}` IS admitted inside the quoted alternatives, the `}}` pair included:
+    // markup-carve/carve#2013 rules that a quoted run may hold the pair and
+    // that the directive's closer is the first pair OUTSIDE any quoted run.
+    // Nothing enforces that here, and nothing has to - `include_directive` is
+    // a `seq` ending in a `}}` token rather than a scan for the first pair, so
+    // the closer falls out of the token boundaries. The unquoted alternative
+    // keeps excluding `}`, so a pair can ONLY be consumed inside a run.
+    //
+    // The regex surfaces pay for this and this one does not: their quoted run
+    // has to be matched to its closing quote before the closer is searched for,
+    // which is the shape that backtracks (markup-carve/carve-grammars#417).
     include_option_value: (_) =>
-      token(choice(/"(?:\\.|[^"\\\n}])*"/, /'(?:\\.|[^'\\\n}])*'/, /[^\s}]+/)),
+      token(choice(/"(?:\\.|[^"\\\n])*"/, /'(?:\\.|[^'\\\n])*'/, /[^\s}]+/)),
 
     _empty_braced_pair: (_) =>
       token(
