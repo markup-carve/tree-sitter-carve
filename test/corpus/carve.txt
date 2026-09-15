@@ -6360,6 +6360,25 @@ A lone carriage return does not carry a reference label onto the next line (tree
     destination: (link_destination)))
 
 ===============================================================================
+A link destination is opaque to its enclosing emphasis
+;; PART 9 section 13. A slash inside the destination belongs to the URL. It
+;; cannot close the emphasis around the link.
+===============================================================================
+/see [x](http://a.b/c) now/
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (emphasis
+      begin_marker: (emphasis_begin)
+      content: (content
+        (inline_link
+          text: (link_text)
+          destination: (inline_link_destination)))
+      end_marker: (emphasis_end))))
+
+===============================================================================
 A lone carriage return does not carry an image's reference label onto the next line (tree-sitter-carve#265)
 ;; The image spelling of the same label. `full_reference_image` reaches its
 ;; label through the same `_link_label`, so it wrapped identically.

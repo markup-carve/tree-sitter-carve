@@ -2,11 +2,11 @@
   "_comment": "Coverage matrix for the shared Carve spec corpus (spec/tests/corpus/*.crv). Every NN-slug base category must appear in covered or skip; the coverage-matrix test fails otherwise so a new spec category forces a classify decision. covered = grammar parses every file in the category with no ERROR/MISSING node. skip = at least one file currently produces an ERROR/MISSING node; reason records the unmodeled construct (a grammar gap to surface, not to hack around). A skip key is a CATEGORY (NN-slug) or a single EXAMPLE (NN-slug-2) — use the example form when the rest of the category parses cleanly, so one gap does not drop assertion for its siblings. A key equal to a category name is read as the CATEGORY, so the first example of a category cannot be skipped on its own. REASONS: a ledger entry's `reason` may be `ref:<key>`, resolving against the top-level `reasons` map, so one grammar gap spanning a whole category states its explanation once. coverage-matrix gates it both ways - a ref with no entry fails, and a reasons entry nothing references fails, because a reason nobody points at is an excuse that outlived the gap it excused.",
   "comparisonPopulation": {
     "thematic_break": { "documents": 10, "nodes": 12 },
-    "block_quote": { "documents": 195, "nodes": 226 },
-    "table": { "documents": 138, "nodes": 139 },
+    "block_quote": { "documents": 198, "nodes": 231 },
+    "table": { "documents": 139, "nodes": 141 },
     "heading": { "documents": 133, "nodes": 166 },
     "code_block": { "documents": 80, "nodes": 80 },
-    "list": { "documents": 505, "nodes": 631 },
+    "list": { "documents": 508, "nodes": 634 },
     "definition_list": { "documents": 160, "nodes": 160 },
     "line_block": { "documents": 35, "nodes": 35 },
     "div": { "documents": 26, "nodes": 28 },
@@ -55,6 +55,12 @@
     }
   },
   "covered": [
+    "a-bare-closer-does-not-reach-inside-a-braced-inline",
+    "a-bare-closer-does-not-reach-inside-a-link-destination",
+    "a-block-that-opens-a-tight-item-is-written-on-the-marker-line",
+    "an-underscore-pair-in-text-is-escaped-where-the-line-would-pair-it",
+    "an-underscore-pair-split-across-a-line-break-is-escaped",
+    "the-round-trip-comparison-normalizes-a-named-list",
     "a-block-opener-past-a-nested-footnote-definition-opens-in-the-item",
     "a-container-closer-closes-its-container-in-a-footnote-body-too",
     "a-container-in-a-host-body-owns-a-line-past-its-own-content-column",
