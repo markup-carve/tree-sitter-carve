@@ -6303,7 +6303,10 @@ static void update_square_bracket_lookahead_states(Scanner *s, TSLexer *lexer,
 
   if (lexer->lookahead == '(') {
     // An inline link may follow.
-    if (scan_until_no_newline(s, lexer, ')', top_type)) {
+    // A link destination is opaque to the inline delimiter stack. A `/`,
+    // `*`, `_`, or `~` inside it cannot close the span that contains the
+    // link; only the destination's own `)` ends this lookahead.
+    if (scan_until_no_newline(s, lexer, ')', NULL)) {
       s->state |= STATE_BRACKET_STARTS_INLINE_LINK;
     } else if (at_line_end(lexer)) {
       s->state |= STATE_MULTILINE_IDENTIFIER;
