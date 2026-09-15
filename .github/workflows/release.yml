@@ -225,6 +225,7 @@ jobs:
   publish-npm:
     name: Publish to npm
     runs-on: ubuntu-latest
+    environment: release
     needs: [guard, prebuild, corpus-gate]
     # `npm publish --provenance` signs an attestation binding the tarball to
     # this commit, and that needs an OIDC token. `id-token` is never granted
@@ -285,6 +286,7 @@ jobs:
   publish-crates:
     name: Publish to crates.io
     runs-on: ubuntu-latest
+    environment: release
     # AFTER npm, not beside it. npm is the only leg that can fail for a reason
     # the rehearsal cannot reach: `npm publish --dry-run --provenance` silently
     # ignores the flag - measured on run 32170740059, where the word
@@ -398,6 +400,7 @@ jobs:
   publish-pypi:
     name: Publish to PyPI
     runs-on: ubuntu-latest
+    environment: release
     needs: [guard, corpus-gate, build-python, build-python-sdist, publish-npm]
     permissions:
       # `write`, not `read`, and the gate below is the whole reason: a DRAFT
