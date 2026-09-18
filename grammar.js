@@ -2160,7 +2160,17 @@ module.exports = grammar({
       ),
     _inline_link_url: ($) =>
       // Can escape `)`, but shouldn't capture it.
-      repeat1(/([^)\r\n]|\\\))+/),
+      //
+      // The first run is IMMEDIATE and opens on a non-whitespace character.
+      // `dest = destChar+` in resources/carve-core.ohm and `destChar` admits no
+      // whitespace, so a destination cannot start with one: `[x]( "t")` is a
+      // paragraph, not a link with the title `t` (carve#2070). Said as a plain
+      // token the space is skipped as an extra and the run starts at the quote,
+      // which is how the empty destination came back as a link.
+      seq(
+        token.immediate(/([^)\s]|\\\))([^)\r\n]|\\\))*/),
+        repeat(/([^)\r\n]|\\\))+/),
+      ),
     _parens_span_begin: (_) => "(",
 
     _comment: ($) =>
