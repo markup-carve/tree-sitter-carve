@@ -5600,32 +5600,67 @@
       "value": "{-"
     },
     "substitution": {
-      "type": "TOKEN",
-      "content": {
-        "type": "SEQ",
-        "members": [
-          {
-            "type": "STRING",
-            "value": "{~"
-          },
-          {
-            "type": "PATTERN",
-            "value": "[^~\\r\\n]*"
-          },
-          {
-            "type": "STRING",
-            "value": "~>"
-          },
-          {
-            "type": "PATTERN",
-            "value": "[^~\\r\\n]*"
-          },
-          {
-            "type": "STRING",
-            "value": "~}"
-          }
-        ]
-      }
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "{~"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "_substitution_begin"
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "FIELD",
+              "name": "from",
+              "content": {
+                "type": "ALIAS",
+                "content": {
+                  "type": "SYMBOL",
+                  "name": "_inline"
+                },
+                "named": true,
+                "value": "content"
+              }
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        },
+        {
+          "type": "SYMBOL",
+          "name": "_substitution_arrow"
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "FIELD",
+              "name": "to",
+              "content": {
+                "type": "ALIAS",
+                "content": {
+                  "type": "SYMBOL",
+                  "name": "_inline"
+                },
+                "named": true,
+                "value": "content"
+              }
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        },
+        {
+          "type": "SYMBOL",
+          "name": "_substitution_end"
+        }
+      ]
     },
     "editorial_comment": {
       "type": "SEQ",
@@ -8613,6 +8648,18 @@
     {
       "type": "SYMBOL",
       "name": "_caption_begin"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_substitution_begin"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_substitution_arrow"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_substitution_end"
     }
   ],
   "inline": [],

@@ -620,7 +620,9 @@ a {+ins+} {-del-} {~old~>new~} b{# note #}
       begin_marker: (delete_begin)
       content: (content)
       end_marker: (delete_end))
-    (substitution)
+    (substitution
+      from: (content)
+      to: (content))
     (editorial_comment
       content: (content))))
 
@@ -5507,8 +5509,10 @@ Either half of a substitution may be empty (carve#1447)
 
 (document
   (paragraph
-    (substitution)
-    (substitution)
+    (substitution
+      from: (content))
+    (substitution
+      to: (content))
     (substitution)))
 
 ===============================================================================
@@ -6566,3 +6570,66 @@ A label of ordinary punctuation is still plain text (tree-sitter-carve#265)
   (link_reference_definition
     label: (link_label)
     destination: (link_destination)))
+
+===============================================================================
+Only a top-level arrow splits a substitution (corpus 472)
+;; The content of each half is inline, so a `~>` inside a code span, a math
+;; run or an editorial comment is content, and so is one behind a backslash.
+;; With no top-level arrow the `{~` opens the strikethrough it always did.
+===============================================================================
+
+{~a `x~>y` b~}
+
+{~a\~>b~}
+
+{~$`a~>b`~>c~}
+
+{~a{# ~> #}b~>c~}
+
+{~/old/~>/new/~}
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (strikethrough
+      begin_marker: (strikethrough_begin)
+      content: (content
+        (verbatim
+          begin_marker: (verbatim_marker_begin)
+          content: (content)
+          end_marker: (verbatim_marker_end)))
+      end_marker: (strikethrough_end)))
+  (paragraph
+    (strikethrough
+      begin_marker: (strikethrough_begin)
+      content: (content
+        (backslash_escape))
+      end_marker: (strikethrough_end)))
+  (paragraph
+    (substitution
+      from: (content
+        (math
+          math_marker: (math_marker)
+          begin_marker: (math_marker_begin)
+          content: (content)
+          end_marker: (math_marker_end)))
+      to: (content)))
+  (paragraph
+    (substitution
+      from: (content
+        (editorial_comment
+          content: (content)))
+      to: (content)))
+  (paragraph
+    (substitution
+      from: (content
+        (emphasis
+          begin_marker: (emphasis_begin)
+          content: (content)
+          end_marker: (emphasis_end)))
+      to: (content
+        (emphasis
+          begin_marker: (emphasis_begin)
+          content: (content)
+          end_marker: (emphasis_end))))))
