@@ -6283,6 +6283,78 @@ static bool scan_until_bracket_close(Scanner *s, TSLexer *lexer,
 // Updates lookahead states that are used to block the acceptance of
 // the fallback characters `(` and `{` if there's a valid inline link
 // or span to be chosen.
+// The Unicode White_Space characters outside ASCII, `uSpace` in
+// resources/carve-core.ohm. `destChar` excludes them, and so does the `\s` in
+// the destination token, whose class the tree-sitter regex engine reads as the
+// same property. The lookahead below has to stop on exactly what that token
+// stops on, or it marks a link the grammar then cannot build.
+static bool is_destination_space(int32_t c) {
+  return c == ' ' || c == '\t' || c == '\v' || c == '\f' || c == 0x85 ||
+         c == 0xA0 || c == 0x1680 || (c >= 0x2000 && c <= 0x200A) ||
+         c == 0x2028 || c == 0x2029 || c == 0x202F || c == 0x205F ||
+         c == 0x3000;
+}
+
+/// Does a well-formed inline link TAIL start at the character after this `(`,
+/// with the `(` already consumed?
+///
+/// `linkTail = "(" dest destTitle? ")"` (resources/carve-core.ohm). Two slots,
+/// not one: `dest` admits no whitespace, and `destTitle` is EXACTLY one space
+/// and then a quoted run that closes on the same line. So `[t](/u  "T")` and
+/// `[t](/u` + TAB + `"T")` are paragraphs (corpus 262, 257) and `[x](a b)` is
+/// one too.
+///
+/// This reader keeps the grammar's own reading of the destination rather than
+/// the ohm's in one place: nested parentheses are NOT balanced here, matching
+/// `_inline_link_url`, so `[t](/a(b)c` / `SECOND)` reads as it always has.
+static bool scan_inline_link_tail(Scanner *s, TSLexer *lexer) {
+  bool any_dest = false;
+  while (!lexer->eof(lexer) && !at_line_end(lexer) &&
+         lexer->lookahead != ')' && !is_destination_space(lexer->lookahead)) {
+    any_dest = true;
+    // `\)` is the one escape the destination token spells; a backslash before
+    // anything else is an ordinary destination character.
+    if (lexer->lookahead == '\\') {
+      advance(s, lexer);
+      if (lexer->lookahead != ')') {
+        continue;
+      }
+    }
+    advance(s, lexer);
+  }
+  if (!any_dest) {
+    return false;
+  }
+  if (lexer->lookahead == ')') {
+    return true;
+  }
+  if (lexer->lookahead != ' ') {
+    return false;
+  }
+  advance(s, lexer);
+  int32_t quote = lexer->lookahead;
+  if (quote != '"' && quote != '\'') {
+    return false;
+  }
+  advance(s, lexer);
+  while (!lexer->eof(lexer) && !at_line_end(lexer)) {
+    if (lexer->lookahead == '\\') {
+      advance(s, lexer);
+      if (lexer->eof(lexer) || at_line_end(lexer)) {
+        return false;
+      }
+      advance(s, lexer);
+      continue;
+    }
+    if (lexer->lookahead == quote) {
+      advance(s, lexer);
+      return lexer->lookahead == ')';
+    }
+    advance(s, lexer);
+  }
+  return false;
+}
+
 static void update_square_bracket_lookahead_states(Scanner *s, TSLexer *lexer,
                                                    Inline *top) {
   // Reset flags so we can set them later if the scanning succeeds.
@@ -6307,18 +6379,12 @@ static void update_square_bracket_lookahead_states(Scanner *s, TSLexer *lexer,
     // `*`, `_`, or `~` inside it cannot close the span that contains the
     // link; only the destination's own `)` ends this lookahead.
     //
-    // `dest = destChar+` in resources/carve-core.ohm, and `destChar` admits no
-    // whitespace, so the destination must open on a character of its own:
-    // `[x]()` and `[x]( "t")` are paragraphs, not links (carve#2070). Read as
-    // links they left `[x]()` with no URL to build, and the branch died in an
-    // ERROR instead of falling back to text.
+    // The whole tail is read, not just its closing `)`: a destination that
+    // opens on whitespace, carries one, or is followed by something other than
+    // a title is no link at all (carve#2070), and marking one here left the
+    // branch with nothing to build and an ERROR where the text belongs.
     advance(s, lexer);
-    if (lexer->lookahead == ')' || lexer->lookahead == ' ' ||
-        lexer->lookahead == '\t' || lexer->lookahead == '\v' ||
-        lexer->lookahead == '\f') {
-      return;
-    }
-    if (scan_until_no_newline(s, lexer, ')', NULL)) {
+    if (scan_inline_link_tail(s, lexer)) {
       s->state |= STATE_BRACKET_STARTS_INLINE_LINK;
     } else if (at_line_end(lexer)) {
       s->state |= STATE_MULTILINE_IDENTIFIER;
