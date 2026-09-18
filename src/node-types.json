@@ -1990,7 +1990,18 @@
   {
     "type": "inline_link_destination",
     "named": true,
-    "fields": {}
+    "fields": {
+      "title": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "link_title",
+            "named": true
+          }
+        ]
+      }
+    }
   },
   {
     "type": "inline_literal",

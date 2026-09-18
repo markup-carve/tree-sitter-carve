@@ -416,4 +416,32 @@ An inline link destination opens on a character of its own
   (paragraph
     (inline_link
       text: (link_text)
-      destination: (inline_link_destination))))
+      destination: (inline_link_destination
+        title: (link_title)))))
+
+==================
+A link title is one space and a quoted run, and the destination has no space
+==================
+
+[x](a b)
+
+[t](/u  "T")
+
+[t](/u	"T")
+
+[x](a 'q')
+
+[x](a "t" )
+
+---
+
+(document
+  (paragraph)
+  (paragraph)
+  (paragraph)
+  (paragraph
+    (inline_link
+      text: (link_text)
+      destination: (inline_link_destination
+        title: (link_title))))
+  (paragraph))

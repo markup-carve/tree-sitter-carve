@@ -6463,6 +6463,36 @@
           "name": "_inline_link_url"
         },
         {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SEQ",
+              "members": [
+                {
+                  "type": "SYMBOL",
+                  "name": "_link_title_space"
+                },
+                {
+                  "type": "FIELD",
+                  "name": "title",
+                  "content": {
+                    "type": "ALIAS",
+                    "content": {
+                      "type": "SYMBOL",
+                      "name": "_inline_link_title"
+                    },
+                    "named": true,
+                    "value": "link_title"
+                  }
+                }
+              ]
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        },
+        {
           "type": "ALIAS",
           "content": {
             "type": "SYMBOL",
@@ -6474,23 +6504,60 @@
       ]
     },
     "_inline_link_url": {
-      "type": "SEQ",
-      "members": [
-        {
-          "type": "IMMEDIATE_TOKEN",
-          "content": {
-            "type": "PATTERN",
-            "value": "([^)\\s]|\\\\\\))([^)\\r\\n]|\\\\\\))*"
+      "type": "IMMEDIATE_TOKEN",
+      "content": {
+        "type": "PATTERN",
+        "value": "([^)\\s]|\\\\\\))+"
+      }
+    },
+    "_link_title_space": {
+      "type": "IMMEDIATE_TOKEN",
+      "content": {
+        "type": "STRING",
+        "value": " "
+      }
+    },
+    "_inline_link_title": {
+      "type": "IMMEDIATE_TOKEN",
+      "content": {
+        "type": "CHOICE",
+        "members": [
+          {
+            "type": "SEQ",
+            "members": [
+              {
+                "type": "STRING",
+                "value": "\""
+              },
+              {
+                "type": "PATTERN",
+                "value": "(?:[^\"\\\\\\r\\n]|\\\\[^\\r\\n])*"
+              },
+              {
+                "type": "STRING",
+                "value": "\""
+              }
+            ]
+          },
+          {
+            "type": "SEQ",
+            "members": [
+              {
+                "type": "STRING",
+                "value": "'"
+              },
+              {
+                "type": "PATTERN",
+                "value": "(?:[^'\\\\\\r\\n]|\\\\[^\\r\\n])*"
+              },
+              {
+                "type": "STRING",
+                "value": "'"
+              }
+            ]
           }
-        },
-        {
-          "type": "REPEAT",
-          "content": {
-            "type": "PATTERN",
-            "value": "([^)\\r\\n]|\\\\\\))+"
-          }
-        }
-      ]
+        ]
+      }
     },
     "_parens_span_begin": {
       "type": "STRING",

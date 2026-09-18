@@ -2151,25 +2151,41 @@ module.exports = grammar({
         field("label", alias($._inline_single_line, $.link_label)),
         token.immediate("]"),
       ),
+    // `linkTail = "(" dest destTitle? ")"` in resources/carve-core.ohm. The
+    // parenthesized run holds TWO slots, not one: a destination that admits no
+    // whitespace, and an optional title that is one space and then a quoted
+    // run. Both are immediate, so `[t](/u  "T")` and `[t](/u` + TAB + `"T")`
+    // are paragraphs (corpus 262, 257) and `[x](a b)` is one too.
     inline_link_destination: ($) =>
       seq(
         $._parens_span_begin,
         $._parens_span_mark_begin,
         $._inline_link_url,
+        optional(
+          seq(
+            $._link_title_space,
+            field("title", alias($._inline_link_title, $.link_title)),
+          ),
+        ),
         alias($._parens_span_end, ")"),
       ),
-    _inline_link_url: ($) =>
+    _inline_link_url: (_) =>
       // Can escape `)`, but shouldn't capture it.
       //
-      // The first run is IMMEDIATE and opens on a non-whitespace character.
-      // `dest = destChar+` in resources/carve-core.ohm and `destChar` admits no
-      // whitespace, so a destination cannot start with one: `[x]( "t")` is a
-      // paragraph, not a link with the title `t` (carve#2070). Said as a plain
-      // token the space is skipped as an extra and the run starts at the quote,
-      // which is how the empty destination came back as a link.
-      seq(
-        token.immediate(/([^)\s]|\\\))([^)\r\n]|\\\))*/),
-        repeat(/([^)\r\n]|\\\))+/),
+      // IMMEDIATE and whitespace-free. `dest = destChar+` in
+      // resources/carve-core.ohm and `destChar` admits no whitespace, so a
+      // destination neither starts with one (`[x]( "t")` is a paragraph, not a
+      // link with the title `t`, carve#2070) nor carries one.
+      token.immediate(/([^)\s]|\\\))+/),
+    // `destTitle = titleSp (quoted | squoted)`, `titleSp = " "`: exactly one
+    // space, and the title is one token so no extra can be skipped inside it.
+    _link_title_space: (_) => token.immediate(" "),
+    _inline_link_title: (_) =>
+      token.immediate(
+        choice(
+          seq('"', /(?:[^"\\\r\n]|\\[^\r\n])*/, '"'),
+          seq("'", /(?:[^'\\\r\n]|\\[^\r\n])*/, "'"),
+        ),
       ),
     _parens_span_begin: (_) => "(",
 
