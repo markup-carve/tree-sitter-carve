@@ -394,3 +394,26 @@ A directive inside a code span is verbatim
       begin_marker: (verbatim_marker_begin)
       content: (content)
       end_marker: (verbatim_marker_end))))
+
+==================
+An inline link destination opens on a character of its own
+==================
+
+[x]()
+
+![x]()
+
+[x]( "t")
+
+[x](a "t")
+
+---
+
+(document
+  (paragraph)
+  (paragraph)
+  (paragraph)
+  (paragraph
+    (inline_link
+      text: (link_text)
+      destination: (inline_link_destination))))

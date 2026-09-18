@@ -6306,6 +6306,18 @@ static void update_square_bracket_lookahead_states(Scanner *s, TSLexer *lexer,
     // A link destination is opaque to the inline delimiter stack. A `/`,
     // `*`, `_`, or `~` inside it cannot close the span that contains the
     // link; only the destination's own `)` ends this lookahead.
+    //
+    // `dest = destChar+` in resources/carve-core.ohm, and `destChar` admits no
+    // whitespace, so the destination must open on a character of its own:
+    // `[x]()` and `[x]( "t")` are paragraphs, not links (carve#2070). Read as
+    // links they left `[x]()` with no URL to build, and the branch died in an
+    // ERROR instead of falling back to text.
+    advance(s, lexer);
+    if (lexer->lookahead == ')' || lexer->lookahead == ' ' ||
+        lexer->lookahead == '\t' || lexer->lookahead == '\v' ||
+        lexer->lookahead == '\f') {
+      return;
+    }
     if (scan_until_no_newline(s, lexer, ')', NULL)) {
       s->state |= STATE_BRACKET_STARTS_INLINE_LINK;
     } else if (at_line_end(lexer)) {

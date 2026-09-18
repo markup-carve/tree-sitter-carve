@@ -6474,11 +6474,23 @@
       ]
     },
     "_inline_link_url": {
-      "type": "REPEAT1",
-      "content": {
-        "type": "PATTERN",
-        "value": "([^)\\r\\n]|\\\\\\))+"
-      }
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "IMMEDIATE_TOKEN",
+          "content": {
+            "type": "PATTERN",
+            "value": "([^)\\s]|\\\\\\))([^)\\r\\n]|\\\\\\))*"
+          }
+        },
+        {
+          "type": "REPEAT",
+          "content": {
+            "type": "PATTERN",
+            "value": "([^)\\r\\n]|\\\\\\))+"
+          }
+        }
+      ]
     },
     "_parens_span_begin": {
       "type": "STRING",
