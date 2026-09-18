@@ -194,6 +194,12 @@ typedef enum {
   // for the same index reason as the tokens above it, and external because the
   // decision needs the REST OF THE LINE - see `parse_caption_begin`.
   CAPTION_BEGIN,
+
+  // A SUBSTITUTION's three marks. Appended last for the same index reason as
+  // the tokens above them. See `substitution_arrow_ahead`.
+  SUBSTITUTION_BEGIN,
+  SUBSTITUTION_ARROW,
+  SUBSTITUTION_END,
 } TokenType;
 
 // The different blocks in Carve that we track,
@@ -302,6 +308,10 @@ typedef enum {
   // Pinned by the RECORDED GAP fixture in test/corpus/carve.txt, which fails
   // when this is repaired.
   INLINE_NOTE,
+  // `{~ from ~> to ~}`. Its own type rather than a strikethrough: the two share
+  // an opener, and which one a `{~` starts depends on whether a TOP-LEVEL arrow
+  // follows it (corpus 472).
+  SUBSTITUTION,
 } InlineType;
 
 // What kind of span we should parse.
@@ -6408,6 +6418,139 @@ static void update_square_bracket_lookahead_states(Scanner *s, TSLexer *lexer,
   }
 }
 
+/// Does a TOP-LEVEL `~>` stand between here and this run's `~}`?
+///
+/// Asked at the character after a `{~`, which is where the construct is still
+/// undecided: corpus 472 makes `{~ ... ~}` a SUBSTITUTION when a top-level arrow
+/// splits it and an ordinary strikethrough when none does. Top-level means
+/// outside everything whose content is verbatim - a code span, a math run, an
+/// inline literal, an editorial or braced comment - and not behind a backslash.
+/// `{~`a~>b~}` is therefore a strikethrough over one code span, and
+/// `{~$`a~>b`~>c~}` a substitution split at its SECOND arrow.
+///
+/// A blank line ends the search, because the run does not cross one.
+///
+/// THIS READER AND THE INLINE GRAMMAR HAVE TO AGREE about what is verbatim and
+/// what is escaped. Where they do not, the opener commits to a substitution
+/// whose `~>` no token can then produce, and the parser churns through error
+/// recovery instead of building anything - measured by breaking either rule here
+/// on purpose. Both sides read the same two: a run of n backticks closes on the
+/// next run of n, and a backslash takes the character behind it.
+static bool substitution_arrow_ahead(Scanner *s, TSLexer *lexer) {
+  while (!lexer->eof(lexer)) {
+    if (at_line_end(lexer)) {
+      consume_line_end(s, lexer);
+      consume_whitespace(s, lexer);
+      if (lexer->eof(lexer) || at_line_end(lexer)) {
+        return false;
+      }
+      continue;
+    }
+    if (lexer->lookahead == '\\') {
+      advance(s, lexer);
+      if (!lexer->eof(lexer) && !at_line_end(lexer)) {
+        advance(s, lexer);
+      }
+      continue;
+    }
+    if (lexer->lookahead == '`') {
+      // A run of n backticks closes on the next run of exactly n. An
+      // UNTERMINATED run reaches the end of the block, which is what makes
+      // `{~`a~>b~}` a strikethrough: the arrow never comes back to top level.
+      uint8_t width = consume_chars(s, lexer, '`');
+      while (!lexer->eof(lexer) && !at_line_end(lexer)) {
+        if (lexer->lookahead == '`') {
+          if (consume_chars(s, lexer, '`') == width) {
+            break;
+          }
+          continue;
+        }
+        advance(s, lexer);
+      }
+      continue;
+    }
+    if (lexer->lookahead == '{') {
+      advance(s, lexer);
+      if (lexer->lookahead != '#' && lexer->lookahead != '%') {
+        continue;
+      }
+      char opener = (char)lexer->lookahead;
+      advance(s, lexer);
+      while (!lexer->eof(lexer)) {
+        if (lexer->lookahead == opener) {
+          advance(s, lexer);
+          if (lexer->lookahead == '}') {
+            advance(s, lexer);
+            break;
+          }
+          continue;
+        }
+        advance(s, lexer);
+      }
+      continue;
+    }
+    if (lexer->lookahead == '~') {
+      advance(s, lexer);
+      if (lexer->lookahead == '>') {
+        return true;
+      }
+      if (lexer->lookahead == '}') {
+        return false;
+      }
+      continue;
+    }
+    advance(s, lexer);
+  }
+  return false;
+}
+
+static bool mark_span_begin(Scanner *s, TSLexer *lexer,
+                            const bool *valid_symbols, InlineType inline_type,
+                            TokenType token);
+
+/// WHICH RUN A `{~` OPENS, asked zero-width at the character behind it.
+///
+/// `_substitution_begin` is valid in exactly one place - right there - so the
+/// question and its two answers are settled in one call. The reader moves the
+/// lexer to the end of the run, which is why BOTH answers are given here rather
+/// than left to the probes further down: those would read from wherever this
+/// one stopped.
+static bool parse_substitution_or_strikethrough(Scanner *s, TSLexer *lexer,
+                                                const bool *valid_symbols) {
+  // Zero-width, whatever the reader below advances over.
+  lexer->mark_end(lexer);
+  if (substitution_arrow_ahead(s, lexer)) {
+    push_inline(s, SUBSTITUTION, 0);
+    lexer->result_symbol = SUBSTITUTION_BEGIN;
+    return true;
+  }
+  return valid_symbols[STRIKETHROUGH_MARK_BEGIN] &&
+         mark_span_begin(s, lexer, valid_symbols, STRIKETHROUGH,
+                         STRIKETHROUGH_MARK_BEGIN);
+}
+
+/// The `~>` that splits the halves, and the `~}` that ends the run. Both are
+/// offered only while the substitution is the innermost open span, which is what
+/// keeps an arrow inside one of its own halves' constructs from reaching them.
+static bool parse_substitution_mark(Scanner *s, TSLexer *lexer, char second,
+                                    TokenType token) {
+  Inline *top = peek_inline(s);
+  if (!top || top->type != SUBSTITUTION || lexer->lookahead != '~') {
+    return false;
+  }
+  advance(s, lexer);
+  if (lexer->lookahead != second) {
+    return false;
+  }
+  advance(s, lexer);
+  lexer->mark_end(lexer);
+  if (token == SUBSTITUTION_END) {
+    remove_inline(s);
+  }
+  lexer->result_symbol = token;
+  return true;
+}
+
 static bool mark_span_begin(Scanner *s, TSLexer *lexer,
                             const bool *valid_symbols, InlineType inline_type,
                             TokenType token) {
@@ -6906,6 +7049,13 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
                                             const bool *valid_symbols) {
   Scanner *s = (Scanner *)payload;
 
+  // FIRST, and it answers for the whole call: the reader it runs moves the
+  // lexer to the end of the run, so nothing below could read from where it
+  // started. See `parse_substitution_or_strikethrough`.
+  if (valid_symbols[SUBSTITUTION_BEGIN]) {
+    return parse_substitution_or_strikethrough(s, lexer, valid_symbols);
+  }
+
 #ifdef DEBUG
   printf("SCAN\n");
   dump(s, lexer);
@@ -7197,6 +7347,17 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
     return true;
   }
 
+  // Before the spans: while a substitution is the innermost open run, its own
+  // `~>` and `~}` are its marks and not a strikethrough's.
+  if (valid_symbols[SUBSTITUTION_ARROW] &&
+      parse_substitution_mark(s, lexer, '>', SUBSTITUTION_ARROW)) {
+    return true;
+  }
+  if (valid_symbols[SUBSTITUTION_END] &&
+      parse_substitution_mark(s, lexer, '}', SUBSTITUTION_END)) {
+    return true;
+  }
+
   if (valid_symbols[NON_WHITESPACE_CHECK] && check_non_whitespace(s, lexer)) {
     return true;
   }
@@ -7365,6 +7526,7 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
       parse_comment_fence_begin(s, lexer, valid_symbols)) {
     return true;
   }
+
   return false;
 }
 

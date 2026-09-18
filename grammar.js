@@ -1809,7 +1809,22 @@ module.exports = grammar({
     // `{~~>~}` does both to nothing. All three are the construct, with an
     // empty `del` or `ins` - which is why the arrow, and not the content, is
     // what makes this a substitution rather than the empty pair below.
-    substitution: (_) => token(seq("{~", /[^~\r\n]*/, "~>", /[^~\r\n]*/, "~}")),
+    // The content of each half is INLINE, and only a TOP-LEVEL arrow splits it
+    // (corpus 472), which no token can say: a `~>` inside a code span, a math
+    // run, an inline literal or an editorial comment is content, and so is one
+    // behind a backslash. The arrow and the closer are therefore tokens of their
+    // own, offered only while this substitution is the innermost open run, and
+    // the opener is a zero-width check that reads the run ahead. Where no
+    // top-level arrow follows, the `{~` opens the strikethrough it always did.
+    substitution: ($) =>
+      seq(
+        "{~",
+        $._substitution_begin,
+        optional(field("from", alias($._inline, $.content))),
+        $._substitution_arrow,
+        optional(field("to", alias($._inline, $.content))),
+        $._substitution_end,
+      ),
 
     // `{##}` is NOT an empty comment. Every braced construct's content slot is
     // a one-or-more repetition (carve#1447), so an empty one is literal text
@@ -2605,5 +2620,14 @@ module.exports = grammar({
     // reaches the end of the line opens no caption - see
     // `parse_caption_begin` in src/scanner.c.
     $._caption_begin,
+
+    // A SUBSTITUTION's three marks. The opener is zero-width, standing behind
+    // the `{~` the strikethrough opener spells too; all three are external
+    // because each needs to know whether this run holds a TOP-LEVEL arrow - see
+    // `substitution_arrow_ahead` in `src/scanner.c`. Appended last for the same
+    // index reason as the tokens above them.
+    $._substitution_begin,
+    $._substitution_arrow,
+    $._substitution_end,
   ],
 });

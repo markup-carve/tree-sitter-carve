@@ -3579,6 +3579,32 @@
     "fields": {}
   },
   {
+    "type": "substitution",
+    "named": true,
+    "fields": {
+      "from": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "content",
+            "named": true
+          }
+        ]
+      },
+      "to": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "content",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "superscript",
     "named": true,
     "fields": {
@@ -4709,10 +4735,6 @@
   },
   {
     "type": "subscript_end",
-    "named": true
-  },
-  {
-    "type": "substitution",
     "named": true
   },
   {
