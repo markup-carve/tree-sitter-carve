@@ -51,7 +51,7 @@
     }
   },
   "devDependencies": {
-    "@markup-carve/carve": "github:markup-carve/carve-js#9e5319f24345a5f6a9715e1bfd48eaf4f90da640",
+    "@markup-carve/carve": "github:markup-carve/carve-js#680af386605367bb86a07c2b258673c6514c4005",
     "prebuildify": "^6.0.0",
     "prettier": "3.9.6",
     "tree-sitter": "0.25.0",
