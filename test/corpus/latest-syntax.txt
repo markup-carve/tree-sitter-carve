@@ -579,3 +579,102 @@ b~>c~}
           begin_marker: (verbatim_marker_begin)
           content: (content)
           end_marker: (verbatim_marker_end))))))
+
+==================
+Speculative verbatim lookahead crosses line endings without changing scanner state
+==================
+
+{*`a
+b*}
+
+---
+
+(document
+  (paragraph
+    (strong
+      (strong_begin)
+      (content
+        (verbatim
+          (verbatim_marker_begin)
+          (content)
+          (verbatim_marker_end)))
+      (strong_end))))
+
+==================
+A table row ends an unterminated verbatim run before a later row can close it
+==================
+
+| A |
+|---|
+| {*`a | b*} |
+| `later` |
+
+---
+
+(document
+  (table
+    (table_header
+      (table_cell))
+    (table_separator
+      (table_cell_alignment))
+    (table_row
+      (table_cell
+        (strong
+          (strong_begin)
+          (content
+            (verbatim
+              (verbatim_marker_begin)
+              (content)
+              (verbatim_marker_end)))
+          (strong_end))))
+    (table_row
+      (table_cell
+        (verbatim
+          (verbatim_marker_begin)
+          (content)
+          (verbatim_marker_end))))))
+
+==================
+A bare superscript does not inherit the braced span's verbatim boundary
+==================
+
+^a `b^}c^
+
+---
+
+(document
+  (paragraph
+    (verbatim
+      (verbatim_marker_begin)
+      (content)
+      (verbatim_marker_end))))
+
+==================
+Empty and wider verbatim runs keep their braced boundary rules
+==================
+
+{*`*}
+
+{*``a`b*}
+
+---
+
+(document
+  (paragraph
+    (strong
+      (strong_begin)
+      (content
+        (verbatim
+          (verbatim_marker_begin)
+          (content)
+          (verbatim_marker_end)))
+      (strong_end)))
+  (paragraph
+    (strong
+      (strong_begin)
+      (content
+        (verbatim
+          (verbatim_marker_begin)
+          (content)
+          (verbatim_marker_end)))
+      (strong_end))))

@@ -332,11 +332,18 @@ typedef enum {
 // The span was opened in its BRACED form, `{* ... *}` rather than `* ... *`.
 // Only the braced form stops an unterminated verbatim run at its closer
 // (corpus 472), so the two forms cannot share one entry.
-static const uint8_t INLINE_BRACED = 1 << 0;
-// This VERBATIM run has no matching tick run before the braced span it sits
-// in closes, so its content ends at that closer. Decided at the opening ticks,
-// where the lexer may still read ahead.
-static const uint8_t INLINE_STOPS_AT_SPAN_CLOSER = 1 << 1;
+enum {
+  INLINE_BRACED = 1 << 0,
+  // This VERBATIM run has no matching tick run before the braced span it sits
+  // in closes, so its content ends at that closer. Decided at the opening
+  // ticks, where the lexer may still read ahead.
+  INLINE_STOPS_AT_SPAN_CLOSER = 1 << 1,
+};
+
+_Static_assert(SUBSTITUTION < 0x40,
+               "serialized inline types must fit in six bits");
+_Static_assert((INLINE_BRACED | INLINE_STOPS_AT_SPAN_CLOSER) < 0x04,
+               "serialized inline flags must fit in two bits");
 
 typedef struct {
   InlineType type;
@@ -2162,26 +2169,46 @@ typedef enum {
 /// `substitution_arrow_ahead` needs the same reading of the same run, or a
 /// `{~` commits to a substitution whose arrow no token can produce.
 static VerbatimRunEnd read_verbatim_run(Scanner *s, TSLexer *lexer,
-                                        uint8_t width, char marker) {
+                                        uint8_t width, char marker,
+                                        bool in_table_row) {
   // A matching run wins from ANYWHERE in the block, including from behind the
   // closer: `{*`a*}`b*}` is one strong over the code span `a*}`, and
   // `{= `h =} `i =}` one mark over `h =} `. So the first closer is remembered
   // and the scan carries on rather than answering there.
   bool saw_closer = false;
+  bool row_closing_pipe_candidate = false;
   while (!lexer->eof(lexer)) {
     if (at_line_end(lexer)) {
-      consume_line_end(s, lexer);
-      consume_whitespace(s, lexer);
+      // This is speculative lookahead. Do not use consume_line_end: its lone
+      // CR bookkeeping mutates scanner state and get_column resets the
+      // lexer's marked end. Tree-sitter rewinds the lexer, but not our state,
+      // after this token is returned.
+      if (in_table_row && row_closing_pipe_candidate) {
+        break;
+      }
+      if (lexer->lookahead == '\r') {
+        advance(s, lexer);
+        if (lexer->lookahead == '\n') {
+          advance(s, lexer);
+        }
+      } else {
+        advance(s, lexer);
+      }
+      while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+        advance(s, lexer);
+      }
       // A blank line ends the block, and with it both the run and the span.
       if (lexer->eof(lexer) || at_line_end(lexer)) {
         break;
       }
+      row_closing_pipe_candidate = false;
       continue;
     }
     if (lexer->lookahead == '`') {
       if (consume_chars(s, lexer, '`') == width) {
         return VerbatimRunCloses;
       }
+      row_closing_pipe_candidate = false;
       continue;
     }
     if (marker != 0 && !saw_closer && lexer->lookahead == marker) {
@@ -2189,7 +2216,16 @@ static VerbatimRunEnd read_verbatim_run(Scanner *s, TSLexer *lexer,
       if (lexer->lookahead == '}') {
         saw_closer = true;
       }
+      row_closing_pipe_candidate = false;
       continue;
+    }
+    if (in_table_row && lexer->lookahead == '|') {
+      row_closing_pipe_candidate = true;
+      advance(s, lexer);
+      continue;
+    }
+    if (lexer->lookahead != ' ' && lexer->lookahead != '\t') {
+      row_closing_pipe_candidate = false;
     }
     advance(s, lexer);
   }
@@ -2279,7 +2315,10 @@ static bool parse_code_fence(Scanner *s, TSLexer *lexer,
       // Only here is the lexer known to stand right after the ticks: the
       // three-tick path let `try_begin_code_block` read the info string first.
       char marker = span_verbatim_stop_marker(peek_inline(s));
-      if (marker != 0 && read_verbatim_run(s, lexer, width, marker) ==
+      bool in_table_row = valid_symbols[TABLE_CELL_END] ||
+                          find_block(s, TABLE_ROW) != NULL;
+      if (marker != 0 && read_verbatim_run(s, lexer, width, marker,
+                                           in_table_row) ==
                              VerbatimRunReachesSpanCloser) {
         flags = INLINE_STOPS_AT_SPAN_CLOSER;
       }
@@ -6622,7 +6661,9 @@ static bool substitution_arrow_ahead(Scanner *s, TSLexer *lexer) {
       // Read by the same function the content token uses, so the two cannot
       // drift apart.
       uint8_t width = consume_chars(s, lexer, '`');
-      if (read_verbatim_run(s, lexer, width, '~') != VerbatimRunCloses) {
+      if (read_verbatim_run(s, lexer, width, '~',
+                            find_block(s, TABLE_ROW) != NULL) !=
+          VerbatimRunCloses) {
         return false;
       }
       continue;
