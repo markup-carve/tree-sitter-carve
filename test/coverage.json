@@ -1320,7 +1320,5 @@
       "reason": "ref:lone-cr-strands-a-column-probe"
     }
   },
-  "parseTimeouts": {
-    "braced-sub-fence-cr.crv": "a braced substitution opened before a fence, with lone CR terminators, never terminates - markup-carve/tree-sitter-carve#321"
-  }
+  "parseTimeouts": {}
 }
