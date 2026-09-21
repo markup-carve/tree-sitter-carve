@@ -64,6 +64,13 @@ jobs:
       - name: Line terminators
         run: npm run test:line-terminators
 
+      # Every check above asks what a tree says; none of them asks whether one
+      # arrives. A 14-byte document held four parses at 9.6 GB RSS for four
+      # hours before anything noticed, because nothing bounded a parse and
+      # nothing read the silence that bounding one produces.
+      - name: Parses terminate
+        run: npm run test:termination
+
       # The queries are the other half of what this repo ships - vim-carve,
       # helix-carve and zed-carve load these files - and nothing here read them.
       # A capture naming a node that no longer exists, or two patterns claiming

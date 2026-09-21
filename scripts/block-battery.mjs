@@ -15,6 +15,7 @@
 // it is still the same copy.
 
 import { execFileSync } from 'node:child_process';
+import { PARSE_TIMEOUT_US, TIMEOUT_ARGS, spawnBudgetMs } from './parse-limits.mjs';
 import { mkdtempSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -66,10 +67,24 @@ function classify(src) {
   writeFileSync(file, `${src}\nafter\n`);
   let out;
   try {
-    out = execFileSync(cli, ['parse', file], { encoding: 'utf8' });
+    out = execFileSync(cli, ['parse', ...TIMEOUT_ARGS, file], {
+      encoding: 'utf8',
+      timeout: spawnBudgetMs(1),
+    });
   } catch (error) {
     // A parse ERROR is its own answer: not one of the battery's classes.
     out = error.stdout ?? '';
+    // A document the CLI gave up on prints nothing, which would fall through
+    // to the 'none' class below and be recorded as a shape this grammar simply
+    // does not build. Non-termination is not a classification.
+    if (!out.trim()) {
+      console.error(
+        `BLOCK BATTERY: no tree for ${JSON.stringify(src)} - the parse did not ` +
+          `finish within ${PARSE_TIMEOUT_US / 1_000_000}s.`,
+      );
+      rmSync(work, { recursive: true, force: true });
+      process.exit(2);
+    }
   }
   const first = out.split('\n')[1] ?? '';
   const node = first.trim().replace(/^\(/, '').split(/[\s[]/)[0] ?? '';

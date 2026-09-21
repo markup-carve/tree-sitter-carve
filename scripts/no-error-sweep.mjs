@@ -31,6 +31,13 @@ import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  PARSE_TIMEOUT_US,
+  TIMEOUT_ARGS,
+  refuseUnfinishedParse,
+  resolveCli,
+  spawnBudgetMs,
+} from './parse-limits.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const coverage = JSON.parse(
@@ -90,15 +97,33 @@ const found = new Map();
 const BATCH = 400;
 for (let i = 0; i < files.length; i += BATCH) {
   const batch = files.slice(i, i + BATCH);
-  const run = spawnSync('npx', ['tree-sitter', 'parse', '--quiet', ...batch], {
-    cwd: repoRoot,
-    encoding: 'utf8',
-    maxBuffer: 256 * 1024 * 1024,
-  });
+  const [cli, cliArgs] = resolveCli(repoRoot);
+  const startedAt = Date.now();
+  const run = spawnSync(
+    cli,
+    [...cliArgs, 'parse', '--quiet', ...TIMEOUT_ARGS, ...batch],
+    {
+      cwd: repoRoot,
+      encoding: 'utf8',
+      maxBuffer: 256 * 1024 * 1024,
+      timeout: spawnBudgetMs(batch.length),
+    },
+  );
   if (run.error) {
     console.error(`Failed to run tree-sitter parse: ${run.error.message}`);
     rmSync(work, { recursive: true, force: true });
     process.exit(2);
+  }
+  // These documents are one or two lines each; reaching the per-file limit at
+  // all means one of them did not terminate, and a file the CLI abandons is
+  // dropped from stdout without a word - it would read here as no ERROR.
+  if (Date.now() - startedAt >= PARSE_TIMEOUT_US / 1000) {
+    refuseUnfinishedParse({
+      files: batch,
+      repoRoot,
+      label: 'NO-ERROR SWEEP',
+      onExit: () => rmSync(work, { recursive: true, force: true }),
+    });
   }
   for (const line of (run.stdout || '').split('\n')) {
     if (!line.includes('ERROR')) continue;
