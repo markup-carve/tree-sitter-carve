@@ -6175,6 +6175,54 @@ static Inline *find_inline(Scanner *s, InlineType type) {
   return NULL;
 }
 
+/// Is this one of the MARKER spans - the ones corpus 471 rules over?
+///
+/// The bracket family (`[..]`, `(..)`, `{..}`, `^[..]`) nests by depth and is
+/// governed by the fallback count instead; only the marker spans have two
+/// spellings of one delimiter and a leftmost-opener rule to go with them.
+static bool is_marker_span(InlineType type) {
+  switch (type) {
+  case EMPHASIS:
+  case STRONG:
+  case UNDERLINE:
+  case STRIKETHROUGH:
+  case HIGHLIGHTED:
+  case SUPERSCRIPT:
+  case SUBSCRIPT:
+  case INSERT:
+  case DELETE:
+  case BOLD_ITALIC:
+    return true;
+  default:
+    return false;
+  }
+}
+
+/// Is a span of this kind already open in the CURRENT scope?
+///
+/// Corpus 471: an opener of a kind already open is content, bare or braced
+/// alike, and a BRACED span starts a scope of its own - so the walk stops at
+/// the first braced entry, having examined it. That is what separates
+///
+///     {*a *b* c*}            one strong over the literal `a *b* c`
+///     *a {/b *c* d/} e*      strong over em over strong
+///
+/// In the first the walk meets the braced strong itself and refuses the bare
+/// `*`; in the second it stops at the braced `{/`, never sees the outer bare
+/// strong, and the inner `*c*` opens.
+static bool kind_open_in_scope(Scanner *s, InlineType type) {
+  for (int i = s->open_inline->size - 1; i >= 0; --i) {
+    Inline *e = *array_get(s->open_inline, i);
+    if (e->type == type) {
+      return true;
+    }
+    if (e->flags & INLINE_BRACED) {
+      return false;
+    }
+  }
+  return false;
+}
+
 static bool scan_single_span_end(Scanner *s, TSLexer *lexer, char marker) {
   if (lexer->lookahead != marker) {
     return false;
@@ -6219,27 +6267,30 @@ static bool scan_bracketed_span_end(Scanner *s, TSLexer *lexer, char marker) {
 // If `whitespace_sensitive == true` then we should not allow a space
 // before the single marker (` _` isn't a valid ending token)
 // and only allow spaces with the bracketed variant.
+///
+/// A SPAN CLOSES ON ITS OWN MARKER FORM (corpus 471). A braced span takes
+/// `_}` and reads a bare `_` as content, which is what makes `{= =h= =}` one
+/// mark over ` =h= ` rather than one that stops at the first bare `=`. A bare
+/// span takes the bare marker and leaves a `}` behind it as text, which is
+/// what makes `*a {*b*} c*` close at the `*` of `*}`.
 static bool scan_span_end(Scanner *s, TSLexer *lexer, char marker,
-                          bool whitespace_sensitive) {
-  // Match `_` or `_}`
-  if (lexer->lookahead == marker) {
-    advance(s, lexer);
-    if (lexer->lookahead == '}') {
-      advance(s, lexer);
+                          bool whitespace_sensitive, bool braced) {
+  if (!braced) {
+    if (lexer->lookahead != marker) {
+      return false;
     }
+    advance(s, lexer);
     return true;
   }
 
-  if (whitespace_sensitive && consume_whitespace(s, lexer) == 0) {
-    return false;
+  if (whitespace_sensitive) {
+    consume_whitespace(s, lexer);
   }
-
-  // Only match `_}`.
   return scan_bracketed_span_end(s, lexer, marker);
 }
 
 static bool scan_span_end_marker(Scanner *s, TSLexer *lexer,
-                                 InlineType element) {
+                                 InlineType element, bool braced) {
   char marker = inline_marker(element);
 
   switch (inline_span_type(element)) {
@@ -6248,9 +6299,49 @@ static bool scan_span_end_marker(Scanner *s, TSLexer *lexer,
   case SpanBracketed:
     return scan_bracketed_span_end(s, lexer, marker);
   case SpanBracketedAndSingle:
-    return scan_span_end(s, lexer, marker, false);
+    return scan_span_end(s, lexer, marker, false, braced);
   case SpanBracketedAndSingleNoWhitespace:
-    return scan_span_end(s, lexer, marker, true);
+    return scan_span_end(s, lexer, marker, true, braced);
+  case SpanPair:
+    return scan_bold_italic_span_end(s, lexer);
+  default:
+    return false;
+  }
+}
+
+/// An ending marker of EITHER spelling, for the three lookahead scanners below.
+///
+/// They abort a scan where the enclosing span could end, and they hold the
+/// span's TYPE rather than the entry that knows which form opened it. Both
+/// forms abort, which is what they did before corpus 471 split them; widening
+/// an abort stops a scan early rather than letting it run past a closer.
+static bool scan_span_end_any_form(Scanner *s, TSLexer *lexer, char marker,
+                                   bool whitespace_sensitive) {
+  if (lexer->lookahead == marker) {
+    advance(s, lexer);
+    if (lexer->lookahead == '}') {
+      advance(s, lexer);
+    }
+    return true;
+  }
+  if (whitespace_sensitive && consume_whitespace(s, lexer) == 0) {
+    return false;
+  }
+  return scan_bracketed_span_end(s, lexer, marker);
+}
+
+static bool scan_span_end_marker_any_form(Scanner *s, TSLexer *lexer,
+                                          InlineType element) {
+  char marker = inline_marker(element);
+  switch (inline_span_type(element)) {
+  case SpanSingle:
+    return scan_single_span_end(s, lexer, marker);
+  case SpanBracketed:
+    return scan_bracketed_span_end(s, lexer, marker);
+  case SpanBracketedAndSingle:
+    return scan_span_end_any_form(s, lexer, marker, false);
+  case SpanBracketedAndSingleNoWhitespace:
+    return scan_span_end_any_form(s, lexer, marker, true);
   case SpanPair:
     return scan_bold_italic_span_end(s, lexer);
   default:
@@ -6262,7 +6353,7 @@ static bool scan_span_end_marker(Scanner *s, TSLexer *lexer,
 // found.
 static bool scan_until(Scanner *s, TSLexer *lexer, char c, InlineType *top) {
   while (!lexer->eof(lexer)) {
-    if (top && scan_span_end_marker(s, lexer, *top)) {
+    if (top && scan_span_end_marker_any_form(s, lexer, *top)) {
       return false;
     }
     if (lexer->lookahead == c) {
@@ -6287,7 +6378,7 @@ static bool scan_until(Scanner *s, TSLexer *lexer, char c, InlineType *top) {
 static bool scan_until_no_newline(Scanner *s, TSLexer *lexer, char c,
                                   InlineType *top) {
   while (!lexer->eof(lexer)) {
-    if (top && scan_span_end_marker(s, lexer, *top)) {
+    if (top && scan_span_end_marker_any_form(s, lexer, *top)) {
       return false;
     }
     if (lexer->lookahead == c) {
@@ -6423,7 +6514,7 @@ static bool scan_until_bracket_close(Scanner *s, TSLexer *lexer,
   // in and are looking for the `]` that brings us back out.
   unsigned depth = 0;
   while (!lexer->eof(lexer)) {
-    if (top && scan_span_end_marker(s, lexer, *top)) {
+    if (top && scan_span_end_marker_any_form(s, lexer, *top)) {
       return false;
     }
     if (lexer->lookahead == ']') {
@@ -6777,8 +6868,12 @@ static bool mark_span_begin(Scanner *s, TSLexer *lexer,
     // If we issue an error here at `_b` then we won't find the nested
     // emphasis. The solution i found was to do the check when closing the
     // span instead.
+    // The bracket family still counts: `[x](a_b_c_d_e)` and `^[a [b] c]`
+    // are resolved by it. A MARKER span is not - corpus 471 makes the second
+    // opener content, so there is no competing span to count, and counting it
+    // anyway is what stopped the outer span closing.
     Inline *open = find_inline(s, inline_type);
-    if (open != NULL) {
+    if (open != NULL && !is_marker_span(inline_type)) {
       ++open->data;
     }
     // We need to output the token common to both the fallback symbol and
@@ -6812,6 +6907,32 @@ static bool mark_span_begin(Scanner *s, TSLexer *lexer,
       return false;
     }
 
+    // LEFTMOST OPENER WINS (corpus 471). A second opener of a kind already
+    // open in this scope is content, so the branch that would nest it dies
+    // here and the fallback branch keeps the marker as text.
+    if (is_marker_span(inline_type) && kind_open_in_scope(s, inline_type)) {
+      return false;
+    }
+    // An EMPTY marker span is not a span (carve#1447), the same rule `{##}`
+    // already takes. With the closer split by form, `{--}` would otherwise be
+    // a delete over nothing rather than the en dash, and ` ***` a strong over
+    // nothing rather than literal text.
+    if (is_marker_span(inline_type)) {
+      char m = inline_marker(inline_type);
+      if (lexer->lookahead == m) {
+        if (bare) {
+          return false;
+        }
+        // A braced span needs TWO characters to be empty: `{-` + `-}`. One is
+        // not enough - `{++a++}` opens on `{+` with `+a+` as its content. The
+        // token is zero-width and its end was pinned at scan entry, so reading
+        // ahead here does not extend it.
+        advance(s, lexer);
+        if (lexer->lookahead == '}') {
+          return false;
+        }
+      }
+    }
     lexer->result_symbol = token;
     push_inline_flagged(s, inline_type, 0, bare ? 0 : INLINE_BRACED);
     return true;
@@ -6999,7 +7120,8 @@ static bool parse_span_end(Scanner *s, TSLexer *lexer, InlineType element,
     return false;
   }
 
-  if (!scan_span_end_marker(s, lexer, element)) {
+  if (!scan_span_end_marker(s, lexer, element,
+                            (top->flags & INLINE_BRACED) != 0)) {
     return false;
   }
 
