@@ -869,16 +869,8 @@
       "reading": "code html=0 tree=1",
       "reason": "the grammar builds an inline span the language keeps literal here"
     },
-    "a-collapsed-reference-is-matched-by-the-label-the-author-wrote": {
-      "reading": "strong html=1 tree=2",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
     "a-collapsed-reference-is-matched-by-the-label-the-author-wrote-2": {
       "reading": "strong html=0 tree=1",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
-    "a-collapsed-reference-reaches-a-heading-by-the-heading-s-rendered-text-11": {
-      "reading": "strong html=2 tree=3",
       "reason": "the grammar builds an inline span the language keeps literal here"
     },
     "a-comment-only-line-in-a-line-block-is-removed-before-any-inline-run": {
@@ -961,14 +953,6 @@
       "reading": "code html=0 tree=1",
       "reason": "the grammar builds an inline span the language keeps literal here"
     },
-    "a-marker-glued-to-a-name-opens-nothing": {
-      "reading": "strong html=1 tree=2",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
-    "a-marker-glued-to-a-name-opens-nothing-2": {
-      "reading": "strong html=1 tree=2",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
     "a-paragraph-opened-after-a-block-in-an-item-is-still-open-for-a-lazy-line-3": {
       "reading": "code html=0 tree=1",
       "reason": "the grammar builds an inline span the language keeps literal here"
@@ -988,10 +972,6 @@
     "a-wrapped-attribute-block-ends-at-its-quote-and-reaches-no-line-below-it-3": {
       "reading": "strong html=0 tree=1",
       "reason": "the grammar builds an inline span the language keeps literal here"
-    },
-    "admonitions-6": {
-      "reading": "strong html=1 tree=0, code html=1 tree=0",
-      "reason": "the language builds an inline span the grammar does not"
     },
     "an-attribute-name-admits-no-colon": {
       "reading": "strong html=1 tree=0",
@@ -1113,19 +1093,7 @@
       "reading": "code html=0 tree=1",
       "reason": "the grammar builds an inline span the language keeps literal here"
     },
-    "mention-and-tag-name-boundaries": {
-      "reading": "strong#3 html=\"johndoe\" tree=\"john\", strong#4 html=\"release10\" tree=\"release1\"",
-      "reason": "a span covers different text here than the language’s does"
-    },
-    "mentions-and-tags": {
-      "reading": "strong#2 html=\"release10\" tree=\"release1\"",
-      "reason": "a span covers different text here than the language’s does"
-    },
     "numbered-cross-references-10": {
-      "reading": "strong html=1 tree=0",
-      "reason": "the language builds an inline span the grammar does not"
-    },
-    "numbered-cross-references-6": {
       "reading": "strong html=1 tree=0",
       "reason": "the language builds an inline span the grammar does not"
     },
@@ -1139,10 +1107,6 @@
     },
     "the-round-trip-comparison-normalizes-a-named-list": {
       "reading": "s html=1 tree=0",
-      "reason": "the language builds an inline span the grammar does not"
-    },
-    "the-semantic-registry-holds-no-element-carve-already-spells-2": {
-      "reading": "strong html=2 tree=0",
       "reason": "the language builds an inline span the grammar does not"
     },
     "trailing-attributes-on-a-link-reference-definition-2": {
