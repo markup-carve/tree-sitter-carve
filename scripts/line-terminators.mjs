@@ -128,6 +128,28 @@ for (const name of Object.keys(SPELLINGS)) {
   }
   parsed[name] = trees.map(shape);
 }
+
+// These scanner paths do not live in the specification corpus. Keep their
+// three spellings beside the exhaustive sweep so a speculative read cannot
+// move the token end or leak lone-CR column state without being observed.
+const scannerRegressions = {
+  'multiline-verbatim-in-braced-span': '{*`a\nb*}',
+  'unterminated-verbatim-in-table-row':
+    '| A |\n|---|\n| {*`a | b*} |\n| `later` |',
+};
+for (const [name, source] of Object.entries(scannerRegressions)) {
+  const lines = source.split('\n');
+  const trees = Object.entries(SPELLINGS).map(([spelling, sep]) => {
+    const p = path.join(work, `${spelling}-regression-${name}.crv`);
+    writeFileSync(p, lines.join(sep));
+    return shape(parseOne(p));
+  });
+  if (trees.some((tree) => tree !== trees[0])) {
+    console.error(`${name} changes tree across line terminator spellings.`);
+    rmSync(work, { recursive: true, force: true });
+    process.exit(1);
+  }
+}
 rmSync(work, { recursive: true, force: true });
 
 const found = {};
