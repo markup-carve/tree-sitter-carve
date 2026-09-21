@@ -2452,6 +2452,8 @@ static bool scan_block_quote_marker(Scanner *s, TSLexer *lexer,
 
 static uint8_t scan_block_quote_markers(Scanner *s, TSLexer *lexer,
                                         bool *ending_newline) {
+  // `scan_block_quote_marker` only ever sets this to true; the loop reads it.
+  *ending_newline = false;
   uint8_t marker_count = 0;
   while (scan_block_quote_marker(s, lexer, ending_newline)) {
     ++marker_count;
