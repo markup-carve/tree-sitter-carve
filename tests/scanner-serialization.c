@@ -43,8 +43,39 @@ int main(void) {
     return 1;
   }
 
+  // An inline entry packs its flags into the type byte's spare bits, so a
+  // round trip has to bring back the flags as well as the type and the data.
+  // Nothing else here reads the inline half of the wire format.
+  Scanner *spans = tree_sitter_carve_external_scanner_create();
+  push_inline_flagged(spans, STRONG, 0, INLINE_BRACED);
+  push_inline_flagged(spans, VERBATIM, 2, INLINE_STOPS_AT_SPAN_CLOSER);
+  unsigned inline_length =
+      tree_sitter_carve_external_scanner_serialize(spans, buffer);
+  Scanner *spans_back = tree_sitter_carve_external_scanner_create();
+  tree_sitter_carve_external_scanner_deserialize(spans_back, buffer,
+                                                 inline_length);
+  if (spans_back->open_inline->size != 2) {
+    fprintf(stderr, "restored %u inline entries, wanted 2\n",
+            spans_back->open_inline->size);
+    return 1;
+  }
+  Inline *outer = *array_get(spans_back->open_inline, 0);
+  Inline *inner = *array_get(spans_back->open_inline, 1);
+  if (outer->type != STRONG || outer->flags != INLINE_BRACED ||
+      inner->type != VERBATIM || inner->data != 2 ||
+      inner->flags != INLINE_STOPS_AT_SPAN_CLOSER) {
+    fprintf(stderr,
+            "restored (%d,%u,%u) over (%d,%u,%u)\n", (int)inner->type,
+            inner->data, inner->flags, (int)outer->type, outer->data,
+            outer->flags);
+    return 1;
+  }
+  tree_sitter_carve_external_scanner_destroy(spans_back);
+  tree_sitter_carve_external_scanner_destroy(spans);
+
   tree_sitter_carve_external_scanner_destroy(restored);
   tree_sitter_carve_external_scanner_destroy(scanner);
-  puts("scanner serialization: 255 blocks round-trip; 256 is refused cleanly.");
+  puts("scanner serialization: 255 blocks round-trip, an inline entry keeps "
+       "its flags, and 256 blocks are refused cleanly.");
   return 0;
 }

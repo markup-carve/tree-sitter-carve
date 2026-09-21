@@ -329,6 +329,15 @@ typedef enum {
   SpanPair,
 } SpanType;
 
+// The span was opened in its BRACED form, `{* ... *}` rather than `* ... *`.
+// Only the braced form stops an unterminated verbatim run at its closer
+// (corpus 472), so the two forms cannot share one entry.
+static const uint8_t INLINE_BRACED = 1 << 0;
+// This VERBATIM run has no matching tick run before the braced span it sits
+// in closes, so its content ends at that closer. Decided at the opening ticks,
+// where the lexer may still read ahead.
+static const uint8_t INLINE_STOPS_AT_SPAN_CLOSER = 1 << 1;
+
 typedef struct {
   InlineType type;
   // Different types may use `data` differently.
@@ -336,6 +345,9 @@ typedef struct {
   // opening tag.
   // Verbatim counts the number of open and closing ticks.
   uint8_t data;
+  // `INLINE_BRACED` and `INLINE_STOPS_AT_SPAN_CLOSER`. Packed into the type
+  // byte's spare bits on the wire, so the serialized size does not move.
+  uint8_t flags;
 } Inline;
 
 typedef struct {
@@ -437,6 +449,17 @@ static const uint16_t STATE_AFTER_BLANK_LINE = 1 << 5;
 // outright. So the adjacency is enforced here instead, where the scanner can
 // see the character the grammar cannot.
 static const uint16_t STATE_SPAN_END_AT_CR = 1 << 6;
+// The span about to open was spelled BARE. Set by the zero-width check that
+// only the bare alternative of an opener carries (`_non_whitespace_check`,
+// `_highlighted_open_check`) and cleared by the `mark_span_begin` behind it,
+// which is the next token in every branch that reaches one. Nothing else can
+// tell the two spellings apart: `{*` and `*` are alternatives of one internal
+// token, and the scanner cannot read behind the position it is called at.
+//
+// Set wrongly, the flag costs the braced reading of an unterminated verbatim
+// run - which is what main does everywhere today - so it fails toward the old
+// behavior rather than toward a wrong extent.
+static const uint16_t STATE_BARE_SPAN_OPENER = 1 << 7;
 static const uint16_t STATE_MULTILINE_IDENTIFIER = 1 << 8;
 
 static TokenType scan_list_marker_token(Scanner *s, TSLexer *lexer);
@@ -686,6 +709,7 @@ static Inline *create_inline(InlineType type, uint8_t data) {
   Inline *res = ts_malloc(sizeof(Inline));
   res->type = type;
   res->data = data;
+  res->flags = 0;
   return res;
 }
 
@@ -695,6 +719,13 @@ static void push_block(Scanner *s, BlockType type, uint8_t data) {
 
 static void push_inline(Scanner *s, InlineType type, uint8_t data) {
   stack_push(s->open_inline, create_inline(type, data));
+}
+
+static void push_inline_flagged(Scanner *s, InlineType type, uint8_t data,
+                                uint8_t flags) {
+  Inline *x = create_inline(type, data);
+  x->flags = flags;
+  stack_push(s->open_inline, x);
 }
 
 static void remove_block(Scanner *s) {
@@ -1516,6 +1547,60 @@ static bool colon_fence_tail_opens_block(Scanner *s, TSLexer *lexer, bool bare,
   return colon_fence_named_tail_is_modeled(s, lexer);
 }
 
+/// The character that, followed by `}`, ends the span an inline run sits in -
+/// or 0 where no run stops there.
+///
+/// Corpus 472: an unterminated verbatim run inside a BRACED span ends at that
+/// span's closer, so `{~`a~>b~}` is one strikethrough over the code span
+/// `a~>b`. Inside a BARE span it does not: `*a `b*` is a literal asterisk and a
+/// code span reaching the end of the line, and `*a `b*}c*` keeps the `*}` as
+/// content too. Links, bracket spans and the bold-italic pair never stop one.
+static char span_verbatim_stop_marker(const Inline *e) {
+  if (e == NULL) {
+    return 0;
+  }
+  if (e->type == SUBSTITUTION) {
+    return '~';
+  }
+  if (!(e->flags & INLINE_BRACED)) {
+    return 0;
+  }
+  switch (e->type) {
+  case EMPHASIS:
+    return '/';
+  case STRONG:
+    return '*';
+  case UNDERLINE:
+    return '_';
+  case STRIKETHROUGH:
+    return '~';
+  case HIGHLIGHTED:
+    return '=';
+  case SUPERSCRIPT:
+    return '^';
+  case SUBSCRIPT:
+    return ',';
+  case INSERT:
+    return '+';
+  case DELETE:
+    return '-';
+  default:
+    return 0;
+  }
+}
+
+/// The closer that ends the run on top of the inline stack, or 0.
+static char open_verbatim_stop_marker(Scanner *s) {
+  Inline *top = peek_inline(s);
+  if (top == NULL || top->type != VERBATIM ||
+      !(top->flags & INLINE_STOPS_AT_SPAN_CLOSER) ||
+      s->open_inline->size < 2) {
+    return 0;
+  }
+  return span_verbatim_stop_marker(
+      *array_get(s->open_inline, s->open_inline->size - 2));
+}
+
 // Try to close an open verbatim implicitly
 // (should happen on a newline).
 static bool try_implicit_close_verbatim(Scanner *s, TSLexer *lexer) {
@@ -1548,6 +1633,10 @@ static bool parse_verbatim_content(Scanner *s, TSLexer *lexer) {
   // `| a `x|` | b |` still ends at the ticks with the pipe inside it as
   // content.
   bool in_table_row = find_block(s, TABLE_ROW) != NULL;
+  // The closer of the braced span this run sits in, where the opening ticks
+  // established that no matching run comes first. See
+  // `verbatim_run_reaches_span_closer`.
+  char stop_marker = open_verbatim_stop_marker(s);
   // Does the mark currently stand at a pipe? Set by a `|`, kept across the
   // whitespace that may trail it, cleared by any other content - the same
   // question `scan_verbatim_run_in_cell` answers while validating the row.
@@ -1593,6 +1682,16 @@ static bool parse_verbatim_content(Scanner *s, TSLexer *lexer) {
         marked_at_pipe = false;
         lexer->mark_end(lexer);
       }
+    } else if (stop_marker != 0 && lexer->lookahead == stop_marker) {
+      // Pin the end BEFORE the candidate, then look at the character behind
+      // it. A lone marker is content and the mark moves on with it.
+      lexer->mark_end(lexer);
+      advance(s, lexer);
+      if (lexer->lookahead == '}') {
+        break;
+      }
+      marked_at_pipe = false;
+      lexer->mark_end(lexer);
     } else if (in_table_row && lexer->lookahead == '|') {
       // A candidate row closer: mark BEFORE it and read on without moving the
       // mark, so a later pipe (or a closing run) overrides this one.
@@ -2042,6 +2141,61 @@ static bool parse_comment_fence_begin(Scanner *s, TSLexer *lexer,
   return false;
 }
 
+/// Where a verbatim run that has just opened comes to an end.
+typedef enum {
+  // A run of the same width closed it.
+  VerbatimRunCloses,
+  // It reached the `marker}` that ends the braced span it sits in.
+  VerbatimRunReachesSpanCloser,
+  // Neither: the block ended first.
+  VerbatimRunReachesBlockEnd,
+} VerbatimRunEnd;
+
+/// Read a run to its end, from the character after its opening ticks.
+///
+/// Two callers ask this, and THEY HAVE TO AGREE. `parse_verbatim_content`
+/// needs the answer before it starts scanning, because it marks as it goes and
+/// a mark only ever moves forward: by the time a span closer turns out to be
+/// the end of the content, the position is behind it. A matching run still
+/// wins wherever one comes first - `{*`a*}`b*}` is one strong over the code
+/// span `a*}` - which is what rules out deciding it while scanning.
+/// `substitution_arrow_ahead` needs the same reading of the same run, or a
+/// `{~` commits to a substitution whose arrow no token can produce.
+static VerbatimRunEnd read_verbatim_run(Scanner *s, TSLexer *lexer,
+                                        uint8_t width, char marker) {
+  // A matching run wins from ANYWHERE in the block, including from behind the
+  // closer: `{*`a*}`b*}` is one strong over the code span `a*}`, and
+  // `{= `h =} `i =}` one mark over `h =} `. So the first closer is remembered
+  // and the scan carries on rather than answering there.
+  bool saw_closer = false;
+  while (!lexer->eof(lexer)) {
+    if (at_line_end(lexer)) {
+      consume_line_end(s, lexer);
+      consume_whitespace(s, lexer);
+      // A blank line ends the block, and with it both the run and the span.
+      if (lexer->eof(lexer) || at_line_end(lexer)) {
+        break;
+      }
+      continue;
+    }
+    if (lexer->lookahead == '`') {
+      if (consume_chars(s, lexer, '`') == width) {
+        return VerbatimRunCloses;
+      }
+      continue;
+    }
+    if (marker != 0 && !saw_closer && lexer->lookahead == marker) {
+      advance(s, lexer);
+      if (lexer->lookahead == '}') {
+        saw_closer = true;
+      }
+      continue;
+    }
+    advance(s, lexer);
+  }
+  return saw_closer ? VerbatimRunReachesSpanCloser : VerbatimRunReachesBlockEnd;
+}
+
 static bool parse_code_fence(Scanner *s, TSLexer *lexer,
                              const bool *valid_symbols, char fence_char) {
   bool supports_verbatim = fence_char == '`';
@@ -2119,11 +2273,19 @@ static bool parse_code_fence(Scanner *s, TSLexer *lexer,
   if (valid_symbols[VERBATIM_BEGIN]) {
     // For ticks >= 3 the end is already pinned above; re-mark here for the
     // 1-2 tick inline-verbatim case where no fence validation ran.
+    uint8_t flags = 0;
     if (width < 3) {
       lexer->mark_end(lexer);
+      // Only here is the lexer known to stand right after the ticks: the
+      // three-tick path let `try_begin_code_block` read the info string first.
+      char marker = span_verbatim_stop_marker(peek_inline(s));
+      if (marker != 0 && read_verbatim_run(s, lexer, width, marker) ==
+                             VerbatimRunReachesSpanCloser) {
+        flags = INLINE_STOPS_AT_SPAN_CLOSER;
+      }
     }
     lexer->result_symbol = VERBATIM_BEGIN;
-    push_inline(s, VERBATIM, width);
+    push_inline_flagged(s, VERBATIM, width, flags);
     return true;
   }
   return false;
@@ -6455,17 +6617,13 @@ static bool substitution_arrow_ahead(Scanner *s, TSLexer *lexer) {
     }
     if (lexer->lookahead == '`') {
       // A run of n backticks closes on the next run of exactly n. An
-      // UNTERMINATED run reaches the end of the block, which is what makes
+      // UNTERMINATED one ends at this run's own `~}`, which is what makes
       // `{~`a~>b~}` a strikethrough: the arrow never comes back to top level.
+      // Read by the same function the content token uses, so the two cannot
+      // drift apart.
       uint8_t width = consume_chars(s, lexer, '`');
-      while (!lexer->eof(lexer) && !at_line_end(lexer)) {
-        if (lexer->lookahead == '`') {
-          if (consume_chars(s, lexer, '`') == width) {
-            break;
-          }
-          continue;
-        }
-        advance(s, lexer);
+      if (read_verbatim_run(s, lexer, width, '~') != VerbatimRunCloses) {
+        return false;
       }
       continue;
     }
@@ -6520,7 +6678,7 @@ static bool parse_substitution_or_strikethrough(Scanner *s, TSLexer *lexer,
   // Zero-width, whatever the reader below advances over.
   lexer->mark_end(lexer);
   if (substitution_arrow_ahead(s, lexer)) {
-    push_inline(s, SUBSTITUTION, 0);
+    push_inline_flagged(s, SUBSTITUTION, 0, INLINE_BRACED);
     lexer->result_symbol = SUBSTITUTION_BEGIN;
     return true;
   }
@@ -6555,6 +6713,8 @@ static bool mark_span_begin(Scanner *s, TSLexer *lexer,
                             const bool *valid_symbols, InlineType inline_type,
                             TokenType token) {
   Inline *top = peek_inline(s);
+  bool bare = (s->state & STATE_BARE_SPAN_OPENER) != 0;
+  s->state &= ~STATE_BARE_SPAN_OPENER;
   // If IN_FALLBACK is valid then it means we're processing the
   // `_symbol_fallback` branch (see `grammar.js`).
   if (valid_symbols[IN_FALLBACK]) {
@@ -6653,7 +6813,7 @@ static bool mark_span_begin(Scanner *s, TSLexer *lexer,
     }
 
     lexer->result_symbol = token;
-    push_inline(s, inline_type, 0);
+    push_inline_flagged(s, inline_type, 0, bare ? 0 : INLINE_BRACED);
     return true;
   }
 }
@@ -6969,6 +7129,7 @@ static bool check_non_whitespace(Scanner *s, TSLexer *lexer) {
   case '\n':
     return false;
   default:
+    s->state |= STATE_BARE_SPAN_OPENER;
     lexer->result_symbol = NON_WHITESPACE_CHECK;
     return true;
   }
@@ -6990,6 +7151,7 @@ static bool check_highlighted_open(Scanner *s, TSLexer *lexer) {
   case '=':
     return false;
   default:
+    s->state |= STATE_BARE_SPAN_OPENER;
     lexer->result_symbol = HIGHLIGHTED_OPEN_CHECK;
     return true;
   }
@@ -7479,6 +7641,17 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
     return true;
   }
 
+  // The same implicit close at the closer of the BRACED span an open run sits
+  // in (corpus 472). One character is enough to recognize it: the content
+  // token ate every lone marker it passed, so a run whose end was decided at
+  // the opening ticks can only be standing here.
+  char run_stop_marker = open_verbatim_stop_marker(s);
+  if (valid_symbols[VERBATIM_END] && run_stop_marker != 0 &&
+      lexer->lookahead == run_stop_marker &&
+      try_implicit_close_verbatim(s, lexer)) {
+    return true;
+  }
+
   if (valid_symbols[TABLE_CELL_END] && parse_table_cell_end(s, lexer)) {
     return true;
   }
@@ -7638,7 +7811,9 @@ unsigned tree_sitter_carve_external_scanner_serialize(void *payload,
 
   for (size_t i = 0; i < s->open_inline->size; ++i) {
     Inline *x = *array_get(s->open_inline, i);
-    buffer[size++] = (char)x->type;
+    // Sixteen inline types fit in the low six bits; the top two carry the
+    // flags, so an entry still costs two bytes.
+    buffer[size++] = (char)((uint8_t)x->type | (uint8_t)(x->flags << 6));
     buffer[size++] = (char)x->data;
   }
 
@@ -7672,9 +7847,10 @@ void tree_sitter_carve_external_scanner_deserialize(void *payload, char *buffer,
       stack_push(s->open_blocks, b);
     }
     while (size < length) {
-      InlineType type = (InlineType)buffer[size++];
+      uint8_t packed = (uint8_t)buffer[size++];
       uint8_t data = (uint8_t)buffer[size++];
-      stack_push(s->open_inline, create_inline(type, data));
+      push_inline_flagged(s, (InlineType)(packed & 0x3f), data,
+                          (uint8_t)(packed >> 6));
     }
   }
 }

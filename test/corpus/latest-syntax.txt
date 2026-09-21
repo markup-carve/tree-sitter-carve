@@ -445,3 +445,137 @@ A link title is one space and a quoted run, and the destination has no space
       destination: (inline_link_destination
         title: (link_title))))
   (paragraph))
+
+==================
+An unterminated code span ends at the closer of the braced span it sits in
+==================
+
+{*`a*}
+
+{= `h =}
+
+{^a `b^}
+
+---
+
+(document
+  (paragraph
+    (strong
+      begin_marker: (strong_begin)
+      content: (content
+        (verbatim
+          begin_marker: (verbatim_marker_begin)
+          content: (content)
+          end_marker: (verbatim_marker_end)))
+      end_marker: (strong_end)))
+  (paragraph
+    (highlighted
+      begin_marker: (highlighted_begin)
+      content: (content
+        (verbatim
+          begin_marker: (verbatim_marker_begin)
+          content: (content)
+          end_marker: (verbatim_marker_end)))
+      end_marker: (highlighted_end)))
+  (paragraph
+    (superscript
+      begin_marker: (superscript_begin)
+      content: (content
+        (verbatim
+          begin_marker: (verbatim_marker_begin)
+          content: (content)
+          end_marker: (verbatim_marker_end)))
+      end_marker: (superscript_end))))
+
+==================
+A BARE span does not end one, so the run keeps the marker as content
+==================
+
+*a `b*
+
+*a `b*}c*
+
+---
+
+(document
+  (paragraph
+    (verbatim
+      begin_marker: (verbatim_marker_begin)
+      content: (content)
+      end_marker: (verbatim_marker_end)))
+  (paragraph
+    (verbatim
+      begin_marker: (verbatim_marker_begin)
+      content: (content)
+      end_marker: (verbatim_marker_end))))
+
+==================
+A matching run wins from anywhere in the block, including behind the closer
+==================
+
+{*`a*}`b*}
+
+---
+
+(document
+  (paragraph
+    (strong
+      begin_marker: (strong_begin)
+      content: (content
+        (verbatim
+          begin_marker: (verbatim_marker_begin)
+          content: (content)
+          end_marker: (verbatim_marker_end)))
+      end_marker: (strong_end))))
+
+==================
+An arrow buried in an unterminated run leaves the `{~` a strikethrough
+==================
+
+{~`a~>b~}
+
+{~`a~>b~>c~}
+
+{~`a
+b~>c~}
+
+{~x~>`a~}
+
+---
+
+(document
+  (paragraph
+    (strikethrough
+      begin_marker: (strikethrough_begin)
+      content: (content
+        (verbatim
+          begin_marker: (verbatim_marker_begin)
+          content: (content)
+          end_marker: (verbatim_marker_end)))
+      end_marker: (strikethrough_end)))
+  (paragraph
+    (strikethrough
+      begin_marker: (strikethrough_begin)
+      content: (content
+        (verbatim
+          begin_marker: (verbatim_marker_begin)
+          content: (content)
+          end_marker: (verbatim_marker_end)))
+      end_marker: (strikethrough_end)))
+  (paragraph
+    (strikethrough
+      begin_marker: (strikethrough_begin)
+      content: (content
+        (verbatim
+          begin_marker: (verbatim_marker_begin)
+          content: (content)
+          end_marker: (verbatim_marker_end)))
+      end_marker: (strikethrough_end)))
+  (paragraph
+    (substitution
+      from: (content)
+      to: (content
+        (verbatim
+          begin_marker: (verbatim_marker_begin)
+          content: (content)
+          end_marker: (verbatim_marker_end))))))

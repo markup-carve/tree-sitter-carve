@@ -841,10 +841,6 @@
     }
   },
   "lineTerminatorGaps": {
-    "inline-code-12": {
-      "spellings": "the cr spelling(s) parse to a different tree than lf",
-      "reason": "ref:lone-cr-does-not-close-an-inline-run-at-the-block-boundary"
-    },
     "leading-attribute-brace-before-an-inline-span-stays-literal-3": {
       "spellings": "the cr spelling(s) parse to a different tree than lf",
       "reason": "ref:lone-cr-does-not-close-an-inline-run-at-the-block-boundary"
