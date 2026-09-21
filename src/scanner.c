@@ -6286,15 +6286,28 @@ static bool kind_open_in_scope(Scanner *s, InlineType type) {
 ///
 /// Speculative: only `advance` and `lookahead`, never a helper that writes
 /// scanner state (#319).
-/// Does a BARE span opened here close before the braced span around it does?
+/// Does a BARE span opened here close before its scope does?
 ///
 /// A span cannot outlive the braced span it opens in, so `{/a *b {/c/}*/}`
 /// keeps its `*` literal: the only bare `*` that could close it lies past the
-/// emphasis's `/}`. Asked from the opener, reading ahead only.
-static bool bare_closer_before_braced(Scanner *s, TSLexer *lexer, char bare,
-                                      char braced) {
+/// emphasis's `/}`. Pass `braced` as 0 where no braced span encloses the opener.
+///
+/// A table CELL is a scope of the same sort. `|=v Bottom |=<^ Paired |` holds
+/// two literal `=` markers rather than one highlight reaching across the pipe
+/// (spec corpus 373), and the bare forms have no closer lookahead of their own -
+/// GLR races them - so this is where the row is answered for. One scan answers
+/// both questions because the lexer cannot rewind: a second scan would read from
+/// wherever the first stopped.
+///
+/// Asked from the opener, reading ahead only.
+static bool bare_closer_in_scope(Scanner *s, TSLexer *lexer, char bare,
+                                 char braced) {
+  bool in_row = find_block(s, TABLE_ROW) != NULL;
   while (!lexer->eof(lexer)) {
     if (at_line_end(lexer)) {
+      if (in_row) {
+        return false;
+      }
       if (lexer->lookahead == '\r') {
         advance(s, lexer);
         if (lexer->lookahead == '\n') {
@@ -6321,13 +6334,16 @@ static bool bare_closer_before_braced(Scanner *s, TSLexer *lexer, char bare,
     }
     if (c == '`') {
       uint8_t width = consume_chars(s, lexer, '`');
-      if (read_verbatim_run(s, lexer, width, 0, false) != VerbatimRunCloses) {
+      if (read_verbatim_run(s, lexer, width, 0, in_row) != VerbatimRunCloses) {
         return false;
       }
       continue;
     }
     if (c == bare) {
       return true;
+    }
+    if (in_row && c == '|') {
+      return false;
     }
     if (c == braced) {
       advance(s, lexer);
@@ -7087,10 +7103,16 @@ static bool mark_span_begin(Scanner *s, TSLexer *lexer,
         return false;
       }
       Inline *around = innermost_braced(s);
-      if (around != NULL && around->type != SUBSTITUTION &&
-          !bare_closer_before_braced(s, lexer, inline_marker(inline_type),
-                                     inline_marker(around->type))) {
-        return false;
+      bool in_braced = around != NULL && around->type != SUBSTITUTION;
+      if (in_braced || find_block(s, TABLE_ROW) != NULL) {
+        // The scan below only LOOKS; the mark pins this zero-width token where
+        // it belongs whatever the scan advances over.
+        lexer->mark_end(lexer);
+        if (!bare_closer_in_scope(s, lexer, inline_marker(inline_type),
+                                  in_braced ? inline_marker(around->type)
+                                            : 0)) {
+          return false;
+        }
       }
     }
     lexer->result_symbol = token;
