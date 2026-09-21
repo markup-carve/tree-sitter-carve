@@ -200,6 +200,8 @@ typedef enum {
   SUBSTITUTION_BEGIN,
   SUBSTITUTION_ARROW,
   SUBSTITUTION_END,
+  // The literal reading of a braced marker opener. See `braced_closer_ahead`.
+  BRACED_FALLBACK,
 } TokenType;
 
 // The different blocks in Carve that we track,
@@ -6216,6 +6218,155 @@ static Inline *find_inline(Scanner *s, InlineType type) {
   return NULL;
 }
 
+/// Is a span of this kind already open in the CURRENT scope?
+///
+/// Corpus 471: an opener of a kind already open is content, bare or braced
+/// alike, and a BRACED span starts a scope of its own - so the walk stops at
+/// the first braced entry, having examined it. That is what separates
+///
+///     {*a *b* c*}            one strong over the literal `a *b* c`
+///     *a {/b *c* d/} e*      strong over em over strong
+///
+/// In the first the walk meets the braced strong itself and refuses the bare
+/// `*`; in the second it stops at the braced `{/`, never sees the outer bare
+/// strong, and the inner `*c*` opens.
+static Inline *find_inline_in_scope(Scanner *s, InlineType type) {
+  for (int i = s->open_inline->size - 1; i >= 0; --i) {
+    Inline *e = *array_get(s->open_inline, i);
+    if (e->type == type) {
+      return e;
+    }
+    if (e->flags & INLINE_BRACED) {
+      return NULL;
+    }
+  }
+  return NULL;
+}
+
+static bool kind_open_in_scope(Scanner *s, InlineType type) {
+  for (int i = s->open_inline->size - 1; i >= 0; --i) {
+    Inline *e = *array_get(s->open_inline, i);
+    if (e->type == type) {
+      return true;
+    }
+    if (e->flags & INLINE_BRACED) {
+      return false;
+    }
+  }
+  return false;
+}
+
+/// Does a BRACED opener that has just been read reach its own `X}` closer?
+///
+/// Asked from the fallback branch, and only where the span could open at all.
+/// If the closer is there, the literal reading of the opener is refused, so the
+/// branch that would have read `{X` as text fails to parse rather than losing
+/// on score. Dynamic precedence sums per branch and cannot say "leftmost
+/// opener"; a branch that does not exist does not need outscoring
+/// (tree-sitter-carve#316).
+///
+/// A same-kind braced opener on the way is content (corpus 471), so it opens
+/// nothing here. A braced span of ANOTHER kind is tracked, because a closer
+/// inside it belongs to it: `{*a {/b *} d/} e*}` keeps its `*}` as content.
+/// Anything this cannot account for answers "no closer", which leaves the old
+/// behavior in place rather than forcing a span that may not close.
+///
+/// Speculative: only `advance` and `lookahead`, never a helper that writes
+/// scanner state (#319).
+static bool braced_closer_ahead(Scanner *s, TSLexer *lexer, char marker) {
+  // An EMPTY braced span is not a span (carve#1447): `{--}` is the en dash.
+  if (lexer->lookahead == marker) {
+    advance(s, lexer);
+    if (lexer->lookahead == '}') {
+      return false;
+    }
+  }
+  // A span does not outlive its table row, and neither does a verbatim run
+  // inside one: the row's closing pipe ends it.
+  bool in_row = find_block(s, TABLE_ROW) != NULL;
+  char nested[16];
+  uint8_t depth = 0;
+  while (!lexer->eof(lexer)) {
+    if (at_line_end(lexer)) {
+      if (in_row) {
+        return false;
+      }
+      if (lexer->lookahead == '\r') {
+        advance(s, lexer);
+        if (lexer->lookahead == '\n') {
+          advance(s, lexer);
+        }
+      } else {
+        advance(s, lexer);
+      }
+      while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+        advance(s, lexer);
+      }
+      if (lexer->eof(lexer) || at_line_end(lexer)) {
+        return false;
+      }
+      continue;
+    }
+    int32_t c = lexer->lookahead;
+    if (c == '\\') {
+      advance(s, lexer);
+      if (!lexer->eof(lexer) && !at_line_end(lexer)) {
+        advance(s, lexer);
+      }
+      continue;
+    }
+    if (c == '`') {
+      // Read the run the way the content token reads it, or the two disagree
+      // about where this span ends: an unterminated run inside it stops at its
+      // closer (corpus 472), and a matching run wins from anywhere in the block.
+      uint8_t width = consume_chars(s, lexer, '`');
+      VerbatimRunEnd end =
+          read_verbatim_run(s, lexer, width, depth == 0 ? marker : 0, in_row);
+      if (end == VerbatimRunReachesSpanCloser) {
+        return true;
+      }
+      if (end == VerbatimRunReachesBlockEnd) {
+        return false;
+      }
+      continue;
+    }
+    if (c == '{') {
+      advance(s, lexer);
+      int32_t m = lexer->lookahead;
+      if (m == marker) {
+        advance(s, lexer);
+        continue;
+      }
+      if (m == '*' || m == '/' || m == '_' || m == '~' || m == '=' ||
+          m == '^' || m == ',' || m == '+' || m == '-') {
+        if (depth == sizeof(nested)) {
+          return false;
+        }
+        nested[depth++] = (char)m;
+        advance(s, lexer);
+      }
+      continue;
+    }
+    if (c == marker || (depth > 0 && c == nested[depth - 1])) {
+      advance(s, lexer);
+      if (lexer->lookahead == '}') {
+        if (depth > 0 && c == nested[depth - 1]) {
+          depth--;
+          advance(s, lexer);
+          continue;
+        }
+        if (depth == 0) {
+          return true;
+        }
+      }
+      continue;
+    }
+    advance(s, lexer);
+  }
+  return false;
+}
+
+
 static bool scan_single_span_end(Scanner *s, TSLexer *lexer, char marker) {
   if (lexer->lookahead != marker) {
     return false;
@@ -6820,7 +6971,10 @@ static bool mark_span_begin(Scanner *s, TSLexer *lexer,
     // If we issue an error here at `_b` then we won't find the nested
     // emphasis. The solution i found was to do the check when closing the
     // span instead.
-    Inline *open = find_inline(s, inline_type);
+    // Counted only within the current scope: a marker inside a nested BRACED
+    // span belongs to that span, so it must not stop an outer one closing.
+    // `{*a {/b *} d/} e*}` keeps its strong, and `~a{+b~+} c~` its strikethrough.
+    Inline *open = find_inline_in_scope(s, inline_type);
     if (open != NULL) {
       ++open->data;
     }
@@ -7264,6 +7418,44 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
   // recovery must reach.
   if (valid_symbols[SUBSTITUTION_BEGIN] && !valid_symbols[ERROR]) {
     return parse_substitution_or_strikethrough(s, lexer, valid_symbols);
+  }
+
+  // A BRACED marker opener, asked from the branch that would read it as text.
+  // `braced_closer_ahead` moves the lexer, so this answers for the whole call,
+  // the same way the substitution reader above does.
+  if (valid_symbols[BRACED_FALLBACK] && !valid_symbols[ERROR]) {
+    static const InlineType braced_kinds[] = {
+        EMPHASIS, STRONG,    UNDERLINE, HIGHLIGHTED,
+        SUPERSCRIPT, SUBSCRIPT, INSERT,   DELETE,
+    };
+    for (size_t i = 0; i < sizeof(braced_kinds) / sizeof(braced_kinds[0]);
+         ++i) {
+      InlineType kind = braced_kinds[i];
+      TokenType token = inline_begin_token(kind);
+      if (!valid_symbols[token]) {
+        continue;
+      }
+      // The two readings take different tokens (see `symbolFallback` in
+      // grammar.js), so exactly one is emitted: the span where it can open
+      // and its closer is there, the literal reading otherwise. Both tokens
+      // are zero-width; the reader below only looks.
+      lexer->mark_end(lexer);
+      s->state &= ~STATE_BARE_SPAN_OPENER;
+      bool opens = !kind_open_in_scope(s, kind) &&
+                   braced_closer_ahead(s, lexer, inline_marker(kind));
+      if (opens) {
+        push_inline_flagged(s, kind, 0, INLINE_BRACED);
+        lexer->result_symbol = token;
+      } else {
+        lexer->result_symbol = BRACED_FALLBACK;
+      }
+      return true;
+    }
+    // No span of this kind can open here, so the literal reading is the only
+    // one left.
+    lexer->mark_end(lexer);
+    lexer->result_symbol = BRACED_FALLBACK;
+    return true;
   }
 
 #ifdef DEBUG

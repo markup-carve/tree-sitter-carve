@@ -678,3 +678,124 @@ Empty and wider verbatim runs keep their braced boundary rules
           (content)
           (verbatim_marker_end)))
       (strong_end))))
+
+==================
+A forced opener of a kind already open is literal, and the outer span closes
+==================
+
+a{*{*x*}*}b
+
+{/a *b {/c/}*/}
+
+---
+
+(document
+  (paragraph
+    (strong
+      begin_marker: (strong_begin)
+      content: (content)
+      end_marker: (strong_end)))
+  (paragraph
+    (emphasis
+      begin_marker: (emphasis_begin)
+      content: (content)
+      end_marker: (emphasis_end))))
+
+==================
+A braced span starts a scope of its own, so the same kind nests inside it
+==================
+
+{*a {/b {*c*} d/} e*}
+
+---
+
+(document
+  (paragraph
+    (strong
+      begin_marker: (strong_begin)
+      content: (content
+        (emphasis
+          begin_marker: (emphasis_begin)
+          content: (content
+            (strong
+              begin_marker: (strong_begin)
+              content: (content)
+              end_marker: (strong_end)))
+          end_marker: (emphasis_end)))
+      end_marker: (strong_end))))
+
+==================
+A closer inside a nested braced span belongs to that span
+==================
+
+{*a {/b *} d/} e*}
+
+~a{+b~+} c~
+
+---
+
+(document
+  (paragraph
+    (strong
+      begin_marker: (strong_begin)
+      content: (content
+        (emphasis
+          begin_marker: (emphasis_begin)
+          content: (content)
+          end_marker: (emphasis_end)))
+      end_marker: (strong_end)))
+  (paragraph
+    (strikethrough
+      begin_marker: (strikethrough_begin)
+      content: (content
+        (insert
+          begin_marker: (insert_begin)
+          content: (content)
+          end_marker: (insert_end)))
+      end_marker: (strikethrough_end))))
+
+==================
+A braced opener with no closer ahead stays literal text
+==================
+
+{*a
+
+{_foo}
+
+{-x
+
+---
+
+(document
+  (paragraph)
+  (paragraph)
+  (paragraph))
+
+==================
+A closer that sits inside another span does not close a braced opener
+==================
+
+{*a {/b *} c/}
+
+{*`a*}`
+
+{/x {*y /} z*}
+
+---
+
+(document
+  (paragraph
+    (emphasis
+      begin_marker: (emphasis_begin)
+      content: (content)
+      end_marker: (emphasis_end)))
+  (paragraph
+    (verbatim
+      begin_marker: (verbatim_marker_begin)
+      content: (content)
+      end_marker: (verbatim_marker_end)))
+  (paragraph
+    (strong
+      begin_marker: (strong_begin)
+      content: (content)
+      end_marker: (strong_end))))
