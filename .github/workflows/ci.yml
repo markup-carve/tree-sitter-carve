@@ -32,6 +32,15 @@ jobs:
       - name: Divergence reasons describe their documents
         run: npm run test:reason-predicates
 
+      # The INLINE counterpart of the over-acceptance scan above. Conformance
+      # asks whether a covered document parses without an ERROR, and
+      # under-acceptance asks about its BLOCKS; a category whose every document
+      # builds the wrong SPANS reported as covered, because a wrong reading is
+      # a clean tree. Corpus 471 is eight such documents (#307), and 46 covered
+      # categories were in that state when this was added.
+      - name: Inline readings match the fixtures
+        run: npm run test:inline-reading
+
       # The shape-level counterpart to corpus conformance. The corpus checks
       # whole documents the spec ships; the battery checks the one-line forms
       # that sit on a rule's boundary, which is where a grammar drifts first -
