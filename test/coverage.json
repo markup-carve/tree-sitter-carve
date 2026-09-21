@@ -861,10 +861,6 @@
       "reading": "code html=0 tree=1",
       "reason": "the grammar builds an inline span the language keeps literal here"
     },
-    "a-caption-attaches-across-one-blank-line-8": {
-      "reading": "code html=0 tree=1",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
     "a-closed-fence-in-a-description-body-ends-it-2": {
       "reading": "code html=0 tree=1",
       "reason": "the grammar builds an inline span the language keeps literal here"
@@ -1120,14 +1116,6 @@
     "two-attributes-need-a-separator-between-them-3": {
       "reading": "strong html=1 tree=0",
       "reason": "the language builds an inline span the grammar does not"
-    },
-    "two-blank-lines-detach-a-caption-10": {
-      "reading": "code html=0 tree=1",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
-    "two-blank-lines-detach-a-caption-9": {
-      "reading": "code html=0 tree=1",
-      "reason": "the grammar builds an inline span the language keeps literal here"
     },
     "two-char-delimiter-runs": {
       "reading": "s html=1 tree=3, s#1 html=\"w\" tree=\"y\", mark html=1 tree=2, mark#1 html=\"z\" tree=\"x\"",
