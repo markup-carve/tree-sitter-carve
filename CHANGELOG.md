@@ -4,7 +4,7 @@ All notable changes to tree-sitter-carve are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.1.6] - 2026-09-21
 
 ### Added
 
@@ -29,6 +29,32 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   covered again. This matches the container reading the engines took, where a
   bare `:::` opener with no body opens an empty container and a wrong-width
   bare run is an ordinary opener, not a closer (markup-carve/carve#1970, #282).
+- An unterminated code span inside a BRACED span ends at that span's closer, so
+  `` {~`a~>b~} `` is one strikethrough over the code span `a~>b`. The run
+  reached the end of the block and swallowed the closer, so none of the eight
+  braced spans formed around one. A bare span still does not end a run, and a
+  matching tick run still wins from anywhere in the block
+  (markup-carve/carve#2092, #308).
+- A substitution's halves are inline content split at a TOP-LEVEL arrow. An
+  arrow inside a code span, a math run, an inline literal or an editorial
+  comment, or behind a backslash, is content, and a `{~` with no top-level
+  arrow is the strikethrough it always was (markup-carve/carve#2092, #311).
+- An inline link's tail parses as a destination and an optional title, so
+  `[t](/u "T")` keeps the quoted run out of the destination and `[x](a b)`
+  stays paragraph text (#310).
+- A link destination stays opaque while an enclosing inline span scans for its
+  own delimiters, so a slash inside a destination no longer closes an emphasis
+  around it (#297).
+- A quoted include option value is one value, a `}}` pair inside it included,
+  and an unterminated quote opens no run (#288, #292).
+
+### Changed
+
+- The spec corpus pin moves from carve `1b27b68` to the 0.1.6 tag `5863d1d8`:
+  1,685 to 1,740 documents and 459 to 473 categories, every category
+  classified. One recorded lone-carriage-return divergence
+  (`12-inline-code-12`) is repaired by the braced-span fix above and its entry
+  is gone from `lineTerminatorGaps`.
 
 ## [0.1.5] - 2026-09-07
 
