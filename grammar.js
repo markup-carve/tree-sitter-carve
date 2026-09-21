@@ -1,5 +1,8 @@
 const ELEMENT_PRECEDENCE = 100;
 
+// A mention's or a tag's name, `tagName` in resources/carve-core.ohm.
+const NAME = /[a-zA-Z0-9][a-zA-Z0-9_-]*(\.[a-zA-Z0-9_-]+)*/;
+
 // The inline element alternatives, shared by ordinary inline content and by a
 // note's content. `options.notes: false` drops the note, the footnote
 // reference and the `[^` fallback opener.
@@ -65,8 +68,11 @@ function inlineElement($, options) {
           // while retaining named child nodes (a lexical token cannot do that).
           prec.dynamic(10_000 * ELEMENT_PRECEDENCE, $.include_directive),
           $._include_open_fallback,
-          prec.dynamic(ELEMENT_PRECEDENCE, $.mention),
-          prec.dynamic(ELEMENT_PRECEDENCE, $.tag),
+          prec.dynamic(
+            ELEMENT_PRECEDENCE,
+            seq($.mention, repeat($._glued_marker)),
+          ),
+          prec.dynamic(ELEMENT_PRECEDENCE, seq($.tag, repeat($._glued_marker))),
           prec.dynamic(ELEMENT_PRECEDENCE, $.citation_group),
           $.auto_text_link,
           $.autolink,
@@ -81,8 +87,8 @@ function inlineElement($, options) {
           // Word runs that ABSORB a glued mention / tag / symbol, which is
           // how the leading word-boundary guard is enforced without
           // lookbehind (see _glued_* below).
-          $._glued_mention,
-          $._glued_tag,
+          seq($._glued_mention, repeat($._glued_marker)),
+          seq($._glued_tag, repeat($._glued_marker)),
           $._glued_symbol,
           // Text and the symbol fallback matches everything not matched elsewhere.
           notes ? $._symbol_fallback : $._note_symbol_fallback,
@@ -979,8 +985,13 @@ module.exports = grammar({
     // it is actually about.
     admonition_type: ($) => $._id_no_digit_start,
     class_name: ($) => $._id_no_digit_start,
-    div_title: (_) =>
-      choice(seq('"', /[^"\r\n]*/, '"'), seq("'", /[^'\r\n]*/, "'")),
+    // An admonition title is INLINE: `::: note "Install *now* via `npm`"`
+    // renders the strong and the code span in the title paragraph.
+    div_title: ($) =>
+      choice(
+        seq('"', optional(alias($._inline_single_line, $.content)), '"'),
+        seq("'", optional(alias($._inline_single_line, $.content)), "'"),
+      ),
 
     code_block: ($) =>
       seq(
@@ -1211,7 +1222,24 @@ module.exports = grammar({
       seq(
         $._link_ref_def_mark_begin,
         "[",
-        field("label", alias($._inline, $.link_label)),
+        // `reference_definition = '[', reference_label, ']', ...` and
+        // `reference_label = (character - ']' - '@'), {character - ']'}`
+        // (resources/grammar.ebnf): the label is a CHARACTER RUN, not inline
+        // content, so `[*bold*]: /x` defines a label spelled `*bold*` and
+        // builds no emphasis on a line that renders nothing. The subtracted
+        // `@` keeps `[@key]:` for `citation_definition`.
+        field(
+          "label",
+          alias(
+            token(
+              seq(
+                /[^\]`\\@\r\n]|`+[^`\r\n]*`+|\\[^\r\n]/,
+                repeat(/[^\]`\\\r\n]|`+[^`\r\n]*`+|\\[^\r\n]/),
+              ),
+            ),
+            $.link_label,
+          ),
+        ),
         $._link_ref_def_label_end,
         "]",
         ":",
@@ -1349,7 +1377,9 @@ module.exports = grammar({
     caption: ($) =>
       seq(
         alias($._caption_begin, $.caption_marker),
-        field("content", alias(/[^\r\n]+/, $.caption_content)),
+        // A caption's content is INLINE: its text renders as a figure caption,
+        // so `^ See #data` carries the tag and `^ a *# x* b` the strong.
+        field("content", alias($._inline_single_line, $.caption_content)),
         $._newline,
       ),
 
@@ -1703,12 +1733,33 @@ module.exports = grammar({
     // captures the whole crossref rather than concealing them.
     auto_text_link: (_) => token(seq("</#", /[^>\s]+/, ">")),
 
-    mention: (_) => token(seq("@", /[a-zA-Z0-9][a-zA-Z0-9_-]*/)),
+    // A name takes an INTERNAL dot: `tagName = tagChar+ (tagDot tagChar+)*`
+    // with `tagDot = "." &tagChar` (resources/carve-core.ohm), so `@john.doe`
+    // and `#release-1.0` are one name each and the sentence-ending dot of
+    // `Reach @john.` is not.
+    mention: (_) => token(seq("@", NAME)),
 
-    tag: (_) => token(seq("#", /[a-zA-Z0-9][a-zA-Z0-9_-]*/)),
+    tag: (_) => token(seq("#", NAME)),
 
-    extension_inline: (_) =>
-      token(seq(":", /[a-zA-Z][a-zA-Z0-9_-]*/, "[", /[^\]\r\n]*/, "]")),
+    // `extension = ":" extName "[" extContent "]"` (resources/carve-core.ohm).
+    // The bracket holds INLINE content: `:code[*b*]` renders the strong inside
+    // its span. The opener stays one token so a malformed run - no bracket, no
+    // name - falls back to text rather than committing to an ERROR.
+    extension_inline: ($) =>
+      seq(
+        alias(
+          token(seq(":", /[a-zA-Z][a-zA-Z0-9_-]*/, "[")),
+          $.extension_marker_begin,
+        ),
+        optional(field("content", alias($._extension_content, $.content))),
+        "]",
+      ),
+    // A soft line break is content: `:span[a` / `b]` is one extension
+    // (corpus 351-a-bracketed-construct-spanning-a-line-boundary-7).
+    _extension_content: ($) =>
+      prec.left(
+        repeat1(choice($._inline_element, $._newline_inline, $._whitespace1)),
+      ),
 
     // A `:name:` symbol: the first name char is a letter, digit, `+` or `-`
     // (so `:+1:` / `:-1:` parse), never `_`; the rest may add `_`. (carve#261)
@@ -2360,6 +2411,11 @@ module.exports = grammar({
     // (`foo:kbd[Ctrl]`): `:kbd[` carries no closing colon and is not absorbed.
     _glued_symbol: (_) =>
       token(prec(1, /[A-Za-z0-9_]+:[a-zA-Z0-9+-][a-zA-Z0-9_+-]*:/)),
+
+    // `gluedMarker = ("@" | "#") tagName` (resources/carve-core.ohm): a marker
+    // glued to the END of a name opens nothing, so `#i#j` is one tag and `#j`
+    // is text. It outranks `mention` and `tag`, which match the same run.
+    _glued_marker: (_) => token.immediate(prec(1, seq(/[@#]/, NAME))),
 
     _text: (_) => repeat1(/[^ \t\r\n]/),
   },
