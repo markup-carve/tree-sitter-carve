@@ -849,10 +849,6 @@
       "counts": "em html=0 tree=2",
       "reason": "the grammar builds an inline span the language keeps literal here"
     },
-    "emphasis-13": {
-      "counts": "strong html=1 tree=0",
-      "reason": "the language builds an inline span the grammar does not"
-    },
     "emphasis-14": {
       "counts": "mark html=1 tree=2",
       "reason": "the grammar builds an inline span the language keeps literal here"
@@ -1105,10 +1101,6 @@
       "counts": "strong html=0 tree=1",
       "reason": "the grammar builds an inline span the language keeps literal here"
     },
-    "a-bare-closer-does-not-reach-inside-a-braced-inline-2": {
-      "counts": "ins html=1 tree=0",
-      "reason": "the language builds an inline span the grammar does not"
-    },
     "a-bare-closer-does-not-reach-inside-a-braced-inline": {
       "counts": "em html=2 tree=1, s html=0 tree=1",
       "reason": "the grammar reads different inline spans here than the language does"
@@ -1133,36 +1125,12 @@
       "counts": "strong html=1 tree=0",
       "reason": "the language builds an inline span the grammar does not"
     },
-    "a-forced-opener-of-an-open-kind-is-literal-2": {
-      "counts": "strong html=1 tree=2",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
     "a-forced-opener-of-an-open-kind-is-literal-3": {
       "counts": "strong html=1 tree=2",
       "reason": "the grammar builds an inline span the language keeps literal here"
     },
-    "a-forced-opener-of-an-open-kind-is-literal-4": {
-      "counts": "em html=1 tree=2",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
-    "a-forced-opener-of-an-open-kind-is-literal-5": {
-      "counts": "em html=1 tree=0",
-      "reason": "the language builds an inline span the grammar does not"
-    },
-    "a-forced-opener-of-an-open-kind-is-literal-6": {
-      "counts": "em html=1 tree=0",
-      "reason": "the language builds an inline span the grammar does not"
-    },
-    "a-forced-opener-of-an-open-kind-is-literal-7": {
-      "counts": "em html=1 tree=0",
-      "reason": "the language builds an inline span the grammar does not"
-    },
     "a-forced-opener-of-an-open-kind-is-literal-8": {
       "counts": "em html=2 tree=4, mark html=2 tree=3",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
-    "a-forced-opener-of-an-open-kind-is-literal": {
-      "counts": "strong html=1 tree=2",
       "reason": "the grammar builds an inline span the language keeps literal here"
     },
     "list-nesting-and-looseness-5": {
@@ -1184,10 +1152,6 @@
   },
   "lineTerminatorGaps": {
     "leading-attribute-brace-before-an-inline-span-stays-literal-3": {
-      "spellings": "the cr spelling(s) parse to a different tree than lf",
-      "reason": "ref:lone-cr-does-not-close-an-inline-run-at-the-block-boundary"
-    },
-    "a-forced-opener-of-an-open-kind-is-literal-8": {
       "spellings": "the cr spelling(s) parse to a different tree than lf",
       "reason": "ref:lone-cr-does-not-close-an-inline-run-at-the-block-boundary"
     },

@@ -141,16 +141,25 @@ function symbolFallback($, options) {
     // attribute line, and until this branch existed it stopped being anything
     // at all. The bare `^`, `,`, `=`, `+` and `-` branches below already pair
     // their braced form the same way.
+    // A BRACED opener's literal reading takes `_braced_fallback`, a token of its
+    // own that is valid nowhere else. The two readings then need different
+    // tokens, so the scanner DECIDES between them instead of handing both one
+    // shared token for GLR to race - which is what lets a closer that exists
+    // make the literal reading fail to parse, rather than asking dynamic
+    // precedence to prefer the leftmost opener, which it cannot say (#316).
+    seq("{/", $._braced_fallback),
     seq(
-      choice("{/", seq("/", $._non_whitespace_check)),
+      seq("/", $._non_whitespace_check),
       choice($._emphasis_mark_begin, $._in_fallback),
     ),
+    seq("{*", $._braced_fallback),
     seq(
-      choice("{*", seq("*", $._non_whitespace_check)),
+      seq("*", $._non_whitespace_check),
       choice($._strong_mark_begin, $._in_fallback),
     ),
+    seq("{_", $._braced_fallback),
     seq(
-      choice("{_", seq("_", $._non_whitespace_check)),
+      seq("_", $._non_whitespace_check),
       choice($._underline_mark_begin, $._in_fallback),
     ),
     seq(
@@ -158,17 +167,20 @@ function symbolFallback($, options) {
       choice($._strikethrough_mark_begin, $._in_fallback),
     ),
     // Not sensitive to whitespace
-    seq(choice("{^", "^"), choice($._superscript_mark_begin, $._in_fallback)),
+    seq("{^", $._braced_fallback),
+    seq("^", choice($._superscript_mark_begin, $._in_fallback)),
+    seq("{,", $._braced_fallback),
     seq(
-      choice("{,", seq(",", $._non_whitespace_check)),
+      seq(",", $._non_whitespace_check),
       choice($._subscript_mark_begin, $._in_fallback),
     ),
+    seq("{=", $._braced_fallback),
     seq(
-      choice("{=", seq("=", $._highlighted_open_check)),
+      seq("=", $._highlighted_open_check),
       choice($._highlighted_mark_begin, $._in_fallback),
     ),
-    seq("{+", choice($._insert_mark_begin, $._in_fallback)),
-    seq("{-", choice($._delete_mark_begin, $._in_fallback)),
+    seq("{+", $._braced_fallback),
+    seq("{-", $._braced_fallback),
 
     // Bracketed spans
     // A note's content has no footnote reference, so `[^` must not be an
@@ -238,16 +250,8 @@ module.exports = grammar({
     [$.underline_begin, $._note_symbol_fallback],
     [$.strikethrough_begin, $._symbol_fallback],
     [$.strikethrough_begin, $._note_symbol_fallback],
-    [$.superscript_begin, $._symbol_fallback],
-    [$.superscript_begin, $._note_symbol_fallback],
-    [$.subscript_begin, $._symbol_fallback],
-    [$.subscript_begin, $._note_symbol_fallback],
     [$.highlighted_begin, $._symbol_fallback],
     [$.highlighted_begin, $._note_symbol_fallback],
-    [$.insert_begin, $._symbol_fallback],
-    [$.insert_begin, $._note_symbol_fallback],
-    [$.delete_begin, $._symbol_fallback],
-    [$.delete_begin, $._note_symbol_fallback],
     [$._bracketed_text_begin, $._symbol_fallback],
     [$._bracketed_text_begin, $._note_symbol_fallback],
     [$._image_description_begin, $._symbol_fallback],
@@ -2629,5 +2633,8 @@ module.exports = grammar({
     $._substitution_begin,
     $._substitution_arrow,
     $._substitution_end,
+    // The literal reading of a BRACED opener, valid only right after one. See
+    // `symbolFallback`. Appended last for the same index reason.
+    $._braced_fallback,
   ],
 });
