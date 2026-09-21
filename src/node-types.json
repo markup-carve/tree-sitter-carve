@@ -1233,6 +1233,11 @@
     }
   },
   {
+    "type": "em_dash",
+    "named": true,
+    "fields": {}
+  },
+  {
     "type": "emphasis",
     "named": true,
     "fields": {
@@ -1270,6 +1275,11 @@
   },
   {
     "type": "emphasis_begin",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "en_dash",
     "named": true,
     "fields": {}
   },
@@ -4314,6 +4324,14 @@
     "named": false
   },
   {
+    "type": "--",
+    "named": false
+  },
+  {
+    "type": "---",
+    "named": false
+  },
+  {
     "type": ".",
     "named": false
   },
@@ -4486,15 +4504,7 @@
     "named": true
   },
   {
-    "type": "em_dash",
-    "named": true
-  },
-  {
     "type": "emphasis_end",
-    "named": true
-  },
-  {
-    "type": "en_dash",
     "named": true
   },
   {

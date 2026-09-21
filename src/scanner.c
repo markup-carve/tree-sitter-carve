@@ -202,6 +202,9 @@ typedef enum {
   SUBSTITUTION_END,
   // The literal reading of a braced marker opener. See `braced_closer_ahead`.
   BRACED_FALLBACK,
+  EM_DASH_IN_DELETE,
+  EN_DASH_IN_DELETE,
+  DELETE_DASH,
 } TokenType;
 
 // The different blocks in Carve that we track,
@@ -6243,6 +6246,16 @@ static Inline *find_inline_in_scope(Scanner *s, InlineType type) {
   return NULL;
 }
 
+static Inline *innermost_braced(Scanner *s) {
+  for (int i = s->open_inline->size - 1; i >= 0; --i) {
+    Inline *e = *array_get(s->open_inline, i);
+    if (e->flags & INLINE_BRACED) {
+      return e;
+    }
+  }
+  return NULL;
+}
+
 static bool kind_open_in_scope(Scanner *s, InlineType type) {
   for (int i = s->open_inline->size - 1; i >= 0; --i) {
     Inline *e = *array_get(s->open_inline, i);
@@ -6273,6 +6286,61 @@ static bool kind_open_in_scope(Scanner *s, InlineType type) {
 ///
 /// Speculative: only `advance` and `lookahead`, never a helper that writes
 /// scanner state (#319).
+/// Does a BARE span opened here close before the braced span around it does?
+///
+/// A span cannot outlive the braced span it opens in, so `{/a *b {/c/}*/}`
+/// keeps its `*` literal: the only bare `*` that could close it lies past the
+/// emphasis's `/}`. Asked from the opener, reading ahead only.
+static bool bare_closer_before_braced(Scanner *s, TSLexer *lexer, char bare,
+                                      char braced) {
+  while (!lexer->eof(lexer)) {
+    if (at_line_end(lexer)) {
+      if (lexer->lookahead == '\r') {
+        advance(s, lexer);
+        if (lexer->lookahead == '\n') {
+          advance(s, lexer);
+        }
+      } else {
+        advance(s, lexer);
+      }
+      while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+        advance(s, lexer);
+      }
+      if (lexer->eof(lexer) || at_line_end(lexer)) {
+        return false;
+      }
+      continue;
+    }
+    int32_t c = lexer->lookahead;
+    if (c == '\\') {
+      advance(s, lexer);
+      if (!lexer->eof(lexer) && !at_line_end(lexer)) {
+        advance(s, lexer);
+      }
+      continue;
+    }
+    if (c == '`') {
+      uint8_t width = consume_chars(s, lexer, '`');
+      if (read_verbatim_run(s, lexer, width, 0, false) != VerbatimRunCloses) {
+        return false;
+      }
+      continue;
+    }
+    if (c == bare) {
+      return true;
+    }
+    if (c == braced) {
+      advance(s, lexer);
+      if (lexer->lookahead == '}') {
+        return false;
+      }
+      continue;
+    }
+    advance(s, lexer);
+  }
+  return false;
+}
+
 static bool braced_closer_ahead(Scanner *s, TSLexer *lexer, char marker) {
   // An EMPTY braced span is not a span (carve#1447): `{--}` is the en dash.
   if (lexer->lookahead == marker) {
@@ -6975,7 +7043,9 @@ static bool mark_span_begin(Scanner *s, TSLexer *lexer,
     // span belongs to that span, so it must not stop an outer one closing.
     // `{*a {/b *} d/} e*}` keeps its strong, and `~a{+b~+} c~` its strikethrough.
     Inline *open = find_inline_in_scope(s, inline_type);
-    if (open != NULL) {
+    // A BARE marker inside a braced span of its own kind is content (corpus
+    // 471), not a competing opener, so it must not stop that span closing.
+    if (open != NULL && !(bare && (open->flags & INLINE_BRACED))) {
       ++open->data;
     }
     // We need to output the token common to both the fallback symbol and
@@ -7009,6 +7079,20 @@ static bool mark_span_begin(Scanner *s, TSLexer *lexer,
       return false;
     }
 
+    // Corpus 471: a bare opener of a kind already open as a BRACED span in
+    // this scope is content. `{/a/b/}` is one emphasis over `a/b`.
+    if (bare) {
+      Inline *same = find_inline_in_scope(s, inline_type);
+      if (same != NULL && (same->flags & INLINE_BRACED)) {
+        return false;
+      }
+      Inline *around = innermost_braced(s);
+      if (around != NULL && around->type != SUBSTITUTION &&
+          !bare_closer_before_braced(s, lexer, inline_marker(inline_type),
+                                     inline_marker(around->type))) {
+        return false;
+      }
+    }
     lexer->result_symbol = token;
     push_inline_flagged(s, inline_type, 0, bare ? 0 : INLINE_BRACED);
     return true;
@@ -7175,6 +7259,41 @@ static bool identifier_after_bracket_stays_on_one_line(Scanner *s,
 }
 
 // Parse a span ending token, either `_` or `_}`.
+/// A span closes on its own marker FORM (corpus 471). A braced span takes
+/// `X}` and reads a bare `X` as content, so `{/a/b/}` is one emphasis over
+/// `a/b`. A bare span takes the bare marker and leaves a `}` behind it as text,
+/// so `*a {*b*} c*` closes at the `*` of `*}`. Only the real close asks this;
+/// the lookahead scanners keep accepting either form.
+static bool scan_span_end_by_form(Scanner *s, TSLexer *lexer,
+                                  InlineType element, bool braced) {
+  SpanType type = inline_span_type(element);
+  if (type != SpanBracketedAndSingle &&
+      type != SpanBracketedAndSingleNoWhitespace) {
+    return scan_span_end_marker(s, lexer, element);
+  }
+  char marker = inline_marker(element);
+  if (!braced) {
+    if (lexer->lookahead != marker) {
+      return false;
+    }
+    advance(s, lexer);
+    return true;
+  }
+  if (lexer->lookahead == marker) {
+    advance(s, lexer);
+    if (lexer->lookahead != '}') {
+      return false;
+    }
+    advance(s, lexer);
+    return true;
+  }
+  if (type == SpanBracketedAndSingleNoWhitespace &&
+      consume_whitespace(s, lexer) == 0) {
+    return false;
+  }
+  return scan_bracketed_span_end(s, lexer, marker);
+}
+
 static bool parse_span_end(Scanner *s, TSLexer *lexer, InlineType element,
                            TokenType token) {
   // if (!scan_span_end_element(s, lexer, element)) {
@@ -7196,7 +7315,8 @@ static bool parse_span_end(Scanner *s, TSLexer *lexer, InlineType element,
     return false;
   }
 
-  if (!scan_span_end_marker(s, lexer, element)) {
+  if (!scan_span_end_by_form(s, lexer, element,
+                             (top->flags & INLINE_BRACED) != 0)) {
     return false;
   }
 
@@ -7423,6 +7543,60 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
   // A BRACED marker opener, asked from the branch that would read it as text.
   // `braced_closer_ahead` moves the lexer, so this answers for the whole call,
   // the same way the substitution reader above does.
+  // A dash run inside a braced delete, directly before its closer. Longest
+  // match would take `--` or `---` and leave the `-}` without its `-`, so the
+  // scanner places the token end itself: the run minus the closer's dash, as
+  // an em dash, an en dash or one literal dash. The mark is placed while the
+  // NEXT character is still a dash, which is the only way to end the token
+  // one short of a run whose length is known only once it is read. Skipped
+  // wherever block parsing owns a `-`.
+  if (lexer->lookahead == '-' && !valid_symbols[ERROR] &&
+      (valid_symbols[EM_DASH_IN_DELETE] || valid_symbols[EN_DASH_IN_DELETE] ||
+       valid_symbols[DELETE_DASH] || valid_symbols[DELETE_END]) &&
+      !valid_symbols[LIST_MARKER_DASH] &&
+      !valid_symbols[LIST_MARKER_TASK_BEGIN] &&
+      !valid_symbols[THEMATIC_BREAK_DASH] &&
+      !valid_symbols[FRONTMATTER_MARKER]) {
+    Inline *top = peek_inline(s);
+    if (top != NULL && top->type == DELETE && (top->flags & INLINE_BRACED)) {
+      lexer->mark_end(lexer);
+      uint8_t run = 0;
+      while (lexer->lookahead == '-') {
+        advance(s, lexer);
+        run++;
+        if (lexer->lookahead == '-' && run <= 3) {
+          lexer->mark_end(lexer);
+        }
+      }
+      if (lexer->lookahead == '}') {
+        uint8_t available = (uint8_t)(run - 1);
+        if (available == 0) {
+          if (valid_symbols[DELETE_END] && top->data == 0) {
+            advance(s, lexer);
+            lexer->mark_end(lexer);
+            remove_inline(s);
+            lexer->result_symbol = DELETE_END;
+            return true;
+          }
+          return false;
+        }
+        if (available >= 3 && valid_symbols[EM_DASH_IN_DELETE]) {
+          lexer->result_symbol = EM_DASH_IN_DELETE;
+          return true;
+        }
+        if (available == 2 && valid_symbols[EN_DASH_IN_DELETE]) {
+          lexer->result_symbol = EN_DASH_IN_DELETE;
+          return true;
+        }
+        if (available == 1 && valid_symbols[DELETE_DASH]) {
+          lexer->result_symbol = DELETE_DASH;
+          return true;
+        }
+      }
+      return false;
+    }
+  }
+
   if (valid_symbols[BRACED_FALLBACK] && !valid_symbols[ERROR]) {
     static const InlineType braced_kinds[] = {
         EMPHASIS, STRONG,    UNDERLINE, HIGHLIGHTED,

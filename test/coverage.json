@@ -841,312 +841,344 @@
     }
   },
   "inlineReadingGaps": {
-    "emphasis-10": {
-      "counts": "u html=0 tree=1",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
-    "emphasis-11": {
-      "counts": "em html=0 tree=2",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
-    "emphasis-14": {
-      "counts": "mark html=1 tree=2",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
-    "emphasis-2": {
-      "counts": "strong html=0 tree=1, em html=0 tree=1",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
-    "emphasis-9": {
-      "counts": "em html=0 tree=1",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
-    "inline-code-9": {
-      "counts": "code html=0 tree=1",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
-    "emphasis-opener-slash-adjacency-2": {
-      "counts": "u html=0 tree=1",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
-    "emphasis-opener-slash-adjacency-3": {
-      "counts": "u html=0 tree=1",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
-    "emphasis-opener-slash-adjacency-4": {
-      "counts": "em html=0 tree=1",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
-    "emphasis-opener-slash-adjacency": {
-      "counts": "u html=0 tree=1",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
-    "bold-italic-delimiter-needs-content-2": {
-      "counts": "em html=1 tree=0",
-      "reason": "the language builds an inline span the grammar does not"
-    },
-    "bold-italic-delimiter-needs-content": {
-      "counts": "em html=1 tree=0",
-      "reason": "the language builds an inline span the grammar does not"
-    },
-    "emphasis-span-closes-before-a-following-delimiter": {
-      "counts": "em html=0 tree=1",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
-    "leading-attribute-brace-before-an-inline-span-stays-literal-2": {
-      "counts": "code html=1 tree=0",
-      "reason": "the language builds an inline span the grammar does not"
-    },
-    "smart-typography-dashes-and-quotes-9": {
-      "counts": "strong html=1 tree=2",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
-    "a-collapsed-reference-is-matched-by-the-label-the-author-wrote-2": {
-      "counts": "strong html=0 tree=1",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
-    "a-collapsed-reference-is-matched-by-the-label-the-author-wrote": {
-      "counts": "strong html=1 tree=2",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
-    "trailing-attributes-on-a-link-reference-definition-2": {
-      "counts": "strong html=0 tree=1",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
-    "smart-typography-arrows-and-symbols": {
-      "counts": "em html=0 tree=1",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
-    "an-attribute-name-admits-no-colon": {
-      "counts": "strong html=1 tree=0",
-      "reason": "the language builds an inline span the grammar does not"
-    },
-    "table-cell-padding-must-be-a-space-18": {
-      "counts": "mark html=0 tree=1",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
-    "a-collapsed-reference-reaches-a-heading-by-the-heading-s-rendered-text-11": {
-      "counts": "strong html=2 tree=3",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
-    "a-fence-opened-on-a-list-marker-line-body-below-the-content-column-3": {
-      "counts": "code html=0 tree=1",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
-    "a-fence-opened-on-a-list-marker-line-body-below-the-content-column-7": {
-      "counts": "code html=2 tree=0",
-      "reason": "the language builds an inline span the grammar does not"
-    },
-    "a-list-marker-at-the-content-column-inside-an-open-fence": {
-      "counts": "code html=0 tree=1",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
-    "a-boundary-line-inside-an-open-fence-does-not-end-the-container-3": {
-      "counts": "code html=0 tree=1",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
-    "a-boundary-line-inside-an-open-fence-does-not-end-the-container-7": {
-      "counts": "code html=0 tree=1",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
-    "a-caption-attaches-across-one-blank-line-8": {
-      "counts": "code html=0 tree=1",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
-    "two-blank-lines-detach-a-caption-10": {
-      "counts": "code html=0 tree=1",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
-    "two-blank-lines-detach-a-caption-9": {
-      "counts": "code html=0 tree=1",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
-    "a-fence-keeps-the-blank-line-at-the-end-of-its-content-4": {
-      "counts": "code html=0 tree=1",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
-    "the-semantic-registry-holds-no-element-carve-already-spells-2": {
-      "counts": "strong html=2 tree=0",
-      "reason": "the language builds an inline span the grammar does not"
-    },
-    "two-attributes-need-a-separator-between-them-3": {
-      "counts": "strong html=1 tree=0",
-      "reason": "the language builds an inline span the grammar does not"
-    },
-    "a-marker-glued-to-a-name-opens-nothing-2": {
-      "counts": "strong html=1 tree=2",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
-    "a-marker-glued-to-a-name-opens-nothing": {
-      "counts": "strong html=1 tree=2",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
-    "an-image-s-alt-text-closes-where-a-link-s-text-closes-5": {
-      "counts": "code html=0 tree=1",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
-    "cell-attributes-bind-after-the-kind-and-alignment-markers-2": {
-      "counts": "strong html=0 tree=1",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
-    "cell-attributes-bind-after-the-kind-and-alignment-markers-4": {
-      "counts": "strong html=0 tree=1",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
-    "cell-attributes-bind-after-the-kind-and-alignment-markers-5": {
-      "counts": "strong html=0 tree=1",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
-    "cell-attributes-bind-after-the-kind-and-alignment-markers": {
-      "counts": "mark html=0 tree=1",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
-    "a-floating-attribute-is-scoped-to-the-container-that-holds-it-6": {
-      "counts": "strong html=0 tree=1",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
-    "a-label-beginning-with-an-at-sign-is-not-a-reference-label-2": {
-      "counts": "strong html=0 tree=1",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
-    "a-label-beginning-with-an-at-sign-is-not-a-reference-label": {
-      "counts": "strong html=0 tree=1",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
-    "a-paragraph-opened-after-a-block-in-an-item-is-still-open-for-a-lazy-line-3": {
-      "counts": "code html=0 tree=1",
-      "reason": "the grammar builds an inline span the language keeps literal here"
+    "a-bare-closer-does-not-reach-inside-a-braced-inline": {
+      "reading": "em html=2 tree=1, em#1 html=\"x\" tree=\"\", s html=0 tree=1",
+      "reason": "the grammar reads different inline spans here than the language does"
     },
     "a-blank-line-before-a-sibling-marker-separates-the-items-whatever-consumed-it-2": {
-      "counts": "code html=0 tree=1",
+      "reading": "code html=0 tree=1",
       "reason": "the grammar builds an inline span the language keeps literal here"
     },
     "a-blank-line-before-a-sibling-marker-separates-the-items-whatever-consumed-it-3": {
-      "counts": "code html=0 tree=1",
+      "reading": "code html=0 tree=1",
       "reason": "the grammar builds an inline span the language keeps literal here"
     },
-    "a-raw-block-keeps-the-blank-line-at-the-end-of-its-payload-too-2": {
-      "counts": "code html=0 tree=1",
+    "a-boundary-line-inside-an-open-fence-does-not-end-the-container-3": {
+      "reading": "code html=0 tree=1",
       "reason": "the grammar builds an inline span the language keeps literal here"
     },
-    "a-vertical-table-marker-needs-a-horizontal-partner": {
-      "counts": "mark html=0 tree=2",
+    "a-boundary-line-inside-an-open-fence-does-not-end-the-container-7": {
+      "reading": "code html=0 tree=1",
       "reason": "the grammar builds an inline span the language keeps literal here"
     },
-    "a-braced-hyphen-pair-is-an-en-dash-2": {
-      "counts": "del html=2 tree=1",
-      "reason": "the language builds an inline span the grammar does not"
-    },
-    "a-floating-attribute-does-not-widen-a-list-item-s-content-column-2": {
-      "counts": "strong html=0 tree=1",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
-    "a-floating-attribute-does-not-widen-a-list-item-s-content-column-3": {
-      "counts": "strong html=0 tree=1",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
-    "a-floating-attribute-does-not-widen-a-list-item-s-content-column-4": {
-      "counts": "strong html=0 tree=1",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
-    "a-floating-attribute-does-not-widen-a-list-item-s-content-column-6": {
-      "counts": "strong html=0 tree=1",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
-    "a-floating-attribute-does-not-widen-a-list-item-s-content-column-7": {
-      "counts": "strong html=0 tree=1",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
-    "a-floating-attribute-does-not-widen-a-list-item-s-content-column": {
-      "counts": "strong html=0 tree=1",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
-    "admonitions-6": {
-      "counts": "strong html=1 tree=0, code html=1 tree=0",
-      "reason": "the language builds an inline span the grammar does not"
-    },
-    "inline-extensions-12": {
-      "counts": "strong html=0 tree=1",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
-    "inline-extensions-13": {
-      "counts": "strong html=0 tree=1",
+    "a-caption-attaches-across-one-blank-line-8": {
+      "reading": "code html=0 tree=1",
       "reason": "the grammar builds an inline span the language keeps literal here"
     },
     "a-closed-fence-in-a-description-body-ends-it-2": {
-      "counts": "code html=0 tree=1",
+      "reading": "code html=0 tree=1",
       "reason": "the grammar builds an inline span the language keeps literal here"
     },
-    "an-unterminated-fence-on-a-nested-lead-in-a-description-body-owns-its-body-3": {
-      "counts": "code html=0 tree=1",
+    "a-collapsed-reference-is-matched-by-the-label-the-author-wrote": {
+      "reading": "strong html=1 tree=2",
       "reason": "the grammar builds an inline span the language keeps literal here"
     },
-    "an-unterminated-fence-on-a-nested-lead-in-a-description-body-owns-its-body-4": {
-      "counts": "code html=0 tree=1",
+    "a-collapsed-reference-is-matched-by-the-label-the-author-wrote-2": {
+      "reading": "strong html=0 tree=1",
       "reason": "the grammar builds an inline span the language keeps literal here"
     },
-    "an-unterminated-fence-on-a-nested-lead-in-a-description-body-owns-its-body": {
-      "counts": "code html=0 tree=1",
+    "a-collapsed-reference-reaches-a-heading-by-the-heading-s-rendered-text-11": {
+      "reading": "strong html=2 tree=3",
       "reason": "the grammar builds an inline span the language keeps literal here"
     },
-    "a-wrapped-attribute-block-ends-at-its-quote-and-reaches-no-line-below-it-2": {
-      "counts": "strong html=0 tree=1",
+    "a-comment-only-line-in-a-line-block-is-removed-before-any-inline-run": {
+      "reading": "code#1 html=\"bc\" tree=\"bsecretc\"",
+      "reason": "a span covers different text here than the language’s does"
+    },
+    "a-continuation-row-s-open-run-and-an-escaped-closing-pipe": {
+      "reading": "code#1 html=\"bc\" tree=\"b\"",
+      "reason": "a span covers different text here than the language’s does"
+    },
+    "a-continuation-row-s-open-run-and-an-escaped-closing-pipe-4": {
+      "reading": "code#1 html=\"bcd\" tree=\"b\"",
+      "reason": "a span covers different text here than the language’s does"
+    },
+    "a-continuation-row-s-open-run-and-an-escaped-closing-pipe-5": {
+      "reading": "code#1 html=\"bc\" tree=\"b\"",
+      "reason": "a span covers different text here than the language’s does"
+    },
+    "a-fence-keeps-the-blank-line-at-the-end-of-its-content-4": {
+      "reading": "code html=0 tree=1",
       "reason": "the grammar builds an inline span the language keeps literal here"
     },
-    "a-wrapped-attribute-block-ends-at-its-quote-and-reaches-no-line-below-it-3": {
-      "counts": "strong html=0 tree=1",
+    "a-fence-opened-on-a-list-marker-line-body-below-the-content-column": {
+      "reading": "code#1 html=\"\" tree=\"x\"",
+      "reason": "a span covers different text here than the language’s does"
+    },
+    "a-fence-opened-on-a-list-marker-line-body-below-the-content-column-2": {
+      "reading": "code#1 html=\"\" tree=\"x\"",
+      "reason": "a span covers different text here than the language’s does"
+    },
+    "a-fence-opened-on-a-list-marker-line-body-below-the-content-column-3": {
+      "reading": "code html=0 tree=1",
+      "reason": "the grammar builds an inline span the language keeps literal here"
+    },
+    "a-fence-opened-on-a-list-marker-line-body-below-the-content-column-6": {
+      "reading": "code#1 html=\"\" tree=\"xy\"",
+      "reason": "a span covers different text here than the language’s does"
+    },
+    "a-fence-opened-on-a-list-marker-line-body-below-the-content-column-7": {
+      "reading": "code html=2 tree=0",
+      "reason": "the language builds an inline span the grammar does not"
+    },
+    "a-floating-attribute-does-not-widen-a-list-item-s-content-column": {
+      "reading": "strong html=0 tree=1",
+      "reason": "the grammar builds an inline span the language keeps literal here"
+    },
+    "a-floating-attribute-does-not-widen-a-list-item-s-content-column-2": {
+      "reading": "strong html=0 tree=1",
+      "reason": "the grammar builds an inline span the language keeps literal here"
+    },
+    "a-floating-attribute-does-not-widen-a-list-item-s-content-column-3": {
+      "reading": "strong html=0 tree=1",
+      "reason": "the grammar builds an inline span the language keeps literal here"
+    },
+    "a-floating-attribute-does-not-widen-a-list-item-s-content-column-4": {
+      "reading": "strong html=0 tree=1",
+      "reason": "the grammar builds an inline span the language keeps literal here"
+    },
+    "a-floating-attribute-does-not-widen-a-list-item-s-content-column-6": {
+      "reading": "strong html=0 tree=1",
+      "reason": "the grammar builds an inline span the language keeps literal here"
+    },
+    "a-floating-attribute-does-not-widen-a-list-item-s-content-column-7": {
+      "reading": "strong html=0 tree=1",
+      "reason": "the grammar builds an inline span the language keeps literal here"
+    },
+    "a-floating-attribute-is-scoped-to-the-container-that-holds-it-6": {
+      "reading": "strong html=0 tree=1",
+      "reason": "the grammar builds an inline span the language keeps literal here"
+    },
+    "a-label-beginning-with-an-at-sign-is-not-a-reference-label": {
+      "reading": "strong html=0 tree=1",
+      "reason": "the grammar builds an inline span the language keeps literal here"
+    },
+    "a-label-beginning-with-an-at-sign-is-not-a-reference-label-2": {
+      "reading": "strong html=0 tree=1",
+      "reason": "the grammar builds an inline span the language keeps literal here"
+    },
+    "a-list-marker-at-the-content-column-inside-an-open-fence": {
+      "reading": "code html=0 tree=1",
+      "reason": "the grammar builds an inline span the language keeps literal here"
+    },
+    "a-marker-glued-to-a-name-opens-nothing": {
+      "reading": "strong html=1 tree=2",
+      "reason": "the grammar builds an inline span the language keeps literal here"
+    },
+    "a-marker-glued-to-a-name-opens-nothing-2": {
+      "reading": "strong html=1 tree=2",
+      "reason": "the grammar builds an inline span the language keeps literal here"
+    },
+    "a-paragraph-opened-after-a-block-in-an-item-is-still-open-for-a-lazy-line-3": {
+      "reading": "code html=0 tree=1",
+      "reason": "the grammar builds an inline span the language keeps literal here"
+    },
+    "a-raw-block-keeps-the-blank-line-at-the-end-of-its-payload-too-2": {
+      "reading": "code html=0 tree=1",
+      "reason": "the grammar builds an inline span the language keeps literal here"
+    },
+    "a-vertical-table-marker-needs-a-horizontal-partner": {
+      "reading": "mark html=0 tree=2",
       "reason": "the grammar builds an inline span the language keeps literal here"
     },
     "a-wrapped-attribute-block-ends-at-its-quote-and-reaches-no-line-below-it": {
-      "counts": "strong html=0 tree=1",
+      "reading": "strong html=0 tree=1",
       "reason": "the grammar builds an inline span the language keeps literal here"
     },
-    "a-bare-closer-does-not-reach-inside-a-braced-inline": {
-      "counts": "em html=2 tree=1, s html=0 tree=1",
-      "reason": "the grammar reads different inline spans here than the language does"
+    "a-wrapped-attribute-block-ends-at-its-quote-and-reaches-no-line-below-it-2": {
+      "reading": "strong html=0 tree=1",
+      "reason": "the grammar builds an inline span the language keeps literal here"
+    },
+    "a-wrapped-attribute-block-ends-at-its-quote-and-reaches-no-line-below-it-3": {
+      "reading": "strong html=0 tree=1",
+      "reason": "the grammar builds an inline span the language keeps literal here"
+    },
+    "admonitions-6": {
+      "reading": "strong html=1 tree=0, code html=1 tree=0",
+      "reason": "the language builds an inline span the grammar does not"
+    },
+    "an-attribute-name-admits-no-colon": {
+      "reading": "strong html=1 tree=0",
+      "reason": "the language builds an inline span the grammar does not"
+    },
+    "an-image-s-alt-text-closes-where-a-link-s-text-closes-5": {
+      "reading": "code html=0 tree=1",
+      "reason": "the grammar builds an inline span the language keeps literal here"
     },
     "an-underscore-pair-in-text-is-escaped-where-the-line-would-pair-it": {
-      "counts": "u html=0 tree=2",
+      "reading": "u html=0 tree=2",
       "reason": "the grammar builds an inline span the language keeps literal here"
-    },
-    "the-round-trip-comparison-normalizes-a-named-list": {
-      "counts": "s html=1 tree=0",
-      "reason": "the language builds an inline span the grammar does not"
     },
     "an-underscore-pair-split-across-a-line-break-is-escaped": {
-      "counts": "u html=0 tree=1",
+      "reading": "u html=0 tree=1",
       "reason": "the grammar builds an inline span the language keeps literal here"
     },
-    "numbered-cross-references-10": {
-      "counts": "strong html=1 tree=0",
+    "an-unterminated-fence-on-a-nested-lead-in-a-description-body-owns-its-body": {
+      "reading": "code html=0 tree=1",
+      "reason": "the grammar builds an inline span the language keeps literal here"
+    },
+    "an-unterminated-fence-on-a-nested-lead-in-a-description-body-owns-its-body-3": {
+      "reading": "code html=0 tree=1",
+      "reason": "the grammar builds an inline span the language keeps literal here"
+    },
+    "an-unterminated-fence-on-a-nested-lead-in-a-description-body-owns-its-body-4": {
+      "reading": "code html=0 tree=1",
+      "reason": "the grammar builds an inline span the language keeps literal here"
+    },
+    "bold-italic-delimiter-needs-content": {
+      "reading": "em html=1 tree=0",
       "reason": "the language builds an inline span the grammar does not"
     },
-    "numbered-cross-references-6": {
-      "counts": "strong html=1 tree=0",
+    "bold-italic-delimiter-needs-content-2": {
+      "reading": "em html=1 tree=0",
       "reason": "the language builds an inline span the grammar does not"
     },
-    "a-forced-opener-of-an-open-kind-is-literal-3": {
-      "counts": "strong html=1 tree=2",
+    "cell-attributes-bind-after-the-kind-and-alignment-markers": {
+      "reading": "mark html=0 tree=1",
       "reason": "the grammar builds an inline span the language keeps literal here"
     },
-    "a-forced-opener-of-an-open-kind-is-literal-8": {
-      "counts": "em html=2 tree=4, mark html=2 tree=3",
+    "cell-attributes-bind-after-the-kind-and-alignment-markers-2": {
+      "reading": "strong html=0 tree=1",
       "reason": "the grammar builds an inline span the language keeps literal here"
     },
-    "list-nesting-and-looseness-5": {
-      "counts": "code html=0 tree=2",
+    "cell-attributes-bind-after-the-kind-and-alignment-markers-4": {
+      "reading": "strong html=0 tree=1",
       "reason": "the grammar builds an inline span the language keeps literal here"
     },
-    "list-nesting-and-looseness-6": {
-      "counts": "code html=0 tree=1",
+    "cell-attributes-bind-after-the-kind-and-alignment-markers-5": {
+      "reading": "strong html=0 tree=1",
       "reason": "the grammar builds an inline span the language keeps literal here"
     },
     "doubled-emphasis-delimiters": {
-      "counts": "strong html=0 tree=2, s html=0 tree=2",
+      "reading": "strong html=0 tree=2, s html=0 tree=2",
+      "reason": "the grammar builds an inline span the language keeps literal here"
+    },
+    "emphasis-10": {
+      "reading": "u html=0 tree=1",
+      "reason": "the grammar builds an inline span the language keeps literal here"
+    },
+    "emphasis-11": {
+      "reading": "em html=0 tree=2",
+      "reason": "the grammar builds an inline span the language keeps literal here"
+    },
+    "emphasis-14": {
+      "reading": "mark html=1 tree=2",
+      "reason": "the grammar builds an inline span the language keeps literal here"
+    },
+    "emphasis-2": {
+      "reading": "strong html=0 tree=1, em html=0 tree=1",
+      "reason": "the grammar builds an inline span the language keeps literal here"
+    },
+    "emphasis-6": {
+      "reading": "em#1 html=\"usrlocal\" tree=\"usr\"",
+      "reason": "a span covers different text here than the language’s does"
+    },
+    "emphasis-9": {
+      "reading": "em html=0 tree=1",
+      "reason": "the grammar builds an inline span the language keeps literal here"
+    },
+    "emphasis-opener-slash-adjacency": {
+      "reading": "u html=0 tree=1",
+      "reason": "the grammar builds an inline span the language keeps literal here"
+    },
+    "emphasis-opener-slash-adjacency-2": {
+      "reading": "u html=0 tree=1",
+      "reason": "the grammar builds an inline span the language keeps literal here"
+    },
+    "emphasis-opener-slash-adjacency-3": {
+      "reading": "u html=0 tree=1",
+      "reason": "the grammar builds an inline span the language keeps literal here"
+    },
+    "emphasis-opener-slash-adjacency-4": {
+      "reading": "em html=0 tree=1",
+      "reason": "the grammar builds an inline span the language keeps literal here"
+    },
+    "emphasis-span-closes-before-a-following-delimiter": {
+      "reading": "em html=0 tree=1",
+      "reason": "the grammar builds an inline span the language keeps literal here"
+    },
+    "inline-code-9": {
+      "reading": "code html=0 tree=1",
+      "reason": "the grammar builds an inline span the language keeps literal here"
+    },
+    "inline-extensions-12": {
+      "reading": "strong html=0 tree=1",
+      "reason": "the grammar builds an inline span the language keeps literal here"
+    },
+    "inline-extensions-13": {
+      "reading": "strong html=0 tree=1",
+      "reason": "the grammar builds an inline span the language keeps literal here"
+    },
+    "leading-attribute-brace-before-an-inline-span-stays-literal-2": {
+      "reading": "code html=1 tree=0",
+      "reason": "the language builds an inline span the grammar does not"
+    },
+    "list-nesting-and-looseness-5": {
+      "reading": "code html=0 tree=2",
+      "reason": "the grammar builds an inline span the language keeps literal here"
+    },
+    "list-nesting-and-looseness-6": {
+      "reading": "code html=0 tree=1",
+      "reason": "the grammar builds an inline span the language keeps literal here"
+    },
+    "mention-and-tag-name-boundaries": {
+      "reading": "strong#3 html=\"johndoe\" tree=\"john\", strong#4 html=\"release10\" tree=\"release1\"",
+      "reason": "a span covers different text here than the language’s does"
+    },
+    "mentions-and-tags": {
+      "reading": "strong#2 html=\"release10\" tree=\"release1\"",
+      "reason": "a span covers different text here than the language’s does"
+    },
+    "numbered-cross-references-10": {
+      "reading": "strong html=1 tree=0",
+      "reason": "the language builds an inline span the grammar does not"
+    },
+    "numbered-cross-references-6": {
+      "reading": "strong html=1 tree=0",
+      "reason": "the language builds an inline span the grammar does not"
+    },
+    "smart-typography-arrows-and-symbols": {
+      "reading": "em html=0 tree=1",
+      "reason": "the grammar builds an inline span the language keeps literal here"
+    },
+    "smart-typography-dashes-and-quotes-9": {
+      "reading": "strong html=1 tree=2",
+      "reason": "the grammar builds an inline span the language keeps literal here"
+    },
+    "table-cell-padding-must-be-a-space-18": {
+      "reading": "mark html=0 tree=1",
+      "reason": "the grammar builds an inline span the language keeps literal here"
+    },
+    "the-round-trip-comparison-normalizes-a-named-list": {
+      "reading": "s html=1 tree=0",
+      "reason": "the language builds an inline span the grammar does not"
+    },
+    "the-semantic-registry-holds-no-element-carve-already-spells-2": {
+      "reading": "strong html=2 tree=0",
+      "reason": "the language builds an inline span the grammar does not"
+    },
+    "trailing-attributes-on-a-link-reference-definition-2": {
+      "reading": "strong html=0 tree=1",
+      "reason": "the grammar builds an inline span the language keeps literal here"
+    },
+    "trailing-whitespace-on-a-content-line-is-dropped-13": {
+      "reading": "code#1 html=\"ab\" tree=\"abd\"",
+      "reason": "a span covers different text here than the language’s does"
+    },
+    "two-attributes-need-a-separator-between-them-3": {
+      "reading": "strong html=1 tree=0",
+      "reason": "the language builds an inline span the grammar does not"
+    },
+    "two-blank-lines-detach-a-caption-10": {
+      "reading": "code html=0 tree=1",
+      "reason": "the grammar builds an inline span the language keeps literal here"
+    },
+    "two-blank-lines-detach-a-caption-9": {
+      "reading": "code html=0 tree=1",
       "reason": "the grammar builds an inline span the language keeps literal here"
     },
     "two-char-delimiter-runs": {
-      "counts": "s html=1 tree=3, mark html=1 tree=2",
+      "reading": "s html=1 tree=3, s#1 html=\"w\" tree=\"y\", mark html=1 tree=2, mark#1 html=\"z\" tree=\"x\"",
       "reason": "the grammar builds an inline span the language keeps literal here"
     }
   },
