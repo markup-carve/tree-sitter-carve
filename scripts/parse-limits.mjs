@@ -44,6 +44,44 @@ export function resolveCli(repoRoot) {
 }
 
 /**
+ * Parse one document under both limits, and report how long it took.
+ *
+ * @returns {{run: import('node:child_process').SpawnSyncReturns<string>, elapsedMs: number}}
+ */
+export function parseOnce(file, repoRoot) {
+  const [cli, cliArgs] = resolveCli(repoRoot);
+  const startedAt = Date.now();
+  const run = spawnSync(cli, [...cliArgs, 'parse', '--quiet', ...TIMEOUT_ARGS, file], {
+    cwd: repoRoot,
+    encoding: 'utf8',
+    timeout: spawnBudgetMs(1),
+    maxBuffer: 16 * 1024 * 1024,
+  });
+  return { run, elapsedMs: Date.now() - startedAt };
+}
+
+/**
+ * Did the CLI give up on this document?
+ *
+ * SPENDING THE BUDGET IS THE ANSWER, not the exit status and not the silence.
+ * Both of those turned out to be platform-dependent: the same abandoned parse
+ * that exits non-zero with empty output here exits in a way that looks ordinary
+ * on the CI runner, which passed a document the ledger records as hanging. A
+ * document the parser can finish takes single-digit milliseconds, so burning
+ * the whole limit means one thing wherever it happens.
+ */
+export function didNotFinish({ run, elapsedMs }) {
+  if (run.signal) return true;
+  if (run.error && run.error.code === 'ETIMEDOUT') return true;
+  if (elapsedMs >= (PARSE_TIMEOUT_US / 1000) * 0.9) return true;
+  // Kept as a second reading for a CLI that gives up early: a tree with an
+  // ERROR still prints its `--quiet` line, so silence plus non-zero is a
+  // parse that produced nothing at all.
+  const silent = !(run.stdout || '').trim() && !(run.stderr || '').trim();
+  return run.status !== 0 && silent;
+}
+
+/**
  * Re-parse `files` one at a time and return those the CLI could not finish.
  *
  * Only worth calling once a batch has already reported trouble - it pays a
@@ -52,21 +90,7 @@ export function resolveCli(repoRoot) {
  * @returns {string[]} paths whose parse hit the limit
  */
 export function namePathological(files, repoRoot) {
-  const [cli, cliArgs] = resolveCli(repoRoot);
-  const stuck = [];
-  for (const file of files) {
-    const run = spawnSync(cli, [...cliArgs, 'parse', '--quiet', ...TIMEOUT_ARGS, file], {
-      cwd: repoRoot,
-      encoding: 'utf8',
-      timeout: spawnBudgetMs(1),
-      maxBuffer: 16 * 1024 * 1024,
-    });
-    // A tree with an ERROR still prints its `--quiet` line and exits non-zero,
-    // so status alone does not separate the two. Silence is the tell.
-    const silent = !(run.stdout || '').trim() && !(run.stderr || '').trim();
-    if (run.signal || (run.status !== 0 && silent)) stuck.push(file);
-  }
-  return stuck;
+  return files.filter((file) => didNotFinish(parseOnce(file, repoRoot)));
 }
 
 /**

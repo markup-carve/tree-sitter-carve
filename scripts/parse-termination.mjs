@@ -17,16 +17,10 @@
 // name with no document behind it fails so the record cannot go stale either.
 
 import { readdirSync, existsSync, readFileSync } from 'node:fs';
-import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { refuseShortRun } from './participants.mjs';
-import {
-  PARSE_TIMEOUT_US,
-  TIMEOUT_ARGS,
-  resolveCli,
-  spawnBudgetMs,
-} from './parse-limits.mjs';
+import { PARSE_TIMEOUT_US, didNotFinish, parseOnce } from './parse-limits.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const dir = path.join(repoRoot, 'test', 'termination');
@@ -49,31 +43,23 @@ refuseShortRun({
   hint: 'every recorded non-termination keeps its document here.',
 });
 
-const [cli, cliArgs] = resolveCli(repoRoot);
-
-// True when the CLI gave up on the document: no tree, nothing on stderr, and a
-// non-zero status. An ordinary parse ERROR still prints its tree.
-function finishes(file) {
-  const run = spawnSync(
-    cli,
-    [...cliArgs, 'parse', '--quiet', ...TIMEOUT_ARGS, path.join(dir, file)],
-    {
-      cwd: repoRoot,
-      encoding: 'utf8',
-      maxBuffer: 16 * 1024 * 1024,
-      timeout: spawnBudgetMs(1),
-    },
-  );
-  if (run.error && run.error.code !== 'ETIMEDOUT') {
-    console.error(`Failed to run tree-sitter parse: ${run.error.message}`);
+const measured = files.map((file) => {
+  const attempt = parseOnce(path.join(dir, file), repoRoot);
+  if (attempt.run.error && attempt.run.error.code !== 'ETIMEDOUT') {
+    console.error(`Failed to run tree-sitter parse: ${attempt.run.error.message}`);
     process.exit(2);
   }
-  if (run.signal || (run.error && run.error.code === 'ETIMEDOUT')) return false;
-  const silent = !(run.stdout || '').trim() && !(run.stderr || '').trim();
-  return !(run.status !== 0 && silent);
-}
+  return { file, ...attempt, stuck: didNotFinish(attempt) };
+});
 
-const stuck = files.filter((f) => !finishes(f));
+const stuck = measured.filter((m) => m.stuck).map((m) => m.file);
+
+// Printed for every document, because the reading that matters here is a
+// duration and a verdict derived from it. A failure that shows neither cannot
+// be diagnosed from a CI log.
+for (const m of measured) {
+  console.log(`  ${m.file}: ${m.elapsedMs}ms, ${m.stuck ? 'did NOT finish' : 'finished'}`);
+}
 
 const isNew = stuck.filter((f) => !(f in recorded));
 const nowFixed = Object.keys(recorded).filter((f) => !stuck.includes(f));
