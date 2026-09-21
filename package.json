@@ -35,7 +35,8 @@
     "test:scanner-serialization": "node scripts/scanner-serialization.mjs",
     "test:asan": "node scripts/asan.mjs",
     "test:reason-predicates": "node --test tests/reason-predicates.test.mjs",
-    "test:inline-reading": "node scripts/inline-reading.mjs"
+    "test:inline-reading": "node scripts/inline-reading.mjs",
+    "test:termination": "node scripts/parse-termination.mjs"
   },
   "author": "",
   "license": "MIT",

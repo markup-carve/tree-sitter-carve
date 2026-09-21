@@ -1319,5 +1319,8 @@
       "spellings": "the cr spelling(s) parse to a different tree than lf",
       "reason": "ref:lone-cr-strands-a-column-probe"
     }
+  },
+  "parseTimeouts": {
+    "braced-sub-fence-cr.crv": "a braced substitution opened before a fence, with lone CR terminators, never terminates - markup-carve/tree-sitter-carve#321"
   }
 }

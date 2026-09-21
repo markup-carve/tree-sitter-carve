@@ -1,5 +1,8 @@
 * text eol=lf
 test/corpus/syntax_crlf.txt text eol=crlf
+# Byte-exact by definition: these documents exist because their line
+# terminators are what the parser goes wrong on.
+test/termination/*.crv -text
 
 src/*.json linguist-generated
 src/parser.c linguist-generated

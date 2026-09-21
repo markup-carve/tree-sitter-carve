@@ -40,6 +40,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { refuseShortRun } from './participants.mjs';
+import { PARSE_TIMEOUT_US, TIMEOUT_ARGS, spawnBudgetMs } from './parse-limits.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const corpusDir = path.join(repoRoot, 'spec', 'tests', 'corpus');
@@ -87,13 +88,28 @@ const [cli, cliArgs] = existsSync(localCli)
   ? [localCli, []]
   : ['npx', ['tree-sitter']];
 function parseOne(file) {
-  const run = spawnSync(cli, [...cliArgs, 'parse', file], {
+  const run = spawnSync(cli, [...cliArgs, 'parse', ...TIMEOUT_ARGS, file], {
     cwd: repoRoot,
     encoding: 'utf8',
     maxBuffer: 64 * 1024 * 1024,
+    timeout: spawnBudgetMs(1),
   });
   if (run.error) {
     console.error(`Failed to run tree-sitter parse: ${run.error.message}`);
+    rmSync(work, { recursive: true, force: true });
+    process.exit(2);
+  }
+  // This sweep re-spells the WHOLE corpus three ways, so it is the check most
+  // likely to be the first to meet a terminator-dependent non-termination. A
+  // document the CLI abandons prints nothing at all - which here would compare
+  // equal to another empty reading and pass.
+  if (!(run.stdout || '').trim()) {
+    console.error(
+      `LINE TERMINATORS: ${file} produced no tree; the parse did not finish ` +
+        `within ${PARSE_TIMEOUT_US / 1_000_000}s. A spelling that cannot be ` +
+        'parsed is not a spelling that agrees.',
+    );
+    if (run.stderr) console.error(run.stderr.toString().trim());
     rmSync(work, { recursive: true, force: true });
     process.exit(2);
   }
