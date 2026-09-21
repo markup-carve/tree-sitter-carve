@@ -7255,7 +7255,12 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
   // FIRST, and it answers for the whole call: the reader it runs moves the
   // lexer to the end of the run, so nothing below could read from where it
   // started. See `parse_substitution_or_strikethrough`.
-  if (valid_symbols[SUBSTITUTION_BEGIN]) {
+  // Not in error recovery, where every symbol reads as valid: this branch
+  // pushes an inline entry and emits a zero-width token, so taking it there
+  // repeats at the same position without consuming input, the stack growing
+  // each time, and the parse never ends (#321). The ERROR branch below is what
+  // recovery must reach.
+  if (valid_symbols[SUBSTITUTION_BEGIN] && !valid_symbols[ERROR]) {
     return parse_substitution_or_strikethrough(s, lexer, valid_symbols);
   }
 
