@@ -87,6 +87,9 @@ function inlineElement($, options) {
           // Text and the symbol fallback matches everything not matched elsewhere.
           notes ? $._symbol_fallback : $._note_symbol_fallback,
           $._text,
+          // One literal `-` inside a braced delete, where the next is its
+          // closer's. See `em_dash`.
+          $._delete_dash,
         ),
         optional(
           // We need a separate fallback token for the opening `{`
@@ -1666,8 +1669,11 @@ module.exports = grammar({
     // so we don't mark the ' in `it's`. Not sure if we can do that in a correct way.
     quotation_marks: (_) => token(choice('{"', '"}', "{'", "'}", '\\"', "\\'")),
     ellipsis: (_) => "...",
-    em_dash: (_) => "---",
-    en_dash: (_) => "--",
+    // Inside a braced delete the `-` right before `}` belongs to the closer, and
+    // longest-match would eat it: `{---}` is a delete over `-`, `{----}` one
+    // over an en dash. There the scanner splits the run itself.
+    em_dash: ($) => choice("---", $._em_dash_in_delete),
+    en_dash: ($) => choice("--", $._en_dash_in_delete),
 
     backslash_escape: (_) => /\\[^\r\n]/,
 
@@ -2636,5 +2642,9 @@ module.exports = grammar({
     // The literal reading of a BRACED opener, valid only right after one. See
     // `symbolFallback`. Appended last for the same index reason.
     $._braced_fallback,
+    // A dash run inside a braced delete, split so its closer keeps its `-`.
+    $._em_dash_in_delete,
+    $._en_dash_in_delete,
+    $._delete_dash,
   ],
 });

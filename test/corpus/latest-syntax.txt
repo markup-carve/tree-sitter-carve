@@ -799,3 +799,52 @@ A closer that sits inside another span does not close a braced opener
       begin_marker: (strong_begin)
       content: (content)
       end_marker: (strong_end))))
+
+==================
+A braced span closes on its own form, so a bare marker inside it is content
+==================
+
+{/a/b/}
+
+---
+
+(document
+  (paragraph
+    (emphasis
+      begin_marker: (emphasis_begin)
+      content: (content)
+      end_marker: (emphasis_end))))
+
+==================
+Inside a braced delete the dash before the brace belongs to the closer
+==================
+
+{---} and {-x-}
+
+{----}
+
+{-a --}
+
+---
+
+(document
+  (paragraph
+    (delete
+      begin_marker: (delete_begin)
+      content: (content)
+      end_marker: (delete_end))
+    (delete
+      begin_marker: (delete_begin)
+      content: (content)
+      end_marker: (delete_end)))
+  (paragraph
+    (delete
+      begin_marker: (delete_begin)
+      content: (content
+        (en_dash))
+      end_marker: (delete_end)))
+  (paragraph
+    (delete
+      begin_marker: (delete_begin)
+      content: (content)
+      end_marker: (delete_end))))
