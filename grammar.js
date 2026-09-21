@@ -1209,13 +1209,21 @@ module.exports = grammar({
         ),
       ),
 
+    // BLOCK MATH OUTRANKS THE INLINE VERBATIM IT SHARES ITS BACKTICKS WITH.
+    // Both readings of `$$`a`` survive to the end of the document, and dynamic
+    // precedence sums per branch, so the paragraph one won on its verbatim
+    // alone wherever a blank line let it - a display equation then read as a
+    // paragraph holding a code span, and its caption attached to that.
     block_math: ($) =>
-      seq(
-        field("math_marker", alias("$$", $.math_marker)),
-        field("begin_marker", alias($._verbatim_begin, $.math_marker_begin)),
-        field("content", alias($._verbatim_content, $.content)),
-        field("end_marker", alias($._verbatim_end, $.math_marker_end)),
-        $._newline,
+      prec.dynamic(
+        2 * ELEMENT_PRECEDENCE,
+        seq(
+          field("math_marker", alias("$$", $.math_marker)),
+          field("begin_marker", alias($._verbatim_begin, $.math_marker_begin)),
+          field("content", alias($._verbatim_content, $.content)),
+          field("end_marker", alias($._verbatim_end, $.math_marker_end)),
+          $._newline,
+        ),
       ),
 
     link_reference_definition: ($) =>
