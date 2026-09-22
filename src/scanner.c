@@ -2249,6 +2249,10 @@ static bool parse_code_fence(Scanner *s, TSLexer *lexer,
     return false;
   }
 
+  // Where the run STARTS, read before it is consumed: the opener guard below
+  // asks whether the fence stands at a list item's content column, and by then
+  // the lexer sits past the ticks.
+  uint32_t fence_col = line_column(s, lexer);
   uint8_t width = consume_chars(s, lexer, fence_char);
   if (width == 0) {
     return false;
@@ -2292,7 +2296,16 @@ static bool parse_code_fence(Scanner *s, TSLexer *lexer,
     // text, and the ticks fall through to the verbatim handling below exactly
     // as they would mid-paragraph (corpus 11-fenced-code). Only the OPENER is
     // guarded -- a closer is matched against its opener's block, above.
-    if (valid_symbols[CODE_BLOCK_BEGIN] && !has_extra_indent(s) &&
+    // A fence on a MARKER LINE stands at the item's content column, but the
+    // line indent still reads 0 there - the marker was consumed after it was
+    // measured - so `has_extra_indent` calls the fence under-indented and the
+    // ticks fall through to the inline verbatim below. `- ``` ` opens a code
+    // block in the item, exactly as the same fence one line down already does.
+    // Same question `scan_unordered_list_marker_token` asks for `- - A`.
+    bool at_marker_content_col =
+        s->marker_end_col != 0 && fence_col == s->marker_end_col;
+    if (valid_symbols[CODE_BLOCK_BEGIN] &&
+        (!has_extra_indent(s) || at_marker_content_col) &&
         try_begin_code_block(s, lexer, width, fence_char)) {
       return true;
     }
