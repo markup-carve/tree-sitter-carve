@@ -1005,18 +1005,6 @@
       "reading": "em html=1 tree=0",
       "reason": "the language builds an inline span the grammar does not"
     },
-    "cell-attributes-bind-after-the-kind-and-alignment-markers-2": {
-      "reading": "strong html=0 tree=1",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
-    "cell-attributes-bind-after-the-kind-and-alignment-markers-4": {
-      "reading": "strong html=0 tree=1",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
-    "cell-attributes-bind-after-the-kind-and-alignment-markers-5": {
-      "reading": "strong html=0 tree=1",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
     "doubled-emphasis-delimiters": {
       "reading": "strong html=0 tree=2, s html=0 tree=2",
       "reason": "the grammar builds an inline span the language keeps literal here"

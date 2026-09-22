@@ -2018,7 +2018,7 @@
           "type": "ALIAS",
           "content": {
             "type": "SYMBOL",
-            "name": "_inline"
+            "name": "_table_cell_body"
           },
           "named": true,
           "value": "table_cell"
@@ -2033,6 +2033,48 @@
           "value": "|"
         }
       ]
+    },
+    "_table_cell_body": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "_cell_attribute"
+            },
+            {
+              "type": "CHOICE",
+              "members": [
+                {
+                  "type": "SYMBOL",
+                  "name": "_inline"
+                },
+                {
+                  "type": "BLANK"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "SYMBOL",
+          "name": "_inline"
+        }
+      ]
+    },
+    "_cell_attribute": {
+      "type": "ALIAS",
+      "content": {
+        "type": "IMMEDIATE_TOKEN",
+        "content": {
+          "type": "PATTERN",
+          "value": "(?:=?(?:[<>~][\\^~v]?|\\?[\\^~v])|=)?\\{[ \\t]*(?:(?:\\.[A-Za-z0-9_][A-Za-z0-9_-]*|#[A-Za-z0-9_][A-Za-z0-9_-]*|:[A-Za-z][A-Za-z0-9-]*|[A-Za-z_][A-Za-z0-9_-]*(?:=(?:\"[^\"\\r\\n]*\"|'[^'\\r\\n]*'|[^\\s\"'{}]+))?)(?:[ \\t]+(?:\\.[A-Za-z0-9_][A-Za-z0-9_-]*|#[A-Za-z0-9_][A-Za-z0-9_-]*|:[A-Za-z][A-Za-z0-9-]*|[A-Za-z_][A-Za-z0-9_-]*(?:=(?:\"[^\"\\r\\n]*\"|'[^'\\r\\n]*'|[^\\s\"'{}]+))?))*[ \\t]*)?\\} "
+        }
+      },
+      "named": true,
+      "value": "table_cell_attributes"
     },
     "_table_cell_alignment": {
       "type": "SEQ",

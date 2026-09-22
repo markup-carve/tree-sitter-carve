@@ -4126,6 +4126,10 @@
           "named": true
         },
         {
+          "type": "table_cell_attributes",
+          "named": true
+        },
+        {
           "type": "tag",
           "named": true
         },
@@ -4987,6 +4991,10 @@
   },
   {
     "type": "table_cell_alignment",
+    "named": true
+  },
+  {
+    "type": "table_cell_attributes",
     "named": true
   },
   {
