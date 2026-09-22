@@ -73,3 +73,9 @@ definition opened against a content column that a folded marker had set. In
 both cases `test:inline-reading` and `test:under-acceptance` were green.
 
 Do not fold it into the count beside it.
+
+Its mirror runs beside it: INVISIBLE UNDER-ACCEPTANCE, a reference definition
+the fixture hides that the tree keeps as paragraph text. A definition renders
+nothing, so the only trace of the miss is the paragraph that holds its source,
+and no other gate reads paragraph text. It started with 54 recorded documents,
+every one of them green on every other gate (#372).

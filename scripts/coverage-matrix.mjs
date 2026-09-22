@@ -116,6 +116,7 @@ for (const key of [
   ...Object.keys(coverage.skip),
   ...Object.keys(coverage.overAcceptance ?? {}),
   ...Object.keys(coverage.invisibleOverAcceptance ?? {}),
+  ...Object.keys(coverage.invisibleUnderAcceptance ?? {}),
 ]) {
   if (/^\d+-/.test(key)) {
     errors.push(
@@ -143,6 +144,7 @@ for (const [ledgerName, ledger] of Object.entries({
   skip: coverage.skip ?? {},
   overAcceptance: coverage.overAcceptance ?? {},
   invisibleOverAcceptance: coverage.invisibleOverAcceptance ?? {},
+  invisibleUnderAcceptance: coverage.invisibleUnderAcceptance ?? {},
   underAcceptance: coverage.underAcceptance ?? {},
   lineTerminatorGaps: coverage.lineTerminatorGaps ?? {},
 })) {
