@@ -115,8 +115,6 @@ jobs:
 
       - name: The vendored battery is still carve-grammars' copy
         run: npm run test:battery-drift
-      - name: Build WASM grammar
-        run: npm run build-wasm
       - name: Load Node binding
         run: |
           node - <<'NODE'
@@ -127,6 +125,28 @@ jobs:
           NODE
       - name: Node binding agrees with the CLI over the corpus
         run: npm run test:binding-parity
+
+  wasm:
+    runs-on: ubuntu-latest
+    env:
+      XDG_CACHE_HOME: ${{ github.workspace }}/tmp/tree-sitter-cache
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Build the WASM grammar
+        run: |
+          npm run build-wasm
+          test -s tree-sitter-carve.wasm
+      - name: Run the corpus through WASM
+        run: npx tree-sitter test --wasm
+      - name: Load the grammar and highlights in supported web-tree-sitter versions
+        run: npm run test:wasm
 
   address-sanitizer:
     runs-on: ubuntu-latest

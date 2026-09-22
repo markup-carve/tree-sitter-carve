@@ -198,6 +198,74 @@ jobs:
           name: prebuilds-${{ matrix.os }}
           path: prebuilds/
 
+  build-wasm:
+    name: Build and test the WASM grammar
+    runs-on: ubuntu-latest
+    needs: [guard]
+    env:
+      XDG_CACHE_HOME: ${{ github.workspace }}/tmp/tree-sitter-cache
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Build the WASM grammar
+        run: |
+          npm run build-wasm
+          test -s tree-sitter-carve.wasm
+      - name: Run the corpus and browser smoke tests
+        run: |
+          npx tree-sitter test --wasm
+          npm run test:wasm
+      - name: Create the release checksum
+        run: sha256sum tree-sitter-carve.wasm > tree-sitter-carve.wasm.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wasm
+          path: |
+            tree-sitter-carve.wasm
+            tree-sitter-carve.wasm.sha256
+
+  upload-wasm-release:
+    name: Add WASM files to the release draft
+    runs-on: ubuntu-latest
+    needs: [guard, release-notes, build-wasm]
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: wasm
+      - name: Upload by release id
+        if: github.event_name != 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          release_id="$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate \
+            --jq "[.[] | select(.tag_name == \"$GITHUB_REF_NAME\")] | first | .id // empty")"
+          [ -n "$release_id" ] \
+            || { echo "::error::no release id found for $GITHUB_REF_NAME"; exit 1; }
+          for name in tree-sitter-carve.wasm tree-sitter-carve.wasm.sha256; do
+            gh api "repos/$GITHUB_REPOSITORY/releases/$release_id/assets" --paginate \
+              --jq ".[] | select(.name == \"$name\") | .id" \
+              | while read -r asset_id; do
+                  gh api --method DELETE "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id"
+                done
+          done
+          gh api --method POST -H "Content-Type: application/wasm" \
+            "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$release_id/assets?name=tree-sitter-carve.wasm" \
+            --input tree-sitter-carve.wasm
+          gh api --method POST -H "Content-Type: text/plain" \
+            "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$release_id/assets?name=tree-sitter-carve.wasm.sha256" \
+            --input tree-sitter-carve.wasm.sha256
+      - name: Rehearsal notice
+        if: github.event_name == 'workflow_dispatch'
+        run: echo "::notice::rehearsal - no release assets were uploaded"
+
   # Deliberately does NOT depend on `prebuild`. This is a correctness check on
   # the grammar, and coupling it to npm packaging would let a Windows prebuild
   # failure block the crates.io and PyPI publishes, which carry no prebuilds at
@@ -218,7 +286,6 @@ jobs:
 
       - run: npm ci
 
-
       # Pack, then install into a directory that shares nothing with the
       # checkout, so what gets measured is what a consumer would receive.
       - name: Pack and install the tarball
@@ -236,7 +303,7 @@ jobs:
           echo "---"
           # No prebuild assertion here on purpose - publish-npm owns that, and
           # this job is about whether the grammar is right.
-          echo "(prebuild presence is asserted by publish-npm, not here)" 
+          echo "(prebuild presence is asserted by publish-npm, not here)"
 
       # Both checks against the INSTALLED binding. binding-parity compares the
       # node addon to the CLI over the corpus (the two have disagreed before -
@@ -254,7 +321,15 @@ jobs:
     name: Publish to npm
     runs-on: ubuntu-latest
     environment: release
-    needs: [guard, release-notes, prebuild, corpus-gate]
+    needs:
+      [
+        guard,
+        release-notes,
+        prebuild,
+        build-wasm,
+        upload-wasm-release,
+        corpus-gate,
+      ]
     # `npm publish --provenance` signs an attestation binding the tarball to
     # this commit, and that needs an OIDC token. `id-token` is never granted
     # implicitly - not even when the repo default is read-write - so omitting
@@ -292,6 +367,19 @@ jobs:
         run: |
           n="$(find prebuilds -type f -name '*.node' | wc -l)"
           [ "$n" -ge 3 ] || { echo "::error::only $n prebuild(s) present; expected one per platform"; exit 1; }
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: wasm
+          path: wasm-staging
+      - name: Refuse to publish without the WASM grammar
+        run: |
+          cp wasm-staging/tree-sitter-carve.wasm .
+          test -s tree-sitter-carve.wasm \
+            || { echo "::error::the WASM grammar is missing or empty"; exit 1; }
+          tarball="$(npm pack --silent)"
+          tar -tzf "$tarball" | grep -qx 'package/tree-sitter-carve.wasm' \
+            || { echo "::error::the npm tarball does not contain tree-sitter-carve.wasm"; exit 1; }
 
       # A missing credential FAILS rather than skipping. A skipped publish that
       # leaves the job green is what half-released carve-py.
@@ -466,4 +554,4 @@ jobs:
           password: ${{ secrets.PYPI_API_TOKEN }}
       - name: Rehearsal notice
         if: github.event_name == 'workflow_dispatch'
-        run: echo "::notice::rehearsal - nothing was published to PyPI" 
+        run: echo "::notice::rehearsal - nothing was published to PyPI"
