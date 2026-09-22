@@ -6021,6 +6021,7 @@ static bool parse_open_curly_bracket(Scanner *s, TSLexer *lexer,
   // sit past it; nothing else on a marker line reaches here in block position.
   bool on_marker_line =
       s->marker_end_col != 0 && line_column(s, lexer) >= s->marker_end_col;
+  uint8_t quote_markers = s->block_quote_level;
   // Only consume the `{`, if successful.
   advance(s, lexer);
   mark_end(s, lexer);
@@ -6193,6 +6194,14 @@ static bool parse_open_curly_bracket(Scanner *s, TSLexer *lexer,
     case '\n':
       can_be_braced_comment = false;
       consume_line_end(s, lexer);
+      if (quote_markers > 0) {
+        bool ending_newline = false;
+        if (scan_block_quote_markers(s, lexer, &ending_newline) !=
+                quote_markers ||
+            ending_newline) {
+          goto no_attribute;
+        }
+      }
       // A5: a continuation is a line break optionally followed by
       // indentation, of any width.
       consume_whitespace(s, lexer);

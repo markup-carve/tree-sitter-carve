@@ -39,6 +39,10 @@
       "required": false,
       "types": [
         {
+          "type": "block_quote_marker",
+          "named": true
+        },
+        {
           "type": "boolean_attribute",
           "named": true
         },
