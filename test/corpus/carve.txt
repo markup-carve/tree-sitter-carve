@@ -2980,6 +2980,36 @@ A footnote definition needs an inline body on the marker line
       (footnote_marker_end))))
 
 ===============================================================================
+An ordered marker line can open a footnote definition
+;; The marker is consumed after the line indent is measured, so the definition
+;; starts at the ordered item's content column while `indent` is still zero.
+;; Record that position for every list spelling, not only bullets.
+===============================================================================
+
+1. [^f]: x
+
+see[^f]
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_decimal_period)
+      content: (list_item_content
+        (footnote
+          (footnote_marker_begin)
+          label: (reference_label)
+          (footnote_marker_end)
+          content: (footnote_content
+            (paragraph))))))
+  (paragraph
+    (footnote_reference
+      (footnote_marker_begin)
+      (reference_label)
+      (footnote_marker_end))))
+
+===============================================================================
 An empty bold-italic run is an emphasis over its asterisks (#338)
 ;; `/**/` renders `<em>**</em>` (spec fixture 130): an empty bold-italic is no
 ;; span, and what is left is an emphasis over two literal asterisks. The

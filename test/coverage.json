@@ -681,10 +681,6 @@
       "definitions": "[t]: /t",
       "reason": "ref:reference-definition-absorbed"
     },
-    "a-marker-folds-only-strictly-between-the-item-s-base-and-content-column-8": {
-      "definitions": "[t]: /t",
-      "reason": "ref:reference-definition-absorbed"
-    },
     "an-opener-at-or-past-a-description-body-s-column-closes-its-paragraph-2": {
       "definitions": "[r]: /url",
       "reason": "ref:reference-definition-absorbed"
