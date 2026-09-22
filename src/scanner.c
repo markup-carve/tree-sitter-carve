@@ -502,6 +502,8 @@ static bool scan_valid_inline_attribute(Scanner *s, TSLexer *lexer);
 static bool at_block_opener_margin(Scanner *s, uint32_t column);
 static bool definition_reaches_margin(Scanner *s, uint32_t column);
 static bool list_item_open(Scanner *s);
+static bool div_host_collects(Scanner *s, int div_index);
+static bool div_line_collected_by_host(Scanner *s, uint32_t column);
 static void record_container_content_column(Scanner *s, uint8_t col);
 
 #ifdef DEBUG
@@ -4117,8 +4119,9 @@ static bool parse_open_bracket(Scanner *s, TSLexer *lexer,
   // so the probe never ends a paragraph this then refuses.
   if (!at_marker_content_col) {
     if (list_item_open(s) ? !definition_reaches_margin(s, column)
-                          : (has_extra_indent(s) ||
-                             past_container_content_col(s))) {
+                          : ((has_extra_indent(s) ||
+                              past_container_content_col(s)) &&
+                             !div_line_collected_by_host(s, column))) {
       return false;
     }
   }
@@ -4127,6 +4130,9 @@ static bool parse_open_bracket(Scanner *s, TSLexer *lexer,
   if (lexer->lookahead != '[') {
     return false;
   }
+  // The opener owns the line's indentation, as a heading marker does: no
+  // continuation token takes it inside a div, and the grammar has no slot for it.
+  mark_end(s, lexer);
   advance(s, lexer);
 
   if (lexer->lookahead == '^') {
@@ -5872,12 +5878,40 @@ static bool definition_reaches_margin(Scanner *s, uint32_t column) {
         return true;
       }
       if (column > b->content_col) {
-        return false;
+        return b->type != TABLE_CAPTION && div_host_collects(s, i);
       }
       continue;
     }
   }
   return column == 0;
+}
+
+/// THE HOST DECIDES CONSUMPTION: a line past a div's content column is the
+/// div's text, except that a description body or footnote body hosting the div
+/// collects a definition written there. A list item or quote host does not.
+static bool div_host_collects(Scanner *s, int div_index) {
+  if (div_index == 0) {
+    return false;
+  }
+  BlockType host = (*array_get(s->open_blocks, div_index - 1))->type;
+  return host == FOOTNOTE || host == LIST_DEFINITION;
+}
+
+/// The same question with no list item open: is the innermost container a div
+/// that `column` is past, hosted by a collecting body?
+static bool div_line_collected_by_host(Scanner *s, uint32_t column) {
+  for (int i = s->open_blocks->size - 1; i >= 0; --i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (b->type == DIV || b->type == FIGURE_GROUP) {
+      return b->content_col != 0 && column > b->content_col &&
+             div_host_collects(s, i);
+    }
+    if (b->type == BLOCK_QUOTE || b->type == FOOTNOTE ||
+        b->type == TABLE_CAPTION || is_list(b->type)) {
+      return false;
+    }
+  }
+  return false;
 }
 
 /// A HEADING interrupts an open paragraph with no blank line before it

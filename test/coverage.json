@@ -584,18 +584,6 @@
     "a-marker-folds-only-strictly-between-the-item-s-base-and-content-column-7": {
       "definitions": "[t]: /t",
       "reason": "ref:reference-definition-absorbed"
-    },
-    "a-container-in-a-host-body-owns-a-line-past-its-own-content-column-2": {
-      "definitions": "[r]: /url",
-      "reason": "ref:reference-definition-absorbed"
-    },
-    "a-container-closer-closes-its-container-in-a-footnote-body-too-2": {
-      "definitions": "[r]: /url",
-      "reason": "ref:reference-definition-absorbed"
-    },
-    "a-container-closer-closes-its-container-in-a-footnote-body-too": {
-      "definitions": "[r]: /url",
-      "reason": "ref:reference-definition-absorbed"
     }
   },
   "batteryDisagreements": {},

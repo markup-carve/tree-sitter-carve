@@ -1179,3 +1179,167 @@ See [x][].
   (paragraph
     (collapsed_reference_link
       text: (link_text))))
+
+==================
+A description body collects a definition past its div's content column
+==================
+:: t
+:  a
+   ::: note
+    [r]: /url
+   :::
+
+[r][]
+
+---
+
+(document
+  (definition_list
+    (list_item
+      marker: (list_marker_definition)
+      term: (term))
+    (list_item
+      marker: (list_marker_description)
+      definition: (definition)
+      (div
+        (div_marker_begin)
+        type: (admonition_type)
+        content: (content
+          (link_reference_definition
+            label: (link_label)
+            destination: (link_destination)))
+        (div_marker_end))))
+  (paragraph
+    (collapsed_reference_link
+      text: (link_text))))
+
+==================
+A footnote body collects a definition past its div's content column
+==================
+see[^f]
+
+[^f]: a
+    ::: note
+     [r]: /url
+    :::
+
+[r][]
+
+---
+
+(document
+  (paragraph
+    (footnote_reference
+      (footnote_marker_begin)
+      (reference_label)
+      (footnote_marker_end)))
+  (footnote
+    (footnote_marker_begin)
+    label: (reference_label)
+    (footnote_marker_end)
+    content: (footnote_content
+      (paragraph)
+      (div
+        (div_marker_begin)
+        type: (admonition_type)
+        content: (content
+          (link_reference_definition
+            label: (link_label)
+            destination: (link_destination)))
+        (div_marker_end))))
+  (paragraph
+    (collapsed_reference_link
+      text: (link_text))))
+
+==================
+A list item leaves a definition past its div's content column as text
+==================
+- a
+  ::: note
+   [r]: /url
+  :::
+
+[r][]
+
+---
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)
+        (div
+          (div_marker_begin)
+          type: (admonition_type)
+          content: (content
+            (paragraph))
+          (div_marker_end)))))
+  (paragraph
+    (collapsed_reference_link
+      text: (link_text))))
+
+==================
+A reference definition at an indented div's content column
+==================
+- a
+  ::: note
+  [r]: /url
+  :::
+
+[r][]
+
+---
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)
+        (div
+          (div_marker_begin)
+          type: (admonition_type)
+          content: (content
+            (link_reference_definition
+              label: (link_label)
+              destination: (link_destination)))
+          (div_marker_end)))))
+  (paragraph
+    (collapsed_reference_link
+      text: (link_text))))
+
+==================
+A footnote definition at an indented div's content column
+==================
+- a
+  ::: note
+  [^f]: x
+  :::
+
+y[^f]
+
+---
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)
+        (div
+          (div_marker_begin)
+          type: (admonition_type)
+          content: (content
+            (footnote
+              (footnote_marker_begin)
+              label: (reference_label)
+              (footnote_marker_end)
+              content: (footnote_content
+                (paragraph))))
+          (div_marker_end)))))
+  (paragraph
+    (footnote_reference
+      (footnote_marker_begin)
+      (reference_label)
+      (footnote_marker_end))))
