@@ -1,25 +1,33 @@
 # tree-sitter-carve
 
 Tree-sitter grammar for [Carve](https://markup-carve.github.io/carve/), a
-post-Markdown lightweight markup language with visual mnemonics.
+lightweight markup language for readable source and structured documents.
 
-This grammar is built from the proven Djot Tree-sitter scanner architecture and
-changes the public syntax to Carve:
+It provides editor-facing parsing, highlighting, and structural navigation for
+Carve syntax, including:
 
 - `/italic/`, `*bold*`, and `/*bold italic*/`
 - `=highlight=`, plus the braced-only `{^superscript^}` and `{,subscript,}`
   (a bare `^` or `,` is literal text)
-- `$` + backtick math spans, and `$$` + backtick display math spans
+- `$` plus backtick math spans, and `$$` plus backtick display math spans
 - `:name[content]` inline extensions, `@mentions`, `#tags`, and `:emoji:`
 - `%%` line comments, trailing inline `%%` comments, and `%%%` fenced comments
-- Djot-style blocks retained where Carve keeps them: headings, lists, tables,
-  fenced code, links, images, attributes, footnotes, captions, and divs
+- headings, lists, tables, fenced code, links, images, attributes, footnotes,
+  captions, and divs
 
-## Status
+## Scope
 
-Initial grammar. It is intended for editor support and structural parsing. The
-Carve conformance corpus remains the source of truth for renderer behavior.
+This repository is the grammar layer, not the canonical parser or renderer. It
+aims to produce useful, error-free syntax trees for the covered Carve corpus.
+The [Carve specification](https://markup-carve.github.io/carve/) defines the
+language; engine conformance and rendered output are checked in their
+respective implementation repositories.
+
+The grammar is intentionally explicit about unsupported corpus categories.
+`test/coverage.json` records each category as covered or skipped with a reason,
+so new syntax cannot silently fall outside the checks.
 
 ## Development
 
-Contributor setup, testing, and maintenance notes are in the [development guide](docs/development.md).
+Contributor setup, corpus checks, generated-artifact hygiene, and maintenance
+notes are in the [development guide](docs/development.md).
