@@ -7891,3 +7891,77 @@ a [a [b c](/u) d
     (inline_link
       text: (link_text)
       destination: (inline_link_destination))))
+
+===============================================================================
+A delimiter glued to the first word in a quote opens nothing (#434)
+===============================================================================
+> a*b*
+
+-------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (paragraph))))
+
+===============================================================================
+A delimiter glued to the first word of a list item opens nothing (#434)
+===============================================================================
+- a/b/
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)))))
+
+===============================================================================
+A delimiter glued to the first word in nested containers opens nothing (#434)
+===============================================================================
+- > a_b_
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (block_quote
+          (block_quote_marker)
+          content: (content
+            (paragraph)))))))
+
+===============================================================================
+A delimiter glued to the first word of a table cell opens nothing (#434)
+===============================================================================
+| a*b* | c/d/ |
+
+-------------------------------------------------------------------------------
+
+(document
+  (table
+    (table_row
+      (table_cell)
+      (table_cell))))
+
+===============================================================================
+A delimiter after the first word's space still opens a span (#434)
+===============================================================================
+> a *b*
+
+-------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (paragraph
+        (strong
+          begin_marker: (strong_begin)
+          content: (content)
+          end_marker: (strong_end))))))
