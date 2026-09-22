@@ -7724,3 +7724,86 @@ b"}
       content: (content)
       end_marker: (strong_end))
     (quotation_marks)))
+
+===============================================================================
+A slash glued to a paragraph's first word opens nothing, and neither does an underscore after it (#320)
+===============================================================================
+a/_y_
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph))
+
+===============================================================================
+A strong marker glued to a paragraph's first word opens nothing (#320)
+===============================================================================
+a*b*
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph))
+
+===============================================================================
+A strike after a slash glued to the first word still opens (#320)
+===============================================================================
+a/~y~
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (strikethrough
+      begin_marker: (strikethrough_begin)
+      content: (content)
+      end_marker: (strikethrough_end))))
+
+===============================================================================
+An ordered marker still opens a list at a paragraph's start (#320)
+===============================================================================
+a) x
+
+iv. y
+
+A) z
+
+1. w
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_lower_alpha_paren)
+      content: (list_item_content
+        (paragraph))))
+  (list
+    (list_item
+      marker: (list_marker_lower_roman_period)
+      content: (list_item_content
+        (paragraph))))
+  (list
+    (list_item
+      marker: (list_marker_upper_alpha_paren)
+      content: (list_item_content
+        (paragraph))))
+  (list
+    (list_item
+      marker: (list_marker_decimal_period)
+      content: (list_item_content
+        (paragraph)))))
+
+===============================================================================
+The bold-italic opener may follow a word (#320)
+===============================================================================
+x a/*y*/b
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (bold_italic
+      begin_marker: (bold_italic_begin)
+      content: (content)
+      end_marker: (bold_italic_end))))

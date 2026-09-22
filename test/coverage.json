@@ -724,22 +724,6 @@
       "reading": "code html=0 tree=1",
       "reason": "the grammar builds an inline span the language keeps literal here"
     },
-    "emphasis-opener-slash-adjacency": {
-      "reading": "u html=0 tree=1",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
-    "emphasis-opener-slash-adjacency-2": {
-      "reading": "u html=0 tree=1",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
-    "emphasis-opener-slash-adjacency-4": {
-      "reading": "em html=0 tree=1",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
-    "smart-typography-dashes-and-quotes-9": {
-      "reading": "strong html=1 tree=2",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
     "the-round-trip-comparison-normalizes-a-named-list": {
       "reading": "s html=1 tree=0",
       "reason": "the language builds an inline span the grammar does not"

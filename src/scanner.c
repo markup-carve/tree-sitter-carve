@@ -420,6 +420,15 @@ typedef struct {
   uint8_t after_closer_char;
   uint32_t after_closer_col;
 
+  // The ordered-marker probe stopped right after a word it consumed, so the
+  // character behind the lexer is alphanumeric. Transient, never serialized.
+  bool ordered_word_end;
+
+  // Characters advanced over in this scan call, so a probe can tell whether
+  // the lexer moved without asking for a column: `get_column` rewinds and
+  // resets the marked token end. Transient, never serialized.
+  uint32_t advances;
+
   // Width of the attribute block the ordered marker scan just consumed, read
   // by the same scan call. Transient, never serialized.
   uint8_t marker_attribute_width;
@@ -634,6 +643,7 @@ static void mark_end(Scanner *s, TSLexer *lexer) {
 
 static void advance(Scanner *s, TSLexer *lexer) {
   lexer->advance(lexer, false);
+  s->advances++;
 }
 
 // `newline = '\n' | '\r\n' | '\r'` (spec `resources/grammar.ebnf`). All three
@@ -3233,6 +3243,7 @@ static TokenType scan_ordered_list_marker_token_type(Scanner *s,
   bool value_omitted = lexer->lookahead == '.';
 
   OrderedListType list_type;
+  s->ordered_word_end = false;
   if (!scan_ordered_list_type(s, lexer, &list_type)) {
     // BARE DOT (carve#472). The value may be omitted when the delimiter is
     // `.`: a bare `. ` is a decimal ordered marker counting from 1. It shares
@@ -3247,6 +3258,7 @@ static TokenType scan_ordered_list_marker_token_type(Scanner *s,
       advance(s, lexer);
       return LIST_MARKER_DECIMAL_PERIOD;
     }
+    s->ordered_word_end = true;
     return IGNORED;
   }
 
@@ -3287,6 +3299,7 @@ static TokenType scan_ordered_list_marker_token_type(Scanner *s,
       return IGNORED;
     }
   default:
+    s->ordered_word_end = true;
     return IGNORED;
   }
 }
@@ -8395,7 +8408,7 @@ static bool zero_width_mark_pending(const bool *valid_symbols) {
 ///  1: the token is the reader's.
 static int parse_literal_run(Scanner *s, TSLexer *lexer,
                              const bool *valid_symbols, int32_t replay_marker,
-                             uint8_t replay_count) {
+                             uint8_t replay_count, int32_t seed_prev) {
   // `prev` is the character behind the lexer, 0 while it is unknown. Unknown
   // reads as a clean left boundary, which is what the grammar assumed before
   // this pass existed.
@@ -8405,7 +8418,12 @@ static int parse_literal_run(Scanner *s, TSLexer *lexer,
   bool leftover = false;
   uint32_t delims_seen = 0;
 
-  if (replay_count > 0) {
+  if (seed_prev != 0) {
+    // A probe already read a word and stopped behind it (see the word\'s second
+    // chance in `scan`), so the character behind the lexer is `seed_prev`.
+    prev = seed_prev;
+    prev2 = seed_prev;
+  } else if (replay_count > 0) {
     // A block probe consumed this run and handed it back (see the contract on
     // `parse_list_marker_or_thematic_break`). Decide those characters here,
     // where the one behind each of them is known, before reading on from where
@@ -8494,7 +8512,10 @@ static int parse_literal_run(Scanner *s, TSLexer *lexer,
                       prev2 != 0;
     bool may_open = !carve_is_alnum_ascii(prev) && prev != c && !path_guard &&
                     !next_ws && next != c;
-    if (may_close || may_open) {
+    // The bold-italic opener `/*` may follow a word (`a/*y*/b`), unlike a bare
+    // `/`, so it is left to the span machinery.
+    bool bold_italic_opener = c == '/' && next == '*';
+    if (may_close || may_open || bold_italic_opener) {
       break;
     }
     mark_end(s, lexer);
@@ -8838,12 +8859,25 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   // forward from the word or the run's first character, so it answers for the
   // whole call the way the two readers above do.
   InlineType literal_run_kind;
+  // Where the reader stands aside for a word only because a block reading may
+  // start here; the word's second chance below is for exactly this position.
+  // Read before this call marks any token end, so the column's rewind costs
+  // nothing. Only a word at the very start of its line: mid-line, the block
+  // readings still on offer (a table row's cells) are not why it stood aside.
+  bool deferred_word = false;
+  uint32_t deferred_at = s->advances;
+  if (valid_symbols[LITERAL_RUN] && !valid_symbols[ERROR] &&
+      !valid_symbols[BLOCK_CLOSE] && carve_is_alnum_ascii(lexer->lookahead) &&
+      block_reading_ahead(lexer->lookahead, valid_symbols) &&
+      !zero_width_mark_pending(valid_symbols) && line_column(s, lexer) == 0) {
+    deferred_word = true;
+  }
   if (valid_symbols[LITERAL_RUN] && !valid_symbols[ERROR] &&
       (is_bare_delim_kind(lexer->lookahead, &literal_run_kind) ||
        carve_is_alnum_ascii(lexer->lookahead)) &&
       !block_reading_ahead(lexer->lookahead, valid_symbols) &&
       !zero_width_mark_pending(valid_symbols)) {
-    int read = parse_literal_run(s, lexer, valid_symbols, 0, 0);
+    int read = parse_literal_run(s, lexer, valid_symbols, 0, 0, 0);
     if (read > 0) {
       return true;
     }
@@ -9163,7 +9197,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   if (declined_run > 0 && valid_symbols[LITERAL_RUN] && !valid_symbols[ERROR] &&
       !zero_width_mark_pending(valid_symbols)) {
     int read = parse_literal_run(s, lexer, valid_symbols, declined_marker,
-                                 declined_run);
+                                 declined_run, 0);
     if (read > 0) {
       return true;
     }
@@ -9277,11 +9311,33 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
 
   // Scan ordered list markers outside because the parsing may conflict with
   // closing of lists (both may try to parse the same characters).
+  bool from_word = deferred_word && s->advances == deferred_at;
+  uint32_t word_at = s->advances;
   TokenType ordered_list_marker = scan_ordered_list_marker_token(s, lexer);
   if (ordered_list_marker != IGNORED &&
       handle_ordered_list_marker(s, lexer, valid_symbols,
                                  ordered_list_marker)) {
     return true;
+  }
+  // THE READER'S SECOND CHANCE FOR A WORD. At a line start the reader stands
+  // aside for a word, which could be an ordered marker (`a)`, `iv.`). The probe
+  // above has read that word and found no marker, so a delimiter right behind
+  // it is glued to a word and the reader can decide it: `a/_y_` and `a*b*` at
+  // the start of a paragraph open nothing, as they do anywhere else (#320).
+  // Only with nothing inline open: then the delimiter can neither open nor
+  // close, and the reader takes it rather than declining past it.
+  InlineType after_word;
+  if (ordered_list_marker == IGNORED && from_word && s->ordered_word_end &&
+      s->advances > word_at &&
+      is_bare_delim_kind(lexer->lookahead, &after_word) &&
+      s->open_inline->size == 0) {
+    int read = parse_literal_run(s, lexer, valid_symbols, 0, 0, 'a');
+    if (read > 0) {
+      return true;
+    }
+    if (read < 0) {
+      return false;
+    }
   }
 
   if (valid_symbols[TABLE_CAPTION_END] && parse_table_caption_end(s, lexer)) {
@@ -9398,6 +9454,8 @@ static void init_scalars(Scanner *s) {
   s->after_closer_char = 0;
   s->after_closer_col = 0;
   s->marker_attribute_width = 0;
+  s->ordered_word_end = false;
+  s->advances = 0;
 }
 
 static void init(Scanner *s) {
