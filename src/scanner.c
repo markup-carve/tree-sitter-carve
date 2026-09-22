@@ -1359,7 +1359,12 @@ static bool close_list_nested_block_if_needed(Scanner *s, TSLexer *lexer,
   // we should check the indentation level,
   // and if it's less than the current list, we need to close that block.
   if (non_newline && list && list != top) {
-    if (s->indent < list->data) {
+    // A fence body line short of the item's content column is not fence body:
+    // the item's prefix is not supplied, so the fence and the item both end
+    // (grammar.ebnf STEP S1/S2). No lazy fold reaches into code.
+    uint8_t margin =
+        top->type == CODE_BLOCK ? list_item_margin(s, list) : list->data;
+    if (s->indent < margin) {
       lexer->result_symbol = BLOCK_CLOSE;
       remove_block(s);
       return true;
@@ -2367,8 +2372,14 @@ static bool parse_quoted_code_fence_closer(Scanner *s, TSLexer *lexer,
 static bool parse_code_fence(Scanner *s, TSLexer *lexer,
                              const bool *valid_symbols, char fence_char) {
   bool supports_verbatim = fence_char == '`';
-  if (!valid_symbols[CODE_BLOCK_BEGIN] && !valid_symbols[CODE_BLOCK_END] &&
-      !valid_symbols[BLOCK_CLOSE] &&
+  // A closer needs an open code block. Right after one closed zero-width
+  // (`- a` / `  ```` / `  x` / ` ````), the optional end token is still on
+  // offer; consuming the run then would leave the token end past it.
+  Block *open_block = peek_block(s);
+  bool closer_possible =
+      (valid_symbols[CODE_BLOCK_END] || valid_symbols[BLOCK_CLOSE]) &&
+      open_block && open_block->type == CODE_BLOCK;
+  if (!valid_symbols[CODE_BLOCK_BEGIN] && !closer_possible &&
       !(supports_verbatim && (valid_symbols[VERBATIM_BEGIN] ||
                               valid_symbols[VERBATIM_END]))) {
     return false;
