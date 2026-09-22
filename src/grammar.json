@@ -4079,7 +4079,7 @@
             "type": "IMMEDIATE_TOKEN",
             "content": {
               "type": "PATTERN",
-              "value": "[^\\s\\}]+"
+              "value": "[A-Za-z0-9_][A-Za-z0-9_-]*"
             }
           }
         ]
@@ -6633,54 +6633,21 @@
           "name": "_curly_bracket_span_mark_begin"
         },
         {
-          "type": "ALIAS",
-          "content": {
-            "type": "REPEAT",
-            "content": {
-              "type": "CHOICE",
-              "members": [
-                {
-                  "type": "SYMBOL",
-                  "name": "class"
-                },
-                {
-                  "type": "SYMBOL",
-                  "name": "identifier"
-                },
-                {
-                  "type": "SYMBOL",
-                  "name": "key_value"
-                },
-                {
-                  "type": "SYMBOL",
-                  "name": "language_attribute"
-                },
-                {
-                  "type": "SYMBOL",
-                  "name": "boolean_attribute"
-                },
-                {
-                  "type": "ALIAS",
-                  "content": {
-                    "type": "SYMBOL",
-                    "name": "_comment"
-                  },
-                  "named": true,
-                  "value": "comment"
-                },
-                {
-                  "type": "SYMBOL",
-                  "name": "_whitespace1"
-                },
-                {
-                  "type": "SYMBOL",
-                  "name": "_newline_inline"
-                }
-              ]
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "ALIAS",
+              "content": {
+                "type": "SYMBOL",
+                "name": "_attribute_args"
+              },
+              "named": true,
+              "value": "args"
+            },
+            {
+              "type": "BLANK"
             }
-          },
-          "named": true,
-          "value": "args"
+          ]
         },
         {
           "type": "ALIAS",
@@ -6690,6 +6657,107 @@
           },
           "named": false,
           "value": "}"
+        }
+      ]
+    },
+    "_attribute_args": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "REPEAT1",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_attribute_separator"
+          }
+        },
+        {
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "REPEAT",
+              "content": {
+                "type": "SYMBOL",
+                "name": "_attribute_separator"
+              }
+            },
+            {
+              "type": "SYMBOL",
+              "name": "_attribute_item"
+            },
+            {
+              "type": "REPEAT",
+              "content": {
+                "type": "SEQ",
+                "members": [
+                  {
+                    "type": "REPEAT1",
+                    "content": {
+                      "type": "SYMBOL",
+                      "name": "_attribute_separator"
+                    }
+                  },
+                  {
+                    "type": "SYMBOL",
+                    "name": "_attribute_item"
+                  }
+                ]
+              }
+            },
+            {
+              "type": "REPEAT",
+              "content": {
+                "type": "SYMBOL",
+                "name": "_attribute_separator"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "_attribute_item": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "class"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "identifier"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "key_value"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "language_attribute"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "boolean_attribute"
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_comment"
+          },
+          "named": true,
+          "value": "comment"
+        }
+      ]
+    },
+    "_attribute_separator": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "_whitespace1"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "_newline_inline"
         }
       ]
     },

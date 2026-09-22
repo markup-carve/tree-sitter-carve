@@ -145,21 +145,7 @@ function inlineElement($, options) {
 // a table cell carries. A JS helper rather than a rule: the run may be empty,
 // and tree-sitter admits an empty match only inline.
 function attributeArgs($) {
-  return alias(
-    repeat(
-      choice(
-        $.class,
-        $.identifier,
-        $.key_value,
-        $.language_attribute,
-        $.boolean_attribute,
-        alias($._comment, $.comment),
-        $._whitespace1,
-        $._newline_inline,
-      ),
-    ),
-    $.args,
-  );
+  return optional(alias($._attribute_args, $.args));
 }
 
 // The fallback alternatives, shared by ordinary inline content and by a note's
@@ -1660,7 +1646,10 @@ module.exports = grammar({
         $._newline,
       ),
     class: ($) => seq(".", alias($.class_name, "class")),
-    identifier: (_) => token(seq("#", token.immediate(/[^\s\}]+/))),
+    // `id_attribute = '#', explicit_identifier` (resources/grammar.ebnf), so a
+    // colon or a dot is no part of it and `{#a:b}` is not an attribute block.
+    identifier: (_) =>
+      token(seq("#", token.immediate(/[A-Za-z0-9_][A-Za-z0-9_-]*/))),
     key_value: ($) => seq(field("key", $.key), "=", field("value", $.value)),
     boolean_attribute: ($) => $.key,
     key: ($) => $._id_no_digit_start,
@@ -2249,6 +2238,32 @@ module.exports = grammar({
         attributeArgs($),
         alias($._curly_bracket_span_end, "}"),
       ),
+    // TWO ATTRIBUTES NEED A SEPARATOR BETWEEN THEM (PART 9 §15), so `{#i.c}`
+    // and `{.sm:hover}` are not two items and their brace run stays literal.
+    // `scan_valid_inline_attribute` in `src/scanner.c` applies the same rule;
+    // both sides have to, or one marks a span the other cannot build.
+    _attribute_args: ($) =>
+      choice(
+        // A payload of whitespace alone is still a block: `[x]{ }` is a span.
+        repeat1($._attribute_separator),
+        seq(
+          repeat($._attribute_separator),
+          $._attribute_item,
+          repeat(seq(repeat1($._attribute_separator), $._attribute_item)),
+          repeat($._attribute_separator),
+        ),
+      ),
+    _attribute_item: ($) =>
+      choice(
+        $.class,
+        $.identifier,
+        $.key_value,
+        $.language_attribute,
+        $.boolean_attribute,
+        alias($._comment, $.comment),
+      ),
+    _attribute_separator: ($) => choice($._whitespace1, $._newline_inline),
+
     _curly_bracket_span_begin: (_) => "{",
 
     _bracketed_text: ($) =>
