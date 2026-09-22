@@ -1782,6 +1782,12 @@ module.exports = grammar({
         $._inline_element,
       ),
 
+    // A braced span may hold only whitespace (`{* *}` is `<strong> </strong>`);
+    // a bare one cannot open on whitespace, so the alternative is unreachable
+    // there. An EMPTY pair stays literal text (`_empty_braced_pair`).
+    _braced_span_content: ($) =>
+      choice($._inline_without_trailing_space, $._whitespace1),
+
     _inline_element: ($) => inlineElement($, {}),
 
     _note_inline_element: ($) => inlineElement($, { notes: false }),
@@ -1880,7 +1886,7 @@ module.exports = grammar({
       seq(
         field("begin_marker", $.emphasis_begin),
         $._emphasis_mark_begin,
-        field("content", alias($._inline_without_trailing_space, $.content)),
+        field("content", alias($._braced_span_content, $.content)),
         field("end_marker", $.emphasis_end),
       ),
     emphasis_begin: ($) => choice("{/", seq("/", $._non_whitespace_check)),
@@ -1905,7 +1911,7 @@ module.exports = grammar({
       seq(
         field("begin_marker", $.strong_begin),
         $._strong_mark_begin,
-        field("content", alias($._inline_without_trailing_space, $.content)),
+        field("content", alias($._braced_span_content, $.content)),
         field("end_marker", $.strong_end),
       ),
     strong_begin: ($) => choice("{*", seq("*", $._non_whitespace_check)),
@@ -1914,7 +1920,7 @@ module.exports = grammar({
       seq(
         field("begin_marker", $.underline_begin),
         $._underline_mark_begin,
-        field("content", alias($._inline_without_trailing_space, $.content)),
+        field("content", alias($._braced_span_content, $.content)),
         field("end_marker", $.underline_end),
       ),
     underline_begin: ($) => choice("{_", seq("_", $._non_whitespace_check)),
@@ -1923,7 +1929,7 @@ module.exports = grammar({
       seq(
         field("begin_marker", $.strikethrough_begin),
         $._strikethrough_mark_begin,
-        field("content", alias($._inline_without_trailing_space, $.content)),
+        field("content", alias($._braced_span_content, $.content)),
         field("end_marker", $.strikethrough_end),
       ),
     strikethrough_begin: ($) => choice("{~", seq("~", $._non_whitespace_check)),
