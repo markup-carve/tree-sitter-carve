@@ -1464,18 +1464,14 @@ module.exports = grammar({
         $._newline,
       ),
 
-    // THE ONE LINE ENDING THE EXTERNAL SCANNER DOES NOT CONSUME. Every other
-    // terminator reaches `consume_line_end`, which is where `col_base` - the
-    // column tree-sitter believes the current line starts at, see `scanner.c` -
-    // is maintained. This token takes its own, so after a comment line ended by
-    // a LONE '\r' the base is stale and an INDENTED construct on a following
-    // line can be misread. Excluding the lone '\r' here is worse, not better:
-    // the comment line then degrades to a paragraph in every '\r'-terminated
-    // document, and `%% c` CR `- a` CR `  - b` collapses into one paragraph
-    // instead of only the one shape that fails now. Closing it properly means
-    // handing the terminator back to `$._newline`, which several call sites in
-    // `scanner.c` are written around (#143).
-    comment_line: (_) => token(seq(/[ \t]*/, "%%", /[^\r\n]*/, /\r\n|\r|\n/)),
+    // THE TERMINATOR IS THE SCANNER'S. `consume_line_end` is where `col_base`
+    // - the column tree-sitter believes the current line starts at, see
+    // `scanner.c` - is maintained, and a token that swallows its own line
+    // ending never reaches it. After a comment line ended by a LONE '\r' the
+    // base was stale and an indented construct on the next line was misread,
+    // which is what nine of the lone-CR documents on #341 came down to.
+    comment_line: ($) =>
+      seq(token(seq(/[ \t]*/, "%%", /[^\r\n]*/)), $._newline),
 
     // Carve fenced comment block.
     // semantics — opener is N `%` (N >= 3), closer is a run of EXACTLY N `%`,

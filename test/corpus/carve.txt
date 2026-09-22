@@ -6767,3 +6767,30 @@ A lone carriage return after a table continuation row keeps the next line's colu
         (block_quote_marker)
         (table_continuation_row))))
   (paragraph))
+===============================================================================
+A comment line ended by a lone carriage return leaves the next line's column alone (#341)
+;; `comment_line` used to consume its own terminator in the internal lexer, so
+;; under a lone '\r' the scanner never ran `consume_line_end` and the column
+;; base stayed on the comment's line: the indented line below the description
+;; was ejected from its container, and the quote's paragraph stayed open. The
+;; terminator is the scanner's now. Written with lone carriage returns; the tree
+;; is the one '\n' builds.
+===============================================================================
+:: t:  %% c flush> %% hiddentail
+
+-------------------------------------------------------------------------------
+
+(document
+  (definition_list
+    (list_item
+      marker: (list_marker_definition)
+      term: (term))
+    (list_item
+      marker: (list_marker_description)
+      (comment_line)
+      (paragraph)))
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (comment_line)))
+  (paragraph))
