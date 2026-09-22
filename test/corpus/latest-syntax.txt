@@ -1806,3 +1806,122 @@ A heading after a blank line past a list item's content column opens in the item
         (heading
           marker: (marker)
           content: (content))))))
+
+==================
+An unmarked definition line leaves a quote for the list item outside it
+==================
+- > - x
+    [r]: /url
+
+See [r][].
+
+---
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (block_quote
+          (block_quote_marker)
+          content: (content
+            (list
+              (list_item
+                marker: (list_marker_dash)
+                content: (list_item_content
+                  (paragraph))))))
+        (link_reference_definition
+          label: (link_label)
+          destination: (link_destination)))))
+  (paragraph
+    (collapsed_reference_link
+      text: (link_text))))
+
+==================
+An unmarked heading line leaves a quote for the list item outside it
+==================
+- > x
+    # H
+
+---
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (block_quote
+          (block_quote_marker)
+          content: (content
+            (paragraph)))
+        (heading
+          marker: (marker)
+          content: (content))))))
+
+==================
+Unmarked text under a quote in a list item still folds into the quote
+==================
+- > - x
+    y
+
+---
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (block_quote
+          (block_quote_marker)
+          content: (content
+            (list
+              (list_item
+                marker: (list_marker_dash)
+                content: (list_item_content
+                  (paragraph))))))))))
+
+==================
+An unmarked definition line under a quote's own list item stays quoted text
+==================
+> - x
+  [r]: /url
+
+See [r][].
+
+---
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (paragraph))))))
+  (paragraph
+    (collapsed_reference_link
+      text: (link_text))))
+
+==================
+An unmarked definition line at a quoted item's content column stays quoted text
+==================
+> - x
+    [r]: /url
+
+See [r][].
+
+---
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (paragraph))))))
+  (paragraph
+    (collapsed_reference_link
+      text: (link_text))))

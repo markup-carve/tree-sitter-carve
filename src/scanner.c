@@ -6196,6 +6196,27 @@ static bool scan_definition_at_paragraph_end(Scanner *s, TSLexer *lexer) {
   return scan_footnote_after_caret(s, lexer);
 }
 
+/// An unmarked line leaves every quote, but a list item OUTSIDE the outermost
+/// quote still owns it if the line reaches that item's content column: an
+/// opener there closes the quote and lands in the item (corpus 369), while
+/// plain text still folds lazily into the quoted paragraph.
+static bool item_outside_quotes_reached(Scanner *s, uint32_t column) {
+  int outermost_quote = -1;
+  for (int i = 0; i < (int)s->open_blocks->size; ++i) {
+    if ((*array_get(s->open_blocks, i))->type == BLOCK_QUOTE) {
+      outermost_quote = i;
+      break;
+    }
+  }
+  for (int i = outermost_quote - 1; i >= 0; --i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (is_list(b->type) && b->content_col != 0 && column >= b->content_col) {
+      return true;
+    }
+  }
+  return false;
+}
+
 static bool close_paragraph(Scanner *s, TSLexer *lexer) {
   // Workaround for not including the following blankline when closing a
   // paragraph inside a block.
@@ -6223,8 +6244,9 @@ static bool close_paragraph(Scanner *s, TSLexer *lexer) {
   // below, which end the quote there as carve-js does.
   if (markers_seen == 0) {
     Block *quote = find_block(s, BLOCK_QUOTE);
-    if (quote && quote->content_col != 0 &&
-        line_column(s, lexer) >= quote->content_col) {
+    uint32_t column = line_column(s, lexer);
+    if (quote && quote->content_col != 0 && column >= quote->content_col &&
+        !item_outside_quotes_reached(s, column)) {
       return false;
     }
   }

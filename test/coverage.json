@@ -16,7 +16,6 @@
     "admonition": { "documents": 74, "nodes": 281 }
   },
   "reasons": {
-    "reference-definition-absorbed": "a reference definition the language collects - the fixture shows none of its text - is paragraph text in the tree. Two causes, both in `src/scanner.c` (tree-sitter-carve#372): `close_paragraph` has no probe that lets a `[label]:` definition interrupt an open paragraph, only the footnote form; and a continued definition list keeps its first item's content column, so a description padded differently from its term is measured against the term's column and the definition opener refuses it.",
     "a-column-0-opener-does-not-close-an-open-list": "a column-0 block opener does not close an open LIST; it folds into the item as lazy paragraph text. `- a` / `# H` builds no heading, while `> q` / `# H` does - so the block quote closes correctly and only the list does not. Both documents here reach it through a `+` continuation marker, which this grammar opens as an ordinary bullet list, after which the column-0 heading below is swallowed the same way.",
     "a-tabbed-frontmatter-opener-swallows-the-break-below": "`---` followed by a TAB is not a frontmatter opener, and the grammar agrees that far - it builds no frontmatter. But it then reads the closing `---` three lines down as an `em_dash` inside the still-open paragraph rather than as a thematic break, so the `<hr>` the fixture expects between the paragraph and `body` is not built.",
     "an-attribute-line-does-not-end-the-paragraph-above-a-list": "a floating attribute line at column 0 does not end the paragraph above it, so the list it is meant to attach to never opens: `para` / `{.x}` / `- b` is ONE paragraph. The fixture expects the paragraph to end at the attribute line and the run to reach the list below it, as `<ul class=\"x\">`.",
@@ -24,10 +23,6 @@
     "marker-line-block-opener-builds-nothing": "a block opener written on a list MARKER line builds nothing. `- # H` gives a list item whose content is a PARAGRAPH, not a heading; `- ---` is read as a document-level thematic break that consumes the marker, so no list is built at all. Verified against the indented spelling, which works: `- a` / `  # H` does build the heading. This is the same shape as the recorded `fence-on-a-marker-line-builds-nothing` - the marker line is one position this grammar does not run block-opener recognition in - now reached by the heading and thematic-break openers too. A TASK checkbox does not change which openers reach it, but it does change what the thematic break degrades INTO, and the sentence above is wrong for that spelling: `- [x] # h` is still a paragraph, while `- [ ] ---` no longer consumes the marker - the list and the item ARE built and `---` becomes an inline `em_dash` inside the item's paragraph. Measured against the neighbour that works, which is what keeps the checkbox out of it: `- [ ] > q` opens its quote with content, so the checkbox does not disturb an opener the marker line already admits. That is why a-task-item-s-checkbox-is-not-decided-by-its-first-block reports `heading: want 1 have 0; thematic_break: want 1 have 0` and no gap for its quote."
   },
   "reasonPredicates": {
-    "reference-definition-absorbed": {
-      "ledger": "invisibleUnderAcceptance",
-      "sourcePattern": "^(?:[ \\t>:*+\\-\\d.)]*[ \\t])?\\[[^\\]^@\\n][^\\]\\n]*\\]: \\S"
-    },
     "a-column-0-opener-does-not-close-an-open-list": {
       "ledger": "underAcceptance",
       "sourcePattern": "^\\+[ \\t]*\\n#{1,6}[ \\t]"
@@ -556,22 +551,9 @@
     }
   },
   "invisibleOverAcceptance": {},
-  "invisibleUnderAcceptance": {
-    "a-quote-is-reached-by-its-marker-and-a-column-never-reaches-into-one-2": {
-      "definitions": "[r]: /url",
-      "reason": "ref:reference-definition-absorbed"
-    }
-  },
+  "invisibleUnderAcceptance": {},
   "batteryDisagreements": {},
   "underAcceptance": {
-    "an-item-s-attribute-block-moves-its-content-column-its-checkbox-does-not-2": {
-      "gaps": "heading: want 1 have 0",
-      "reason": "a heading past the item's content column. Marker attributes count zero toward that column (column 2 here), and the spec's authored-base clause keeps an opener at or past it inside the item; this grammar opens one only at the exact column. Passed before only because the recorded column wrongly included the attribute block. tree-sitter-carve#390."
-    },
-    "an-item-s-attribute-block-moves-its-content-column-its-checkbox-does-not-8": {
-      "gaps": "heading: want 1 have 0",
-      "reason": "a heading past the item's content column. Marker attributes count zero toward that column (column 2 here), and the spec's authored-base clause keeps an opener at or past it inside the item; this grammar opens one only at the exact column. Passed before only because the recorded column wrongly included the attribute block. tree-sitter-carve#390."
-    },
     "generic-divs-4": {
       "gaps": "admonition_type: want 1 have 0",
       "reason": "the current engine accepts a numeric custom admonition kind in `::: 123`, while the grammar's admonition identifier begins with a letter and leaves the fence as paragraph text. The grammar and its named `admonition_type` token need a deliberate identifier-policy update rather than silently widening during a corpus bump."
