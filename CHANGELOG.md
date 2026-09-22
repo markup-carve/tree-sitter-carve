@@ -4,7 +4,7 @@ All notable changes to tree-sitter-carve are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.1.6] - 2026-09-22
 
 ### Added
 
@@ -13,22 +13,149 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `include_option` per slot (each with `name` and `value` fields). It used to
   shred into the constructs its own selector looks like, so
   `{{ ch.crv #intro }}` colored `#intro` as a tag (markup-carve/carve#291,
-  PART 9 section 19). The parts are what a structural editor selects by and what
-  a language server can anchor path or section completion on.
+  PART 9 section 19, #285).
 
 ### Fixed
 
-- A colon fence nested inside a description-list definition body or a footnote
-  body now parses instead of landing in an `ERROR` node. A div records its own
-  content column, so its closer and an inner reference definition are measured
-  against the column the opener established, and a definition marker one column
-  past that column folds as text rather than opening a stray definition it
-  cannot reconcile. The two categories 0.1.5 recorded as skips -
-  `a-container-in-a-host-body-owns-a-line-past-its-own-content-column` and
-  `a-container-closer-closes-its-container-in-a-footnote-body-too` - are
-  covered again. This matches the container reading the engines took, where a
-  bare `:::` opener with no body opens an empty container and a wrong-width
-  bare run is an ordinary opener, not a closer (markup-carve/carve#1970, #282).
+- A braced opener is decided in the scanner instead of racing two readings, so
+  the leftmost opener wins and an opener of a kind already open in that braced
+  scope is content: `{/a *b {/c/}*/}` is one emphasis where it was two
+  (markup-carve/carve#2090, #326).
+- An inline span covers the text it is meant to cover. A span closes only on its
+  own marker form, so `{/a/b/}` is one emphasis over `a/b`; a bare marker inside
+  a braced span of its own kind is content; a bare span cannot outlive the
+  braced span it opens in; and the `-` before a braced delete's `}` belongs to
+  the closer, so `{---}` is a delete over `-` and not an en dash (#327).
+- A bare delimiter is decided by the character behind it, including at the
+  start of a line. A marker glued to the word after it closes nothing, a
+  delimiter directly behind a bare closer of its own kind neither opens nor
+  closes, and `**a**` at column 0 stays literal. A forced opener of an open kind
+  is literal, so `a{*{*x*}*}b` builds one strong and `{*a {/b {*c*} d/} e*}`
+  builds strong over emphasis over strong (markup-carve/carve#2090, #348,
+  #366).
+- `/**/` and `/* */` are an emphasis over the asterisks between the slashes;
+  an empty bold-italic opener no longer takes the slash (#354).
+- A bare opener followed by `#` and a space opens, so `a *# x* b` is a strong
+  over `# x`. A heading probe that could not open a heading consumed the `#`
+  first (#361).
+- An inline attribute attaches to an element, not to the text beside it, so
+  `y{.c}` is literal braces and a backtick inside a stray brace run opens its
+  code span again. An empty bracket run followed by an attribute block is a
+  span, `[]{.c}`, and adjacent block attributes on one line apply together to
+  the block below (#358, #365).
+- Two attribute items need a separator. A class, an id and a `key=value` end at
+  the same boundary, so `[x]{#i.c}` is literal braces around one tag and
+  `[c]{.sm:hover}` is text (PART 9 section 15, #351).
+- A braced comment opens wherever its brace is, so `a{% c %} b` and
+  `*b*{% c %} x` remove the comment instead of keeping it as text (#364).
+- An unterminated code span inside a braced span ends at that span's closer, so
+  `` {~`a~>b~} `` is one strikethrough over the code span `a~>b`
+  (markup-carve/carve#2092, #315).
+- A substitution's halves are inline content split at a top-level arrow; an
+  arrow inside a code span, a math run, an inline literal or a comment, or
+  behind a backslash, is content (markup-carve/carve#2092, #311).
+- An inline link's tail parses as a destination and an optional title, so
+  `[t](/u "T")` keeps the quoted run out of the destination and `[x](a b)`
+  stays paragraph text (#310).
+- A link destination stays opaque while an enclosing span scans for its own
+  delimiters, so a slash inside a destination no longer closes an emphasis
+  around it (#297).
+- The slots and names that carry inline content read it. A tag or mention name
+  takes an internal dot and a marker glued to its end opens nothing, so
+  `#release-1.0` is one name and `#i#j` is one tag over `#i`; a caption, an
+  admonition title and an inline extension's bracket build the spans they
+  render (#330).
+- A reference label is a character run that ends at the first `]`, with no
+  inline content, no escape and no verbatim exception. `[*bold*]: /x` builds no
+  strong, a label beginning with an at sign is no label, and a bracket inside
+  ticks ends the label (#330, #356, #362).
+- A footnote or reference definition interrupts the paragraph above it, so a
+  definition written directly under a paragraph line is collected instead of
+  read as more of that paragraph. Inside a list item it interrupts at or past
+  the item's content column (PART 9 section 10 I5, #333, #383).
+- A definition on a list marker's line opens, for bullet, ordered, term and
+  description markers alike, so `- [^f]: x` and `1. [^f]: x` are collected
+  instead of read as references (#355, #376).
+- A definition inside a container is collected where the language collects it:
+  a description or footnote body collects one written past its div's column, a
+  list item outside a quote collects one on an unmarked line at its content
+  column, and one at a quoted item's content column stays in the item. A
+  definition at an indented div's content column no longer parses to `ERROR`
+  (#386, #387, #389).
+- A bare inline opener no longer pairs with a marker in the next table cell, so
+  the row keeps its cell split (#329).
+- A table cell takes its attribute block after the kind and alignment markers,
+  so `|{#x} a |` puts an id on the cell instead of a tag inside it, and a row
+  attribute is validated where the row opens, so `| a | b |{.a:b}` is a
+  paragraph (PART 9 section 5 T11, #343, #351).
+- A `%%` comment in a table cell ends at the cell's pipe instead of taking the
+  row's closing pipes and landing in `ERROR` (#371).
+- Block math outranks the inline verbatim it shares its backticks with, so
+  `` $$`E = mc^2` `` is a display equation and a caption one blank line below
+  attaches to it (#332).
+- A colon fence nested inside a description body or a footnote body parses
+  instead of landing in `ERROR`, measured against the column its opener
+  established; a bare `:::` with no body opens an empty container
+  (markup-carve/carve#1970, #282).
+- A description list's body has its own content column, so a block opener
+  inside it interrupts the paragraph above it: `:: term` / `:  definition` /
+  `   # H` builds the heading (#342).
+- A definition list opened on a description's marker line nests inside that
+  description instead of parsing to `ERROR` (#378).
+- A padded bullet's content column is after its whole space run. Under
+  `-   lead`, a marker at column 2 is text in the item and not a nested list,
+  and a heading, quote, fence or list after the padding (`-   # H`) opens
+  (#384, #391).
+- A heading at or past a list item's content column opens in the item, and a
+  fence opened past that column closes at its own column (#393, #397).
+- A fence written on a list marker's line opens a code block in the item (#346).
+- An unmarked line indented under a quote is lazy continuation, so `> x` over
+  `  # H` is one quoted paragraph instead of a quote cut short (#375).
+- A block quote opens only at its container's margin, so an indented `>` after
+  a paragraph is text (#398).
+- A code fence or raw block inside a block quote closes at its quoted closer,
+  including where the quote ends right after it, so the lines that follow are
+  no longer code (#400, #402, #418).
+- A closed code fence on a quoted line interrupts the quoted paragraph above
+  it, and a closed `~~~` fence interrupts a paragraph at all, where only a
+  backtick fence did before (#404).
+- A code fence in a list item inside a block quote builds a code block instead
+  of an inline verbatim span (#406).
+- A line short of a list item's content column ends a fence open in that item,
+  and the item with it, inside a block quote or not (#401, #409).
+- A div in a list item inside a block quote ends or folds at a quoted line
+  short of the item's column as it does outside a quote: with a paragraph open
+  the line folds into it, otherwise the div and the item end. A marked line
+  also ends a list attached by `+` inside a quote, whatever its length (#414).
+- A lone carriage return keeps the scanner's column base in step, so a
+  construct below a line ended by one reads as it does under LF. A comment
+  line hands its terminator to the scanner, and every token end records the
+  base it was marked with: `text` then a fenced block, ended by lone carriage
+  returns, builds a paragraph and a code block where it built `ERROR` (#369,
+  #373).
+- A quoted include option value is one value, a `}}` pair inside it included,
+  and an unterminated quote opens no run (#288, #292).
+- The include directive's dynamic precedence fits the `int16_t` tree-sitter
+  stores it in. It wrapped, which printed 18 `-Woverflow` warnings in every
+  compile of `src/parser.c` and let a directive of 170 or more tag parts shred
+  into tags; the limit is now 299 (#388).
+- The block-quote marker scan starts its end-of-line flag at `false` instead of
+  reading whatever the caller's stack slot held. It changes no reading in this
+  build, but `src/scanner.c` ships as source, and a consumer's compiler can lay
+  out that frame differently and lose a definition line, a nested quote, a
+  table or a comment (#325).
+
+### Changed
+
+- The spec corpus pin moves from carve `1b27b68` to the 0.1.6 tag `5863d1d8`:
+  1,685 to 1,740 documents and 459 to 473 categories, every category
+  classified. `underAcceptance` falls from 69 to 31 documents and
+  `lineTerminatorGaps` from 36 to 1, with no document in either newly recorded
+  (#314).
+- Two node shapes a query could match are gone. `link_label` is a leaf with no
+  `attribute` field and no inline children, since a reference label is a
+  character run; and the anonymous `"/*"` token is gone, since the scanner now
+  decides a bold-italic opener (#330, #354, #356, #362).
 
 ## [0.1.5] - 2026-09-07
 
