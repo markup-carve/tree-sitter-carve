@@ -1747,3 +1747,62 @@ A heading one column short of a quoted item's content column is item text
           content: (list_item_content
             (paragraph
               (block_quote_marker))))))))
+
+==================
+A heading two columns past a list item's content column opens in the item
+==================
+- a
+    # h
+
+---
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)
+        (heading
+          marker: (marker)
+          content: (content))))))
+
+==================
+A heading past a quoted list item's content column opens in the item
+==================
+> - a
+>    # h
+
+---
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (paragraph)
+            (block_quote_marker)
+            (heading
+              marker: (marker)
+              content: (content))))))))
+
+==================
+A heading after a blank line past a list item's content column opens in the item
+==================
+- a
+
+    # h
+
+---
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)
+        (heading
+          marker: (marker)
+          content: (content))))))
