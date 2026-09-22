@@ -637,40 +637,12 @@
       "gaps": "heading: want 1 have 0",
       "reason": "after collecting a footnote definition inside a list item, the scanner leaves the following heading inside the footnote paragraph instead of returning to the item at its authored column."
     },
-    "an-unterminated-fence-on-a-nested-lead-in-a-description-body-owns-its-body-2": {
-      "gaps": "code_block: want 1 have 0",
-      "reason": "a fence on a nested list marker line inside a description body is parsed as paragraph text; marker-line fence recognition never opens the code block."
-    },
-    "an-unterminated-fence-on-a-nested-lead-in-a-description-body-owns-its-body-3": {
-      "gaps": "code_block: want 1 have 0",
-      "reason": "a fence on a nested list marker line inside a description body is parsed as paragraph text; marker-line fence recognition never opens the code block."
-    },
-    "an-unterminated-fence-on-a-nested-lead-in-a-description-body-owns-its-body-4": {
-      "gaps": "code_block: want 1 have 0",
-      "reason": "a fence on a nested list marker line inside a description body is parsed as paragraph text; marker-line fence recognition never opens the code block."
-    },
-    "an-unterminated-fence-on-a-nested-lead-in-a-description-body-owns-its-body": {
-      "gaps": "code_block: want 1 have 0",
-      "reason": "a fence on a nested list marker line inside a description body is parsed as paragraph text; marker-line fence recognition never opens the code block."
-    },
     "list-nesting-and-looseness-9": {
       "gaps": "heading: want 1 have 0",
       "reason": "extra marker padding before a task checkbox sets a wider item content column than the scanner records, so the heading aligned to that column folds into paragraph text."
     },
-    "a-raw-block-keeps-the-blank-line-at-the-end-of-its-payload-too-2": {
-      "gaps": "raw_block: want 1 have 0",
-      "reason": "ref:fence-on-a-marker-line-builds-nothing"
-    },
     "a-blank-line-before-a-sibling-marker-separates-the-items-whatever-consumed-it": {
       "gaps": "admonition_type: want 1 have 0",
-      "reason": "ref:fence-on-a-marker-line-builds-nothing"
-    },
-    "a-blank-line-before-a-sibling-marker-separates-the-items-whatever-consumed-it-2": {
-      "gaps": "code_block: want 1 have 0",
-      "reason": "ref:fence-on-a-marker-line-builds-nothing"
-    },
-    "a-blank-line-before-a-sibling-marker-separates-the-items-whatever-consumed-it-3": {
-      "gaps": "code_block: want 1 have 0",
       "reason": "ref:fence-on-a-marker-line-builds-nothing"
     },
     "a-column-0-line-after-a-container-s-last-block-when-that-block-left-no-paragraph-open-4": {
@@ -685,40 +657,9 @@
       "gaps": "table: want 1 have 0",
       "reason": "an ESCAPED closing pipe leaves the row unterminated: `| a b \\|` is a paragraph where the fixture expects a table whose one cell holds `a b |`. The row closes on that pipe because the line ends in one, and the escape decides only what the CELL holds - but `scan_table_cell` reads `\\|` as one escape pair and advances over both characters, so the pipe that terminates the row is eaten before the terminator check can see it. Nothing to do with an unclosed run: this document holds no verbatim run at all, which is why it no longer shares a reason with the rest of its category."
     },
-    "a-fence-keeps-the-blank-line-at-the-end-of-its-content-4": {
-      "gaps": "code_block: want 1 have 0",
-      "reason": "ref:fence-on-a-marker-line-builds-nothing"
-    },
-    "a-fence-opened-on-a-list-marker-line-body-below-the-content-column": {
-      "gaps": "code_block: want 1 have 0",
-      "reason": "ref:fence-on-a-marker-line-builds-nothing"
-    },
-    "a-fence-opened-on-a-list-marker-line-body-below-the-content-column-2": {
-      "gaps": "code_block: want 1 have 0",
-      "reason": "ref:fence-on-a-marker-line-builds-nothing"
-    },
-    "a-fence-opened-on-a-list-marker-line-body-below-the-content-column-3": {
-      "gaps": "code_block: want 1 have 0",
-      "reason": "ref:fence-on-a-marker-line-builds-nothing"
-    },
-    "a-fence-opened-on-a-list-marker-line-body-below-the-content-column-5": {
-      "gaps": "code_block: want 1 have 0",
-      "reason": "ref:fence-on-a-marker-line-builds-nothing"
-    },
-    "a-fence-opened-on-a-list-marker-line-body-below-the-content-column-6": {
-      "gaps": "code_block: want 1 have 0",
-      "reason": "ref:fence-on-a-marker-line-builds-nothing"
-    },
     "a-frontmatter-opener-takes-exactly-one-space": {
       "gaps": "thematic_break: want 1 have 0",
       "reason": "`---<SP><SP>yaml` is no longer read as a frontmatter opener - the opener's `[space]` slot takes exactly one space and the line is prose - but the `---` three lines below it, which the language turns into a thematic break, is folded into that prose instead. A thematic break does not interrupt an open paragraph in this grammar; `paragraph-interruption-3` records the same gap on a document with no frontmatter in it, and the two close together."
-    },
-    "a-list-marker-at-the-content-column-inside-an-open-fence": {
-      "gaps": "code_block: want 1 have 0"
-    },
-    "a-paragraph-opened-after-a-block-in-an-item-is-still-open-for-a-lazy-line-3": {
-      "gaps": "code_block: want 1 have 0",
-      "reason": "ref:fence-on-a-marker-line-builds-nothing"
     },
     "a-tab-after-a-fence-or-a-frontmatter-opener-depends-on-where-it-sits-3": {
       "gaps": "thematic_break: want 1 have 0",
@@ -780,12 +721,6 @@
     "list-lazy-continuation-8": {
       "gaps": "table: want 1 have 0"
     },
-    "list-nesting-and-looseness-5": {
-      "gaps": "code_block: want 1 have 0"
-    },
-    "list-nesting-and-looseness-6": {
-      "gaps": "code_block: want 1 have 0"
-    },
     "list-nesting-and-looseness-7": {
       "gaps": "heading: want 1 have 0"
     },
@@ -820,14 +755,6 @@
       "reading": "em html=2 tree=1, em#1 html=\"x\" tree=\"\", s html=0 tree=1",
       "reason": "the grammar reads different inline spans here than the language does"
     },
-    "a-blank-line-before-a-sibling-marker-separates-the-items-whatever-consumed-it-2": {
-      "reading": "code html=0 tree=1",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
-    "a-blank-line-before-a-sibling-marker-separates-the-items-whatever-consumed-it-3": {
-      "reading": "code html=0 tree=1",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
     "a-boundary-line-inside-an-open-fence-does-not-end-the-container-3": {
       "reading": "code html=0 tree=1",
       "reason": "the grammar builds an inline span the language keeps literal here"
@@ -856,24 +783,12 @@
       "reading": "code#1 html=\"bc\" tree=\"b\"",
       "reason": "a span covers different text here than the language’s does"
     },
-    "a-fence-keeps-the-blank-line-at-the-end-of-its-content-4": {
-      "reading": "code html=0 tree=1",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
-    "a-fence-opened-on-a-list-marker-line-body-below-the-content-column": {
-      "reading": "code#1 html=\"\" tree=\"x\"",
-      "reason": "a span covers different text here than the language’s does"
-    },
     "a-fence-opened-on-a-list-marker-line-body-below-the-content-column-2": {
-      "reading": "code#1 html=\"\" tree=\"x\"",
+      "reading": "code html=1 tree=0",
       "reason": "a span covers different text here than the language’s does"
-    },
-    "a-fence-opened-on-a-list-marker-line-body-below-the-content-column-3": {
-      "reading": "code html=0 tree=1",
-      "reason": "the grammar builds an inline span the language keeps literal here"
     },
     "a-fence-opened-on-a-list-marker-line-body-below-the-content-column-6": {
-      "reading": "code#1 html=\"\" tree=\"xy\"",
+      "reading": "code html=1 tree=0",
       "reason": "a span covers different text here than the language’s does"
     },
     "a-fence-opened-on-a-list-marker-line-body-below-the-content-column-7": {
@@ -916,18 +831,6 @@
       "reading": "strong html=0 tree=1",
       "reason": "the grammar builds an inline span the language keeps literal here"
     },
-    "a-list-marker-at-the-content-column-inside-an-open-fence": {
-      "reading": "code html=0 tree=1",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
-    "a-paragraph-opened-after-a-block-in-an-item-is-still-open-for-a-lazy-line-3": {
-      "reading": "code html=0 tree=1",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
-    "a-raw-block-keeps-the-blank-line-at-the-end-of-its-payload-too-2": {
-      "reading": "code html=0 tree=1",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
     "a-wrapped-attribute-block-ends-at-its-quote-and-reaches-no-line-below-it": {
       "reading": "strong html=0 tree=1",
       "reason": "the grammar builds an inline span the language keeps literal here"
@@ -961,10 +864,6 @@
       "reason": "the grammar builds an inline span the language keeps literal here"
     },
     "an-unterminated-fence-on-a-nested-lead-in-a-description-body-owns-its-body-3": {
-      "reading": "code html=0 tree=1",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
-    "an-unterminated-fence-on-a-nested-lead-in-a-description-body-owns-its-body-4": {
       "reading": "code html=0 tree=1",
       "reason": "the grammar builds an inline span the language keeps literal here"
     },
@@ -1039,14 +938,6 @@
     "leading-attribute-brace-before-an-inline-span-stays-literal-2": {
       "reading": "code html=1 tree=0",
       "reason": "the language builds an inline span the grammar does not"
-    },
-    "list-nesting-and-looseness-5": {
-      "reading": "code html=0 tree=2",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
-    "list-nesting-and-looseness-6": {
-      "reading": "code html=0 tree=1",
-      "reason": "the grammar builds an inline span the language keeps literal here"
     },
     "numbered-cross-references-10": {
       "reading": "strong html=1 tree=0",

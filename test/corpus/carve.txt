@@ -5934,11 +5934,10 @@ x
     (list_item
       marker: (list_marker_dash)
       content: (list_item_content
-        (paragraph
-          (verbatim
-            begin_marker: (verbatim_marker_begin)
-            content: (content)
-            end_marker: (verbatim_marker_end)))))))
+        (code_block
+          (code_block_marker_begin)
+          code: (code)
+          (code_block_marker_end))))))
 
 ===============================================================================
 A custom kind word opens an admonition too
