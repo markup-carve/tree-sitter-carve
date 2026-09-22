@@ -6442,9 +6442,14 @@ static bool scan_caption_at_paragraph_end(Scanner *s, TSLexer *lexer) {
   return true;
 }
 
-// carve-php fenced comment opener `%%%` at line start. Matching here lets a
-// `%%%` line terminate the previous paragraph so the fenced_comment_block
-// token can match it as a sibling block.
+// A comment opener at line start, `%%` or the fenced `%%%`. Matching here
+// lets either terminate the previous paragraph so the comment_line or
+// fenced_comment_block token can match it as a sibling block
+// (tree-sitter-carve#441 for the bare `%%` spelling; the fenced one already
+// worked). Both spellings decide from here rather than each having its own
+// probe: this is the one place already consuming the run, and a SEPARATE
+// probe run afterward in this chain would see a lexer position this one has
+// already moved past, with no way to rewind it.
 static bool scan_fenced_comment_at_paragraph_end(Scanner *s, TSLexer *lexer) {
   if (lexer->lookahead != '%') {
     return false;
@@ -6454,9 +6459,6 @@ static bool scan_fenced_comment_at_paragraph_end(Scanner *s, TSLexer *lexer) {
     return false;
   }
   advance(s, lexer);
-  if (lexer->lookahead != '%') {
-    return false;
-  }
   return true;
 }
 
