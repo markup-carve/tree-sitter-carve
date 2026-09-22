@@ -6794,3 +6794,27 @@ A comment line ended by a lone carriage return leaves the next line's column alo
     content: (content
       (comment_line)))
   (paragraph))
+
+===============================================================================
+A definition marker on a description's marker line nests a definition list (tree-sitter-carve#368)
+===============================================================================
+:: t
+:  :: u
+   : d
+
+-------------------------------------------------------------------------------
+
+(document
+  (definition_list
+    (list_item
+      marker: (list_marker_definition)
+      term: (term))
+    (list_item
+      marker: (list_marker_description)
+      (definition_list
+        (list_item
+          marker: (list_marker_definition)
+          term: (term))
+        (list_item
+          marker: (list_marker_description)
+          definition: (definition))))))
