@@ -1677,7 +1677,10 @@ module.exports = grammar({
                 $.boolean_attribute,
                 alias($._comment, $.comment),
                 $._whitespace1,
-                $._newline,
+                // A wrapped attribute repeats an enclosing quote's markers
+                // before its next attribute item. The markers are structure,
+                // not part of the attribute payload.
+                seq($._newline, optional($._block_quote_prefix)),
               ),
             ),
             $.args,

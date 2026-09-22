@@ -2940,6 +2940,36 @@ An attribute line ends a quoted paragraph
       (paragraph))))
 
 ==================
+A wrapped attribute stays in nested block quotes
+==================
+> > q
+> > {.k
+> > #x}
+> > after
+
+---
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (block_quote
+        (block_quote_marker)
+        content: (content
+          (paragraph)
+          (block_quote_marker)
+          (block_quote_marker)
+          (block_attribute
+            args: (args
+              (class)
+              (block_quote_marker)
+              (block_quote_marker)
+              (identifier)))
+          (block_quote_marker)
+          (block_quote_marker)
+          (paragraph))))))
+
+==================
 An attribute line with trailing text stays paragraph text
 ==================
 q

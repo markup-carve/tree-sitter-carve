@@ -667,24 +667,7 @@
       "reason": "a `---` after a content-less marker errors; carve-js renders a paragraph then a thematic break (tree-sitter-carve#96)"
     }
   },
-  "inlineReadingGaps": {
-    "a-comment-only-line-in-a-line-block-is-removed-before-any-inline-run": {
-      "reading": "code#1 html=\"bc\" tree=\"bsecretc\"",
-      "reason": "a span covers different text here than the language’s does"
-    },
-    "a-fence-opened-on-a-list-marker-line-body-below-the-content-column-7": {
-      "reading": "code html=2 tree=1, code#1 html=\"b\" tree=\"\"",
-      "reason": "the grammar opens a code fence at `  ```` because its closer lookahead finds the closer past the below-column ` y` line; the corpus keeps the run as an inline code span in the item's paragraph. Both end the item at ` y` (tree-sitter-carve#394), so only whether the fence interrupts the paragraph (PART 9 section 10 I4) differs."
-    },
-    "a-wrapped-attribute-block-ends-at-its-quote-and-reaches-no-line-below-it": {
-      "reading": "strong html=0 tree=1",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
-    "a-wrapped-attribute-block-ends-at-its-quote-and-reaches-no-line-below-it-3": {
-      "reading": "strong html=0 tree=1",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    }
-  },
+  "inlineReadingGaps": {},
   "lineTerminatorGaps": {
   },
   "parseTimeouts": {}
