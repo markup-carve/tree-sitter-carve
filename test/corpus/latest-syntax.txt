@@ -2385,3 +2385,175 @@ c
 
 (document
   (paragraph))
+
+==================
+A fence at a quoted list item's content column is a code block in the item
+==================
+> - a
+>
+>   ```
+>   x
+>   ```
+
+---
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (paragraph)
+            (block_quote_marker)
+            (code_block
+              (code_block_marker_begin)
+              code: (code
+                (block_quote_marker))
+              (block_quote_marker)
+              (code_block_marker_end))))))))
+
+==================
+A tilde fence at a quoted list item's content column is a code block in the item
+==================
+> - a
+>
+>   ~~~
+>   x
+>   ~~~
+
+---
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (paragraph)
+            (block_quote_marker)
+            (code_block
+              (code_block_marker_begin)
+              code: (code
+                (block_quote_marker))
+              (block_quote_marker)
+              (code_block_marker_end))))))))
+
+==================
+A fence past a quoted list item's content column closes at its own column
+==================
+> - a
+>
+>    ```
+>    x
+>    ```
+
+---
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (paragraph)
+            (block_quote_marker)
+            (code_block
+              (code_block_marker_begin)
+              code: (code
+                (block_quote_marker))
+              (block_quote_marker)
+              (code_block_marker_end))))))))
+
+==================
+A fence on a quoted list marker line keeps its body and closer
+==================
+> - ```
+>   x
+>   ```
+> - b
+
+---
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (code_block
+              (code_block_marker_begin)
+              code: (code
+                (block_quote_marker))
+              (block_quote_marker)
+              (code_block_marker_end))))
+        (list_item
+          (block_quote_marker)
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (paragraph)))))))
+
+==================
+A quoted paragraph after a fence in a quoted list item leaves the item
+==================
+> - a
+>
+>   ```
+>   x
+>   ```
+> b
+
+---
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (paragraph)
+            (block_quote_marker)
+            (code_block
+              (code_block_marker_begin)
+              code: (code
+                (block_quote_marker))
+              (block_quote_marker)
+              (code_block_marker_end)))))
+      (block_quote_marker)
+      (paragraph))))
+
+==================
+A fence at a quoted list item's content column interrupts the item's paragraph
+==================
+> - a
+>   ```
+>   x
+>   ```
+
+---
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (paragraph)
+            (block_quote_marker)
+            (code_block
+              (code_block_marker_begin)
+              code: (code
+                (block_quote_marker))
+              (block_quote_marker)
+              (code_block_marker_end))))))))

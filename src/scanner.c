@@ -510,6 +510,8 @@ static bool scan_valid_inline_attribute(Scanner *s, TSLexer *lexer);
 static bool at_block_opener_margin(Scanner *s, uint32_t column);
 static bool opener_reaches_item_margin(Scanner *s, uint32_t column);
 static bool list_item_open(Scanner *s);
+static bool parse_code_fence(Scanner *s, TSLexer *lexer,
+                             const bool *valid_symbols, char fence_char);
 static bool div_host_collects(Scanner *s, int div_index);
 static bool div_line_collected_by_host(Scanner *s, uint32_t column);
 static void record_container_content_column(Scanner *s, uint8_t col);
@@ -1295,10 +1297,11 @@ static uint8_t list_item_margin(Scanner *s, Block *list) {
   return list->content_col;
 }
 
-/// Does this line reach `list`'s items? For a list inside a quote, `indent`
-/// counts from after the `>` markers while `data` may hold an absolute column
-/// (a list nested on a marker line), so compare absolute columns instead.
-static bool quoted_line_reaches_list(Scanner *s, TSLexer *lexer, Block *list) {
+/// Is `list` opened inside a quote's margin? Then `indent` counts from after
+/// the `>` markers while the list's columns are absolute, so a line is measured
+/// against it by column. A list attached flush left by `+` recorded its columns
+/// without the quote's prefix and is not.
+static bool list_opened_in_quote(Scanner *s, Block *list) {
   bool below_list = false;
   for (int i = s->open_blocks->size - 1; list->content_col != 0 && i >= 0;
        --i) {
@@ -1306,15 +1309,25 @@ static bool quoted_line_reaches_list(Scanner *s, TSLexer *lexer, Block *list) {
     if (b == list) {
       below_list = true;
     } else if (below_list && b->type == BLOCK_QUOTE) {
-      // Only a list opened inside the quote's margin; one attached flush left
-      // by `+` recorded its columns without the quote's prefix.
-      if (list->content_col > b->content_col) {
-        return line_column(s, lexer) >= list->content_col;
-      }
-      break;
+      return list->content_col > b->content_col;
     }
   }
+  return false;
+}
+
+/// Does this line reach `list`'s items?
+static bool quoted_line_reaches_list(Scanner *s, TSLexer *lexer, Block *list) {
+  if (list_opened_in_quote(s, list)) {
+    return line_column(s, lexer) >= list->content_col;
+  }
   return s->indent >= list_item_margin(s, list);
+}
+
+/// `has_extra_indent` reads a quoted line's indent from after its markers, so a
+/// fence at a quoted list item's content column looked short of it.
+static bool quoted_item_column_reached(Scanner *s, uint32_t column) {
+  Block *list = find_list(s);
+  return list && list_opened_in_quote(s, list) && column >= list->content_col;
 }
 
 // Close open list if list markers are different.
@@ -1364,7 +1377,14 @@ static bool close_list_nested_block_if_needed(Scanner *s, TSLexer *lexer,
     // (grammar.ebnf STEP S1/S2). No lazy fold reaches into code.
     uint8_t margin =
         top->type == CODE_BLOCK ? list_item_margin(s, list) : list->data;
-    if (s->indent < margin) {
+    // In a quote the line start is still before its `>` markers; the line is
+    // measured once they are consumed.
+    bool short_of_list =
+        list_opened_in_quote(s, list)
+            ? lexer->lookahead != '>' &&
+                  line_column(s, lexer) < list->content_col
+            : s->indent < margin;
+    if (short_of_list) {
       lexer->result_symbol = BLOCK_CLOSE;
       remove_block(s);
       return true;
@@ -2338,7 +2358,8 @@ static bool scan_quoted_code_fence_closer(Scanner *s, TSLexer *lexer) {
       ending_newline) {
     return false;
   }
-  if (consume_whitespace(s, lexer) != 0) {
+  consume_whitespace(s, lexer);
+  if (line_column(s, lexer) != top->content_col) {
     return false;
   }
   char fence_char = (top->data & CODE_FENCE_TILDE) ? '~' : '`';
@@ -2352,13 +2373,24 @@ static bool scan_quoted_code_fence_closer(Scanner *s, TSLexer *lexer) {
 /// the ordinary quote continuation and fence paths.
 static bool parse_quoted_code_fence_closer(Scanner *s, TSLexer *lexer,
                                            const bool *valid_symbols) {
-  if (!(s->state & STATE_QUOTED_FENCE_CLOSER) || line_column(s, lexer) != 0) {
+  if (!(s->state & STATE_QUOTED_FENCE_CLOSER)) {
     return false;
   }
   Block *top = peek_block(s);
   if (!top || top->type != CODE_BLOCK) {
     s->state &= ~STATE_QUOTED_FENCE_CLOSER;
     return false;
+  }
+  // A closer indented to a quoted list item's column: the markers are taken,
+  // and the end marker carries the indentation before its run.
+  if (line_column(s, lexer) != 0) {
+    if (!valid_symbols[CODE_BLOCK_END] ||
+        (lexer->lookahead != ' ' && lexer->lookahead != '\t')) {
+      return false;
+    }
+    consume_whitespace(s, lexer);
+    return (lexer->lookahead == '`' || lexer->lookahead == '~') &&
+           parse_code_fence(s, lexer, valid_symbols, (char)lexer->lookahead);
   }
   // Once the fence's own close is taken the end marker is valid, and the
   // markers go to the quote continuation.
@@ -2450,7 +2482,8 @@ static bool parse_code_fence(Scanner *s, TSLexer *lexer,
     bool at_marker_content_col =
         s->marker_end_col != 0 && fence_col == s->marker_end_col;
     if (valid_symbols[CODE_BLOCK_BEGIN] &&
-        (!has_extra_indent(s) || at_marker_content_col) &&
+        (!has_extra_indent(s) || at_marker_content_col ||
+         quoted_item_column_reached(s, fence_col)) &&
         try_begin_code_block(s, lexer, width, fence_char, fence_col)) {
       return true;
     }
@@ -8730,7 +8763,8 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   if (parse_comment_fence(s, lexer, valid_symbols)) {
     return true;
   }
-  if (lexer->lookahead == '>' &&
+  if ((lexer->lookahead == '>' || lexer->lookahead == ' ' ||
+       lexer->lookahead == '\t') &&
       parse_quoted_code_fence_closer(s, lexer, valid_symbols)) {
     return true;
   }
@@ -8753,7 +8787,12 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     return true;
   }
 
-  if (valid_symbols[INDENTED_CONTENT_SPACER] &&
+  // A quoted closer's line keeps its `>` markers for the fence: a spacer here
+  // would end the fence's item first and leave the end marker nowhere to go.
+  bool quoted_closer_line = (s->state & STATE_QUOTED_FENCE_CLOSER) &&
+                            valid_symbols[CODE_BLOCK_END] &&
+                            lexer->lookahead == '>';
+  if (valid_symbols[INDENTED_CONTENT_SPACER] && !quoted_closer_line &&
       parse_indented_content_spacer(s, lexer, is_newline)) {
     return true;
   }
