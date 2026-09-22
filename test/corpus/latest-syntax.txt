@@ -2827,3 +2827,150 @@ y
             (block_quote_marker)
             (code_block_marker_end))))))
   (paragraph))
+
+==================
+An attribute line on a list marker line attaches to the block below it
+==================
+- {#h}
+  # h
+
+---
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (block_attribute
+          args: (args
+            (identifier)))
+        (heading
+          marker: (marker)
+          content: (content))))))
+
+==================
+An attribute line after a marker attribute attaches to the block below it
+==================
+-{#k} {#h}
+  # h
+
+---
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (block_attribute
+          args: (args
+            (identifier)))
+        (heading
+          marker: (marker)
+          content: (content))))))
+
+==================
+An attribute line ends the paragraph above it
+==================
+q
+{.k}
+after
+
+---
+
+(document
+  (paragraph)
+  (block_attribute
+    args: (args
+      (class)))
+  (paragraph))
+
+==================
+A wrapped attribute line ends the paragraph above it
+==================
+q
+{.k
+#x}
+after
+
+---
+
+(document
+  (paragraph)
+  (block_attribute
+    args: (args
+      (class)
+      (identifier)))
+  (paragraph))
+
+==================
+A wrapped attribute block continues at any indentation
+==================
+{#id
+.foo}
+Text
+
+---
+
+(document
+  (block_attribute
+    args: (args
+      (identifier)
+      (class)))
+  (paragraph))
+
+==================
+An attribute line ends a quoted paragraph
+==================
+> q
+> {.k}
+> after
+
+---
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (paragraph)
+      (block_quote_marker)
+      (block_attribute
+        args: (args
+          (class)))
+      (block_quote_marker)
+      (paragraph))))
+
+==================
+An attribute line with trailing text stays paragraph text
+==================
+q
+{.k} text
+
+---
+
+(document
+  (paragraph))
+
+==================
+A wrapped attribute line ends a description body's paragraph
+==================
+:: t
+:  d
+   {.k
+   #x}
+tail
+
+---
+
+(document
+  (definition_list
+    (list_item
+      marker: (list_marker_definition)
+      term: (term))
+    (list_item
+      marker: (list_marker_description)
+      definition: (definition)
+      (block_attribute
+        args: (args
+          (class)
+          (identifier)))))
+  (paragraph))
