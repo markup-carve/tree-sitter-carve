@@ -521,6 +521,13 @@ static const uint16_t STATE_QUOTED_LINE_SHORT_OF_ITEM = 1 << 10;
 // The open code fence sits on a nested item's lead in a description body and
 // has no closer at that item's column, so it owns the rest of the body.
 static const uint16_t STATE_FENCE_OWNS_BODY = 1 << 11;
+// Tracks that the line after the table row just opened is a `+` continuation
+// row. A code run left open in a ONE-CELL row reads on into it, because the
+// reference joins a cell with its continuation before reading inline markup
+// (spec corpus 333). Decided at the row's own token, where the line below may
+// be read freely; the run's content token cannot look that far without
+// passing the position where it may have to end.
+static const uint16_t STATE_TABLE_CONTINUATION_NEXT = 1 << 12;
 
 static TokenType scan_list_marker_token(Scanner *s, TSLexer *lexer);
 static uint8_t scan_block_quote_markers(Scanner *s, TSLexer *lexer,
@@ -1899,7 +1906,27 @@ static bool parse_verbatim_content(Scanner *s, TSLexer *lexer) {
       if (in_table_row && marked_at_pipe) {
         // The row ends here and the mark is at its closing pipe. Stop, and let
         // the zero-width VERBATIM_END emitted at that pipe close the run.
-        break;
+        //
+        // Unless a `+` continuation row follows a ONE-CELL row: the reference
+        // joins a cell with its continuation before reading inline markup, so
+        // the run reads on into that line (spec corpus 333). Only one cell,
+        // because a later cell's continuation sits behind the continuation
+        // row's earlier cells and no token can reach across them.
+        Block *row = find_block(s, TABLE_ROW);
+        if ((s->state & STATE_TABLE_CONTINUATION_NEXT) == 0 || !row ||
+            row->data != 0) {
+          break;
+        }
+        // Once only: the line after the continuation row was never read, and
+        // the mark cannot move back to this pipe after it has passed it.
+        s->state &= ~STATE_TABLE_CONTINUATION_NEXT;
+        consume_line_end(s, lexer);
+        advance(s, lexer);
+        while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+          advance(s, lexer);
+        }
+        marked_at_pipe = false;
+        continue;
       }
       // We should only end verbatim if the paragraph is ended by a
       // blankline.
@@ -5400,6 +5427,37 @@ static bool scan_table_cell(Scanner *s, TSLexer *lexer, bool *separator,
   return false;
 }
 
+/// Is the line at the lexer a `+` CONTINUATION ROW?
+///
+/// The same shape `parse_plus_line` accepts for `_table_continuation_row`: a
+/// `+`, a space, no tab anywhere, and a pipe as the line's last non-space
+/// character. Both readings have to agree, or a run would read on into a line
+/// that builds no continuation row.
+static bool scan_continuation_row(Scanner *s, TSLexer *lexer) {
+  if (lexer->lookahead != '+') {
+    return false;
+  }
+  advance(s, lexer);
+  if (lexer->lookahead != ' ') {
+    return false;
+  }
+  bool saw_pipe = false;
+  bool last_nonspace_was_pipe = false;
+  while (!lexer->eof(lexer) && !at_line_end(lexer)) {
+    if (lexer->lookahead == '\t') {
+      return false;
+    }
+    if (lexer->lookahead == '|') {
+      saw_pipe = true;
+      last_nonspace_was_pipe = true;
+    } else if (lexer->lookahead != ' ') {
+      last_nonspace_was_pipe = false;
+    }
+    advance(s, lexer);
+  }
+  return saw_pipe && last_nonspace_was_pipe;
+}
+
 static bool scan_separator_row(Scanner *s, TSLexer *lexer) {
   uint8_t cell_count = 0;
   bool any_content = false;
@@ -5549,7 +5607,14 @@ static bool scan_table_row(Scanner *s, TSLexer *lexer, TokenType *row_type) {
     bool newline = false;
     scan_block_quote_markers(s, lexer, &newline);
 
-    if (!newline && scan_separator_row(s, lexer)) {
+    // A `+` line is never a separator row, and both readings start here and
+    // consume, so the cheaper question is asked first.
+    if (!newline && lexer->lookahead == '+') {
+      *row_type = TABLE_ROW_BEGIN;
+      if (scan_continuation_row(s, lexer)) {
+        s->state |= STATE_TABLE_CONTINUATION_NEXT;
+      }
+    } else if (!newline && scan_separator_row(s, lexer)) {
       s->state |= STATE_TABLE_SEPARATOR_NEXT;
       *row_type = TABLE_HEADER_BEGIN;
     } else {

@@ -34,41 +34,58 @@
 // Known gaps are RECORDED, exact in three directions: a NEW divergence fails, a
 // recorded one that has been FIXED fails, and one whose reading MOVES fails.
 
-import { readFileSync, readdirSync } from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { refuseShortRun } from './participants.mjs';
-import { parseTrees } from './parse-batched.mjs';
-import { reading, TAGS } from './inline-reading-lib.mjs';
+import { readFileSync, readdirSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { refuseShortRun } from "./participants.mjs";
+import { parseTrees } from "./parse-batched.mjs";
+import { reading, TAGS } from "./inline-reading-lib.mjs";
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const corpusDir = path.join(repoRoot, 'spec', 'tests', 'corpus');
+const repoRoot = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+);
+const corpusDir = path.join(repoRoot, "spec", "tests", "corpus");
 const coverage = JSON.parse(
-  readFileSync(path.join(repoRoot, 'test', 'coverage.json'), 'utf8'),
+  readFileSync(path.join(repoRoot, "test", "coverage.json"), "utf8"),
 );
 
-const slugOf = (name) => name.replace(/^\d+-/, '');
+const slugOf = (name) => name.replace(/^\d+-/, "");
 const covered = new Set(coverage.covered.map(slugOf));
 const skip = new Set(Object.keys(coverage.skip).map(slugOf));
-const baseCategory = (file) => path.basename(file, '.crv').replace(/-[0-9]+$/, '');
+const baseCategory = (file) =>
+  path.basename(file, ".crv").replace(/-[0-9]+$/, "");
 
-const allFiles = readdirSync(corpusDir).filter((f) => f.endsWith('.crv')).sort();
+const allFiles = readdirSync(corpusDir)
+  .filter((f) => f.endsWith(".crv"))
+  .sort();
 
 refuseShortRun({
-  label: 'CORPUS',
+  label: "CORPUS",
   actual: allFiles.length,
   atLeast: 1000,
   of: `document(s) under ${corpusDir}`,
-  hint: 'the spec corpus has ~1740; run `git submodule update --init`.',
+  hint: "the spec corpus has ~1740; run `git submodule update --init`.",
 });
 
 const targets = [];
 for (const file of allFiles) {
   const category = slugOf(baseCategory(file));
-  const stem = slugOf(path.basename(file, '.crv'));
+  const stem = slugOf(path.basename(file, ".crv"));
   if (skip.has(category) || skip.has(stem)) continue;
   if (covered.has(category)) targets.push(path.join(corpusDir, file));
 }
+
+// ONE DOCUMENT WHOSE READING NO TREE CAN CARRY, named rather than matched by a
+// pattern, so nothing else can fall through it.
+const UNREPRESENTABLE = {
+  "a-continuation-row-s-open-run-and-an-escaped-closing-pipe-5":
+    "the open run is in the row's SECOND cell and continues in the continuation " +
+    "row's second cell, which sits behind that row's FIRST cell. A node covers a " +
+    "contiguous range, so no node can hold both halves without holding the cell " +
+    "between them. The spec waives this document's text positions for carve-js, " +
+    "carve-rs and carve-php as well (spec/resources/ast-position-waivers.txt).",
+};
 
 const recorded = coverage.inlineReadingGaps ?? {};
 const trees = parseTrees(targets, repoRoot);
@@ -76,14 +93,28 @@ const trees = parseTrees(targets, repoRoot);
 const found = {};
 targets.forEach((file, i) => {
   const r = reading(
-    readFileSync(file.replace(/\.crv$/, '.html'), 'utf8'),
+    readFileSync(file.replace(/\.crv$/, ".html"), "utf8"),
     trees[i],
-    readFileSync(file, 'utf8'),
+    readFileSync(file, "utf8"),
   );
-  if (r) found[slugOf(path.basename(file, '.crv'))] = r;
+  if (r) found[slugOf(path.basename(file, ".crv"))] = r;
 });
 
-if (process.argv.includes('--dump')) {
+// An exclusion that stops excluding is a check that cannot fire: if the tree
+// ever reads this document the way the reference does, the reason above is
+// wrong and has to go rather than sit there passing.
+const stale = Object.keys(UNREPRESENTABLE).filter((k) => !(k in found));
+if (stale.length) {
+  console.error(
+    "\nExcluded as unrepresentable, but the tree now agrees - remove the " +
+      "exclusion from scripts/inline-reading.mjs:",
+  );
+  for (const k of stale) console.error(`  - ${k}`);
+  process.exit(1);
+}
+for (const k of Object.keys(UNREPRESENTABLE)) delete found[k];
+
+if (process.argv.includes("--dump")) {
   process.stdout.write(JSON.stringify(found, null, 1));
   process.exit(0);
 }
@@ -91,7 +122,8 @@ if (process.argv.includes('--dump')) {
 console.log(
   `inline-reading: compared ${targets.length} covered document(s) by span count and ` +
     `covered text on ${TAGS.length} inline tag(s), sup/sub excluded; ` +
-    `${Object.keys(found).length} divergent, ${Object.keys(recorded).length} recorded.`,
+    `${Object.keys(found).length} divergent, ${Object.keys(recorded).length} recorded, ` +
+    `${Object.keys(UNREPRESENTABLE).length} excluded as unrepresentable.`,
 );
 
 const newly = Object.keys(found).filter((k) => !(k in recorded));
@@ -102,24 +134,28 @@ const moved = Object.keys(found)
 
 if (newly.length || fixed.length || moved.length) {
   if (newly.length) {
-    console.error('\nInline reading divergence (the tree reads these spans differently):');
+    console.error(
+      "\nInline reading divergence (the tree reads these spans differently):",
+    );
     for (const k of newly) console.error(`  - ${k}: ${found[k]}`);
   }
   if (fixed.length) {
     console.error(
-      '\nRecorded divergence that no longer happens - remove these from ' +
-        '`inlineReadingGaps` in test/coverage.json:',
+      "\nRecorded divergence that no longer happens - remove these from " +
+        "`inlineReadingGaps` in test/coverage.json:",
     );
     for (const k of fixed) console.error(`  - ${k}`);
   }
   if (moved.length) {
     console.error(
-      '\nRecorded divergence whose reading MOVED - the grammar changed, so ' +
-        'update `reading` and the reason in test/coverage.json:',
+      "\nRecorded divergence whose reading MOVED - the grammar changed, so " +
+        "update `reading` and the reason in test/coverage.json:",
     );
     for (const k of moved) console.error(`  - ${k}`);
   }
   process.exit(1);
 }
 
-console.log('inline-reading: OK (every divergence is exactly the set recorded).');
+console.log(
+  "inline-reading: OK (every divergence is exactly the set recorded).",
+);

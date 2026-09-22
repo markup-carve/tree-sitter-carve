@@ -7965,3 +7965,78 @@ A delimiter after the first word's space still opens a span (#434)
           begin_marker: (strong_begin)
           content: (content)
           end_marker: (strong_end))))))
+
+===============================================================================
+A code run open in a one-cell row continues into its continuation row (#320)
+===============================================================================
+| a `b |
++ c` |
+
+-------------------------------------------------------------------------------
+
+(document
+  (table
+    (table_row
+      (table_cell
+        (verbatim
+          begin_marker: (verbatim_marker_begin)
+          content: (content)
+          end_marker: (verbatim_marker_end))))))
+
+===============================================================================
+A code run continuing into a continuation row keeps that row's pipe (#320)
+===============================================================================
+| a `b |
++ c | d` |
+
+-------------------------------------------------------------------------------
+
+(document
+  (table
+    (table_row
+      (table_cell
+        (verbatim
+          begin_marker: (verbatim_marker_begin)
+          content: (content)
+          end_marker: (verbatim_marker_end))))))
+
+===============================================================================
+A code run open in a row's second cell stops at the row's pipe (#320)
+===============================================================================
+| x | a `b |
++ y | c` |
+
+-------------------------------------------------------------------------------
+
+(document
+  (table
+    (table_row
+      (table_cell)
+      (table_cell
+        (verbatim
+          begin_marker: (verbatim_marker_begin)
+          content: (content)
+          end_marker: (verbatim_marker_end))))
+    (table_continuation_row)))
+
+===============================================================================
+A `+` line without a closing pipe does not continue a code run (#320)
+===============================================================================
+| a `b |
++ c` d
+
+-------------------------------------------------------------------------------
+
+(document
+  (table
+    (table_row
+      (table_cell
+        (verbatim
+          begin_marker: (verbatim_marker_begin)
+          content: (content)
+          end_marker: (verbatim_marker_end)))))
+  (paragraph
+    (verbatim
+      begin_marker: (verbatim_marker_begin)
+      content: (content)
+      end_marker: (verbatim_marker_end))))
