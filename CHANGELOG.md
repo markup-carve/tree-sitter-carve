@@ -6,13 +6,6 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-### Added
-
-- Release artifacts now include `tree-sitter-carve.wasm` for browser use with
-  `web-tree-sitter`. The npm package carries the same file, and CI checks it
-  against the corpus and the packaged highlight query on versions 0.22.6 and
-  0.27.0.
-
 ## [0.1.6] - 2026-09-22
 
 ### Added
@@ -23,6 +16,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   shred into the constructs its own selector looks like, so
   `{{ ch.crv #intro }}` colored `#intro` as a tag (markup-carve/carve#291,
   PART 9 section 19, #285).
+- Release artifacts now include `tree-sitter-carve.wasm` for browser use with
+  `web-tree-sitter`. The npm package carries the same file, and CI checks it
+  against the corpus and the packaged highlight query on versions 0.22.6 and
+  0.27.0 (#420).
 
 ### Fixed
 
@@ -153,6 +150,62 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   build, but `src/scanner.c` ships as source, and a consumer's compiler can lay
   out that frame differently and lose a definition line, a nested quote, a
   table or a comment (#325).
+- A block attribute line is recognized at or past a list marker's own content
+  column and interrupts an open paragraph, and a wrapped continuation line
+  needs only some indentation rather than exactly one column past the brace:
+  `- {#h}` over `  # h` attaches the attribute instead of reading `#h` as a
+  tag, and `q` over `{.k}` ends the paragraph before the block (PART 9
+  section 15, #421).
+- A `+`-attached code fence keeps its blank lines as fence body instead of
+  ending the attachment, so a blank line inside an attached fence under a list
+  item or a description body stays fence content, and only the blank line
+  after the fence ends it (#424).
+- An unclosed code span ends at the line that ends its paragraph instead of
+  running past it, so a heading, a quote, a description marker or a div's
+  closer below an open backtick run is read as its own construct rather than
+  span content (#425).
+- An attribute block placed directly after an inline element attaches to that
+  element instead of building a tag from its brace: `:widget[x]{#i}`,
+  `[t](/u){#b}` and `*b*{#i}` resolve a scanner tie between the two readings
+  (#426).
+- A delimiter glued to a word is decided the same way whether that word opens
+  a paragraph, follows a quote or list marker, or follows a table cell's pipe:
+  `a/_y_`, `- a/b/` and `| a*b* |` keep the delimiter literal instead of
+  opening a span over the second word (#428, #439).
+- An unterminated code fence opened on a nested item's lead line inside a
+  description body owns the rest of the body, so flush-left and fence-shaped
+  lines below it stay fence content instead of ending the item and the fence
+  (#429).
+- A braced strong, emphasis, underline or strikethrough may hold nothing but
+  whitespace: `{* *}`, `{/ /}` and `{~ ~}` now build their element instead of
+  an ERROR node (#432).
+- A balanced bracket pair inside link or image text is read as literal instead
+  of competing to close the enclosing span, so `[t[z]](/u)` and
+  `![t[z]](/i.png)` build a link and an image again (#422, #433).
+- A code fence opened in a description body keeps a line short of the body's
+  column as fence content, unless a blank line precedes it or the line would
+  interrupt a paragraph, so a plain short line stays fence content instead of
+  ending the body (#430, #438).
+- A code run left open at a table row's closing pipe carries on into a
+  following `+` continuation row for a one-cell row, closing on the
+  continuation row's own pipes as content (#440).
+- An unclosed code span is read one line at a time instead of as a single
+  token, so a fence with a closer below the span now interrupts it instead of
+  being swallowed as span content (#427, #442).
+- A wrapped block attribute is read through repeated quote markers on its
+  continuation lines instead of only the first one (#443).
+- A comment-only line inside a code span that is read across a line block
+  (`:::` with a `|` marker) is stripped instead of kept as literal span
+  content; a comment beside real content on the same line is unaffected
+  (#444).
+- A bare `%%` comment opener ends an open paragraph the same way a
+  `%%%`-or-longer fence does, so a code span or an ordinary paragraph above a
+  bare comment line no longer swallows it as content (#441, #445).
+- A bracket or a strong delimiter that opens with no matching closer ahead is
+  refused instead of staying open for the rest of the paragraph, so
+  `[x *y [z](/u)* b` and `*[t [z]* w](/u)` no longer let an unclosable branch
+  crowd out the parse GLR needs for the shape that does close (#435, #436,
+  #446).
 
 ### Changed
 
