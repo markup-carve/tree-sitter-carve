@@ -6178,6 +6178,15 @@ static bool code_fence_has_closer_ahead(Scanner *s, TSLexer *lexer, int32_t c,
       return false;
     }
     consume_line_end(s, lexer); // over the newline
+    // Inside a quote a closer carries the quote's markers, and a line short of
+    // them leaves the quote before any closer is found.
+    uint8_t quotes = count_blocks(s, BLOCK_QUOTE);
+    if (quotes > 0) {
+      bool ending_newline = false;
+      if (scan_block_quote_markers(s, lexer, &ending_newline) < quotes) {
+        return false;
+      }
+    }
     while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
       advance(s, lexer);
     }
@@ -6205,10 +6214,7 @@ static bool code_fence_has_closer_ahead(Scanner *s, TSLexer *lexer, int32_t c,
 /// A FENCED CODE opener with a closer ahead interrupts an open paragraph
 /// (PART 9 §10 I1 + I4).
 ///
-/// BACKTICKS ONLY. `~~~` is not a code fence in this grammar at any position -
-/// `intro` / blank / `~~~` / `code` / `~~~` is two paragraphs - so ending the
-/// paragraph on one would split a document in two and build no block for it.
-/// The peek stays with what the opener can actually produce.
+/// Both fence characters: a `~~~` fence opens a code block like a backtick one.
 ///
 /// THE INFO STRING IS THE OPENER'S OWN TEST, shared rather than restated, for
 /// the same reason `colon_fence_tail_opens_block` is shared: an info string the
@@ -6218,21 +6224,22 @@ static bool code_fence_has_closer_ahead(Scanner *s, TSLexer *lexer, int32_t c,
 /// an inline run. A peek that closes a paragraph no opener follows is the same
 /// defect #103 recorded four times over for the colon fence.
 static bool scan_code_fence_at_paragraph_end(Scanner *s, TSLexer *lexer) {
-  if (lexer->lookahead != '`') {
+  int32_t fence_char = lexer->lookahead;
+  if (fence_char != '`' && fence_char != '~') {
     return false;
   }
   uint32_t column = line_column(s, lexer);
   if (!at_block_opener_margin(s, column)) {
     return false;
   }
-  uint8_t width = consume_chars(s, lexer, '`');
+  uint8_t width = consume_chars(s, lexer, (char)fence_char);
   if (width < 3) {
     return false;
   }
   if (!code_fence_info_is_modeled(s, lexer)) {
     return false;
   }
-  return code_fence_has_closer_ahead(s, lexer, '`', width, column);
+  return code_fence_has_closer_ahead(s, lexer, fence_char, width, column);
 }
 
 /// A block quote that goes DEEPER than the one we are in interrupts an open
