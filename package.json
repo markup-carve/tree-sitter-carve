@@ -24,6 +24,7 @@
     "format": "prettier --write grammar.js",
     "check-formatted": "prettier --check grammar.js",
     "build-wasm": "tree-sitter build --wasm",
+    "test:wasm": "node scripts/wasm-smoke.mjs",
     "install": "node-gyp-build",
     "prebuildify": "prebuildify --napi --strip",
     "test:battery": "node scripts/block-battery.mjs",
@@ -39,7 +40,7 @@
     "test:asan": "node scripts/asan.mjs",
     "test:reason-predicates": "node --test tests/reason-predicates.test.mjs",
     "test:version-surfaces": "node scripts/version-surfaces.mjs && node --test tests/version-surfaces.test.mjs",
-    "test:inline-reading": "node scripts/inline-reading.mjs",
+    "test:inline-reading": "node scripts/inline-reading.mjs && node --test tests/inline-reading.test.mjs",
     "test:termination": "node scripts/parse-termination.mjs"
   },
   "author": "",
@@ -61,7 +62,9 @@
     "prebuildify": "^6.0.0",
     "prettier": "3.9.6",
     "tree-sitter": "0.25.0",
-    "tree-sitter-cli": "0.22.6"
+    "tree-sitter-cli": "0.22.6",
+    "web-tree-sitter-lowest": "npm:web-tree-sitter@0.22.6",
+    "web-tree-sitter-newest": "npm:web-tree-sitter@0.27.0"
   },
   "files": [
     "grammar.js",
@@ -69,6 +72,7 @@
     "prebuilds/**",
     "bindings/node/*",
     "queries/*",
+    "tree-sitter-carve.wasm",
     "src/**"
   ],
   "tree-sitter": [

@@ -4,6 +4,15 @@ All notable changes to tree-sitter-carve are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+
+- Release artifacts now include `tree-sitter-carve.wasm` for browser use with
+  `web-tree-sitter`. The npm package carries the same file, and CI checks it
+  against the corpus and the packaged highlight query on versions 0.22.6 and
+  0.27.0.
+
 ## [0.1.6] - 2026-09-22
 
 ### Added
