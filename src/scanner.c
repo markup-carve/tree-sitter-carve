@@ -1827,7 +1827,8 @@ static const uint8_t CODE_FENCE_TILDE = 0x80;
 static const uint8_t CODE_FENCE_WIDTH = 0x7f;
 
 static bool code_fence_run_matches_open_block(Scanner *s, uint8_t width,
-                                               char fence_char) {
+                                               char fence_char,
+                                               uint32_t column) {
   Block *top = peek_block(s);
   if (!top || top->type != CODE_BLOCK) {
     return false;
@@ -1849,7 +1850,10 @@ static bool code_fence_run_matches_open_block(Scanner *s, uint8_t width,
   // opener is guarded by `has_extra_indent` at the call site; the closer is the
   // other half of the same rule, and it is `has_surplus_indent` because the
   // question here is indentation PAST the margin rather than short of it.
-  if (has_surplus_indent(s)) {
+  // A fence opened PAST that margin measures its closer from its own column
+  // (the authored base, PART 0 CARVE-P0-004), which the block records.
+  if (has_surplus_indent(s) &&
+      !(top->content_col != 0 && column == top->content_col)) {
     return false;
   }
   bool opened_with_tilde = (top->data & CODE_FENCE_TILDE) != 0;
@@ -2054,7 +2058,7 @@ static bool code_fence_info_is_modeled(Scanner *s, TSLexer *lexer) {
 }
 
 static bool try_begin_code_block(Scanner *s, TSLexer *lexer, uint8_t width,
-                                 char fence_char) {
+                                 char fence_char, uint32_t column) {
   Block *top = peek_block(s);
   if (top && top->type == CODE_BLOCK) {
     return false;
@@ -2067,6 +2071,7 @@ static bool try_begin_code_block(Scanner *s, TSLexer *lexer, uint8_t width,
   }
   push_block(s, CODE_BLOCK,
              width | (fence_char == '~' ? CODE_FENCE_TILDE : 0));
+  peek_block(s)->content_col = (uint8_t)column;
   lexer->result_symbol = CODE_BLOCK_BEGIN;
   return true;
 }
@@ -2339,7 +2344,7 @@ static bool parse_code_fence(Scanner *s, TSLexer *lexer,
     // duplicate check was a clause no mutation could break. This is the same
     // collapse #104 made for the colon fence's opener and peek.
     if ((valid_symbols[CODE_BLOCK_END] || valid_symbols[BLOCK_CLOSE]) &&
-        code_fence_run_matches_open_block(s, width, fence_char)) {
+        code_fence_run_matches_open_block(s, width, fence_char, fence_col)) {
       // CODE_BLOCK_END spans the run, so pin it BEFORE the tail peek advances
       // the lexer; BLOCK_CLOSE is zero width and keeps the scan-entry mark.
       if (valid_symbols[CODE_BLOCK_END]) {
@@ -2378,7 +2383,7 @@ static bool parse_code_fence(Scanner *s, TSLexer *lexer,
         s->marker_end_col != 0 && fence_col == s->marker_end_col;
     if (valid_symbols[CODE_BLOCK_BEGIN] &&
         (!has_extra_indent(s) || at_marker_content_col) &&
-        try_begin_code_block(s, lexer, width, fence_char)) {
+        try_begin_code_block(s, lexer, width, fence_char, fence_col)) {
       return true;
     }
   }

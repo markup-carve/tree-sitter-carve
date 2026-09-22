@@ -6953,3 +6953,101 @@ A marker after an ordered item's padding nests at the padded column (tree-sitter
             marker: (list_marker_dash)
             content: (list_item_content
               (paragraph))))))))
+
+===============================================================================
+A fence opened past an item's content column closes at its own column (tree-sitter-carve#392)
+===============================================================================
+- a
+
+    ```
+    x
+    ```
+
+y
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)
+        (code_block
+          (code_block_marker_begin)
+          code: (code)
+          (code_block_marker_end)))))
+  (paragraph))
+
+===============================================================================
+A fence opened past an item's content column also closes at the item's column (tree-sitter-carve#392)
+===============================================================================
+- a
+
+    ```
+    x
+  ```
+
+y
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)
+        (code_block
+          (code_block_marker_begin)
+          code: (code)
+          (code_block_marker_end)))))
+  (paragraph))
+
+===============================================================================
+A run between an item's content column and its fence's column is fence content (tree-sitter-carve#392)
+===============================================================================
+- a
+
+    ```
+    x
+   ```
+
+y
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)
+        (code_block
+          (code_block_marker_begin)
+          code: (code)))))
+  (paragraph))
+
+===============================================================================
+A run past its fence's own column is fence content (tree-sitter-carve#392)
+===============================================================================
+- a
+
+    ```
+    x
+     ```
+
+y
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)
+        (code_block
+          (code_block_marker_begin)
+          code: (code)))))
+  (paragraph))
