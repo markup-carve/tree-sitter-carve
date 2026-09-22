@@ -510,6 +510,8 @@ static bool scan_valid_inline_attribute(Scanner *s, TSLexer *lexer);
 static bool at_block_opener_margin(Scanner *s, uint32_t column);
 static bool opener_reaches_item_margin(Scanner *s, uint32_t column);
 static bool list_item_open(Scanner *s);
+static bool quoted_item_column_reached(Scanner *s, uint32_t column);
+static uint32_t quoted_div_column(Scanner *s, uint8_t marker_count);
 static bool parse_code_fence(Scanner *s, TSLexer *lexer,
                              const bool *valid_symbols, char fence_char);
 static bool div_host_collects(Scanner *s, int div_index);
@@ -1328,6 +1330,25 @@ static bool quoted_line_reaches_list(Scanner *s, TSLexer *lexer, Block *list) {
 static bool quoted_item_column_reached(Scanner *s, uint32_t column) {
   Block *list = find_list(s);
   return list && list_opened_in_quote(s, list) && column >= list->content_col;
+}
+
+/// A div in a list item inside a quote records its absolute content column,
+/// and a line reaching it after its last `>` hands the indentation up to that
+/// column to the quote continuation, with `indent` set to the column: the body
+/// is then measured the way an unquoted div's is. Returns 0 when that is not
+/// the case, including on a marker short of the quote's depth.
+static uint32_t quoted_div_column(Scanner *s, uint8_t marker_count) {
+  Block *top = peek_block(s);
+  if (marker_count != count_blocks(s, BLOCK_QUOTE) || !top ||
+      (top->type != DIV && top->type != FIGURE_GROUP) || top->content_col == 0) {
+    return 0;
+  }
+  Block *list = find_list(s);
+  if (!list || !list_opened_in_quote(s, list) ||
+      top->content_col < list->content_col) {
+    return 0;
+  }
+  return top->content_col;
 }
 
 // Close open list if list markers are different.
@@ -2824,11 +2845,23 @@ static bool parse_block_quote(Scanner *s, TSLexer *lexer,
   // `scan_block_quote_marker` refuses it, so `>\t` stays a paragraph, matching
   // carve-js and the rule that a marker separator is a literal space.
   bool marker_end_pinned = false;
+  // Only where a token this pin belongs to can follow: a pin taken on a line
+  // whose only valid close is another block's (a heading ending at its
+  // newline) widened that zero-width close over the `> ` and lost the quote.
   if (has_marker && !ending_newline &&
+      (valid_symbols[BLOCK_QUOTE_CONTINUATION] ||
+       valid_symbols[BLOCK_QUOTE_BEGIN] || valid_symbols[CLOSE_PARAGRAPH]) &&
       (lexer->lookahead == ' ' || lexer->lookahead == '\t')) {
     mark_end(s, lexer);
+    uint32_t div_col = quoted_div_column(s, s->block_quote_level + 1);
     while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
       advance(s, lexer);
+      if (div_col != 0 && lexer->lookahead != '\t' &&
+          line_column(s, lexer) <= div_col) {
+        // The pin follows the run up to the quoted div's column.
+        mark_end(s, lexer);
+        s->indent = (uint8_t)line_column(s, lexer);
+      }
     }
     if (lexer->lookahead == '\n') {
       advance(s, lexer);
@@ -4718,7 +4751,7 @@ static bool parse_colon(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     // alone here -- it is handled below, and `has_extra_indent` already
     // measures against the innermost container, so a fence at a list item's
     // content column is not "indented".
-    if (has_extra_indent(s)) {
+    if (has_extra_indent(s) && !quoted_item_column_reached(s, start_col)) {
       return false;
     }
     // Validate what follows the `:::` fence. A bare fence (newline/EOF), a
@@ -4802,7 +4835,9 @@ static bool parse_colon(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     // footnote records its real column, which is what lets a definition opener
     // one space past it fall back to a paragraph rather than opening a
     // definition the line does not spell (tree-sitter-carve#282).
-    record_container_content_column(s, s->indent);
+    record_container_content_column(
+        s, quoted_item_column_reached(s, start_col) ? (uint8_t)start_col
+                                                    : s->indent);
     lexer->result_symbol = DIV_BEGIN;
     return true;
   }
