@@ -838,10 +838,6 @@
       "reading": "code html=0 tree=1",
       "reason": "the grammar builds an inline span the language keeps literal here"
     },
-    "doubled-emphasis-delimiters": {
-      "reading": "strong html=0 tree=2",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
     "emphasis-opener-slash-adjacency": {
       "reading": "u html=0 tree=1",
       "reason": "the grammar builds an inline span the language keeps literal here"

@@ -962,3 +962,38 @@ a \{% not a comment %} b
       content: (content)))
   (paragraph
     (backslash_escape)))
+
+==================
+A doubled delimiter run at column 0 gets a boundary decision
+;; The left-boundary reader stands aside at a line start, where a block probe
+;; gets the first look. `**a**` used to build two spans because nothing decided
+;; the run at all. The probe now hands back the marker run it consumed, and the
+;; reader replays it with the character behind each marker known.
+==================
+
+**a**
+
+---
+
+(document
+  (paragraph))
+
+==================
+A single marker at column 0 is still an opener after the handback
+;; THE CONTROL for the case above, and the guard on the contract's asymmetry. A
+;; probe reports a run only when EVERYTHING it consumed was the marker: `*a*`
+;; consumes `*` then `a`, so it reports nothing and the reader never replays it.
+;; A probe that reported regardless would hand back a run of two markers that
+;; is not in the document, and this span would read as literal text.
+==================
+
+*a*
+
+---
+
+(document
+  (paragraph
+    (strong
+      begin_marker: (strong_begin)
+      content: (content)
+      end_marker: (strong_end))))
