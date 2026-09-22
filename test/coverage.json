@@ -866,10 +866,6 @@
       "reading": "strong html=0 tree=1",
       "reason": "the grammar builds an inline span the language keeps literal here"
     },
-    "numbered-cross-references-10": {
-      "reading": "strong html=1 tree=0",
-      "reason": "the language builds an inline span the grammar does not"
-    },
     "smart-typography-dashes-and-quotes-9": {
       "reading": "strong html=1 tree=2",
       "reason": "the grammar builds an inline span the language keeps literal here"

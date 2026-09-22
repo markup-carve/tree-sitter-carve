@@ -4531,6 +4531,16 @@ static bool parse_heading(Scanner *s, TSLexer *lexer,
     return false;
   }
 
+  // NOTHING THIS PROBE CAN EMIT IS VALID HERE, so it must not run: it consumes
+  // its `#` run before it can decide anything, and a probe that advances and
+  // then declines leaves every later reader in the same call reading from
+  // where it stopped. `check_non_whitespace` is one of them, which is how
+  // `a *# x* b` lost the strong the language builds - the check read the space
+  // BEHIND the consumed `#` and refused the opener (#334).
+  if (!valid_symbols[HEADING_BEGIN] && !valid_symbols[BLOCK_CLOSE]) {
+    return false;
+  }
+
   bool top_heading = top && top->type == HEADING;
 
   uint32_t marker_column = line_column(s, lexer);
