@@ -668,26 +668,6 @@
     }
   },
   "inlineReadingGaps": {
-    "an-image-s-alt-text-closes-where-a-link-s-text-closes": {
-      "reading": "alt html=1 tree=0",
-      "reason": "an image description holding a nested bracket pair builds no image, so its alt text is missing from the tree (tree-sitter-carve#422)"
-    },
-    "an-image-s-alt-text-closes-where-a-link-s-text-closes-2": {
-      "reading": "alt html=1 tree=0",
-      "reason": "an image description holding a nested bracket pair builds no image, so its alt text is missing from the tree (tree-sitter-carve#422)"
-    },
-    "an-image-s-alt-text-closes-where-a-link-s-text-closes-3": {
-      "reading": "alt html=1 tree=0",
-      "reason": "an image description holding a nested bracket pair builds no image, so its alt text is missing from the tree (tree-sitter-carve#422)"
-    },
-    "an-image-s-alt-text-closes-where-a-link-s-text-closes-7": {
-      "reading": "alt html=1 tree=0",
-      "reason": "an image description holding a nested bracket pair builds no image, so its alt text is missing from the tree (tree-sitter-carve#422)"
-    },
-    "an-image-s-alt-text-closes-where-a-link-s-text-closes-8": {
-      "reading": "alt html=1 tree=0",
-      "reason": "an image description holding a nested bracket pair builds no image, so its alt text is missing from the tree (tree-sitter-carve#422)"
-    },
     "a-comment-only-line-in-a-line-block-is-removed-before-any-inline-run": {
       "reading": "code#1 html=\"bc\" tree=\"bsecretc\"",
       "reason": "a span covers different text here than the language’s does"

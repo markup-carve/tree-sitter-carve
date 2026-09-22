@@ -365,8 +365,11 @@ typedef struct {
   // Verbatim counts the number of open and closing ticks.
   uint8_t data;
   // `INLINE_BRACED` and `INLINE_STOPS_AT_SPAN_CLOSER`. Packed into the type
-  // byte's spare bits on the wire, so the serialized size does not move.
+  // byte's spare bits on the wire.
   uint8_t flags;
+  // Square-bracket spans only: how many `]` ahead close a balanced pair of
+  // literal brackets inside this one (`[t[z]](/u)`) rather than this span.
+  uint8_t literal_closes;
 } Inline;
 
 typedef struct {
@@ -787,6 +790,7 @@ static Inline *create_inline(InlineType type, uint8_t data) {
   res->type = type;
   res->data = data;
   res->flags = 0;
+  res->literal_closes = 0;
   return res;
 }
 
@@ -7717,21 +7721,24 @@ static bool scan_inline_link_tail(Scanner *s, TSLexer *lexer) {
   return false;
 }
 
-static void update_square_bracket_lookahead_states(Scanner *s, TSLexer *lexer,
+static bool update_square_bracket_lookahead_states(Scanner *s, TSLexer *lexer,
                                                    Inline *top) {
   // Reset flags so we can set them later if the scanning succeeds.
   s->state &= ~STATE_BRACKET_STARTS_INLINE_LINK;
   s->state &= ~STATE_BRACKET_STARTS_SPAN;
 
   InlineType *top_type = NULL;
-  if (top) {
+  // An enclosing bracket's `]` is also this one's, and the depth count below
+  // already pairs brackets; asking for the enclosing span's end would stop at
+  // this bracket's own `]` (`[t[z]](/u)`, #422).
+  if (top && top->type != SQUARE_BRACKET_SPAN) {
     top_type = &top->type;
   }
 
   // Scan the `[some text]` span, stepping over nested bracket runs so a
   // nested `[^1]{.k}` is not mistaken for this bracket's own `] {attrs}` tail.
   if (!scan_until_bracket_close(s, lexer, top_type)) {
-    return;
+    return false;
   }
   advance(s, lexer);
 
@@ -7768,6 +7775,7 @@ static void update_square_bracket_lookahead_states(Scanner *s, TSLexer *lexer,
       s->state |= STATE_BRACKET_STARTS_SPAN;
     }
   }
+  return true;
 }
 
 /// Does a TOP-LEVEL `~>` stand between here and this run's `~}`?
@@ -7910,6 +7918,7 @@ static bool mark_span_begin(Scanner *s, TSLexer *lexer,
   // If IN_FALLBACK is valid then it means we're processing the
   // `_symbol_fallback` branch (see `grammar.js`).
   if (valid_symbols[IN_FALLBACK]) {
+    bool balanced_bracket = false;
     // There's a challenge when we have multiple elements inside an inline
     // link:
     //
@@ -7926,7 +7935,11 @@ static bool mark_span_begin(Scanner *s, TSLexer *lexer,
     // we can abort and prune that branch (since we should parse it as a
     // link).
     if (inline_type == SQUARE_BRACKET_SPAN) {
-      update_square_bracket_lookahead_states(s, lexer, top);
+      // A `[` whose own `]` closes inside the enclosing bracket is a balanced
+      // pair of literal brackets there (`[t[z]](/u)`), not a competing opener,
+      // and that `]` is text rather than the enclosing close.
+      balanced_bracket = update_square_bracket_lookahead_states(s, lexer, top) &&
+                         top && top->type == SQUARE_BRACKET_SPAN;
     }
 
     // This is where we've reached the `(` in:
@@ -7975,7 +7988,11 @@ static bool mark_span_begin(Scanner *s, TSLexer *lexer,
     Inline *open = find_inline_in_scope(s, inline_type);
     // A BARE marker inside a braced span of its own kind is content (corpus
     // 471), not a competing opener, so it must not stop that span closing.
-    if (open != NULL && !(bare && (open->flags & INLINE_BRACED))) {
+    if (balanced_bracket) {
+      if (top->literal_closes < UINT8_MAX) {
+        ++top->literal_closes;
+      }
+    } else if (open != NULL && !(bare && (open->flags & INLINE_BRACED))) {
       ++open->data;
     }
     // We need to output the token common to both the fallback symbol and
@@ -9408,6 +9425,18 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   // `newline` already produce.
   if (valid_symbols[SQUARE_BRACKET_SPAN_END] && lexer->lookahead == ']') {
     Inline *bracket = peek_inline(s);
+    // The `]` of a balanced literal pair inside the span is text (#422).
+    if (bracket && bracket->type == SQUARE_BRACKET_SPAN &&
+        bracket->literal_closes > 0) {
+      if (!valid_symbols[LITERAL_RUN]) {
+        return false;
+      }
+      advance(s, lexer);
+      mark_end(s, lexer);
+      --bracket->literal_closes;
+      lexer->result_symbol = LITERAL_RUN;
+      return true;
+    }
     if (bracket && bracket->type == SQUARE_BRACKET_SPAN && bracket->data == 0) {
       return parse_span_end(s, lexer, SQUARE_BRACKET_SPAN,
                             SQUARE_BRACKET_SPAN_END);
@@ -9632,7 +9661,7 @@ unsigned tree_sitter_carve_external_scanner_serialize(void *payload,
   const size_t scalar_bytes = 15;
   const size_t block_count_bytes = 1;
   const size_t block_bytes = 3;
-  const size_t inline_bytes = 2;
+  const size_t inline_bytes = 3;
   if (s->open_blocks->size > UINT8_MAX ||
       s->open_blocks->size >
           (SIZE_MAX - scalar_bytes - block_count_bytes) / block_bytes ||
@@ -9673,10 +9702,10 @@ unsigned tree_sitter_carve_external_scanner_serialize(void *payload,
 
   for (size_t i = 0; i < s->open_inline->size; ++i) {
     Inline *x = *array_get(s->open_inline, i);
-    // Sixteen inline types fit in the low six bits; the top two carry the
-    // flags, so an entry still costs two bytes.
+    // Inline types fit in the low six bits; the top two carry the flags.
     buffer[size++] = (char)((uint8_t)x->type | (uint8_t)(x->flags << 6));
     buffer[size++] = (char)x->data;
+    buffer[size++] = (char)x->literal_closes;
   }
 
   return size;
@@ -9713,11 +9742,13 @@ void tree_sitter_carve_external_scanner_deserialize(void *payload, char *buffer,
       b->content_col = content_col;
       stack_push(s->open_blocks, b);
     }
-    while (size < length) {
+    while (size + 3 <= length) {
       uint8_t packed = (uint8_t)buffer[size++];
       uint8_t data = (uint8_t)buffer[size++];
+      uint8_t literal_closes = (uint8_t)buffer[size++];
       push_inline_flagged(s, (InlineType)(packed & 0x3f), data,
                           (uint8_t)(packed >> 6));
+      (*array_back(s->open_inline))->literal_closes = literal_closes;
     }
   }
 }
