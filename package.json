@@ -40,7 +40,7 @@
     "test:asan": "node scripts/asan.mjs",
     "test:reason-predicates": "node --test tests/reason-predicates.test.mjs",
     "test:version-surfaces": "node scripts/version-surfaces.mjs && node --test tests/version-surfaces.test.mjs",
-    "test:inline-reading": "node scripts/inline-reading.mjs",
+    "test:inline-reading": "node scripts/inline-reading.mjs && node --test tests/inline-reading.test.mjs",
     "test:termination": "node scripts/parse-termination.mjs"
   },
   "author": "",
