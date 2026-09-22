@@ -66,6 +66,12 @@ jobs:
       - name: No-ERROR sweep
         run: npm run test:no-error
 
+      # A closed fence that loses its closer builds no ERROR: the closer line
+      # reads as inline verbatim and the tree is clean, so the sweep above
+      # cannot see it (#417).
+      - name: Closed fences keep their closers
+        run: npm run test:fence-closers
+
       # The third blind spot in the same family: a construct that swallows the
       # lines below it into one block. No ERROR, the block count is right, and
       # `paragraph` is unmapped in the under-acceptance sweep by design - so a

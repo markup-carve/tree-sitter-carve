@@ -60,6 +60,10 @@ is invisible to it however wrong the tree is.
   rule instead. A table row read one attributed cell as two with every gate green.
 - An over-acceptance inside a run the fixture renders literally builds no inline
   span either way. `test:conformance` reports it only when it becomes an ERROR.
+- A closed fence that loses its closer is a clean tree: the closer line reads as
+  inline verbatim, so neither the corpus nor the no-error sweep fails.
+  `test:fence-closers` parses generated closed-fence documents and fails when a
+  `code_block` or `raw_block` has no end marker.
 
 ## A gate that looks redundant and is not
 
