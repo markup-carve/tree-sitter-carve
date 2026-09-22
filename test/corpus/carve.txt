@@ -4841,7 +4841,7 @@ intro
   (paragraph))
 
 ===============================================================================
-A heading past a list item's content column stays paragraph text (tree-sitter-carve#112)
+A heading past a list item's content column opens in the item (tree-sitter-carve#390)
 ===============================================================================
 
 - item
@@ -4854,7 +4854,10 @@ A heading past a list item's content column stays paragraph text (tree-sitter-ca
     (list_item
       marker: (list_marker_dash)
       content: (list_item_content
-        (paragraph)))))
+        (paragraph)
+        (heading
+          marker: (marker)
+          content: (content))))))
 
 ===============================================================================
 An unmodeled info string does not interrupt a paragraph (tree-sitter-carve#112)

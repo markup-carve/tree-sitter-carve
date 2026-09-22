@@ -500,7 +500,7 @@ static uint8_t scan_block_quote_markers(Scanner *s, TSLexer *lexer,
 static TokenType scan_unordered_list_marker_token(Scanner *s, TSLexer *lexer);
 static bool scan_valid_inline_attribute(Scanner *s, TSLexer *lexer);
 static bool at_block_opener_margin(Scanner *s, uint32_t column);
-static bool definition_reaches_margin(Scanner *s, uint32_t column);
+static bool opener_reaches_item_margin(Scanner *s, uint32_t column);
 static bool list_item_open(Scanner *s);
 static bool div_host_collects(Scanner *s, int div_index);
 static bool div_line_collected_by_host(Scanner *s, uint32_t column);
@@ -4151,7 +4151,7 @@ static bool parse_open_bracket(Scanner *s, TSLexer *lexer,
   // With an item open, same question as `scan_definition_at_paragraph_end`,
   // so the probe never ends a paragraph this then refuses.
   if (!at_marker_content_col) {
-    if (list_item_open(s) ? !definition_reaches_margin(s, column)
+    if (list_item_open(s) ? !opener_reaches_item_margin(s, column)
                           : ((has_extra_indent(s) ||
                               past_container_content_col(s)) &&
                              !div_line_collected_by_host(s, column))) {
@@ -5806,12 +5806,10 @@ static bool scan_continuation_marker_at_paragraph_end(Scanner *s,
 /// this is not simply `!has_extra_indent`. The lexer's column is correct at
 /// that moment because the container prefix has already been consumed.
 ///
-/// A LIST ITEM'S MARGIN IS AN EXACT COLUMN. Inside `- item` the language opens
-/// a block at column 2 and keeps `   # H` (column 3) as paragraph text, so a
-/// `>=` test would claim a heading carve-js does not build. The list's own
-/// `content_col` is what answers that - `data` is the marker's column plus one
-/// and cannot tell `- ` from `1. ` - and a container that never recorded one
-/// reads 0 and gets no opinion, exactly as in `has_surplus_indent`.
+/// WITH A LIST ITEM OPEN the answer is `opener_reaches_item_margin`: at or past
+/// the content column of the innermost item the line reaches (the authored-base
+/// rule, PART 9 §17 and §24 C3), so `- a` over `    # h` is a heading in the
+/// item. The list branch below answers only for an item that is not open.
 ///
 /// A FOOTNOTE'S IS A THRESHOLD, and the asymmetry is the engines', not this
 /// grammar's. A footnote keeps no `content_col`; it pushes `s->indent + 2` as
@@ -5841,6 +5839,9 @@ static bool at_block_opener_margin(Scanner *s, uint32_t column) {
   // margin is the document's zero rather than the item's content column.
   if (s->state & STATE_LIST_CONTINUATION) {
     return column == 0;
+  }
+  if (list_item_open(s)) {
+    return opener_reaches_item_margin(s, column);
   }
   for (int i = s->open_blocks->size - 1; i >= 0; --i) {
     Block *b = *array_get(s->open_blocks, i);
@@ -5878,13 +5879,13 @@ static bool list_item_open(Scanner *s) {
   return false;
 }
 
-/// Where a reference or footnote DEFINITION may open with an item open
-/// ([CARVE-P0-020], I5): at or past the content column of the innermost item
-/// the line reaches. Headings and fences keep `at_block_opener_margin`.
+/// Where a block opener may open with an item open ([CARVE-P0-020], I5, and the
+/// authored-base rule): at or past the content column of the innermost item the
+/// line reaches.
 ///
-/// With an item open, the paragraph-end probe and `parse_open_bracket` must both
-/// ask this: if they disagree, the probe ends a paragraph the opener refuses.
-static bool definition_reaches_margin(Scanner *s, uint32_t column) {
+/// A paragraph-end probe and its opener must both ask this: if they disagree,
+/// the probe ends a paragraph the opener refuses.
+static bool opener_reaches_item_margin(Scanner *s, uint32_t column) {
   if (s->state & STATE_LIST_CONTINUATION) {
     return column == 0;
   }
@@ -6112,8 +6113,7 @@ static bool scan_definition_at_paragraph_end(Scanner *s, TSLexer *lexer) {
     return false;
   }
   uint32_t column = line_column(s, lexer);
-  if (list_item_open(s) ? !definition_reaches_margin(s, column)
-                        : !at_block_opener_margin(s, column)) {
+  if (!at_block_opener_margin(s, column)) {
     return false;
   }
   // No lazy-quote test: `block_quote_level` reads 0 here even on a marked line,

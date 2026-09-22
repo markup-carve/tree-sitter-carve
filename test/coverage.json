@@ -612,22 +612,6 @@
       "gaps": "block_quote: want 2 have 1",
       "reason": "a continuation marker inside a block quote attaches another quote, but the grammar builds only the outer marker quote and does not open the attached inner quote."
     },
-    "an-opener-at-or-past-a-description-body-s-column-closes-its-paragraph-12": {
-      "gaps": "heading: want 1 have 0",
-      "reason": "a heading at or past a description body's content column is swallowed by the undivided definition span instead of ending its paragraph."
-    },
-    "an-opener-at-or-past-a-description-body-s-column-closes-its-paragraph-13": {
-      "gaps": "heading: want 1 have 0",
-      "reason": "a heading at or past a description body's content column is swallowed by the undivided definition span instead of ending its paragraph."
-    },
-    "an-opener-at-or-past-a-description-body-s-column-closes-its-paragraph-14": {
-      "gaps": "heading: want 1 have 0",
-      "reason": "a heading at or past a description body's content column is swallowed by the undivided definition span instead of ending its paragraph."
-    },
-    "an-opener-at-or-past-a-description-body-s-column-closes-its-paragraph-3": {
-      "gaps": "heading: want 1 have 0",
-      "reason": "a heading at or past a description body's content column is swallowed by the undivided definition span instead of ending its paragraph."
-    },
     "an-opener-at-or-past-a-description-body-s-column-closes-its-paragraph-5": {
       "gaps": "thematic_break: want 1 have 0",
       "reason": "a thematic break at a description body's block boundary is swallowed by the undivided definition span."
@@ -639,10 +623,6 @@
     "an-empty-unterminated-container-ends-at-a-flush-left-line-3": {
       "gaps": "admonition_type: want 1 have 0",
       "reason": "an admonition opened on a description marker line is treated as definition text; the marker-line block-opener path does not open the container."
-    },
-    "a-block-opener-past-a-nested-footnote-definition-opens-in-the-item": {
-      "gaps": "heading: want 1 have 0",
-      "reason": "after collecting a footnote definition inside a list item, the scanner leaves the following heading inside the footnote paragraph instead of returning to the item at its authored column."
     },
     "a-blank-line-before-a-sibling-marker-separates-the-items-whatever-consumed-it": {
       "gaps": "admonition_type: want 1 have 0",
@@ -669,7 +649,7 @@
       "reason": "ref:a-tabbed-frontmatter-opener-swallows-the-break-below"
     },
     "a-task-item-s-checkbox-is-not-decided-by-its-first-block": {
-      "gaps": "heading: want 1 have 0; thematic_break: want 1 have 0",
+      "gaps": "thematic_break: want 1 have 0",
       "reason": "ref:marker-line-block-opener-builds-nothing"
     },
     "an-attribute-block-reaches-the-nested-list-it-precedes-4": {
