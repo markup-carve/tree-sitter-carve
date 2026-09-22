@@ -39,39 +39,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # FIVE surfaces, not one. pyproject.toml, tree-sitter.json and the Makefile
-      # sat at 0.1.0 through both 0.1.1 and 0.1.2 because nothing compared them
-      # and no test pinned them against each other. Checking only package.json
-      # would have shipped that divergence a third time.
-      #
-      # The Makefile counts. Its VERSION drives SONAME_MAJOR and SONAME_MINOR,
-      # so a stale value does not fail the build - it ships a shared library
-      # labelled with the wrong version, which is worse than a build error.
-      # This comment named five surfaces while the code below checked four.
+      # Every surface the release moves, read by scripts/version-surfaces.mjs:
+      # seven version fields in six files, package-lock.json carrying it twice.
+      # The script also fails on any tracked file that declares the version
+      # without a reader, so a new manifest cannot slip past as the Makefile
+      # and package-lock.json once did. The Makefile counts: its VERSION drives
+      # SONAME_MAJOR and SONAME_MINOR, so a stale value ships a wrongly
+      # labelled library rather than failing the build.
       - name: Every manifest agrees with the tag
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             # No tag exists in a rehearsal, so package.json stands in for it and
-            # the check becomes "do all four agree", which is the half that
-            # caught three manifests sitting at 0.1.0 through two releases.
-            tag="$(node -p 'require("./package.json").version')"
-            echo "rehearsal: comparing every manifest against package.json ($tag)"
+            # the check becomes "do all surfaces agree".
+            node scripts/version-surfaces.mjs
           else
-            tag="${GITHUB_REF_NAME}"
+            node scripts/version-surfaces.mjs "${GITHUB_REF_NAME}"
           fi
-          fail=0
-          check() {
-            if [ "$2" != "$tag" ]; then
-              echo "::error::$1 declares '$2', tag is '$tag'"
-              fail=1
-            fi
-          }
-          check package.json    "$(node -p 'require("./package.json").version')"
-          check tree-sitter.json "$(node -p 'require("./tree-sitter.json").metadata.version')"
-          check Cargo.toml      "$(grep -m1 '^version = ' Cargo.toml | cut -d'"' -f2)"
-          check pyproject.toml  "$(grep -m1 '^version = ' pyproject.toml | cut -d'"' -f2)"
-          check Makefile        "$(grep -m1 '^VERSION := ' Makefile | cut -d' ' -f3)"
-          exit $fail
 
       - name: The changelog describes this version
         run: |
