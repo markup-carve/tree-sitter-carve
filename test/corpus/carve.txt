@@ -6725,3 +6725,45 @@ x %% y | z
       (table_cell)))
   (paragraph
     (trailing_comment)))
+
+===============================================================================
+A lone carriage return that ends a paragraph leaves the next line its own column
+;; The input is written with a LONE CARRIAGE RETURN after `text`. The newline
+;; token that ends the paragraph reads past its own end and consumed a later
+;; `\n`, which reset the scanner's column base after the `\r` had set it, and
+;; that value was saved with the token. The fence on the next line was then
+;; read at the wrong column: an ERROR holding a definition.
+===============================================================================
+text```
+code
+```
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph)
+  (code_block
+    (code_block_marker_begin)
+    code: (code)
+    (code_block_marker_end)))
+
+===============================================================================
+A lone carriage return after a table continuation row keeps the next line's column
+;; Written with LONE CARRIAGE RETURNS. The continuation row stepped over its
+;; terminator by hand, so the scanner's column base never moved and the stale
+;; value surfaced one scan later. It now crosses through `consume_line_end`.
+===============================================================================
+> | a |> + b |tail
+
+-------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (table
+        (table_row
+          (table_cell))
+        (block_quote_marker)
+        (table_continuation_row))))
+  (paragraph))

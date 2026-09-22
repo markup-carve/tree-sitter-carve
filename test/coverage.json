@@ -875,10 +875,6 @@
     }
   },
   "lineTerminatorGaps": {
-    "a-closed-fence-in-a-description-body-ends-it-2": {
-      "spellings": "the cr spelling(s) parse to a different tree than lf",
-      "reason": "ref:lone-cr-strands-a-column-probe"
-    },
     "an-unterminated-comment-fence-in-a-list-item-is-the-line-form-5": {
       "spellings": "the cr spelling(s) parse to a different tree than lf",
       "reason": "ref:lone-cr-strands-a-column-probe"
@@ -899,15 +895,7 @@
       "spellings": "the cr spelling(s) parse to a different tree than lf",
       "reason": "ref:lone-cr-strands-a-column-probe"
     },
-    "the-host-does-not-change-which-column-a-definition-reaches-21": {
-      "spellings": "the cr spelling(s) parse to a different tree than lf",
-      "reason": "ref:lone-cr-strands-a-column-probe"
-    },
     "the-host-does-not-change-which-column-a-definition-reaches-6": {
-      "spellings": "the cr spelling(s) parse to a different tree than lf",
-      "reason": "ref:lone-cr-strands-a-column-probe"
-    },
-    "a-marker-folds-into-a-quote-below-it-8": {
       "spellings": "the cr spelling(s) parse to a different tree than lf",
       "reason": "ref:lone-cr-strands-a-column-probe"
     },
@@ -923,23 +911,7 @@
       "spellings": "the cr spelling(s) parse to a different tree than lf",
       "reason": "ref:lone-cr-strands-a-column-probe"
     },
-    "an-unterminated-fence-at-a-content-column-opens-no-block-so-the-paragraph-stays-open-6": {
-      "spellings": "the cr spelling(s) parse to a different tree than lf",
-      "reason": "ref:lone-cr-strands-a-column-probe"
-    },
     "a-block-attached-after-an-invisible-line-leaves-the-item-tight-2": {
-      "spellings": "the cr spelling(s) parse to a different tree than lf",
-      "reason": "ref:lone-cr-strands-a-column-probe"
-    },
-    "a-container-whose-table-ends-on-a-joined-header-row-3": {
-      "spellings": "the cr spelling(s) parse to a different tree than lf",
-      "reason": "ref:lone-cr-strands-a-column-probe"
-    },
-    "a-fence-opened-on-a-list-marker-line-body-below-the-content-column-7": {
-      "spellings": "the cr spelling(s) parse to a different tree than lf",
-      "reason": "ref:lone-cr-strands-a-column-probe"
-    },
-    "a-footnote-body-s-last-block-when-it-is-not-a-paragraph-gets-a-synthesized-paragraph-for-the-backlink": {
       "spellings": "the cr spelling(s) parse to a different tree than lf",
       "reason": "ref:lone-cr-strands-a-column-probe"
     },
@@ -948,50 +920,6 @@
       "reason": "the cr spelling parses to a different tree because the LF spelling already parses to ERROR - the quoted attribute value carrying a newline is the skip recorded for this example. It arrived as one of three example-level skips on the same corpus bump; the other two - a line holding only a vertical tab, form feed, NEL, LS or PS, and a content line ending in NBSP, ZWSP, BOM or U+2000 - were both control characters with no line-content route, and both are closed. This one is not a character the text token can admit: the attribute block commits on the opening brace and has no route back to a paragraph when the value never closes on its line. The terminator is not the defect here, the unmodeled construct is, and the divergence goes away with it. Tracked in tree-sitter-carve#160."
     },
     "compact-list-blocks-6": {
-      "spellings": "the cr spelling(s) parse to a different tree than lf",
-      "reason": "ref:lone-cr-strands-a-column-probe"
-    },
-    "list-lazy-continuation-7": {
-      "spellings": "the cr spelling(s) parse to a different tree than lf",
-      "reason": "ref:lone-cr-strands-a-column-probe"
-    },
-    "paragraph-interruption-2": {
-      "spellings": "the cr spelling(s) parse to a different tree than lf",
-      "reason": "ref:lone-cr-strands-a-column-probe"
-    },
-    "tight-list-item-keeps-trailing-text-after-a-block-bare": {
-      "spellings": "the cr spelling(s) parse to a different tree than lf",
-      "reason": "ref:lone-cr-strands-a-column-probe"
-    },
-    "post-blank-list-continuation-content-column-model-5": {
-      "spellings": "the cr spelling(s) parse to a different tree than lf",
-      "reason": "ref:lone-cr-strands-a-column-probe"
-    },
-    "a-boundary-line-inside-an-open-fence-does-not-end-the-container-2": {
-      "spellings": "the cr spelling(s) parse to a different tree than lf",
-      "reason": "ref:lone-cr-strands-a-column-probe"
-    },
-    "a-boundary-line-inside-an-open-fence-does-not-end-the-container": {
-      "spellings": "the cr spelling(s) parse to a different tree than lf",
-      "reason": "ref:lone-cr-strands-a-column-probe"
-    },
-    "a-container-whose-table-ends-on-a-continuation-row-3": {
-      "spellings": "the cr spelling(s) parse to a different tree than lf",
-      "reason": "ref:lone-cr-strands-a-column-probe"
-    },
-    "a-container-whose-table-ends-on-a-continuation-row-5": {
-      "spellings": "the cr spelling(s) parse to a different tree than lf",
-      "reason": "ref:lone-cr-strands-a-column-probe"
-    },
-    "a-quote-inside-a-quote-is-asked-what-it-ends-on-8": {
-      "spellings": "the cr spelling(s) parse to a different tree than lf",
-      "reason": "ref:lone-cr-strands-a-column-probe"
-    },
-    "a-quote-inside-a-quote-is-asked-what-it-ends-on-9": {
-      "spellings": "the cr spelling(s) parse to a different tree than lf",
-      "reason": "ref:lone-cr-strands-a-column-probe"
-    },
-    "a-paragraph-opened-after-a-block-in-an-item-is-still-open-for-a-lazy-line": {
       "spellings": "the cr spelling(s) parse to a different tree than lf",
       "reason": "ref:lone-cr-strands-a-column-probe"
     },
