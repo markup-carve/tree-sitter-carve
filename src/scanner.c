@@ -5681,6 +5681,12 @@ static bool parse_open_curly_bracket(Scanner *s, TSLexer *lexer,
   if (lexer->lookahead != '{') {
     return false;
   }
+  // On a list marker line the item's content starts where the marker ended,
+  // though the line's indent still reads what the line began with. A marker
+  // attribute (`-{#k} {#h}`) counts zero toward that column, so the block can
+  // sit past it; nothing else on a marker line reaches here in block position.
+  bool on_marker_line =
+      s->marker_end_col != 0 && line_column(s, lexer) >= s->marker_end_col;
   // Only consume the `{`, if successful.
   advance(s, lexer);
   mark_end(s, lexer);
@@ -5786,7 +5792,8 @@ static bool parse_open_curly_bracket(Scanner *s, TSLexer *lexer,
                  // neither is past it. Only the first half was checked, so
                  // `{.c}` one space past a list item's content column opened a
                  // real attribute where the corpus says literal text (#84).
-                 !has_extra_indent(s) && !has_surplus_indent(s)) {
+                 (on_marker_line ||
+                  (!has_extra_indent(s) && !has_surplus_indent(s)))) {
         // A block attribute must stand alone on its line: after the closing
         // `}` only trailing whitespace and a newline (or EOF) may follow.
         // Otherwise (e.g. `{.c} text`, `para {.c} more`) the braces are
@@ -5852,10 +5859,9 @@ static bool parse_open_curly_bracket(Scanner *s, TSLexer *lexer,
     case '\n':
       can_be_braced_comment = false;
       consume_line_end(s, lexer);
-      // Need to match indent!
-      if (indent != consume_whitespace(s, lexer)) {
-        goto no_attribute;
-      }
+      // A5: a continuation is a line break optionally followed by
+      // indentation, of any width.
+      consume_whitespace(s, lexer);
       // Can only have one newline in a row for a valid attribute.
       if (at_line_end(lexer)) {
         goto no_attribute;
@@ -6424,6 +6430,91 @@ static bool item_outside_quotes_reached(Scanner *s, uint32_t column) {
   return false;
 }
 
+/// A block attribute line interrupts an open paragraph (PART 9 §15): `q` over
+/// `{.k}` ends `q`, and the attribute reaches the block below. The whole block
+/// is validated first, wrapped lines included, so a line that only starts like
+/// one (`{.k} text`) stays paragraph text. A wrapped continuation inside a
+/// quote has to carry the quote's markers.
+static bool scan_block_attribute_at_paragraph_end(Scanner *s, TSLexer *lexer) {
+  if (lexer->lookahead != '{' ||
+      !at_block_opener_margin(s, line_column(s, lexer))) {
+    return false;
+  }
+  uint8_t quotes = count_blocks(s, BLOCK_QUOTE);
+  advance(s, lexer);
+  while (!lexer->eof(lexer)) {
+    consume_whitespace(s, lexer);
+    switch (lexer->lookahead) {
+    case '}':
+      advance(s, lexer);
+      while (lexer->lookahead == '{') {
+        if (!scan_valid_inline_attribute(s, lexer)) {
+          return false;
+        }
+      }
+      while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+        advance(s, lexer);
+      }
+      return at_line_end(lexer) || lexer->eof(lexer);
+    case '.':
+      advance(s, lexer);
+      if (!scan_name_no_digit_start(s, lexer) || !at_attribute_boundary(lexer)) {
+        return false;
+      }
+      break;
+    case '#':
+      advance(s, lexer);
+      if (!scan_identifier(s, lexer) || !at_attribute_boundary(lexer)) {
+        return false;
+      }
+      break;
+    case ':':
+      advance(s, lexer);
+      if (!scan_language_tag(s, lexer) || !at_attribute_boundary(lexer)) {
+        return false;
+      }
+      break;
+    case '\r':
+    case '\n': {
+      consume_line_end(s, lexer);
+      if (quotes > 0) {
+        bool ending_newline = false;
+        if (scan_block_quote_markers(s, lexer, &ending_newline) != quotes ||
+            ending_newline) {
+          return false;
+        }
+      }
+      consume_whitespace(s, lexer);
+      if (at_line_end(lexer)) {
+        return false;
+      }
+      break;
+    }
+    default: {
+      int32_t first = lexer->lookahead;
+      if (!scan_name_no_digit_start(s, lexer)) {
+        return false;
+      }
+      if (lexer->lookahead != '=') {
+        if (!valid_bare_boolean_first_char(first)) {
+          return false;
+        }
+        if (lexer->lookahead == '}' || lexer->lookahead == ' ' ||
+            lexer->lookahead == '\t' || at_line_end(lexer)) {
+          break;
+        }
+        return false;
+      }
+      advance(s, lexer);
+      if (!scan_value(s, lexer) || !at_attribute_boundary(lexer)) {
+        return false;
+      }
+    }
+    }
+  }
+  return false;
+}
+
 static bool close_paragraph(Scanner *s, TSLexer *lexer) {
   // Workaround for not including the following blankline when closing a
   // paragraph inside a block.
@@ -6473,6 +6564,9 @@ static bool close_paragraph(Scanner *s, TSLexer *lexer) {
     return true;
   }
   if (scan_definition_at_paragraph_end(s, lexer)) {
+    return true;
+  }
+  if (scan_block_attribute_at_paragraph_end(s, lexer)) {
     return true;
   }
 
