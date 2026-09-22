@@ -501,6 +501,9 @@ static const uint16_t STATE_MULTILINE_IDENTIFIER = 1 << 8;
 // quote(s). Read at the newline because deciding at the next line's start would
 // consume its `>` markers, and a code line needs them as its own tokens.
 static const uint16_t STATE_QUOTED_FENCE_CLOSER = 1 << 9;
+// The line after this newline is marked at the fence's quote depth but short
+// of the quoted list item's content column: it ends the fence and the item.
+static const uint16_t STATE_QUOTED_LINE_SHORT_OF_ITEM = 1 << 10;
 
 static TokenType scan_list_marker_token(Scanner *s, TSLexer *lexer);
 static uint8_t scan_block_quote_markers(Scanner *s, TSLexer *lexer,
@@ -1400,12 +1403,17 @@ static bool close_list_nested_block_if_needed(Scanner *s, TSLexer *lexer,
         top->type == CODE_BLOCK ? list_item_margin(s, list) : list->data;
     // In a quote the line start is still before its `>` markers; the line is
     // measured once they are consumed.
+    // A marked line short of the column was announced by the newline before
+    // it, since its markers are consumed before a close is on offer again.
     bool short_of_list =
         list_opened_in_quote(s, list)
-            ? lexer->lookahead != '>' &&
-                  line_column(s, lexer) < list->content_col
+            ? (lexer->lookahead == '>'
+                   ? top->type == CODE_BLOCK &&
+                         (s->state & STATE_QUOTED_LINE_SHORT_OF_ITEM)
+                   : line_column(s, lexer) < list->content_col)
             : s->indent < margin;
     if (short_of_list) {
+      s->state &= ~STATE_QUOTED_LINE_SHORT_OF_ITEM;
       lexer->result_symbol = BLOCK_CLOSE;
       remove_block(s);
       return true;
@@ -2380,6 +2388,12 @@ static bool scan_quoted_code_fence_closer(Scanner *s, TSLexer *lexer) {
     return false;
   }
   consume_whitespace(s, lexer);
+  Block *list = find_list(s);
+  if (list && list_opened_in_quote(s, list) && !at_line_end(lexer) &&
+      !lexer->eof(lexer) && line_column(s, lexer) < list->content_col) {
+    s->state |= STATE_QUOTED_LINE_SHORT_OF_ITEM;
+    return false;
+  }
   if (line_column(s, lexer) != top->content_col) {
     return false;
   }
@@ -6573,7 +6587,7 @@ static bool parse_newline(Scanner *s, TSLexer *lexer,
   if (valid_symbols[NEWLINE]) {
     s->state &= ~STATE_FENCE_ABSORBS;
     // The token end is pinned, so reading the next line here is free.
-    s->state &= ~STATE_QUOTED_FENCE_CLOSER;
+    s->state &= ~(STATE_QUOTED_FENCE_CLOSER | STATE_QUOTED_LINE_SHORT_OF_ITEM);
     if (scan_quoted_code_fence_closer(s, lexer)) {
       s->state |= STATE_QUOTED_FENCE_CLOSER;
     }
