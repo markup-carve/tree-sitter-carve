@@ -27,6 +27,8 @@ jobs:
         run: git diff --exit-code -- src/parser.c src/grammar.json src/node-types.json
       - name: Run hand-written corpus tests
         run: npm test
+      - name: Fixtures keep the bytes their cases depend on
+        run: npm run test:fixture-bytes
       - name: Coverage matrix and shared-corpus conformance
         run: npm run test:corpus
       - name: Divergence reasons describe their documents
