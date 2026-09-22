@@ -3666,6 +3666,61 @@ c
       end_marker: (verbatim_marker_end))))
 
 ==================
+A bare comment line below an unclosed code span ends it (#441)
+==================
+a `b
+%% secret
+c
+
+---
+
+(document
+  (paragraph
+    (verbatim
+      begin_marker: (verbatim_marker_begin)
+      content: (content)
+      end_marker: (verbatim_marker_end)))
+  (comment_line)
+  (paragraph))
+
+==================
+A fenced comment below an unclosed code span ends it
+==================
+a `b
+%%%
+secret
+%%%
+c
+
+---
+
+(document
+  (paragraph
+    (verbatim
+      begin_marker: (verbatim_marker_begin)
+      content: (content)
+      end_marker: (verbatim_marker_end)))
+  (fenced_comment_block
+    (comment_fence_marker_begin)
+    content: (content)
+    (comment_fence_marker_end))
+  (paragraph))
+
+==================
+A bare comment line ends an ordinary paragraph the same way
+==================
+a
+%% secret
+c
+
+---
+
+(document
+  (paragraph)
+  (comment_line)
+  (paragraph))
+
+==================
 A fence of the span's own width below it still opens with a closer ahead
 ==================
 a ```b
@@ -3750,7 +3805,7 @@ c
     (div_marker_end)))
 
 ==================
-A comment-only line inside a span outside any line block builds no comment node
+A comment-only line inside a span outside any line block ends the run rather than being subtracted from it (#441)
 ==================
 a `b
 %% secret
@@ -3763,4 +3818,6 @@ c
     (verbatim
       begin_marker: (verbatim_marker_begin)
       content: (content)
-      end_marker: (verbatim_marker_end))))
+      end_marker: (verbatim_marker_end)))
+  (comment_line)
+  (paragraph))
