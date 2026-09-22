@@ -3509,9 +3509,33 @@ static bool frontmatter_has_closer(TSLexer *lexer) {
 
 // Either parse a list item marker (like '- ') or a thematic break
 // (like '- - -').
+/// THE HANDBACK CONTRACT, for a probe that declines after consuming.
+///
+/// The lexer cannot rewind, so a probe that reads a delimiter run and then
+/// declines leaves every later reader in this call standing past characters it
+/// never saw. The left-boundary reader needs exactly those characters: it
+/// decides a delimiter by the one behind it, and at a line start the block
+/// probes get the first look.
+///
+/// So the probe reports what it ate. `*declined_run` is set to the number of
+/// MARKER characters consumed, and only where everything consumed was the
+/// marker - a probe that also took an attribute block, a space or a word
+/// reports nothing, because a replay of marker characters would then be a lie.
+///
+/// The promise, for the reader: on a false return with a non-zero count, the
+/// lexer sits exactly that many marker characters past where the call began,
+/// and nothing else was consumed. On a false return with zero, the reader may
+/// assume nothing about the position and must not act.
+///
+/// A probe that declines WITHOUT consuming leaves the count at zero, which is
+/// the same thing it said before this contract existed.
 static bool parse_list_marker_or_thematic_break(
     Scanner *s, TSLexer *lexer, const bool *valid_symbols, char marker,
-    TokenType marker_type, BlockType list_type, TokenType thematic_break_type) {
+    TokenType marker_type, BlockType list_type, TokenType thematic_break_type,
+    uint8_t *declined_run) {
+  if (declined_run != NULL) {
+    *declined_run = 0;
+  }
   // This is a bit ugly to do here, but eh, refactoring will look very ugly.
   bool check_frontmatter = valid_symbols[FRONTMATTER_MARKER] && marker == '-';
 
@@ -3580,6 +3604,12 @@ static bool parse_list_marker_or_thematic_break(
   // so we can go back to simply returning a list marker that
   // only consumes these two characters.
   advance(s, lexer);
+  // Both consumed characters are the marker, so a replay of two is exact. Any
+  // later probe that eats more of the run adds to it; anything else consumed
+  // clears it, because the contract above promises marker characters only.
+  if (declined_run != NULL && marker_count == 2) {
+    *declined_run = 2;
+  }
   lexer->mark_end(lexer);
   // The column just past the COMMITTED token, captured here because the content
   // probe below advances the lexer as scratch - reading the column after it
@@ -4077,16 +4107,18 @@ static bool parse_open_bracket(Scanner *s, TSLexer *lexer,
   return parse_ref_def_begin(s, lexer, valid_symbols);
 }
 
-static bool parse_dash(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
+static bool parse_dash(Scanner *s, TSLexer *lexer, const bool *valid_symbols,
+                       uint8_t *declined_run) {
   return parse_list_marker_or_thematic_break(s, lexer, valid_symbols, '-',
                                              LIST_MARKER_DASH, LIST_DASH,
-                                             THEMATIC_BREAK_DASH);
+                                             THEMATIC_BREAK_DASH, declined_run);
 }
 
-static bool parse_star(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
+static bool parse_star(Scanner *s, TSLexer *lexer, const bool *valid_symbols,
+                       uint8_t *declined_run) {
   return parse_list_marker_or_thematic_break(s, lexer, valid_symbols, '*',
                                              LIST_MARKER_STAR, LIST_STAR,
-                                             THEMATIC_BREAK_STAR);
+                                             THEMATIC_BREAK_STAR, declined_run);
 }
 
 static bool parse_list_item_end(Scanner *s, TSLexer *lexer,
@@ -7739,7 +7771,8 @@ static bool zero_width_mark_pending(const bool *valid_symbols) {
 ///  0: the reader did not move the lexer; the rest of the call still applies.
 ///  1: the token is the reader's.
 static int parse_literal_run(Scanner *s, TSLexer *lexer,
-                             const bool *valid_symbols) {
+                             const bool *valid_symbols, int32_t replay_marker,
+                             uint8_t replay_count) {
   // `prev` is the character behind the lexer, 0 while it is unknown. Unknown
   // reads as a clean left boundary, which is what the grammar assumed before
   // this pass existed.
@@ -7747,8 +7780,43 @@ static int parse_literal_run(Scanner *s, TSLexer *lexer,
   int32_t prev2 = 0;
   InlineType kind;
   bool leftover = false;
+  uint32_t delims_seen = 0;
 
-  if (is_bare_delim_kind(lexer->lookahead, &kind)) {
+  if (replay_count > 0) {
+    // A block probe consumed this run and handed it back (see the contract on
+    // `parse_list_marker_or_thematic_break`). Decide those characters here,
+    // where the one behind each of them is known, before reading on from where
+    // the probe stopped. Any of them that could open or close belongs to the
+    // span machinery, and the whole call goes back to it.
+    InlineType rk;
+    if (!is_bare_delim_kind(replay_marker, &rk)) {
+      return 0;
+    }
+    Inline *ropen = find_inline_in_scope(s, rk);
+    if (ropen != NULL) {
+      return 0;
+    }
+    for (uint8_t i = 0; i < replay_count; ++i) {
+      int32_t next =
+          (i + 1 < replay_count) ? replay_marker : lexer->lookahead;
+      bool next_ws = lexer->eof(lexer) || next == '\n' || next == '\r' ||
+                     next == ' ' || next == '\t';
+      bool may_open = !carve_is_alnum_ascii(prev) && prev != replay_marker &&
+                      !next_ws && next != replay_marker;
+      // UNREACHABLE under today's contract, and kept on purpose. A probe hands
+      // back only a pure run of one marker, and inside such a run every
+      // character has a neighbour of the same marker, so nothing in it can
+      // open. The check matters the moment the contract is widened to a run
+      // that is not pure; whoever widens it must also add a case that makes
+      // this fire, because nothing does today.
+      if (may_open) {
+        return 0;
+      }
+      prev2 = prev;
+      prev = replay_marker;
+      delims_seen++;
+    }
+  } else if (is_bare_delim_kind(lexer->lookahead, &kind)) {
     uint32_t col = line_column(s, lexer);
     if (s->after_closer_char != 0 && s->after_closer_col == col) {
       // Right behind a closer of this very marker: nothing of this kind is
@@ -7769,7 +7837,7 @@ static int parse_literal_run(Scanner *s, TSLexer *lexer,
   }
 
   lexer->mark_end(lexer);
-  uint32_t delims = 0;
+  uint32_t delims = delims_seen;
   for (;;) {
     int32_t c = lexer->lookahead;
     if (carve_is_alnum_ascii(c)) {
@@ -8109,7 +8177,7 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
        carve_is_alnum_ascii(lexer->lookahead)) &&
       !block_reading_ahead(lexer->lookahead, valid_symbols) &&
       !zero_width_mark_pending(valid_symbols)) {
-    int read = parse_literal_run(s, lexer, valid_symbols);
+    int read = parse_literal_run(s, lexer, valid_symbols, 0, 0);
     if (read > 0) {
       return true;
     }
@@ -8370,6 +8438,10 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
     return true;
   }
 
+  // Set by a block probe that declines after consuming a pure marker run; see
+  // the contract on `parse_list_marker_or_thematic_break`.
+  uint8_t declined_run = 0;
+  int32_t declined_marker = 0;
   switch (lexer->lookahead) {
   case '[':
     if (parse_open_bracket(s, lexer, valid_symbols)) {
@@ -8377,12 +8449,14 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
     }
     break;
   case '-':
-    if (parse_dash(s, lexer, valid_symbols)) {
+    declined_marker = '-';
+    if (parse_dash(s, lexer, valid_symbols, &declined_run)) {
       return true;
     }
     break;
   case '*':
-    if (parse_star(s, lexer, valid_symbols)) {
+    declined_marker = '*';
+    if (parse_star(s, lexer, valid_symbols, &declined_run)) {
       return true;
     }
     break;
@@ -8398,6 +8472,21 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
     break;
   default:
     break;
+  }
+
+  // THE READER'S SECOND CHANCE. It runs first in this call and stands aside
+  // wherever a block reading may start on the same character, which at a line
+  // start is every delimiter run. The probe above has now declined, and by the
+  // contract it reports a pure marker run when it consumed one, so the reader
+  // can decide those characters after all - with the one behind each of them
+  // known, which is the whole point of it.
+  if (declined_run > 0 && valid_symbols[LITERAL_RUN] && !valid_symbols[ERROR] &&
+      !zero_width_mark_pending(valid_symbols)) {
+    int read = parse_literal_run(s, lexer, valid_symbols, declined_marker,
+                                 declined_run);
+    if (read > 0) {
+      return true;
+    }
   }
 
   if (valid_symbols[HIGHLIGHTED_OPEN_CHECK] &&
