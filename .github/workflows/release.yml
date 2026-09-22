@@ -108,6 +108,51 @@ jobs:
           # 0.1.3 run printed "authenticated as" with no name.
           echo "npm: authenticated as $(node -p 'require("/tmp/npm-who.json").username')"
 
+  # BEFORE EVERY PUBLISH. This check used to be a step of the PyPI job, which
+  # runs after npm: a tag with no draft published npm and crates.io and then
+  # failed on PyPI, leaving a half-released version no registry lets you take
+  # back. Every publish job now `needs:` this one.
+  release-notes:
+    name: A release draft for this tag exists and has notes
+    runs-on: ubuntu-latest
+    permissions:
+      # `write`, not `read`: a DRAFT release is invisible to a caller without
+      # push access, so under `contents: read` the listing comes back empty and
+      # the gate reports "no release" for a draft that is sitting right there
+      # with notes in it. See markup-carve/carve-wasm#80.
+      contents: write
+    steps:
+      # GATE: the notes are not the workflow's to write. A CHANGELOG entry is
+      # deliberately one or two lines for a contributor, which makes poor
+      # release notes for a reader deciding whether to upgrade. A human writes
+      # the draft first and this refuses to publish without one.
+      #
+      # Found by listing rather than `gh release view <tag>`: a draft's tag is
+      # not a git ref, so addressing one by tag can match nothing, change
+      # nothing and still exit 0.
+      - name: The draft exists and has notes
+        if: github.event_name != 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          release="$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate \
+            --jq "[.[] | select(.tag_name == \"$GITHUB_REF_NAME\")] | first")"
+          if [ -z "$release" ]; then
+            echo "::error::no release for $GITHUB_REF_NAME. Write the notes first:" \
+                 "gh release create $GITHUB_REF_NAME --draft --notes-file NOTES.md"
+            echo "::error::if a draft DOES exist, this job could not see it -" \
+                 "check that the job still declares contents: write"
+            exit 1
+          fi
+          body="$(printf '%s' "$release" | jq -r '.body // ""' | tr -d '[:space:]')"
+          [ -n "$body" ] \
+            || { echo "::error::the release for $GITHUB_REF_NAME has no notes"; exit 1; }
+          printf '%s' "$release" | jq -r '"draft=\(.draft) tag=\(.tag_name)"'
+
+      - name: Rehearsal notice
+        if: github.event_name == 'workflow_dispatch'
+        run: echo "::notice::rehearsal - no release draft is required"
+
   prebuild:
     name: Prebuild (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -209,7 +254,7 @@ jobs:
     name: Publish to npm
     runs-on: ubuntu-latest
     environment: release
-    needs: [guard, prebuild, corpus-gate]
+    needs: [guard, release-notes, prebuild, corpus-gate]
     # `npm publish --provenance` signs an attestation binding the tarball to
     # this commit, and that needs an OIDC token. `id-token` is never granted
     # implicitly - not even when the repo default is read-write - so omitting
@@ -279,7 +324,7 @@ jobs:
     # crates.io and PyPI had already shipped, and no registry lets a version be
     # reused, forcing a re-cut of two good releases. Serialized, a failed npm
     # publish uploads nothing and stops the run with every registry untouched.
-    needs: [guard, corpus-gate, publish-npm]
+    needs: [guard, release-notes, corpus-gate, publish-npm]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -384,42 +429,18 @@ jobs:
     name: Publish to PyPI
     runs-on: ubuntu-latest
     environment: release
-    needs: [guard, corpus-gate, build-python, build-python-sdist, publish-npm]
+    needs:
+      [
+        guard,
+        release-notes,
+        corpus-gate,
+        build-python,
+        build-python-sdist,
+        publish-npm,
+      ]
     permissions:
-      # `write`, not `read`, and the gate below is the whole reason: a DRAFT
-      # release is invisible to a caller without push access, so under
-      # `contents: read` the listing comes back empty and the gate reports
-      # "no release" for a draft that is sitting right there with notes in
-      # it. See markup-carve/carve-wasm#80.
-      contents: write
+      contents: read
     steps:
-      # GATE: the notes are not the workflow's to write. A CHANGELOG entry is
-      # deliberately one or two lines for a contributor, which makes poor
-      # release notes for a reader deciding whether to upgrade. A human writes
-      # the draft first and this refuses to publish without one.
-      #
-      # Found by listing rather than `gh release view <tag>`: a draft's tag is
-      # not a git ref, so addressing one by tag can match nothing, change
-      # nothing and still exit 0.
-      - name: A release draft for this tag exists and has notes
-        if: github.event_name != 'workflow_dispatch'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          release="$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate \
-            --jq "[.[] | select(.tag_name == \"$GITHUB_REF_NAME\")] | first")"
-          if [ -z "$release" ]; then
-            echo "::error::no release for $GITHUB_REF_NAME. Write the notes first:" \
-                 "gh release create $GITHUB_REF_NAME --draft --notes-file NOTES.md"
-            echo "::error::if a draft DOES exist, this job could not see it -" \
-                 "check that the job still declares contents: write"
-            exit 1
-          fi
-          body="$(printf '%s' "$release" | jq -r '.body // ""' | tr -d '[:space:]')"
-          [ -n "$body" ] \
-            || { echo "::error::the release for $GITHUB_REF_NAME has no notes"; exit 1; }
-          printf '%s' "$release" | jq -r '"draft=\(.draft) tag=\(.tag_name)"'
-
       - name: The PyPI credential is present
         run: |
           [ -n "${{ secrets.PYPI_API_TOKEN }}" ] \
