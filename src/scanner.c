@@ -7890,6 +7890,62 @@ static bool scan_until_bracket_close(Scanner *s, TSLexer *lexer,
   return false;
 }
 
+/// Is an unescaped `bare` character reachable ahead, before this paragraph
+/// ends, that is NOT inside a later `[...]` run's own balanced extent?
+///
+/// The reference determines a bracket's own close first, purely by depth
+/// (`bracketRunEnd`, spec PART 16), and only reads markup inside it
+/// afterward - bracket content is opaque to a marker search from outside it.
+/// So a `*` whose only occurrence sits inside a link's own brackets
+/// (`a *[t [z]* w](/u)`) never actually closes a strong opened before the
+/// bracket, and `mark_span_begin`'s real-open path for `STRONG` refuses
+/// rather than explore a branch that competes for GLR's bounded number of
+/// live versions with the branch this ticket needs instead
+/// (tree-sitter-carve#436). A `[` with no matching `]` ahead is content, not
+/// an opaque run, so it does not stop the search.
+static bool bare_closer_skips_brackets(Scanner *s, TSLexer *lexer, char bare) {
+  while (!lexer->eof(lexer)) {
+    if (at_line_end(lexer)) {
+      consume_line_end(s, lexer);
+      consume_whitespace(s, lexer);
+      if (lexer->eof(lexer) || at_line_end(lexer)) {
+        return false;
+      }
+      continue;
+    }
+    int32_t c = lexer->lookahead;
+    if (c == '\\') {
+      advance(s, lexer);
+      if (!lexer->eof(lexer) && !at_line_end(lexer)) {
+        advance(s, lexer);
+      }
+      continue;
+    }
+    if (c == '`') {
+      uint8_t width = consume_chars(s, lexer, '`');
+      if (read_verbatim_run(s, lexer, width, 0, false) != VerbatimRunCloses) {
+        return false;
+      }
+      continue;
+    }
+    if (c == (int32_t)(unsigned char)bare) {
+      return true;
+    }
+    if (c == '[') {
+      advance(s, lexer);
+      if (scan_until_bracket_close(s, lexer, NULL)) {
+        advance(s, lexer); // past the matching `]`
+        continue;
+      }
+      // No matching `]`: this `[` is content, not an opaque run - fall
+      // through and keep searching from right after it.
+      continue;
+    }
+    advance(s, lexer);
+  }
+  return false;
+}
+
 // Updates lookahead states that are used to block the acceptance of
 // the fallback characters `(` and `{` if there's a valid inline link
 // or span to be chosen.
@@ -8246,6 +8302,17 @@ static bool mark_span_begin(Scanner *s, TSLexer *lexer,
   } else {
     // Reset blocking states when the correct branch was chosen.
     if (inline_type == SQUARE_BRACKET_SPAN) {
+      // A `[` with no matching `]` ahead of it in this paragraph is never
+      // going to be a real span - refuse it here rather than keep an
+      // unclosable branch alive (tree-sitter-carve#435). `top` is NULL,
+      // unlike the fallback branch's own lookahead below: passing the
+      // enclosing span would also refuse a nested `[^1]` whose `]` reads as
+      // that span's own closer. Pin the zero-width mark first, since the
+      // lookahead advances the lexer past it.
+      mark_end(s, lexer);
+      if (!scan_until_bracket_close(s, lexer, NULL)) {
+        return false;
+      }
     } else if (inline_type == PARENS_SPAN) {
       s->state &= ~STATE_BRACKET_STARTS_INLINE_LINK;
     } else if (inline_type == CURLY_BRACKET_SPAN) {
@@ -8286,6 +8353,14 @@ static bool mark_span_begin(Scanner *s, TSLexer *lexer,
         if (!bare_closer_in_scope(s, lexer, inline_marker(inline_type),
                                   in_braced ? inline_marker(around->type)
                                             : 0)) {
+          return false;
+        }
+      } else if (inline_type == STRONG) {
+        // A `*` reachable only inside a later bracket's own extent does not
+        // close a strong opened before it (tree-sitter-carve#436); see
+        // `bare_closer_skips_brackets`.
+        mark_end(s, lexer);
+        if (!bare_closer_skips_brackets(s, lexer, inline_marker(STRONG))) {
           return false;
         }
       }
