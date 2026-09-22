@@ -4874,6 +4874,30 @@ static bool scan_table_row(Scanner *s, TSLexer *lexer, TokenType *row_type) {
   bool closed_by_open_run = false;
   while (true) {
     attr_after_pipe = lexer->lookahead == '{';
+    // A BRACE RUN HERE IS ONE OF TWO THINGS, and only the row attribute ends
+    // the row: `| a |{.head}` closes it, `|{.head} a |` opens a cell that
+    // carries its own. Validating here rather than leaving it to
+    // `parse_table_end_newline` is what keeps an invalid row attribute from
+    // opening a row that then cannot close - that came back as an ERROR where
+    // the language reads an ordinary paragraph (corpus
+    // 248-an-attribute-name-admits-no-colon-3).
+    if (attr_after_pipe) {
+      if (!scan_valid_inline_attribute(s, lexer)) {
+        return false;
+      }
+      while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+        advance(s, lexer);
+      }
+      if (at_line_end(lexer) || lexer->eof(lexer)) {
+        break;
+      }
+      // A cell's own attribute: the rest of the cell follows it, and the block
+      // is what makes the cell meaningful - `|{.x} |` is a one-cell table with
+      // a classed empty cell, not a blank row (corpus
+      // 453-a-row-whose-every-cell-is-blank-is-not-a-table-6).
+      attr_after_pipe = false;
+      any_content = true;
+    }
     if (!scan_table_cell(s, lexer, &curr_separator, &curr_empty,
                          &curr_meaningful, &unterminated,
                          &closed_by_open_run)) {
@@ -5410,11 +5434,16 @@ static bool parse_open_curly_bracket(Scanner *s, TSLexer *lexer,
       if (!scan_name_no_digit_start(s, lexer)) {
         goto no_attribute;
       }
+      // Same boundary the inline payload applies; see
+      // `scan_valid_inline_attribute`.
+      if (!at_attribute_boundary(lexer)) {
+        goto no_attribute;
+      }
       break;
     case '#':
       can_be_braced_comment = false;
       advance(s, lexer);
-      if (!scan_identifier(s, lexer)) {
+      if (!scan_identifier(s, lexer) || !at_attribute_boundary(lexer)) {
         // The `#` is consumed; on `{#myid#}` it is the first half of the
         // closer, so say so rather than letting the comment scan look past it.
         last_was_hash = true;
@@ -5474,7 +5503,7 @@ static bool parse_open_curly_bracket(Scanner *s, TSLexer *lexer,
       }
       advance(s, lexer);
       // Then scan the value
-      if (!scan_value(s, lexer)) {
+      if (!scan_value(s, lexer) || !at_attribute_boundary(lexer)) {
         goto no_attribute;
       }
     }
@@ -6680,10 +6709,17 @@ static bool scan_valid_inline_attribute(Scanner *s, TSLexer *lexer) {
       if (!scan_name_no_digit_start(s, lexer)) {
         return false;
       }
+      // AN ITEM ENDS AT A BOUNDARY, the rule the language tag below already
+      // applies: two attributes need a separator between them (PART 9 §15), so
+      // `{#i.c}` and `{.sm:hover}` are not two items and the brace run is
+      // literal content.
+      if (!at_attribute_boundary(lexer)) {
+        return false;
+      }
       break;
     case '#':
       advance(s, lexer);
-      if (!scan_identifier(s, lexer)) {
+      if (!scan_identifier(s, lexer) || !at_attribute_boundary(lexer)) {
         return false;
       }
       break;
@@ -6735,7 +6771,7 @@ static bool scan_valid_inline_attribute(Scanner *s, TSLexer *lexer) {
         return false;
       }
       advance(s, lexer);
-      if (!scan_value(s, lexer)) {
+      if (!scan_value(s, lexer) || !at_attribute_boundary(lexer)) {
         return false;
       }
     }
