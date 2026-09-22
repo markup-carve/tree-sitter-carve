@@ -539,6 +539,10 @@
       "required": true,
       "types": [
         {
+          "type": "block_quote_marker",
+          "named": true
+        },
+        {
           "type": "code_block_marker_begin",
           "named": true
         },
@@ -3259,6 +3263,10 @@
       "multiple": true,
       "required": true,
       "types": [
+        {
+          "type": "block_quote_marker",
+          "named": true
+        },
         {
           "type": "raw_block_marker_begin",
           "named": true

@@ -2032,6 +2032,7 @@ A backtick fence inside a quote closes at its quoted closer
         (code_block_marker_begin)
         code: (code
           (block_quote_marker))
+        (block_quote_marker)
         (code_block_marker_end))
       (block_quote_marker)
       (paragraph))))
@@ -2054,6 +2055,7 @@ A tilde fence inside a quote closes at its quoted closer
         (code_block_marker_begin)
         code: (code
           (block_quote_marker))
+        (block_quote_marker)
         (code_block_marker_end))
       (block_quote_marker)
       (paragraph))))
@@ -2080,6 +2082,8 @@ A fence inside a nested quote closes at its closer at the same depth
             code: (code
               (block_quote_marker)
               (block_quote_marker))
+            (block_quote_marker)
+            (block_quote_marker)
             (code_block_marker_end))
           (block_quote_marker)
           (block_quote_marker)
@@ -2131,6 +2135,7 @@ A longer quoted run closes a quoted fence
         (code_block_marker_begin)
         code: (code
           (block_quote_marker))
+        (block_quote_marker)
         (code_block_marker_end))
       (block_quote_marker)
       (paragraph))))
@@ -2150,6 +2155,7 @@ An empty quoted fence closes on the next quoted line
     content: (content
       (code_block
         (code_block_marker_begin)
+        (block_quote_marker)
         (code_block_marker_end))
       (block_quote_marker)
       (paragraph))))
@@ -2173,6 +2179,7 @@ A quoted run with trailing text is code, not a closer
         code: (code
           (block_quote_marker)
           (block_quote_marker))
+        (block_quote_marker)
         (code_block_marker_end)))))
 
 ==================
@@ -2216,4 +2223,31 @@ A quoted run indented past the quote's content column is code
         code: (code
           (block_quote_marker)
           (block_quote_marker))
+        (block_quote_marker)
         (code_block_marker_end)))))
+
+==================
+A raw block inside a quote closes at its quoted closer
+==================
+> ```=html
+> <b>x</b>
+> ```
+> y
+
+---
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (raw_block
+        (raw_block_marker_begin)
+        info: (raw_block_info
+          marker: (language_marker)
+          language: (language))
+        content: (content
+          (block_quote_marker))
+        (block_quote_marker)
+        (raw_block_marker_end))
+      (block_quote_marker)
+      (paragraph))))

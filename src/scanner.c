@@ -2343,8 +2343,8 @@ static bool scan_quoted_code_fence_closer(Scanner *s, TSLexer *lexer) {
 }
 
 /// The quoted closer the newline before it announced: `_block_close` first,
-/// zero width, then the end marker, which carries the line's `>` markers the
-/// way a comment fence's closer does.
+/// zero width. The line's `>` markers and the end marker then follow through
+/// the ordinary quote continuation and fence paths.
 static bool parse_quoted_code_fence_closer(Scanner *s, TSLexer *lexer,
                                            const bool *valid_symbols) {
   if (!(s->state & STATE_QUOTED_FENCE_CLOSER) || line_column(s, lexer) != 0) {
@@ -2355,17 +2355,9 @@ static bool parse_quoted_code_fence_closer(Scanner *s, TSLexer *lexer,
     s->state &= ~STATE_QUOTED_FENCE_CLOSER;
     return false;
   }
-  if (valid_symbols[CODE_BLOCK_END]) {
-    bool ending_newline = false;
-    scan_block_quote_markers(s, lexer, &ending_newline);
-    consume_chars(s, lexer, (top->data & CODE_FENCE_TILDE) ? '~' : '`');
-    mark_end(s, lexer);
-    remove_block(s);
-    s->state &= ~STATE_QUOTED_FENCE_CLOSER;
-    lexer->result_symbol = CODE_BLOCK_END;
-    return true;
-  }
-  if (valid_symbols[BLOCK_CLOSE]) {
+  // Once the fence's own close is taken the end marker is valid, and the
+  // markers go to the quote continuation.
+  if (valid_symbols[BLOCK_CLOSE] && !valid_symbols[CODE_BLOCK_END]) {
     lexer->result_symbol = BLOCK_CLOSE;
     return true;
   }

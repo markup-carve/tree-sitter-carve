@@ -144,6 +144,26 @@ function effectiveCapture(text, row, column) {
  */
 const CASES = [
     {
+        // A quoted fence's closing line keeps its `>` as a marker node, so it
+        // paints like the `>` on every other line of the quote.
+        name: "a quoted fence closer's marker paints as a quote marker",
+        source: '> ```\n> x\n> ```\n> y\n',
+        at: [2, 0],
+        expect: 'punctuation.special',
+    },
+    {
+        name: "a quoted raw block closer's marker paints as a quote marker",
+        source: '> ```=html\n> <b>x</b>\n> ```\n',
+        at: [2, 0],
+        expect: 'punctuation.special',
+    },
+    {
+        name: "a nested quoted fence closer's inner marker paints as a quote marker",
+        source: '> > ```\n> > x\n> > ```\n',
+        at: [2, 2],
+        expect: 'punctuation.special',
+    },
+    {
         // The whole directive, selector included. Without the rule behind it
         // `#intro` is a tag and paints as one, inside what is a single
         // reserved token.

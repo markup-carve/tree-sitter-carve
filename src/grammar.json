@@ -3208,6 +3208,18 @@
               "type": "SEQ",
               "members": [
                 {
+                  "type": "CHOICE",
+                  "members": [
+                    {
+                      "type": "SYMBOL",
+                      "name": "_block_quote_prefix"
+                    },
+                    {
+                      "type": "BLANK"
+                    }
+                  ]
+                },
+                {
                   "type": "ALIAS",
                   "content": {
                     "type": "SYMBOL",
@@ -3313,6 +3325,18 @@
             {
               "type": "SEQ",
               "members": [
+                {
+                  "type": "CHOICE",
+                  "members": [
+                    {
+                      "type": "SYMBOL",
+                      "name": "_block_quote_prefix"
+                    },
+                    {
+                      "type": "BLANK"
+                    }
+                  ]
+                },
                 {
                   "type": "ALIAS",
                   "content": {
@@ -9041,6 +9065,12 @@
     }
   ],
   "conflicts": [
+    [
+      "code_block"
+    ],
+    [
+      "raw_block"
+    ],
     [
       "include_directive",
       "_include_open_fallback"
