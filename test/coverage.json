@@ -17,7 +17,6 @@
   },
   "reasons": {
     "a-column-0-opener-does-not-close-an-open-list": "a column-0 block opener does not close an open LIST; it folds into the item as lazy paragraph text. `- a` / `# H` builds no heading, while `> q` / `# H` does - so the block quote closes correctly and only the list does not. Both documents here reach it through a `+` continuation marker, which this grammar opens as an ordinary bullet list, after which the column-0 heading below is swallowed the same way.",
-    "a-heading-in-a-description-body-builds-nothing": "a heading indented inside a description-list DEFINITION body builds no heading: the `definition` node is returned as one undivided span, so the `# H` below a floating attribute inside it never opens. The same heading one level out, in an ordinary list item, does open.",
     "a-tabbed-frontmatter-opener-swallows-the-break-below": "`---` followed by a TAB is not a frontmatter opener, and the grammar agrees that far - it builds no frontmatter. But it then reads the closing `---` three lines down as an `em_dash` inside the still-open paragraph rather than as a thematic break, so the `<hr>` the fixture expects between the paragraph and `body` is not built.",
     "an-attribute-line-does-not-end-the-paragraph-above-a-list": "a floating attribute line at column 0 does not end the paragraph above it, so the list it is meant to attach to never opens: `para` / `{.x}` / `- b` is ONE paragraph. The fixture expects the paragraph to end at the attribute line and the run to reach the list below it, as `<ul class=\"x\">`.",
     "fence-on-a-marker-line-builds-nothing": "a code fence opened on a list MARKER line: the item closes with an EMPTY code block and the residue re-parses at document level when the body sits BELOW the item's content column (markup-carve/carve#646). This grammar builds no code_block for any of these, and MEASURED against it, the cause is NOT that the fence is committed to the item with no route out - it is that the fence never opens at all. `parse_backtick` refuses an opener when `has_extra_indent` is true, and on a marker line the fence sits past the line's own indent while the item's content column is only established by the marker itself, so `- ` + fence is read as inline verbatim. The heading marker and the colon fence carry the same column-0 guard and fail the same way on a marker line, while a block quote and a table - which do not - open there correctly. The quote half of that was narrower than it reads and is now closed: its MARKER opened, but the quote took no content and the rest of the line was ejected from the list, repaired in tree-sitter-carve#218 by moving the line's content margin to the quote's own content column when it opens on an item's marker line - the same move this entry's openers need at the LIST marker. So the first half is a column question and the second half, closing the item at the boundary, is the container change; the fully-indented example (-3) needs only the first. Tracked in tree-sitter-carve#160.",
@@ -29,10 +28,6 @@
     "a-column-0-opener-does-not-close-an-open-list": {
       "ledger": "underAcceptance",
       "sourcePattern": "^\\+[ \\t]*\\n#{1,6}[ \\t]"
-    },
-    "a-heading-in-a-description-body-builds-nothing": {
-      "ledger": "underAcceptance",
-      "sourcePattern": "^::? .*(?:\\n[ \\t]+.*)*\\n[ \\t]+#{1,6}[ \\t]"
     },
     "a-tabbed-frontmatter-opener-swallows-the-break-below": {
       "ledger": "underAcceptance",
@@ -622,15 +617,7 @@
       "gaps": "heading: want 1 have 0",
       "reason": "a heading at or past a description body's content column is swallowed by the undivided definition span instead of ending its paragraph."
     },
-    "an-opener-at-or-past-a-description-body-s-column-closes-its-paragraph-15": {
-      "gaps": "heading: want 1 have 0",
-      "reason": "a heading at or past a description body's content column is swallowed by the undivided definition span instead of ending its paragraph."
-    },
     "an-opener-at-or-past-a-description-body-s-column-closes-its-paragraph-3": {
-      "gaps": "heading: want 1 have 0",
-      "reason": "a heading at or past a description body's content column is swallowed by the undivided definition span instead of ending its paragraph."
-    },
-    "an-opener-at-or-past-a-description-body-s-column-closes-its-paragraph-4": {
       "gaps": "heading: want 1 have 0",
       "reason": "a heading at or past a description body's content column is swallowed by the undivided definition span instead of ending its paragraph."
     },
@@ -641,10 +628,6 @@
     "an-opener-at-or-past-a-description-body-s-column-closes-its-paragraph-6": {
       "gaps": "table: want 1 have 0",
       "reason": "a table at a description body's block boundary is swallowed by the undivided definition span."
-    },
-    "a-closed-fence-in-a-description-body-ends-it-2": {
-      "gaps": "code_block: want 1 have 0",
-      "reason": "a code fence at the description body's content column is consumed as inline verbatim inside the undivided definition span instead of opening a block."
     },
     "an-empty-unterminated-container-ends-at-a-flush-left-line-3": {
       "gaps": "admonition_type: want 1 have 0",
@@ -726,10 +709,6 @@
       "gaps": "code_block: want 1 have 0",
       "reason": "ref:fence-on-a-marker-line-builds-nothing"
     },
-    "a-floating-attribute-is-scoped-to-the-container-that-holds-it-9": {
-      "gaps": "heading: want 1 have 0",
-      "reason": "ref:a-heading-in-a-description-body-builds-nothing"
-    },
     "a-frontmatter-opener-takes-exactly-one-space": {
       "gaps": "thematic_break: want 1 have 0",
       "reason": "`---<SP><SP>yaml` is no longer read as a frontmatter opener - the opener's `[space]` slot takes exactly one space and the line is prose - but the `---` three lines below it, which the language turns into a thematic break, is folded into that prose instead. A thematic break does not interrupt an open paragraph in this grammar; `paragraph-interruption-3` records the same gap on a document with no frontmatter in it, and the two close together."
@@ -740,10 +719,6 @@
     "a-paragraph-opened-after-a-block-in-an-item-is-still-open-for-a-lazy-line-3": {
       "gaps": "code_block: want 1 have 0",
       "reason": "ref:fence-on-a-marker-line-builds-nothing"
-    },
-    "a-recognized-opener-in-a-body-needs-no-blank-line-above-it-2": {
-      "gaps": "heading: want 1 have 0",
-      "reason": "a heading at a definition body's content column immediately after an unmarked block-quote line is swallowed as lazy quote text. The scanner recognizes the same heading after a blank line and at the document margin, but its paragraph-end probe measures this nested unmarked line against the open quote rather than the definition body that holds the quote. The document remains ERROR-free and the other eight examples in the category build every expected block."
     },
     "a-tab-after-a-fence-or-a-frontmatter-opener-depends-on-where-it-sits-3": {
       "gaps": "thematic_break: want 1 have 0",
@@ -858,10 +833,6 @@
       "reason": "the grammar builds an inline span the language keeps literal here"
     },
     "a-boundary-line-inside-an-open-fence-does-not-end-the-container-7": {
-      "reading": "code html=0 tree=1",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
-    "a-closed-fence-in-a-description-body-ends-it-2": {
       "reading": "code html=0 tree=1",
       "reason": "the grammar builds an inline span the language keeps literal here"
     },
@@ -1123,6 +1094,10 @@
     }
   },
   "lineTerminatorGaps": {
+    "a-closed-fence-in-a-description-body-ends-it-2": {
+      "spellings": "the cr spelling(s) parse to a different tree than lf",
+      "reason": "ref:lone-cr-strands-a-column-probe"
+    },
     "leading-attribute-brace-before-an-inline-span-stays-literal-3": {
       "spellings": "the cr spelling(s) parse to a different tree than lf",
       "reason": "ref:lone-cr-does-not-close-an-inline-run-at-the-block-boundary"

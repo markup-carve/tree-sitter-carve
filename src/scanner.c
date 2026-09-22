@@ -919,8 +919,10 @@ static bool has_extra_indent(Scanner *s) {
   Block *b = indenting_container(s);
   if (b) {
     // Inside such a container, any indent at or above its content threshold
-    // is the container's own margin, not heading-disqualifying fuzz.
-    return s->indent < b->data;
+    // is the container's own margin, not heading-disqualifying fuzz. Where the
+    // container recorded where its content starts, THAT is the threshold: a
+    // line left of it is outside the body, not at its margin.
+    return s->indent < (b->content_col != 0 ? b->content_col : b->data);
   }
   for (int i = s->open_blocks->size - 1; i >= 0; --i) {
     Block *quote = *array_get(s->open_blocks, i);
@@ -4288,6 +4290,11 @@ static bool parse_colon(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
         return false;
       }
       ensure_list_open(s, LIST_DEFINITION, s->indent + 1);
+      // Record where the term's content starts, as the bullet and ordered
+      // markers do. Without it the block reads column 0, and
+      // `at_block_opener_margin` - which only answers for a list whose
+      // `content_col` is set - has no opinion about a block opener in the body.
+      set_content_col(s, (uint8_t)line_column(s, lexer));
       lexer->result_symbol = LIST_MARKER_DEFINITION;
       return true;
     }
@@ -4318,6 +4325,9 @@ static bool parse_colon(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       return false;
     }
     ensure_list_open(s, LIST_DEFINITION, s->indent + 1);
+    // The full space run above is marker padding, so the lexer sits at the
+    // body's authored content column. See the term branch.
+    set_content_col(s, (uint8_t)line_column(s, lexer));
     lexer->result_symbol = LIST_MARKER_DESCRIPTION;
     return true;
   }
