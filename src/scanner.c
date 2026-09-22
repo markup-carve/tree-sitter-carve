@@ -500,6 +500,7 @@ static uint8_t scan_block_quote_markers(Scanner *s, TSLexer *lexer,
 static TokenType scan_unordered_list_marker_token(Scanner *s, TSLexer *lexer);
 static bool scan_valid_inline_attribute(Scanner *s, TSLexer *lexer);
 static bool at_block_opener_margin(Scanner *s, uint32_t column);
+static void record_container_content_column(Scanner *s, uint8_t col);
 
 #ifdef DEBUG
 static char *block_type_s(BlockType t);
@@ -2792,9 +2793,8 @@ static bool parse_block_quote(Scanner *s, TSLexer *lexer,
   if (valid_symbols[BLOCK_QUOTE_BEGIN] && has_marker) {
     s->state &= ~STATE_AFTER_BLANK_LINE;
     push_block(s, BLOCK_QUOTE, marker_count);
-    Block *opened_quote = peek_block(s);
-    if (opened_quote != NULL && marker_start_col + 2 <= UINT8_MAX) {
-      opened_quote->content_col = (uint8_t)(marker_start_col + 2);
+    if (marker_start_col + 2 <= UINT8_MAX) {
+      record_container_content_column(s, (uint8_t)(marker_start_col + 2));
     }
     // Same as the continuation branch: the probe's pin is authoritative.
     if (!marker_end_pinned) {
@@ -3329,34 +3329,32 @@ static bool scan_paragraph_closing_marker(Scanner *s, TSLexer *lexer) {
 }
 
 /// Record where the innermost container's content starts.
-///
-/// Called at every site that opens a list, with the column the lexer sits at
-/// once the marker and its separator are consumed. Kept separate from
-/// `ensure_list_open` because a CONTINUED list keeps the column it opened with -
-/// re-recording would let a lazily-indented later item move it.
-static void set_content_col(Scanner *s, uint8_t col) {
+static void record_container_content_column(Scanner *s, uint8_t col) {
   Block *top = peek_block(s);
   if (top && top->content_col == 0) {
     top->content_col = col;
   }
 }
 
-/// Record where THIS item's content starts, replacing the list's value.
+/// Record a list marker's content margin for every later indent probe.
 ///
-/// A definition list holds two kinds of item with markers of different widths:
-/// a term (`:: `, body at 3) and a description (`: `, body at 2). The list block
-/// is opened by whichever comes first and `set_content_col` keeps that first
-/// value, so every later item was measured against a column that is not its
-/// own - a definition at a description's column 2 read as short of the term's 3
-/// and was refused. Each definition-list marker therefore records its own
-/// column. `set_content_col`'s fill-once rule is still right for bullet and
-/// ordered lists, where it stops a lazily indented later item moving the
-/// column; a term or description is never lazy, it is a marker.
-static void set_item_content_col(Scanner *s, uint8_t col) {
+/// `content_col` belongs to the list, while `marker_end_col` belongs to the
+/// current source line. They describe the same position after a successful
+/// list marker, but the first survives into following lines and the second is
+/// cleared on the next line. Keeping both writes here prevents a list spelling
+/// from fixing block openers below its content but still refusing a footnote or
+/// fence on its own marker line.
+///
+/// A continued bullet, task, or ordered list keeps the content column it
+/// opened with. Definition-list items are markers rather than lazy
+/// continuations, so their width replaces the preceding item's column.
+static void record_list_marker_margin(Scanner *s, uint8_t col,
+                                      bool replace_content_col) {
   Block *top = peek_block(s);
-  if (top) {
+  if (top && (replace_content_col || top->content_col == 0)) {
     top->content_col = col;
   }
+  s->marker_end_col = col;
 }
 
 static void ensure_list_open(Scanner *s, BlockType type, uint8_t indent) {
@@ -3386,7 +3384,7 @@ static bool handle_ordered_list_marker(Scanner *s, TSLexer *lexer,
     ensure_list_open(s, list_marker_to_block(marker), s->indent + 1);
     // The lexer sits just past the marker's separator here (mark_end above), so
     // this is the content column for every marker WIDTH - `1. `, `a) `, `iv. `.
-    set_content_col(s, (uint8_t)line_column(s, lexer));
+    record_list_marker_margin(s, (uint8_t)line_column(s, lexer), false);
     lexer->result_symbol = marker;
     return true;
   } else {
@@ -3733,10 +3731,7 @@ static bool parse_list_marker_or_thematic_break(
     if (valid_symbols[LIST_MARKER_TASK_BEGIN]) {
       if (scan_task_list_marker(s, lexer)) {
         ensure_list_open(s, LIST_TASK, list_indent + 1);
-        set_content_col(s, marker_content_col);
-        // The chain column is right after the committed token: two characters
-        // for a bare `<bullet> `, more when the marker took an attribute block.
-        s->marker_end_col = marker_content_col;
+        record_list_marker_margin(s, marker_content_col, false);
         lexer->result_symbol = LIST_MARKER_TASK_BEGIN;
         return true;
       }
@@ -3749,8 +3744,7 @@ static bool parse_list_marker_or_thematic_break(
         return false;
       }
       ensure_list_open(s, list_type, list_indent + 1);
-      set_content_col(s, marker_content_col);
-      s->marker_end_col = marker_content_col;
+      record_list_marker_margin(s, marker_content_col, false);
       lexer->result_symbol = marker_type;
       return true;
     }
@@ -4400,8 +4394,7 @@ static bool parse_colon(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       // markers do. Without it the block reads column 0, and
       // `at_block_opener_margin` - which only answers for a list whose
       // `content_col` is set - has no opinion about a block opener in the body.
-      set_item_content_col(s, (uint8_t)line_column(s, lexer));
-      s->marker_end_col = (uint8_t)line_column(s, lexer);
+      record_list_marker_margin(s, (uint8_t)line_column(s, lexer), true);
       lexer->result_symbol = LIST_MARKER_DEFINITION;
       return true;
     }
@@ -4434,8 +4427,7 @@ static bool parse_colon(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     ensure_list_open(s, LIST_DEFINITION, list_indent + 1);
     // The full space run above is marker padding, so the lexer sits at the
     // body's authored content column. See the term branch.
-    set_item_content_col(s, (uint8_t)line_column(s, lexer));
-    s->marker_end_col = (uint8_t)line_column(s, lexer);
+    record_list_marker_margin(s, (uint8_t)line_column(s, lexer), true);
     lexer->result_symbol = LIST_MARKER_DESCRIPTION;
     return true;
   }
@@ -4568,10 +4560,7 @@ static bool parse_colon(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     // footnote records its real column, which is what lets a definition opener
     // one space past it fall back to a paragraph rather than opening a
     // definition the line does not spell (tree-sitter-carve#282).
-    Block *opened_div = peek_block(s);
-    if (opened_div) {
-      opened_div->content_col = s->indent;
-    }
+    record_container_content_column(s, s->indent);
     lexer->result_symbol = DIV_BEGIN;
     return true;
   }
