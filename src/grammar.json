@@ -6893,8 +6893,11 @@
           "content": {
             "type": "ALIAS",
             "content": {
-              "type": "SYMBOL",
-              "name": "_inline_single_line"
+              "type": "IMMEDIATE_TOKEN",
+              "content": {
+                "type": "PATTERN",
+                "value": "[^\\]@\\r\\n][^\\]\\r\\n]*"
+              }
             },
             "named": true,
             "value": "link_label"

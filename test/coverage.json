@@ -814,14 +814,6 @@
       "reading": "strong html=0 tree=1",
       "reason": "the grammar builds an inline span the language keeps literal here"
     },
-    "a-label-beginning-with-an-at-sign-is-not-a-reference-label": {
-      "reading": "strong html=0 tree=1",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
-    "a-label-beginning-with-an-at-sign-is-not-a-reference-label-2": {
-      "reading": "strong html=0 tree=1",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
     "a-wrapped-attribute-block-ends-at-its-quote-and-reaches-no-line-below-it": {
       "reading": "strong html=0 tree=1",
       "reason": "the grammar builds an inline span the language keeps literal here"
