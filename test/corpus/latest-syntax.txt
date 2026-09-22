@@ -2251,3 +2251,137 @@ A raw block inside a quote closes at its quoted closer
         (raw_block_marker_end))
       (block_quote_marker)
       (paragraph))))
+
+==================
+A backtick fence on a quoted line interrupts a quoted paragraph
+==================
+> b
+> ```
+> c
+> ```
+> d
+
+---
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (paragraph)
+      (block_quote_marker)
+      (code_block
+        (code_block_marker_begin)
+        code: (code
+          (block_quote_marker))
+        (block_quote_marker)
+        (code_block_marker_end))
+      (block_quote_marker)
+      (paragraph))))
+
+==================
+A tilde fence on a quoted line interrupts a quoted paragraph
+==================
+> b
+> ~~~
+> c
+> ~~~
+
+---
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (paragraph)
+      (block_quote_marker)
+      (code_block
+        (code_block_marker_begin)
+        code: (code
+          (block_quote_marker))
+        (block_quote_marker)
+        (code_block_marker_end)))))
+
+==================
+A fence in a nested quote interrupts its quoted paragraph
+==================
+> > b
+> > ```
+> > c
+> > ```
+
+---
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (block_quote
+        (block_quote_marker)
+        content: (content
+          (paragraph)
+          (block_quote_marker)
+          (block_quote_marker)
+          (code_block
+            (code_block_marker_begin)
+            code: (code
+              (block_quote_marker)
+              (block_quote_marker))
+            (block_quote_marker)
+            (block_quote_marker)
+            (code_block_marker_end)))))))
+
+==================
+A quoted fence whose closer lies past the quote does not interrupt
+==================
+> b
+> ```
+> c
+
+> ```
+
+---
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (paragraph
+        (block_quote_marker)
+        (verbatim
+          begin_marker: (verbatim_marker_begin)
+          content: (content)
+          end_marker: (verbatim_marker_end)))))
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (code_block
+        (code_block_marker_begin)))))
+
+==================
+A tilde fence interrupts a paragraph
+==================
+b
+~~~
+c
+~~~
+
+---
+
+(document
+  (paragraph)
+  (code_block
+    (code_block_marker_begin)
+    code: (code)
+    (code_block_marker_end)))
+
+==================
+An unclosed tilde fence does not interrupt a paragraph
+==================
+b
+~~~
+c
+
+---
+
+(document
+  (paragraph))
