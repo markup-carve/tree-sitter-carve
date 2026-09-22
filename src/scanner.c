@@ -4347,6 +4347,12 @@ static bool parse_colon(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
 #ifdef DEBUG
   assert(lexer->lookahead == ':');
 #endif
+  // A marker starting where this line's previous marker ended nests at its own
+  // column, as bullets do (`:  :: u`, #368).
+  uint32_t start_col = line_column(s, lexer);
+  bool marker_line_nested = start_col > s->indent && s->marker_end_col != 0 &&
+                            start_col == s->marker_end_col;
+  uint8_t list_indent = marker_line_nested ? (uint8_t)start_col : s->indent;
   advance(s, lexer);
 
   // A definition TERM: `::` plus a literal space. Checked before the div
@@ -4375,7 +4381,8 @@ static bool parse_colon(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       Block *open_definition_list = find_list(s);
       if (open_definition_list &&
           open_definition_list->type == LIST_DEFINITION) {
-        if (s->indent + 1 != open_definition_list->data) {
+        if (!marker_line_nested &&
+            list_indent + 1 != open_definition_list->data) {
           return false;
         }
       } else if (has_extra_indent(s)) {
@@ -4388,7 +4395,7 @@ static bool parse_colon(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       if (!marker_line_has_content(s, lexer)) {
         return false;
       }
-      ensure_list_open(s, LIST_DEFINITION, s->indent + 1);
+      ensure_list_open(s, LIST_DEFINITION, list_indent + 1);
       // Record where the term's content starts, as the bullet and ordered
       // markers do. Without it the block reads column 0, and
       // `at_block_opener_margin` - which only answers for a list whose
@@ -4424,7 +4431,7 @@ static bool parse_colon(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     if (!marker_line_has_content(s, lexer)) {
       return false;
     }
-    ensure_list_open(s, LIST_DEFINITION, s->indent + 1);
+    ensure_list_open(s, LIST_DEFINITION, list_indent + 1);
     // The full space run above is marker padding, so the lexer sits at the
     // body's authored content column. See the term branch.
     set_item_content_col(s, (uint8_t)line_column(s, lexer));
