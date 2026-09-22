@@ -2313,10 +2313,19 @@ module.exports = grammar({
     // immediate refuses the skip and costs nothing anywhere else: `\r` is the
     // only extra there is, so this is the same adjacency the other two
     // spellings already enforce.
+    // `refTail = "[" refLabel? "]"` with `refLabel = (~"]" ~newline any)+`
+    // (resources/carve-core.ohm), and `reference_label` subtracts a leading
+    // `@` [CARVE-P3-003]: the label is a CHARACTER RUN, not inline content,
+    // and one that begins with an at sign is no label at all. So `[t][@a]` is
+    // not a reference and builds no mention in a slot the language keeps
+    // literal (#335).
     _link_label: ($) =>
       seq(
         token.immediate("["),
-        field("label", alias($._inline_single_line, $.link_label)),
+        field(
+          "label",
+          alias(token.immediate(/[^\]@\r\n][^\]\r\n]*/), $.link_label),
+        ),
         token.immediate("]"),
       ),
     // `linkTail = "(" dest destTitle? ")"` in resources/carve-core.ohm. The

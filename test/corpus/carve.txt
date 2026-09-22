@@ -6524,10 +6524,12 @@ A lone carriage return does not bind an inline destination to the bracket above 
 ===============================================================================
 An identifier with a nested pair still resolves on one line (tree-sitter-carve#265)
 ;; A NESTED PAIR IS NOT REFUSED. A destination's reader stops at the FIRST
-;; closer rather than counting pairs, and a label holding a bracket is not
-;; plain text and so is never refused at all. Both shapes are written on one
-;; line here, in a document whose terminators are all lone carriage returns,
-;; and both still build their construct.
+;; closer rather than counting pairs. A reference label is a character run that
+;; ends at the first `]` (`refLabel` in resources/carve-core.ohm), so this one
+;; is `a[b` and what follows it is paragraph text; the reference node is the
+;; resolution limitation every unresolved reference carries here. Both shapes
+;; are written on one line, in a document whose terminators are all lone
+;; carriage returns.
 ===============================================================================
 [t][a[b]{.x}c]
 
@@ -6539,30 +6541,24 @@ An identifier with a nested pair still resolves on one line (tree-sitter-carve#2
   (paragraph
     (full_reference_link
       text: (link_text)
-      label: (link_label
-        (span
-          content: (content)
-          attribute: (inline_attribute
-            (args
-              (class)))))))
+      label: (link_label))
+    attribute: (inline_attribute
+      (args
+        (class))))
   (paragraph
     (inline_link
       text: (link_text)
       destination: (inline_link_destination))))
 
 ===============================================================================
-A label that is not plain text is left reading as it did (tree-sitter-carve#265)
-;; THE BOUND ON THE REFUSAL, stated as a document. A label is inline CONTENT,
-;; and a span's content admits a line break the label's own level does not -
-;; `[t][a *b` / `c* d]` resolves under `\n` with the break inside the strong
-;; span. Telling that from a wrap at the label's own level is a question for
-;; the inline grammar, so the scanner refuses only a label in whose text up to
-;; the carriage return no character is part of an inline delimiter. Everything
-;; richer is accepted, and this label - which holds a verbatim, and closes on
-;; its own line anyway - is read as it was. The DEFINITION line is not one: a
-;; `reference_label` ends at the first `]` (resources/grammar.ebnf), so
-;; `[a `]` c]: /u` defines nothing and is the ordinary paragraph carve-js
-;; renders.
+A reference label ends at its first bracket, even one inside ticks (tree-sitter-carve#265)
+;; THE BOUND ON THE REFUSAL, stated as a document: the scanner refuses only a
+;; label in whose text up to the carriage return no character is part of an
+;; inline delimiter. A label is a CHARACTER RUN that ends at the first `]` -
+;; `refLabel` in resources/carve-core.ohm for the reference, `reference_label`
+;; in resources/grammar.ebnf for the definition - so this label is `a ` + a
+;; backtick, the rest of the line is paragraph text, and `[a `]` c]: /u`
+;; defines nothing: it is the ordinary paragraph carve-js renders.
 ===============================================================================
 [t][a `]` c]
 
@@ -6574,11 +6570,11 @@ A label that is not plain text is left reading as it did (tree-sitter-carve#265)
   (paragraph
     (full_reference_link
       text: (link_text)
-      label: (link_label
-        (verbatim
-          begin_marker: (verbatim_marker_begin)
-          content: (content)
-          end_marker: (verbatim_marker_end)))))
+      label: (link_label))
+    (verbatim
+      begin_marker: (verbatim_marker_begin)
+      content: (content)
+      end_marker: (verbatim_marker_end)))
   (paragraph
     (verbatim
       begin_marker: (verbatim_marker_begin)
