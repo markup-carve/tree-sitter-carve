@@ -513,6 +513,8 @@ static bool scan_valid_inline_attribute(Scanner *s, TSLexer *lexer);
 static bool at_block_opener_margin(Scanner *s, uint32_t column);
 static bool opener_reaches_item_margin(Scanner *s, uint32_t column);
 static bool list_item_open(Scanner *s);
+static bool quoted_item_column_reached(Scanner *s, uint32_t column);
+static uint32_t quoted_div_column(Scanner *s, uint8_t marker_count);
 static bool parse_code_fence(Scanner *s, TSLexer *lexer,
                              const bool *valid_symbols, char fence_char);
 static bool div_host_collects(Scanner *s, int div_index);
@@ -1333,6 +1335,25 @@ static bool quoted_item_column_reached(Scanner *s, uint32_t column) {
   return list && list_opened_in_quote(s, list) && column >= list->content_col;
 }
 
+/// A div in a list item inside a quote records its absolute content column,
+/// and a line reaching it after its last `>` hands the indentation up to that
+/// column to the quote continuation, with `indent` set to the column: the body
+/// is then measured the way an unquoted div's is. Returns 0 when that is not
+/// the case, including on a marker short of the quote's depth.
+static uint32_t quoted_div_column(Scanner *s, uint8_t marker_count) {
+  Block *top = peek_block(s);
+  if (marker_count != count_blocks(s, BLOCK_QUOTE) || !top ||
+      (top->type != DIV && top->type != FIGURE_GROUP) || top->content_col == 0) {
+    return 0;
+  }
+  Block *list = find_list(s);
+  if (!list || !list_opened_in_quote(s, list) ||
+      top->content_col < list->content_col) {
+    return 0;
+  }
+  return top->content_col;
+}
+
 // Close open list if list markers are different.
 static bool parse_list_item_continuation(Scanner *s, TSLexer *lexer) {
   Block *list = find_list(s);
@@ -1387,7 +1408,8 @@ static bool close_list_nested_block_if_needed(Scanner *s, TSLexer *lexer,
     bool short_of_list =
         list_opened_in_quote(s, list)
             ? (lexer->lookahead == '>'
-                   ? top->type == CODE_BLOCK &&
+                   ? (top->type == CODE_BLOCK || top->type == DIV ||
+                      top->type == FIGURE_GROUP) &&
                          (s->state & STATE_QUOTED_LINE_SHORT_OF_ITEM)
                    : line_column(s, lexer) < list->content_col)
             : s->indent < margin;
@@ -2358,7 +2380,10 @@ static VerbatimRunEnd read_verbatim_run(Scanner *s, TSLexer *lexer,
 static bool scan_quoted_code_fence_closer(Scanner *s, TSLexer *lexer) {
   Block *top = peek_block(s);
   uint8_t quotes = count_blocks(s, BLOCK_QUOTE);
-  if (!top || top->type != CODE_BLOCK || quotes == 0) {
+  // A div with no paragraph open ends at a short line too (#411); only the
+  // code fence has a closer to find.
+  bool div = top && (top->type == DIV || top->type == FIGURE_GROUP);
+  if (!top || (top->type != CODE_BLOCK && !div) || quotes == 0) {
     return false;
   }
   bool ending_newline = false;
@@ -2373,7 +2398,7 @@ static bool scan_quoted_code_fence_closer(Scanner *s, TSLexer *lexer) {
     s->state |= STATE_QUOTED_LINE_SHORT_OF_ITEM;
     return false;
   }
-  if (line_column(s, lexer) != top->content_col) {
+  if (div || line_column(s, lexer) != top->content_col) {
     return false;
   }
   char fence_char = (top->data & CODE_FENCE_TILDE) ? '~' : '`';
@@ -2838,11 +2863,23 @@ static bool parse_block_quote(Scanner *s, TSLexer *lexer,
   // `scan_block_quote_marker` refuses it, so `>\t` stays a paragraph, matching
   // carve-js and the rule that a marker separator is a literal space.
   bool marker_end_pinned = false;
+  // Only where a token this pin belongs to can follow: a pin taken on a line
+  // whose only valid close is another block's (a heading ending at its
+  // newline) widened that zero-width close over the `> ` and lost the quote.
   if (has_marker && !ending_newline &&
+      (valid_symbols[BLOCK_QUOTE_CONTINUATION] ||
+       valid_symbols[BLOCK_QUOTE_BEGIN] || valid_symbols[CLOSE_PARAGRAPH]) &&
       (lexer->lookahead == ' ' || lexer->lookahead == '\t')) {
     mark_end(s, lexer);
+    uint32_t div_col = quoted_div_column(s, s->block_quote_level + 1);
     while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
       advance(s, lexer);
+      if (div_col != 0 && lexer->lookahead != '\t' &&
+          line_column(s, lexer) <= div_col) {
+        // The pin follows the run up to the quoted div's column.
+        mark_end(s, lexer);
+        s->indent = (uint8_t)line_column(s, lexer);
+      }
     }
     if (lexer->lookahead == '\n') {
       advance(s, lexer);
@@ -2949,6 +2986,12 @@ static bool parse_block_quote(Scanner *s, TSLexer *lexer,
     // here would stretch the token over the run it deliberately read past.
     if (!marker_end_pinned) {
       mark_end(s, lexer);
+    }
+    // A blank quoted line's token already ends at the next line, which is the
+    // only place a short line after an open div can still be announced.
+    if (ending_newline && line_column(s, lexer) == 0) {
+      s->state &= ~STATE_QUOTED_LINE_SHORT_OF_ITEM;
+      scan_quoted_code_fence_closer(s, lexer);
     }
     output_block_quote_continuation(s, lexer, marker_count, ending_newline);
     open_marker_line_quote(s, marker_start_col);
@@ -4732,7 +4775,7 @@ static bool parse_colon(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     // alone here -- it is handled below, and `has_extra_indent` already
     // measures against the innermost container, so a fence at a list item's
     // content column is not "indented".
-    if (has_extra_indent(s)) {
+    if (has_extra_indent(s) && !quoted_item_column_reached(s, start_col)) {
       return false;
     }
     // Validate what follows the `:::` fence. A bare fence (newline/EOF), a
@@ -4816,7 +4859,9 @@ static bool parse_colon(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     // footnote records its real column, which is what lets a definition opener
     // one space past it fall back to a paragraph rather than opening a
     // definition the line does not spell (tree-sitter-carve#282).
-    record_container_content_column(s, s->indent);
+    record_container_content_column(
+        s, quoted_item_column_reached(s, start_col) ? (uint8_t)start_col
+                                                    : s->indent);
     lexer->result_symbol = DIV_BEGIN;
     return true;
   }
@@ -5874,6 +5919,20 @@ static bool parse_hard_line_break(Scanner *s, TSLexer *lexer) {
   return true;
 }
 
+/// Does `list` sit above `block` on the open-block stack, i.e. inside it?
+static bool list_above_block(Scanner *s, Block *list, Block *block) {
+  for (int i = s->open_blocks->size - 1; i >= 0; --i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (b == list) {
+      return true;
+    }
+    if (b == block) {
+      return false;
+    }
+  }
+  return false;
+}
+
 static bool end_paragraph_in_block_quote(Scanner *s, TSLexer *lexer,
                                          int *markers_seen) {
   Block *block = find_block(s, BLOCK_QUOTE);
@@ -5909,14 +5968,23 @@ static bool end_paragraph_in_block_quote(Scanner *s, TSLexer *lexer,
     return true;
   }
 
-  if (block != peek_block(s) &&
-      scan_paragraph_closing_marker(s, lexer)) {
+  // Blank first: the marker probe below consumes before it declines, and a
+  // one-character line (`> y`) then read as blank (#411).
+  consume_whitespace(s, lexer);
+  if (at_line_end(lexer)) {
     return true;
   }
-
-  // Check if there's a blankline following the blockquote marker.
-  consume_whitespace(s, lexer);
-  return at_line_end(lexer);
+  if (block == peek_block(s)) {
+    return false;
+  }
+  // A list attached flush left by `+` inside the quote is not continued by a
+  // marked line: `> quoted` / `+` / `- item` / `> more` ends the item.
+  Block *list = find_list(s);
+  if (list && list_above_block(s, list, block) &&
+      !list_opened_in_quote(s, list)) {
+    return true;
+  }
+  return scan_paragraph_closing_marker(s, lexer);
 }
 
 static bool scan_block_math_marker(Scanner *s, TSLexer *lexer) {
