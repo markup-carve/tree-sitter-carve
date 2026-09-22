@@ -7477,3 +7477,153 @@ A marked line of several words ends a list attached to a quote by a continuation
             (paragraph))))
       (block_quote_marker)
       (paragraph))))
+
+===============================================================================
+A quoted fence closes when a heading follows it (tree-sitter-carve#417)
+===============================================================================
+> ```
+> x
+> ```
+# H
+
+-------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (code_block
+        (code_block_marker_begin)
+        code: (code
+          (block_quote_marker))
+        (block_quote_marker)
+        (code_block_marker_end))))
+  (section
+    heading: (heading
+      marker: (marker)
+      content: (content))))
+
+===============================================================================
+A quoted fence closes when the document ends in blank lines after it (tree-sitter-carve#417)
+===============================================================================
+> ```
+> x
+> ```
+
+
+
+-------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (code_block
+        (code_block_marker_begin)
+        code: (code
+          (block_quote_marker))
+        (block_quote_marker)
+        (code_block_marker_end)))))
+
+===============================================================================
+A quoted fence closes when a list follows it (tree-sitter-carve#417)
+===============================================================================
+> ```
+> x
+> ```
+- z
+
+-------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (code_block
+        (code_block_marker_begin)
+        code: (code
+          (block_quote_marker))
+        (block_quote_marker)
+        (code_block_marker_end))))
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)))))
+
+===============================================================================
+A quoted tilde fence closes when a paragraph follows the quote (tree-sitter-carve#417)
+===============================================================================
+> ~~~
+> x
+> ~~~
+
+y
+
+-------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (code_block
+        (code_block_marker_begin)
+        code: (code
+          (block_quote_marker))
+        (block_quote_marker)
+        (code_block_marker_end))))
+  (paragraph))
+
+===============================================================================
+A fence in a quoted list item closes when the quote ends after it (tree-sitter-carve#417)
+===============================================================================
+> - a
+>
+>   ```
+>   x
+>   ```
+
+y
+
+-------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (paragraph)
+            (block_quote_marker)
+            (code_block
+              (code_block_marker_begin)
+              code: (code
+                (block_quote_marker))
+              (block_quote_marker)
+              (code_block_marker_end)))))))
+  (paragraph))
+
+===============================================================================
+A quoted fence closes and the quote continues after it (tree-sitter-carve#417)
+===============================================================================
+> ```
+> x
+> ```
+> y
+
+-------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (code_block
+        (code_block_marker_begin)
+        code: (code
+          (block_quote_marker))
+        (block_quote_marker)
+        (code_block_marker_end))
+      (block_quote_marker)
+      (paragraph))))
