@@ -603,6 +603,11 @@
     }
   },
   {
+    "type": "comment_line",
+    "named": true,
+    "fields": {}
+  },
+  {
     "type": "content",
     "named": true,
     "fields": {
@@ -4513,10 +4518,6 @@
   },
   {
     "type": "comment_fence_marker_end",
-    "named": true
-  },
-  {
-    "type": "comment_line",
     "named": true
   },
   {
