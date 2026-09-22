@@ -371,19 +371,58 @@ x ^[a ^[b] /c/]
       end_marker: (emphasis_end))))
 
 ===============================================================================
-An empty note is a literal caret, and the span it leaves is unmodeled
-;; `x ^[]{.c}` renders `x ^<span class="c"></span>`: the note declines and the
-;; empty bracket run takes the attribute. Neither half is built here. The span
-;; needs content this grammar has no rule for, and the attribute no longer
-;; attaches to the text beside it, which is the language's rule for a block
-;; after a word (#336).
+An empty note is a literal caret and a span (#363)
+;; `x ^[]{.c}` renders `x ^<span class="c"></span>`: the note declines on the
+;; bracket that closes at once, and the empty bracket run takes the attribute.
 ===============================================================================
 x ^[]{.c}
 
 -------------------------------------------------------------------------------
 
 (document
-  (paragraph))
+  (paragraph
+    (span
+      attribute: (inline_attribute
+        (args
+          (class))))))
+
+===============================================================================
+An empty bracket run is a span, and a collapsed reference is not one (#363)
+;; `[]{.c}` renders `<span class="c"></span>`, and so does the pair mid-line.
+;; The same `[]` right behind a bracketed text is the collapsed reference's
+;; tail, and `[](u)` is still a link over empty text.
+===============================================================================
+[]{.c}
+
+x []{.c} y
+
+[Other][]{.ext}
+
+[](u)
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (span
+      attribute: (inline_attribute
+        (args
+          (class)))))
+  (paragraph
+    (span
+      attribute: (inline_attribute
+        (args
+          (class)))))
+  (paragraph
+    (collapsed_reference_link
+      text: (link_text))
+    attribute: (inline_attribute
+      (args
+        (class))))
+  (paragraph
+    (inline_link
+      text: (link_text)
+      destination: (inline_link_destination))))
 
 ===============================================================================
 A whitespace-only note is literal too
