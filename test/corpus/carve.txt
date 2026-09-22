@@ -6723,3 +6723,33 @@ Only a top-level arrow splits a substitution (corpus 472)
           begin_marker: (emphasis_begin)
           content: (content)
           end_marker: (emphasis_end))))))
+
+===============================================================================
+A trailing comment in a table cell ends at the cell's pipe (#367)
+;; `| d %% tail | e |` keeps both cells, `d` and `e`, with the comment stripped
+;; from the first. Spelled to the end of the line the comment took the row's
+;; closing pipes and the row became an ERROR. An escaped pipe is content, so it
+;; stays inside the comment; outside a table the comment still runs to the end
+;; of the line.
+===============================================================================
+| d %% tail | e |
+
+| d %% t \| x | e |
+
+x %% y | z
+
+-------------------------------------------------------------------------------
+
+(document
+  (table
+    (table_row
+      (table_cell
+        (trailing_comment))
+      (table_cell)))
+  (table
+    (table_row
+      (table_cell
+        (trailing_comment))
+      (table_cell)))
+  (paragraph
+    (trailing_comment)))

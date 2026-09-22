@@ -33,6 +33,7 @@ const CELL_MARKER_RUN = new RegExp(
 // reference and the `[^` fallback opener.
 function inlineElement($, options) {
   const notes = options.notes !== false;
+  const cells = options.cells === true;
   return prec.left(
     choice(
       // Span is declared separately because it always parses an `inline_attribute`,
@@ -138,7 +139,9 @@ function inlineElement($, options) {
           $.raw_inline,
           $.symbol,
           $.braced_comment,
-          $.trailing_comment,
+          cells
+            ? alias($._cell_trailing_comment, $.trailing_comment)
+            : $.trailing_comment,
           $._todo_highlights,
         ),
         optional(
@@ -815,7 +818,16 @@ module.exports = grammar({
     // rather than inline, because an `alias` over a `seq` renames each child
     // and the row then read one cell as two.
     _table_cell_body: ($) =>
-      choice(seq($._cell_attribute, optional($._inline)), $._inline),
+      choice(seq($._cell_attribute, optional($._cell_inline)), $._cell_inline),
+    // A cell's inline content: ordinary inline, except that a trailing comment
+    // ends at the cell's pipe. See `_cell_trailing_comment`.
+    _cell_inline: ($) =>
+      prec.left(
+        repeat1(
+          choice($._cell_inline_element, $._newline_inline, $._whitespace1),
+        ),
+      ),
+    _cell_inline_element: ($) => inlineElement($, { cells: true }),
 
     // The cell's own attribute block. See `CELL_MARKER_RUN` above for why the
     // whole run, the markers and the padding space included, is one token.
@@ -2447,6 +2459,12 @@ module.exports = grammar({
     // parsers. Does NOT consume the newline, so the line's structure and
     // soft-break are preserved.
     trailing_comment: (_) => token(seq(/[ \t]/, "%%", /[^\r\n]*/)),
+    // IN A TABLE CELL THE COMMENT ENDS AT THE CELL'S PIPE. `| d %% tail | e |`
+    // keeps both cells, `d` and `e`: spelled to the end of the line, the
+    // comment took the row's closing pipes and the row came back as an ERROR
+    // (#367). An escaped pipe is content, so it does not end the comment.
+    _cell_trailing_comment: (_) =>
+      token(seq(/[ \t]/, "%%", /([^\r\n|\\]|\\[^\r\n])*/)),
 
     raw_inline: ($) =>
       seq(

@@ -3,7 +3,7 @@
   "comparisonPopulation": {
     "thematic_break": { "documents": 10, "nodes": 12 },
     "block_quote": { "documents": 199, "nodes": 232 },
-    "table": { "documents": 139, "nodes": 141 },
+    "table": { "documents": 140, "nodes": 142 },
     "heading": { "documents": 138, "nodes": 171 },
     "code_block": { "documents": 80, "nodes": 80 },
     "list": { "documents": 509, "nodes": 635 },
@@ -527,8 +527,7 @@
   "skip": {
     "the-host-does-not-change-which-column-a-definition-reaches-6": "a reference definition nested inside a definition list whose term is itself nested in another definition list parses to a top-level ERROR. The grammar builds both definition-list layers but cannot attach the reference definition at the authored base selected by the language. The category's other examples parse cleanly.",
     "a-continuation-marker-attaches-one-block-and-the-boundary-is-that-block-s-extent-5": "a `+` continuation marker that attaches NOTHING - the line after it opens a sibling item rather than a block to attach - leaves the first item unclosed and the whole document parses to one top-level ERROR. `- a` / `+` / `- x` / `- y` is three flat items in the fixture. The category's other eight examples, where the marker does attach a block, parse cleanly.",
-    "a-quoted-attribute-value-stops-at-the-newline-3": "a quoted attribute value carrying a newline (`{k=\"a` / `b\"}`) parses to ERROR. The corpus pins it as literal text - the inline block does not span lines - but this grammar commits to an attribute block on the opening brace and has no route back to a paragraph when the value never closes on its line. Same class as an-attribute-name-admits-no-colon-3. The category's other examples parse cleanly.",
-    "delimited-comments-8": "a `%%` trailing comment inside a TABLE ROW swallows the rest of the line, closing pipes included, so `| d %% tail | e |` parses to a `trailing_comment` followed by ERROR. The fixture keeps the row: it expects `<td>d</td><td>e</td>`, the comment stripped from the first cell and the second cell intact. The category's other seven examples parse cleanly - including `{% ... %}`, which this grammar models as `braced_comment` and the pinned carve-js engine does not model at all."
+    "a-quoted-attribute-value-stops-at-the-newline-3": "a quoted attribute value carrying a newline (`{k=\"a` / `b\"}`) parses to ERROR. The corpus pins it as literal text - the inline block does not span lines - but this grammar commits to an attribute block on the opening brace and has no route back to a paragraph when the value never closes on its line. Same class as an-attribute-name-admits-no-colon-3. The category's other examples parse cleanly."
   },
   "overAcceptance": {
     "an-all-blank-raw-payload-still-emits-its-line": {
@@ -949,10 +948,6 @@
       "reason": "the cr spelling parses to a different tree because the LF spelling already parses to ERROR - the quoted attribute value carrying a newline is the skip recorded for this example. It arrived as one of three example-level skips on the same corpus bump; the other two - a line holding only a vertical tab, form feed, NEL, LS or PS, and a content line ending in NBSP, ZWSP, BOM or U+2000 - were both control characters with no line-content route, and both are closed. This one is not a character the text token can admit: the attribute block commits on the opening brace and has no route back to a paragraph when the value never closes on its line. The terminator is not the defect here, the unmodeled construct is, and the divergence goes away with it. Tracked in tree-sitter-carve#160."
     },
     "compact-list-blocks-6": {
-      "spellings": "the cr spelling(s) parse to a different tree than lf",
-      "reason": "ref:lone-cr-strands-a-column-probe"
-    },
-    "delimited-comments-8": {
       "spellings": "the cr spelling(s) parse to a different tree than lf",
       "reason": "ref:lone-cr-strands-a-column-probe"
     },
