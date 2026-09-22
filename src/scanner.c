@@ -205,6 +205,9 @@ typedef enum {
   EM_DASH_IN_DELETE,
   EN_DASH_IN_DELETE,
   DELETE_DASH,
+  // text and bare delimiters that open and close nothing, read in one
+  // left-to-right pass so each delimiter knows the character before it.
+  LITERAL_RUN,
 } TokenType;
 
 // The different blocks in Carve that we track,
@@ -397,6 +400,14 @@ typedef struct {
 
   // Parser state flags.
   uint16_t state;
+
+  // the bare marker a span just closed with, and the column right
+  // behind it. A delimiter that follows a closer of its own kind can neither
+  // open (its previous character is that marker) nor close (nothing of its
+  // kind is open any more), and the scanner cannot read behind the position it
+  // is called at - so the closer records what it consumed.
+  uint8_t after_closer_char;
+  uint32_t after_closer_col;
 } Scanner;
 
 // Tracks if a `[` starts an inline link.
@@ -7355,6 +7366,11 @@ static bool scan_span_end_by_form(Scanner *s, TSLexer *lexer,
       return false;
     }
     advance(s, lexer);
+    // bare_closer(d) = <&(non_ws), d, !(alnum). A bare marker glued to
+    // the word that follows it closes nothing: `/usr/local/` is one emphasis.
+    if (carve_is_alnum_ascii(lexer->lookahead)) {
+      return false;
+    }
     return true;
   }
   if (lexer->lookahead == marker) {
@@ -7370,6 +7386,28 @@ static bool scan_span_end_by_form(Scanner *s, TSLexer *lexer,
     return false;
   }
   return scan_bracketed_span_end(s, lexer, marker);
+}
+
+static bool is_bare_delim_kind(int32_t c, InlineType *kind) {
+  switch (c) {
+  case '/':
+    *kind = EMPHASIS;
+    return true;
+  case '*':
+    *kind = STRONG;
+    return true;
+  case '_':
+    *kind = UNDERLINE;
+    return true;
+  case '~':
+    *kind = STRIKETHROUGH;
+    return true;
+  case '=':
+    *kind = HIGHLIGHTED;
+    return true;
+  default:
+    return false;
+  }
 }
 
 static bool parse_span_end(Scanner *s, TSLexer *lexer, InlineType element,
@@ -7400,6 +7438,18 @@ static bool parse_span_end(Scanner *s, TSLexer *lexer, InlineType element,
 
   lexer->mark_end(lexer);
   lexer->result_symbol = token;
+  // a delimiter right behind a BARE closer of its own kind opens
+  // nothing (its previous character is the marker) and closes nothing (no span
+  // of the kind is open any more). The scanner cannot read behind itself, so
+  // the closer leaves the note.
+  s->after_closer_char = 0;
+  s->after_closer_col = 0;
+  InlineType next_kind;
+  if ((top->flags & INLINE_BRACED) == 0 &&
+      is_bare_delim_kind(lexer->lookahead, &next_kind)) {
+    s->after_closer_char = (uint8_t)inline_marker(element);
+    s->after_closer_col = line_column(s, lexer);
+  }
   // See STATE_SPAN_END_AT_CR: a `{` after this `]` is only the span's attribute
   // list when it is ADJACENT, and a carriage return between them is invisible
   // to the grammar because it is an extra.
@@ -7475,6 +7525,238 @@ static bool parse_inline_note_begin(Scanner *s, TSLexer *lexer) {
   lexer->result_symbol = INLINE_NOTE_BEGIN;
 
   return true;
+}
+
+// The LEFT-BOUNDARY reader.
+//
+// `bare_opener(d)` refuses a delimiter whose PREVIOUS character is a word
+// character or the marker itself, and `bare_closer(d)` refuses one glued to the
+// word that follows it. The scanner is called AT a delimiter and cannot read
+// behind that position, so the previous character is read the only way it can
+// be: in one left-to-right pass that starts at the word or at the run's first
+// character and decides every delimiter behind it.
+//
+// What the pass emits is one literal token over the characters that open and
+// close nothing. It stops before a delimiter that may still close an open span
+// or open a new one, leaving those to the ordinary span machinery.
+
+/// Block-level readings that start on the character this pass is looking at.
+/// Where one of them is on offer the pass stands aside: it answers for the
+/// whole scan call, so consuming here would take the character away from a list
+/// marker, a fence or a thematic break. Asked per character, because a `=` or a
+/// `/` at a line start opens no block and a `*` or a `~` does.
+static bool block_reading_ahead(int32_t c, const bool *valid_symbols) {
+  if (valid_symbols[BLOCK_CLOSE]) {
+    return true;
+  }
+  switch (c) {
+  case '*':
+    return valid_symbols[LIST_MARKER_STAR] ||
+           valid_symbols[LIST_MARKER_TASK_BEGIN] ||
+           valid_symbols[THEMATIC_BREAK_STAR];
+  case '~':
+    return valid_symbols[CODE_BLOCK_BEGIN] || valid_symbols[CODE_BLOCK_END] ||
+           valid_symbols[COMMENT_FENCE_BEGIN] ||
+           valid_symbols[COMMENT_FENCE_CONTENT] ||
+           valid_symbols[COMMENT_FENCE_END];
+  case '_':
+    // `___` is a thematic break, and it is the container check that says so.
+    return valid_symbols[NOT_A_CONTAINER_OPENER];
+  case '/':
+  case '=':
+    return false;
+  default:
+    break;
+  }
+  // A word run: the ordered list markers and the block openers spelled with a
+  // word are the only block readings that start on an alphanumeric.
+  return valid_symbols[LIST_MARKER_DECIMAL_PERIOD] ||
+         valid_symbols[LIST_MARKER_LOWER_ALPHA_PERIOD] ||
+         valid_symbols[LIST_MARKER_UPPER_ALPHA_PERIOD] ||
+         valid_symbols[LIST_MARKER_LOWER_ROMAN_PERIOD] ||
+         valid_symbols[LIST_MARKER_UPPER_ROMAN_PERIOD] ||
+         valid_symbols[LIST_MARKER_DECIMAL_PAREN] ||
+         valid_symbols[LIST_MARKER_LOWER_ALPHA_PAREN] ||
+         valid_symbols[LIST_MARKER_UPPER_ALPHA_PAREN] ||
+         valid_symbols[LIST_MARKER_LOWER_ROMAN_PAREN] ||
+         valid_symbols[LIST_MARKER_UPPER_ROMAN_PAREN] ||
+         valid_symbols[LIST_MARKER_DECIMAL_PARENS] ||
+         valid_symbols[LIST_MARKER_LOWER_ALPHA_PARENS] ||
+         valid_symbols[LIST_MARKER_UPPER_ALPHA_PARENS] ||
+         valid_symbols[LIST_MARKER_LOWER_ROMAN_PARENS] ||
+         valid_symbols[LIST_MARKER_UPPER_ROMAN_PARENS] ||
+         valid_symbols[LIST_MARKER_DEFINITION] ||
+         valid_symbols[LIST_MARKER_DESCRIPTION] ||
+         valid_symbols[FRONTMATTER_MARKER] || valid_symbols[HEADING_BEGIN] ||
+         valid_symbols[BLOCK_ATTRIBUTE_BEGIN] ||
+         valid_symbols[LINK_REF_DEF_MARK_BEGIN] ||
+         valid_symbols[FOOTNOTE_MARK_BEGIN] ||
+         valid_symbols[TABLE_HEADER_BEGIN] ||
+         valid_symbols[TABLE_SEPARATOR_BEGIN] ||
+         valid_symbols[TABLE_ROW_BEGIN] || valid_symbols[TABLE_CELL_END] ||
+         valid_symbols[TABLE_CAPTION_BEGIN];
+}
+
+/// Is this character the marker of anything still open?
+static bool marker_of_open_inline(Scanner *s, int32_t c) {
+  for (int i = s->open_inline->size - 1; i >= 0; --i) {
+    Inline *e = *array_get(s->open_inline, i);
+    if ((int32_t)inline_marker(e->type) == c ||
+        (e->type == SUBSTITUTION && c == '~')) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/// Is this character the start of the closer of something that is open?
+///
+/// The pass may only swallow a delimiter that opens and closes nothing. A
+/// bold-italic takes `*/`, a substitution `~>` and `~}`, a braced span `X}`,
+/// and a bare span its own marker where no alphanumeric follows - so each of
+/// those characters belongs to its construct and not to this run.
+static bool open_closer_starts_here(Scanner *s, int32_t c, int32_t next) {
+  for (int i = s->open_inline->size - 1; i >= 0; --i) {
+    Inline *e = *array_get(s->open_inline, i);
+    if ((int32_t)inline_marker(e->type) != c &&
+        !(e->type == SUBSTITUTION && c == '~')) {
+      continue;
+    }
+    if (e->type == BOLD_ITALIC) {
+      if (next == '/') {
+        return true;
+      }
+      continue;
+    }
+    if (e->type == SUBSTITUTION) {
+      if (next == '>' || next == '}') {
+        return true;
+      }
+      continue;
+    }
+    if (e->flags & INLINE_BRACED) {
+      if (next == '}') {
+        return true;
+      }
+      continue;
+    }
+    if (!carve_is_alnum_ascii(next)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/// A zero-width mark or check the parser is waiting for right here. Every one
+/// of them stands between an opener character and its span, so a reader that
+/// answered the call instead would kill the span before it formed.
+static bool zero_width_mark_pending(const bool *valid_symbols) {
+  static const TokenType marks[] = {
+      NON_WHITESPACE_CHECK,      HIGHLIGHTED_OPEN_CHECK,
+      IN_FALLBACK,               BRACED_FALLBACK,
+      EMPHASIS_MARK_BEGIN,       STRONG_MARK_BEGIN,
+      UNDERLINE_MARK_BEGIN,      STRIKETHROUGH_MARK_BEGIN,
+      SUPERSCRIPT_MARK_BEGIN,    SUBSCRIPT_MARK_BEGIN,
+      HIGHLIGHTED_MARK_BEGIN,    INSERT_MARK_BEGIN,
+      DELETE_MARK_BEGIN,         BOLD_ITALIC_MARK_BEGIN,
+      PARENS_SPAN_MARK_BEGIN,    CURLY_BRACKET_SPAN_MARK_BEGIN,
+      SQUARE_BRACKET_SPAN_MARK_BEGIN, INLINE_NOTE_MARK_BEGIN,
+      SUBSTITUTION_BEGIN,
+  };
+  for (size_t i = 0; i < sizeof(marks) / sizeof(marks[0]); ++i) {
+    if (valid_symbols[marks[i]]) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/// -1: the reader moved the lexer and produced nothing, so the call is over.
+///  0: the reader did not move the lexer; the rest of the call still applies.
+///  1: the token is the reader's.
+static int parse_literal_run(Scanner *s, TSLexer *lexer,
+                             const bool *valid_symbols) {
+  // `prev` is the character behind the lexer, 0 while it is unknown. Unknown
+  // reads as a clean left boundary, which is what the grammar assumed before
+  // this pass existed.
+  int32_t prev = 0;
+  int32_t prev2 = 0;
+  InlineType kind;
+  bool leftover = false;
+
+  if (is_bare_delim_kind(lexer->lookahead, &kind)) {
+    uint32_t col = line_column(s, lexer);
+    if (s->after_closer_char != 0 && s->after_closer_col == col) {
+      // Right behind a closer of this very marker: nothing of this kind is
+      // open any more and the previous character is the marker, so no
+      // character of the rest of the run can open or close.
+      prev = (int32_t)s->after_closer_char;
+      prev2 = 'x';
+      leftover = true;
+    } else if (marker_of_open_inline(s, lexer->lookahead)) {
+      // A closer may be due here - this very character is the marker of
+      // something open. Leave the whole call to the span machinery, before
+      // reading anything: a reader that has moved cannot hand the position
+      // back.
+      return 0;
+    }
+  } else if (!carve_is_alnum_ascii(lexer->lookahead)) {
+    return 0;
+  }
+
+  lexer->mark_end(lexer);
+  uint32_t delims = 0;
+  for (;;) {
+    int32_t c = lexer->lookahead;
+    if (carve_is_alnum_ascii(c)) {
+      advance(s, lexer);
+      prev2 = prev;
+      prev = c;
+      continue;
+    }
+    InlineType k;
+    if (!is_bare_delim_kind(c, &k)) {
+      break;
+    }
+    advance(s, lexer);
+    int32_t next = lexer->lookahead;
+    bool at_end = lexer->eof(lexer) || next == '\n' || next == '\r';
+    bool next_ws = at_end || next == ' ' || next == '\t';
+    // bare_closer(d) = <&(non_ws), d, !(alnum): a real character behind it, no
+    // alphanumeric in front of it. Whether a span of the kind is open is the
+    // scanner's OWN stack rather than `valid_symbols`, which describes the
+    // parser state at the start of this token and not where the reader has
+    // got to. A braced span of the kind closes on `X}` only, so a bare marker
+    // inside it is content (corpus 471).
+    Inline *open = find_inline_in_scope(s, k);
+    bool open_bare = open != NULL && (open->flags & INLINE_BRACED) == 0;
+    bool open_braced = open != NULL && (open->flags & INLINE_BRACED) != 0;
+    bool may_close = prev != 0 && ((open_bare && !carve_is_alnum_ascii(next)) ||
+                                   (open_braced && next == '}') ||
+                                   open_closer_starts_here(s, c, next));
+    // bare_opener(d) = <!(alnum | d | slash_if(d)), d, !(ws | d)
+    bool path_guard = (c == '/' || c == '_') && (prev == '/' || prev == '_') &&
+                      prev2 != 0;
+    bool may_open = !carve_is_alnum_ascii(prev) && prev != c && !path_guard &&
+                    !next_ws && next != c;
+    if (may_close || may_open) {
+      break;
+    }
+    lexer->mark_end(lexer);
+    delims++;
+    prev2 = prev;
+    prev = c;
+  }
+  s->after_closer_char = 0;
+  s->after_closer_col = 0;
+  if (delims == 0 && !leftover) {
+    // Nothing was decided here that the ordinary readings do not decide
+    // themselves; leaving the characters alone keeps every token they can be
+    // part of (a glued mention, a tag, a keyword) reachable.
+    return -1;
+  }
+  lexer->result_symbol = LITERAL_RUN;
+  return 1;
 }
 
 static bool parse_span(Scanner *s, TSLexer *lexer, const bool *valid_symbols,
@@ -7708,6 +7990,24 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
     lexer->mark_end(lexer);
     lexer->result_symbol = BRACED_FALLBACK;
     return true;
+  }
+
+  // text and bare delimiters that open and close nothing. It reads
+  // forward from the word or the run's first character, so it answers for the
+  // whole call the way the two readers above do.
+  InlineType literal_run_kind;
+  if (valid_symbols[LITERAL_RUN] && !valid_symbols[ERROR] &&
+      (is_bare_delim_kind(lexer->lookahead, &literal_run_kind) ||
+       carve_is_alnum_ascii(lexer->lookahead)) &&
+      !block_reading_ahead(lexer->lookahead, valid_symbols) &&
+      !zero_width_mark_pending(valid_symbols)) {
+    int read = parse_literal_run(s, lexer, valid_symbols);
+    if (read > 0) {
+      return true;
+    }
+    if (read < 0) {
+      return false;
+    }
   }
 
 #ifdef DEBUG
@@ -8206,6 +8506,8 @@ static void init_scalars(Scanner *s) {
   s->marker_end_col = 0;
   s->col_base = 0;
   s->state = 0;
+  s->after_closer_char = 0;
+  s->after_closer_col = 0;
 }
 
 static void init(Scanner *s) {
@@ -8264,7 +8566,7 @@ unsigned tree_sitter_carve_external_scanner_serialize(void *payload,
   // an external scanner to decline caching a state that it cannot represent.
   // Keep the complete-state size check beside it so this function never writes
   // past tree-sitter's fixed serialization buffer either.
-  const size_t scalar_bytes = 10;
+  const size_t scalar_bytes = 15;
   const size_t block_count_bytes = 1;
   const size_t block_bytes = 3;
   const size_t inline_bytes = 2;
@@ -8292,6 +8594,11 @@ unsigned tree_sitter_carve_external_scanner_serialize(void *payload,
   buffer[size++] = (char)((s->col_base >> 8) & 0xff);
   buffer[size++] = (char)((s->col_base >> 16) & 0xff);
   buffer[size++] = (char)((s->col_base >> 24) & 0xff);
+  buffer[size++] = (char)s->after_closer_char;
+  buffer[size++] = (char)(s->after_closer_col & 0xff);
+  buffer[size++] = (char)((s->after_closer_col >> 8) & 0xff);
+  buffer[size++] = (char)((s->after_closer_col >> 16) & 0xff);
+  buffer[size++] = (char)((s->after_closer_col >> 24) & 0xff);
 
   buffer[size++] = (char)s->open_blocks->size;
   for (size_t i = 0; i < s->open_blocks->size; ++i) {
@@ -8328,6 +8635,11 @@ void tree_sitter_carve_external_scanner_deserialize(void *payload, char *buffer,
     s->col_base |= (uint32_t)(uint8_t)buffer[size++] << 8;
     s->col_base |= (uint32_t)(uint8_t)buffer[size++] << 16;
     s->col_base |= (uint32_t)(uint8_t)buffer[size++] << 24;
+    s->after_closer_char = (uint8_t)buffer[size++];
+    s->after_closer_col = (uint32_t)(uint8_t)buffer[size++];
+    s->after_closer_col |= (uint32_t)(uint8_t)buffer[size++] << 8;
+    s->after_closer_col |= (uint32_t)(uint8_t)buffer[size++] << 16;
+    s->after_closer_col |= (uint32_t)(uint8_t)buffer[size++] << 24;
 
     uint8_t open_blocks = (uint8_t)buffer[size++];
     while (open_blocks-- > 0) {

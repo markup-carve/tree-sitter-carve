@@ -4669,6 +4669,10 @@
                   },
                   {
                     "type": "SYMBOL",
+                    "name": "_literal_run"
+                  },
+                  {
+                    "type": "SYMBOL",
                     "name": "_text"
                   },
                   {
@@ -5003,6 +5007,10 @@
                   {
                     "type": "SYMBOL",
                     "name": "_note_symbol_fallback"
+                  },
+                  {
+                    "type": "SYMBOL",
+                    "name": "_literal_run"
                   },
                   {
                     "type": "SYMBOL",
@@ -8936,6 +8944,10 @@
     {
       "type": "SYMBOL",
       "name": "_delete_dash"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_literal_run"
     }
   ],
   "inline": [],
