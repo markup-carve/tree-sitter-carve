@@ -3873,25 +3873,16 @@ static bool scan_ref_def(Scanner *s, TSLexer *lexer) {
   // opener and is NOT anchored: its entry runs free-form to end of line, so a
   // multi-word entry is kept whole. Recorded before the label is consumed.
   bool citation = lexer->lookahead == '@';
-  // Link label in a definition can be any inline except newlines.
+  // THE LABEL IS A CHARACTER RUN AND IT ENDS AT THE FIRST `]`.
+  // `reference_label = (character - ']' - '@'), {character - ']'}`
+  // (resources/grammar.ebnf): no escape, no verbatim exception. `[a `]` c]: /u`
+  // is therefore not a definition at all, and the line is a paragraph - which
+  // is what carve-js renders.
   while (!lexer->eof(lexer) && lexer->lookahead != ']') {
-    switch (lexer->lookahead) {
-    case '\\':
-      advance(s, lexer);
-      advance(s, lexer);
-      break;
-    case '\r':
-    case '\n':
+    if (at_line_end(lexer)) {
       return false;
-    case '`':
-      // We must have ending ticks for this to be a valid label.
-      if (!scan_verbatim_to_end_no_newline(s, lexer)) {
-        return false;
-      }
-      break;
-    default:
-      advance(s, lexer);
     }
+    advance(s, lexer);
   }
 
   if (lexer->lookahead != ']') {

@@ -3343,20 +3343,8 @@
             "content": {
               "type": "TOKEN",
               "content": {
-                "type": "SEQ",
-                "members": [
-                  {
-                    "type": "PATTERN",
-                    "value": "[^\\]`\\\\@\\r\\n]|`+[^`\\r\\n]*`+|\\\\[^\\r\\n]"
-                  },
-                  {
-                    "type": "REPEAT",
-                    "content": {
-                      "type": "PATTERN",
-                      "value": "[^\\]`\\\\\\r\\n]|`+[^`\\r\\n]*`+|\\\\[^\\r\\n]"
-                    }
-                  }
-                ]
+                "type": "PATTERN",
+                "value": "[^\\]@\\r\\n][^\\]\\r\\n]*"
               }
             },
             "named": true,
