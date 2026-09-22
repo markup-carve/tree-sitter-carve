@@ -3391,3 +3391,162 @@ An empty braced pair stays literal text
 
 (document
   (paragraph))
+
+==================
+A fence on a description marker keeps flush-left lines as its content
+==================
+:: t
+: ```
+code
+more
+
+---
+
+(document
+  (definition_list
+    (list_item
+      marker: (list_marker_definition)
+      term: (term))
+    (list_item
+      marker: (list_marker_description)
+      (code_block
+        (code_block_marker_begin)
+        code: (code)))))
+
+==================
+A flush-left fence run under a description fence opens a new fence
+==================
+:: t
+: ```
+code
+```
+
+---
+
+(document
+  (definition_list
+    (list_item
+      marker: (list_marker_definition)
+      term: (term))
+    (list_item
+      marker: (list_marker_description)
+      (code_block
+        (code_block_marker_begin)
+        code: (code))))
+  (code_block
+    (code_block_marker_begin)))
+
+==================
+A flush-left heading under a description fence ends the body
+==================
+:: t
+: ```
+code
+# h
+
+---
+
+(document
+  (definition_list
+    (list_item
+      marker: (list_marker_definition)
+      term: (term))
+    (list_item
+      marker: (list_marker_description)
+      (code_block
+        (code_block_marker_begin)
+        code: (code))))
+  (section
+    heading: (heading
+      marker: (marker)
+      content: (content))))
+
+==================
+A new entry under a description fence ends the body
+==================
+:: t
+: ```
+code
+: w
+
+---
+
+(document
+  (definition_list
+    (list_item
+      marker: (list_marker_definition)
+      term: (term))
+    (list_item
+      marker: (list_marker_description)
+      (code_block
+        (code_block_marker_begin)
+        code: (code)))
+    (list_item
+      marker: (list_marker_description)
+      definition: (definition))))
+
+==================
+A flush-left colon fence stays description fence content
+==================
+:: t
+: ```
+code
+::: note
+
+---
+
+(document
+  (definition_list
+    (list_item
+      marker: (list_marker_definition)
+      term: (term))
+    (list_item
+      marker: (list_marker_description)
+      (code_block
+        (code_block_marker_begin)
+        code: (code)))))
+
+==================
+A flush-left comment line under a description fence ends the body
+==================
+:: t
+: ```
+code
+%% c
+
+---
+
+(document
+  (definition_list
+    (list_item
+      marker: (list_marker_definition)
+      term: (term))
+    (list_item
+      marker: (list_marker_description)
+      (code_block
+        (code_block_marker_begin)
+        code: (code))))
+  (comment_line))
+
+==================
+A blank line and a flush-left line end a description fence's body
+==================
+:: t
+: ```
+code
+
+tail
+
+---
+
+(document
+  (definition_list
+    (list_item
+      marker: (list_marker_definition)
+      term: (term))
+    (list_item
+      marker: (list_marker_description)
+      (code_block
+        (code_block_marker_begin)
+        code: (code))))
+  (paragraph))

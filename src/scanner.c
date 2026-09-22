@@ -1373,6 +1373,54 @@ static uint32_t quoted_div_column(Scanner *s, uint8_t marker_count) {
   return top->content_col;
 }
 
+static bool close_paragraph(Scanner *s, TSLexer *lexer);
+
+/// Is this line, short of a description body's content column, content of the
+/// code fence open in that body? It is, unless a blank line came before it or
+/// it would interrupt a paragraph in the body: a fence-shaped run always does.
+/// Returns 1 to keep the line, 0 when it closes the fence, -1 when the
+/// question does not arise (the lexer has not moved then).
+static int description_fence_keeps_line(Scanner *s, TSLexer *lexer) {
+  Block *top = peek_block(s);
+  Block *list = find_list(s);
+  if (!top || top->type != CODE_BLOCK || !list || list != *array_get(
+          s->open_blocks, s->open_blocks->size - 2) ||
+      list->type != LIST_DEFINITION || list->content_col == 0 ||
+      (s->state & (STATE_AFTER_BLANK_LINE | STATE_FENCE_OWNS_BODY)) ||
+      count_blocks(s, BLOCK_QUOTE) > 0 || s->indent >= list->content_col ||
+      line_column(s, lexer) >= list->content_col || at_line_end(lexer) ||
+      lexer->eof(lexer)) {
+    return -1;
+  }
+  if (lexer->lookahead == '`' || lexer->lookahead == '~') {
+    int32_t c = lexer->lookahead;
+    uint8_t run = 0;
+    while (lexer->lookahead == c) {
+      advance(s, lexer);
+      ++run;
+    }
+    return run < 3 ? 1 : 0;
+  }
+  // A new entry ends the body. A colon fence does not: the reference keeps
+  // `::: x` in the code, since that body may hold a paragraph.
+  if (lexer->lookahead == ':') {
+    uint8_t colons = consume_chars(s, lexer, ':');
+    return colons <= 2 && lexer->lookahead == ' ' ? 0 : 1;
+  }
+  // A comment line (`%%`, or a `%%%` fence) ends the body too.
+  if (lexer->lookahead == '%') {
+    return consume_chars(s, lexer, '%') >= 2 ? 0 : 1;
+  }
+  uint8_t indent = s->indent;
+  uint16_t state = s->state;
+  uint8_t level = s->block_quote_level;
+  bool interrupts = close_paragraph(s, lexer);
+  s->indent = indent;
+  s->state = state;
+  s->block_quote_level = level;
+  return interrupts ? 0 : 1;
+}
+
 static Block *find_description_body(Scanner *s) {
   for (int i = s->open_blocks->size - 1; i >= 0; --i) {
     Block *b = *array_get(s->open_blocks, i);
@@ -9158,6 +9206,22 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   // One day we should clean it up but for now just be aware that
   // it's not possible to simply reorder these however we want.
 
+  // A code fence in a description body keeps a line short of the body as its
+  // own content, unless the line would interrupt a paragraph there. Deciding
+  // that reads the line, so a content line ends the scan: the internal lexer
+  // takes it as a code line from the scan's start.
+  if (valid_symbols[BLOCK_CLOSE] && !is_newline) {
+    int keeps = description_fence_keeps_line(s, lexer);
+    if (keeps > 0) {
+      return false;
+    }
+    if (keeps == 0) {
+      // Zero width: the token end still stands at the scan's start.
+      lexer->result_symbol = BLOCK_CLOSE;
+      remove_block(s);
+      return true;
+    }
+  }
   if (valid_symbols[BLOCK_CLOSE] &&
       close_list_nested_block_if_needed(s, lexer, !is_newline)) {
     return true;
