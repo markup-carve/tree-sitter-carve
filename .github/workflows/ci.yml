@@ -38,6 +38,8 @@ jobs:
         run: npm run test:corpus
       - name: Divergence reasons describe their documents
         run: npm run test:reason-predicates
+      - name: The release version guard fires on each drift it names
+        run: npm run test:version-surfaces
 
       # The INLINE counterpart of the over-acceptance scan above. Conformance
       # asks whether a covered document parses without an ERROR, and
