@@ -210,6 +210,8 @@ typedef enum {
   LITERAL_RUN,
   // The `*` of a bold-italic opener. See `parse_bold_italic_star`.
   BOLD_ITALIC_STAR,
+  // An inline attribute's mark after its `{`. See `parse_attribute_mark_begin`.
+  ATTRIBUTE_MARK_BEGIN,
 } TokenType;
 
 // The different blocks in Carve that we track,
@@ -5599,12 +5601,22 @@ static bool scan_value(Scanner *s, TSLexer *lexer) {
     char quote = (char)lexer->lookahead;
     // Opening quote.
     advance(s, lexer);
-    if (!scan_until_unescaped(s, lexer, quote)) {
-      return false;
+    // A quoted value stops at the newline, as the grammar's `value` does: no
+    // line end inside it, escaped or not.
+    while (!lexer->eof(lexer) && !at_line_end(lexer)) {
+      if (lexer->lookahead == quote) {
+        advance(s, lexer);
+        return true;
+      }
+      if (lexer->lookahead == '\\') {
+        advance(s, lexer);
+        if (lexer->eof(lexer) || at_line_end(lexer)) {
+          return false;
+        }
+      }
+      advance(s, lexer);
     }
-    // Closing quote.
-    advance(s, lexer);
-    return true;
+    return false;
   } else {
     return scan_identifier(s, lexer);
   }
@@ -7351,11 +7363,18 @@ static bool scan_until_no_newline(Scanner *s, TSLexer *lexer, char c,
 // returns false. Used so an unparseable attribute (`[x]{???}`, `[x]{.a!b}`)
 // does NOT mark a span, letting the brackets fall back to literal text instead
 // of forcing an ERROR/MISSING into the tree.
+static bool scan_inline_attribute_body(Scanner *s, TSLexer *lexer);
+
 static bool scan_valid_inline_attribute(Scanner *s, TSLexer *lexer) {
   if (lexer->lookahead != '{') {
     return false;
   }
   advance(s, lexer);
+  return scan_inline_attribute_body(s, lexer);
+}
+
+/// The rest of an inline attribute, from just past its `{`.
+static bool scan_inline_attribute_body(Scanner *s, TSLexer *lexer) {
   bool seen_newline = false;
   while (!lexer->eof(lexer)) {
     consume_whitespace(s, lexer);
@@ -8554,6 +8573,36 @@ static bool parse_span(Scanner *s, TSLexer *lexer, const bool *valid_symbols,
   return false;
 }
 
+/// The mark after an inline attribute's `{`, given only where a well-formed
+/// block follows. After an element the brace is also readable as text, and
+/// then an id-first block (`:widget[x]{#i}`) re-reads its `#i` as a tag that
+/// scores exactly what the attribute does. With the attribute's own mark, that
+/// reading has no token to continue on (#316). Where the block is malformed,
+/// the brace fallback's shared mark is emitted as before.
+///
+/// Zero width: the end is pinned before the body is read. The bookkeeping is
+/// `mark_span_begin`'s, which on this path reads flags and not the lexer.
+static bool parse_attribute_mark_begin(Scanner *s, TSLexer *lexer,
+                                       const bool *valid_symbols) {
+  mark_end(s, lexer);
+  bool well_formed = scan_inline_attribute_body(s, lexer);
+  TokenType shared = inline_begin_token(CURLY_BRACKET_SPAN);
+  if (!well_formed) {
+    return valid_symbols[shared] &&
+           mark_span_begin(s, lexer, valid_symbols, CURLY_BRACKET_SPAN, shared);
+  }
+  // The attribute's own path: the fallback is not taken here, so its marker
+  // must not steer the bookkeeping to the fallback's branch.
+  bool attribute_only[ATTRIBUTE_MARK_BEGIN + 1];
+  memcpy(attribute_only, valid_symbols, sizeof(attribute_only));
+  attribute_only[IN_FALLBACK] = false;
+  if (!mark_span_begin(s, lexer, attribute_only, CURLY_BRACKET_SPAN, shared)) {
+    return false;
+  }
+  lexer->result_symbol = ATTRIBUTE_MARK_BEGIN;
+  return true;
+}
+
 /// The `{:TAG}` language attribute, as a token.
 ///
 /// EXTERNAL rather than a grammar regex because the tag is only a language
@@ -9187,6 +9236,9 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   }
   if (parse_span(s, lexer, valid_symbols, PARENS_SPAN)) {
     return true;
+  }
+  if (valid_symbols[ATTRIBUTE_MARK_BEGIN]) {
+    return parse_attribute_mark_begin(s, lexer, valid_symbols);
   }
   if (parse_span(s, lexer, valid_symbols, CURLY_BRACKET_SPAN)) {
     return true;

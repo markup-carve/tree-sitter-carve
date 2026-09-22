@@ -7627,3 +7627,100 @@ A quoted fence closes and the quote continues after it (tree-sitter-carve#417)
         (code_block_marker_end))
       (block_quote_marker)
       (paragraph))))
+
+===============================================================================
+An id-first attribute block attaches to an inline extension (tree-sitter-carve#316)
+===============================================================================
+:widget[x]{#i}
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (extension_inline
+      (extension_marker_begin)
+      content: (content))
+    attribute: (inline_attribute
+      (args
+        (identifier)))))
+
+===============================================================================
+An id-first attribute block attaches to an inline link (tree-sitter-carve#316)
+===============================================================================
+[t](/u){#b}
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (inline_link
+      text: (link_text)
+      destination: (inline_link_destination))
+    attribute: (inline_attribute
+      (args
+        (identifier)))))
+
+===============================================================================
+An id-first attribute block attaches to a strong span (tree-sitter-carve#316)
+===============================================================================
+*b*{#i}
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (strong
+      begin_marker: (strong_begin)
+      content: (content)
+      end_marker: (strong_end))
+    attribute: (inline_attribute
+      (args
+        (identifier)))))
+
+===============================================================================
+An id-first attribute block attaches to a full reference link (tree-sitter-carve#316)
+===============================================================================
+[Example][ex]{#b}
+
+[ex]: /u
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (full_reference_link
+      text: (link_text)
+      label: (link_label))
+    attribute: (inline_attribute
+      (args
+        (identifier))))
+  (link_reference_definition
+    label: (link_label)
+    destination: (link_destination)))
+
+===============================================================================
+A braced id after plain text stays a tag (tree-sitter-carve#316)
+===============================================================================
+y{#i}
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (tag)))
+
+===============================================================================
+A quoted attribute value that reaches the newline leaves the brace as text after a strong span (tree-sitter-carve#316)
+===============================================================================
+*x*{k="a
+b"}
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (strong
+      begin_marker: (strong_begin)
+      content: (content)
+      end_marker: (strong_end))
+    (quotation_marks)))

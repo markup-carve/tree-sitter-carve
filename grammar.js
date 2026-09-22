@@ -336,7 +336,6 @@ module.exports = grammar({
     [$.link_text, $._note_symbol_fallback],
     [$.span, $._symbol_fallback],
     [$.span, $._note_symbol_fallback],
-    [$._curly_bracket_span_begin, $._curly_bracket_span_fallback],
   ],
 
   rules: {
@@ -2293,7 +2292,10 @@ module.exports = grammar({
     inline_attribute: ($) =>
       seq(
         $._curly_bracket_span_begin,
-        $._curly_bracket_span_mark_begin,
+        // Its own mark, not the brace fallback's: the scanner gives it only
+        // where a well-formed block follows, so the reading that takes the
+        // brace as text and `{#i}`'s `#i` as a tag is never built (#316).
+        $._attribute_mark_begin,
         attributeArgs($),
         alias($._curly_bracket_span_end, "}"),
       ),
@@ -2856,5 +2858,7 @@ module.exports = grammar({
     // The `*` of a bold-italic opener, external so the scanner can decline it
     // where no span can follow. See `parse_bold_italic_star`.
     $._bold_italic_star,
+    // An inline attribute's mark after its `{`. See `parse_attribute_mark_begin`.
+    $._attribute_mark_begin,
   ],
 });

@@ -515,8 +515,7 @@
     "substitution-content-is-inline-and-only-a-top-level-arrow-splits-it"
   ],
   "skip": {
-    "a-continuation-marker-attaches-one-block-and-the-boundary-is-that-block-s-extent-5": "a `+` continuation marker that attaches NOTHING - the line after it opens a sibling item rather than a block to attach - leaves the first item unclosed and the whole document parses to one top-level ERROR. `- a` / `+` / `- x` / `- y` is three flat items in the fixture. The category's other eight examples, where the marker does attach a block, parse cleanly.",
-    "a-quoted-attribute-value-stops-at-the-newline-3": "a quoted attribute value carrying a newline (`{k=\"a` / `b\"}`) parses to ERROR. The corpus pins it as literal text - the inline block does not span lines - but this grammar commits to an attribute block on the opening brace and has no route back to a paragraph when the value never closes on its line. Same class as an-attribute-name-admits-no-colon-3. The category's other examples parse cleanly."
+    "a-continuation-marker-attaches-one-block-and-the-boundary-is-that-block-s-extent-5": "a `+` continuation marker that attaches NOTHING - the line after it opens a sibling item rather than a block to attach - leaves the first item unclosed and the whole document parses to one top-level ERROR. `- a` / `+` / `- x` / `- y` is three flat items in the fixture. The category's other eight examples, where the marker does attach a block, parse cleanly."
   },
   "overAcceptance": {
     "an-all-blank-raw-payload-still-emits-its-line": {
@@ -737,14 +736,6 @@
       "reading": "em html=0 tree=1",
       "reason": "the grammar builds an inline span the language keeps literal here"
     },
-    "inline-extensions-12": {
-      "reading": "strong html=0 tree=1",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
-    "inline-extensions-13": {
-      "reading": "strong html=0 tree=1",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
     "smart-typography-dashes-and-quotes-9": {
       "reading": "strong html=1 tree=2",
       "reason": "the grammar builds an inline span the language keeps literal here"
@@ -752,17 +743,9 @@
     "the-round-trip-comparison-normalizes-a-named-list": {
       "reading": "s html=1 tree=0",
       "reason": "the language builds an inline span the grammar does not"
-    },
-    "trailing-attributes-on-a-link-reference-definition-2": {
-      "reading": "strong html=0 tree=1",
-      "reason": "the grammar builds an inline span the language keeps literal here"
     }
   },
   "lineTerminatorGaps": {
-    "a-quoted-attribute-value-stops-at-the-newline-3": {
-      "spellings": "the cr spelling(s) parse to a different tree than lf",
-      "reason": "the cr spelling parses to a different tree because the LF spelling already parses to ERROR - the quoted attribute value carrying a newline is the skip recorded for this example. It arrived as one of three example-level skips on the same corpus bump; the other two - a line holding only a vertical tab, form feed, NEL, LS or PS, and a content line ending in NBSP, ZWSP, BOM or U+2000 - were both control characters with no line-content route, and both are closed. This one is not a character the text token can admit: the attribute block commits on the opening brace and has no route back to a paragraph when the value never closes on its line. The terminator is not the defect here, the unmodeled construct is, and the divergence goes away with it. Tracked in tree-sitter-carve#160."
-    }
   },
   "parseTimeouts": {}
 }
