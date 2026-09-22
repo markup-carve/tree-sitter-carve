@@ -2013,3 +2013,207 @@ A tab that reaches a list item's content column opens a quote in the item
           (block_quote_marker)
           content: (content
             (paragraph)))))))
+
+==================
+A backtick fence inside a quote closes at its quoted closer
+==================
+> ```
+> x
+> ```
+> y
+
+---
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (code_block
+        (code_block_marker_begin)
+        code: (code
+          (block_quote_marker))
+        (code_block_marker_end))
+      (block_quote_marker)
+      (paragraph))))
+
+==================
+A tilde fence inside a quote closes at its quoted closer
+==================
+> ~~~
+> x
+> ~~~
+> y
+
+---
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (code_block
+        (code_block_marker_begin)
+        code: (code
+          (block_quote_marker))
+        (code_block_marker_end))
+      (block_quote_marker)
+      (paragraph))))
+
+==================
+A fence inside a nested quote closes at its closer at the same depth
+==================
+> > ```
+> > x
+> > ```
+> > y
+
+---
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (block_quote
+        (block_quote_marker)
+        content: (content
+          (code_block
+            (code_block_marker_begin)
+            code: (code
+              (block_quote_marker)
+              (block_quote_marker))
+            (code_block_marker_end))
+          (block_quote_marker)
+          (block_quote_marker)
+          (paragraph))))))
+
+==================
+A closer one quote short of a nested fence opens a fence in the outer quote
+==================
+> > ```
+> > x
+> ```
+> y
+
+---
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (block_quote
+        (block_quote_marker)
+        content: (content
+          (code_block
+            (code_block_marker_begin)
+            code: (code
+              (block_quote_marker)
+              (block_quote_marker)))))
+      (block_quote_marker)
+      (code_block
+        (code_block_marker_begin)
+        code: (code
+          (block_quote_marker))))))
+
+==================
+A longer quoted run closes a quoted fence
+==================
+> ```
+> x
+> ````
+> y
+
+---
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (code_block
+        (code_block_marker_begin)
+        code: (code
+          (block_quote_marker))
+        (code_block_marker_end))
+      (block_quote_marker)
+      (paragraph))))
+
+==================
+An empty quoted fence closes on the next quoted line
+==================
+> ```
+> ```
+> y
+
+---
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (code_block
+        (code_block_marker_begin)
+        (code_block_marker_end))
+      (block_quote_marker)
+      (paragraph))))
+
+==================
+A quoted run with trailing text is code, not a closer
+==================
+> ```
+> x
+> ``` z
+> ```
+
+---
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (code_block
+        (code_block_marker_begin)
+        code: (code
+          (block_quote_marker)
+          (block_quote_marker))
+        (code_block_marker_end)))))
+
+==================
+An unmarked fence line leaves the quote and opens a new fence
+==================
+> ```
+> x
+```
+> y
+
+---
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (code_block
+        (code_block_marker_begin)
+        code: (code
+          (block_quote_marker)))))
+  (code_block
+    (code_block_marker_begin)
+    code: (code)))
+
+==================
+A quoted run indented past the quote's content column is code
+==================
+> ```
+> x
+>  ```
+> ```
+
+---
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (code_block
+        (code_block_marker_begin)
+        code: (code
+          (block_quote_marker)
+          (block_quote_marker))
+        (code_block_marker_end)))))
