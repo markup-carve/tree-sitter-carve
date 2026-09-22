@@ -325,6 +325,8 @@ module.exports = grammar({
     [$.inline_literal, $._note_symbol_fallback],
     [$.link_text, $._symbol_fallback],
     [$.link_text, $._note_symbol_fallback],
+    [$.span, $._symbol_fallback],
+    [$.span, $._note_symbol_fallback],
     [$._curly_bracket_span_begin, $._curly_bracket_span_fallback],
   ],
 
@@ -2238,16 +2240,23 @@ module.exports = grammar({
       ),
 
     span: ($) =>
-      seq(
-        $._bracketed_text_begin,
-        $._square_bracket_span_mark_begin,
-        field("content", alias($._inline, $.content)),
-        // Prefer span over regular text + inline attribute.
-        prec.dynamic(
-          ELEMENT_PRECEDENCE,
-          alias($._square_bracket_span_end, "]"),
+      choice(
+        seq(
+          $._bracketed_text_begin,
+          $._square_bracket_span_mark_begin,
+          field("content", alias($._inline, $.content)),
+          // Prefer span over regular text + inline attribute.
+          prec.dynamic(
+            ELEMENT_PRECEDENCE,
+            alias($._square_bracket_span_end, "]"),
+          ),
+          field("attribute", $.inline_attribute),
         ),
-        field("attribute", $.inline_attribute),
+        // AN EMPTY BRACKET RUN IS A SPAN TOO: `[]{.c}` renders
+        // `<span class="c"></span>`. `_inline` is a `repeat1`, so the pair
+        // needs its own spelling, the same `"[]"` `link_text` already carries
+        // for `[](u)` (#363).
+        seq("[]", field("attribute", $.inline_attribute)),
       ),
 
     _bracketed_text_begin: (_) => "[",
