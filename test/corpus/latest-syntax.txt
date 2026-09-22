@@ -3189,3 +3189,139 @@ a `b
       begin_marker: (verbatim_marker_begin)
       content: (content)
       end_marker: (verbatim_marker_end))))
+
+==================
+An unterminated fence on a nested lead in a description body owns its body
+==================
+:: t
+: - ```
+code
+```
+
+---
+
+(document
+  (definition_list
+    (list_item
+      marker: (list_marker_definition)
+      term: (term))
+    (list_item
+      marker: (list_marker_description)
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (code_block
+              (code_block_marker_begin)
+              code: (code))))))))
+
+==================
+A tilde fence on a nested lead in a description body owns its body
+==================
+:: t
+: - ~~~ x
+code
+~~~
+
+---
+
+(document
+  (definition_list
+    (list_item
+      marker: (list_marker_definition)
+      term: (term))
+    (list_item
+      marker: (list_marker_description)
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (code_block
+              (code_block_marker_begin)
+              language: (language)
+              code: (code))))))))
+
+==================
+A nested-lead fence with a closer at the item's column closes there
+==================
+:: t
+: - ```
+    code
+    ```
+
+---
+
+(document
+  (definition_list
+    (list_item
+      marker: (list_marker_definition)
+      term: (term))
+    (list_item
+      marker: (list_marker_description)
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (code_block
+              (code_block_marker_begin)
+              code: (code)
+              (code_block_marker_end))))))))
+
+==================
+A nested-lead fence owns its body only up to the next entry
+==================
+:: t
+: - ```
+code
+:: u
+: v
+
+---
+
+(document
+  (definition_list
+    (list_item
+      marker: (list_marker_definition)
+      term: (term))
+    (list_item
+      marker: (list_marker_description)
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (code_block
+              (code_block_marker_begin)
+              code: (code))))))
+    (list_item
+      marker: (list_marker_definition)
+      term: (term))
+    (list_item
+      marker: (list_marker_description)
+      definition: (definition))))
+
+==================
+A nested-lead fence owns its body only up to a blank line that ends it
+==================
+:: t
+: - ```
+code
+
+tail
+
+---
+
+(document
+  (definition_list
+    (list_item
+      marker: (list_marker_definition)
+      term: (term))
+    (list_item
+      marker: (list_marker_description)
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (code_block
+              (code_block_marker_begin)
+              code: (code)))))))
+  (paragraph))

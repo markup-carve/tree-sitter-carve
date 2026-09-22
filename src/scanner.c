@@ -515,6 +515,9 @@ static const uint16_t STATE_QUOTED_FENCE_CLOSER = 1 << 9;
 // The line after this newline is marked at the fence's quote depth but short
 // of the quoted list item's content column: it ends the fence and the item.
 static const uint16_t STATE_QUOTED_LINE_SHORT_OF_ITEM = 1 << 10;
+// The open code fence sits on a nested item's lead in a description body and
+// has no closer at that item's column, so it owns the rest of the body.
+static const uint16_t STATE_FENCE_OWNS_BODY = 1 << 11;
 
 static TokenType scan_list_marker_token(Scanner *s, TSLexer *lexer);
 static uint8_t scan_block_quote_markers(Scanner *s, TSLexer *lexer,
@@ -1366,6 +1369,16 @@ static uint32_t quoted_div_column(Scanner *s, uint8_t marker_count) {
   return top->content_col;
 }
 
+static Block *find_description_body(Scanner *s) {
+  for (int i = s->open_blocks->size - 1; i >= 0; --i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (b->type == LIST_DEFINITION) {
+      return b;
+    }
+  }
+  return NULL;
+}
+
 // Close open list if list markers are different.
 static bool parse_list_item_continuation(Scanner *s, TSLexer *lexer) {
   Block *list = find_list(s);
@@ -1407,6 +1420,21 @@ static bool close_list_nested_block_if_needed(Scanner *s, TSLexer *lexer,
   // If we're in a block that's in a list
   // we should check the indentation level,
   // and if it's less than the current list, we need to close that block.
+  if (non_newline && list && list != top && top->type == CODE_BLOCK &&
+      (s->state & STATE_FENCE_OWNS_BODY)) {
+    // The fence owns the description body: a line short of the item stays
+    // fence content until the body ends, at a new entry or after a blank line
+    // the next line does not continue.
+    Block *body = find_description_body(s);
+    bool body_ends =
+        lexer->lookahead == ':' ||
+        ((s->state & STATE_AFTER_BLANK_LINE) && body != NULL &&
+         s->indent < body->content_col);
+    if (!body_ends) {
+      return false;
+    }
+    s->state &= ~STATE_FENCE_OWNS_BODY;
+  }
   if (non_newline && list && list != top) {
     // A fence body line short of the item's content column is not fence body:
     // the item's prefix is not supplied, so the fence and the item both end
@@ -1928,6 +1956,11 @@ static bool code_fence_run_matches_open_block(Scanner *s, uint8_t width,
   if (!top || top->type != CODE_BLOCK) {
     return false;
   }
+  // A fence that owns its description body was opened only because no closer
+  // at its column lies ahead in that body, so no run in it closes the fence.
+  if (s->state & STATE_FENCE_OWNS_BODY) {
+    return false;
+  }
   // COLUMN-EXACT DELIMITERS (grammar.ebnf, PART 2, normative). A closer sits
   // at its container's content column, and "a closing run indented PAST its
   // opener is not a delimiter but code content -- which is exactly what lets an
@@ -2152,6 +2185,81 @@ static bool code_fence_info_is_modeled(Scanner *s, TSLexer *lexer) {
   return false;
 }
 
+/// A line starting a new description-list entry (`:: t` or `:  d`) at the
+/// document margin.
+static bool at_description_entry(Scanner *s, TSLexer *lexer) {
+  if (lexer->lookahead != ':') {
+    return false;
+  }
+  advance(s, lexer);
+  if (lexer->lookahead == ':') {
+    advance(s, lexer);
+  }
+  return lexer->lookahead == ' ';
+}
+
+/// An unterminated code fence on a NESTED item's lead line in a description
+/// body (`:: t` / `: - ```` ) owns the rest of that body, flush-left lines and
+/// fence-shaped ones included; only a closer at the nested item's content
+/// column ends it (spec: "An unterminated fence on a nested lead in a
+/// description body owns its body"). A top-level item's fence does not. Read
+/// as a peek past the opener, whose token end is already marked.
+static bool fence_owns_description_body(Scanner *s, TSLexer *lexer,
+                                        uint8_t width, char fence_char,
+                                        uint32_t column) {
+  if (s->marker_end_col == 0 || column != s->marker_end_col) {
+    return false;
+  }
+  int n = (int)s->open_blocks->size;
+  if (n < 2) {
+    return false;
+  }
+  Block *item = *array_get(s->open_blocks, n - 1);
+  Block *body = *array_get(s->open_blocks, n - 2);
+  if (!is_list(item->type) || item->type == LIST_DEFINITION ||
+      body->type != LIST_DEFINITION || body->content_col == 0) {
+    return false;
+  }
+  uint32_t body_col = body->content_col;
+  while (!lexer->eof(lexer) && !at_line_end(lexer)) {
+    advance(s, lexer);
+  }
+  while (!lexer->eof(lexer)) {
+    consume_line_end(s, lexer);
+    if (lexer->eof(lexer)) {
+      break;
+    }
+    uint8_t indent = consume_whitespace(s, lexer);
+    if (at_line_end(lexer)) {
+      // A blank line ends the body unless the next line continues it.
+      consume_line_end(s, lexer);
+      uint8_t next = consume_whitespace(s, lexer);
+      if (lexer->eof(lexer) || at_line_end(lexer) || next < body_col) {
+        break;
+      }
+      indent = next;
+    } else if (indent == 0 && lexer->lookahead == ':') {
+      if (at_description_entry(s, lexer)) {
+        break;
+      }
+      continue;
+    }
+    if (indent == column && lexer->lookahead == fence_char &&
+        consume_chars(s, lexer, fence_char) >= width) {
+      while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+        advance(s, lexer);
+      }
+      if (at_line_end(lexer) || lexer->eof(lexer)) {
+        return false;
+      }
+    }
+    while (!lexer->eof(lexer) && !at_line_end(lexer)) {
+      advance(s, lexer);
+    }
+  }
+  return true;
+}
+
 static bool try_begin_code_block(Scanner *s, TSLexer *lexer, uint8_t width,
                                  char fence_char, uint32_t column) {
   Block *top = peek_block(s);
@@ -2164,9 +2272,16 @@ static bool try_begin_code_block(Scanner *s, TSLexer *lexer, uint8_t width,
   if (!code_fence_info_is_modeled(s, lexer)) {
     return false;
   }
+  bool owns_body = fence_owns_description_body(s, lexer, width, fence_char,
+                                                column);
   push_block(s, CODE_BLOCK,
              width | (fence_char == '~' ? CODE_FENCE_TILDE : 0));
   peek_block(s)->content_col = (uint8_t)column;
+  if (owns_body) {
+    s->state |= STATE_FENCE_OWNS_BODY;
+  } else {
+    s->state &= ~STATE_FENCE_OWNS_BODY;
+  }
   lexer->result_symbol = CODE_BLOCK_BEGIN;
   return true;
 }

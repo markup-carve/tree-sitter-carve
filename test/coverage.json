@@ -716,14 +716,6 @@
       "reading": "strong html=0 tree=1",
       "reason": "the grammar builds an inline span the language keeps literal here"
     },
-    "an-unterminated-fence-on-a-nested-lead-in-a-description-body-owns-its-body": {
-      "reading": "code html=0 tree=1",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
-    "an-unterminated-fence-on-a-nested-lead-in-a-description-body-owns-its-body-3": {
-      "reading": "code html=0 tree=1",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
     "the-round-trip-comparison-normalizes-a-named-list": {
       "reading": "s html=1 tree=0",
       "reason": "the language builds an inline span the grammar does not"
