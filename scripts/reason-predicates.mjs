@@ -14,6 +14,7 @@ export function validateReasonPredicates({ coverage, corpusDir }) {
     skip: coverage.skip ?? {},
     overAcceptance: coverage.overAcceptance ?? {},
     invisibleOverAcceptance: coverage.invisibleOverAcceptance ?? {},
+    invisibleUnderAcceptance: coverage.invisibleUnderAcceptance ?? {},
     underAcceptance: coverage.underAcceptance ?? {},
     lineTerminatorGaps: coverage.lineTerminatorGaps ?? {},
   };

@@ -463,4 +463,111 @@ if (invisibleNew.length || invisibleFixed.length || invisibleChanged.length) {
   process.exit(1);
 }
 
+// INVISIBLE UNDER-ACCEPTANCE, the mirror of the check above. That one asks
+// whether a node that renders nothing covers text the fixture still SHOWS.
+// This asks the other direction: a reference definition the fixture HIDES -
+// the language consumed it - that the tree keeps in visible paragraph text.
+// A definition renders nothing, so the only trace of the miss is the paragraph
+// holding its source, and nothing else compares that: the extent gate reads
+// inline spans, and the under-acceptance gate leaves `paragraph` unmapped
+// (tree-sitter-carve#372).
+//
+// A definition hidden some OTHER way lands in a node that is not text - a
+// comment fence registers the definition inside it as nothing, and the tree
+// keeps it in the fence - so the question is asked of the node that holds the
+// line, never of a list of documents.
+// The `[` opens the line or follows a space: every container marker ends in
+// one, and an abbreviation's `*[` is a different definition.
+const DEFINITION_LINE = /^((?:[ \t>:*+\-\d.)]*[ \t])?)(\[[^\]^@\r\n][^\]\r\n]*\]: \S.*)$/;
+// Compared as an alphanumeric skeleton, as the inline-reading gate compares
+// span text: the fixture typesets what it shows, so `"T"` comes back curly and
+// an exact substring test would read shown text as hidden.
+const skeletonOf = (text) => text.normalize('NFKC').replace(/[^\p{L}\p{N}]/gu, '').toLowerCase();
+const TEXT_CONTAINERS = new Set(['paragraph', 'definition', 'term', 'table_cell']);
+const MIN_HIDDEN_DEFINITIONS = 120;
+const invisibleUnderAcceptance = coverage.invisibleUnderAcceptance ?? {};
+const nodeRangeRe = /\(([a-z_]+) \[(\d+), (\d+)\] - \[(\d+), (\d+)\]/g;
+const before = (r1, c1, r2, c2) => r1 < r2 || (r1 === r2 && c1 <= c2);
+
+const absorbedFound = {};
+let hiddenDefinitions = 0;
+coveredFiles.forEach((file, i) => {
+  const visible = skeletonOf(visibleTextOf(readFileSync(file.replace(/\.crv$/, '.html'), 'utf8')));
+  const lines = readFileSync(file, 'utf8').split('\n');
+  const nodes = [...fullPerFile[i].matchAll(nodeRangeRe)].map(([, type, sr, sc, er, ec]) => ({
+    type,
+    sr: +sr,
+    sc: +sc,
+    er: +er,
+    ec: +ec,
+  }));
+  const absorbed = [];
+  lines.forEach((line, row) => {
+    const m = DEFINITION_LINE.exec(line);
+    if (!m) return;
+    const definition = normalizeSpan(m[2]);
+    if (visible.includes(skeletonOf(definition))) return;
+    hiddenDefinitions += 1;
+    const col = m[1].length;
+    const holders = nodes
+      .filter((n) => before(n.sr, n.sc, row, col) && !before(n.er, n.ec, row, col))
+      .map((n) => n.type);
+    if (holders.includes('link_reference_definition')) return;
+    if (holders.some((type) => TEXT_CONTAINERS.has(type))) absorbed.push(definition);
+  });
+  if (absorbed.length) absorbedFound[slugOf(path.basename(file, '.crv'))] = absorbed.join('; ');
+});
+
+// The check can only fail on a definition it examined, so it has to examine
+// some: an empty population reads as a clean run (see participants.mjs).
+refuseShortRun({
+  label: 'INVISIBLE UNDER-ACCEPTANCE',
+  actual: hiddenDefinitions,
+  atLeast: MIN_HIDDEN_DEFINITIONS,
+  of: 'reference definition(s) the fixtures hide',
+  hint: 'the definition pattern or the visible-text reading stopped matching.',
+});
+
+const absorbedNew = Object.keys(absorbedFound).filter((k) => !(k in invisibleUnderAcceptance));
+const absorbedFixed = Object.keys(invisibleUnderAcceptance).filter((k) => !(k in absorbedFound));
+const absorbedChanged = Object.keys(absorbedFound)
+  .filter(
+    (k) =>
+      k in invisibleUnderAcceptance &&
+      invisibleUnderAcceptance[k].definitions !== absorbedFound[k],
+  )
+  .map((k) => `${k}: recorded ${invisibleUnderAcceptance[k].definitions}, now ${absorbedFound[k]}`);
+
+console.log(
+  `corpus-conformance: checked ${hiddenDefinitions} hidden reference definition(s) in ` +
+    `${coveredFiles.length} covered document(s) for ` +
+    `invisible under-acceptance; ${Object.keys(absorbedFound).length} found, ` +
+    `${Object.keys(invisibleUnderAcceptance).length} recorded.`,
+);
+
+if (absorbedNew.length || absorbedFixed.length || absorbedChanged.length) {
+  if (absorbedNew.length) {
+    console.error(
+      '\nInvisible under-acceptance (a reference definition the fixture hides is ' +
+        'paragraph text in the tree):',
+    );
+    for (const k of absorbedNew) console.error(`  - ${k}: ${absorbedFound[k]}`);
+  }
+  if (absorbedFixed.length) {
+    console.error(
+      '\nRecorded invisible under-acceptance that no longer happens - remove these ' +
+        'from `invisibleUnderAcceptance` in test/coverage.json:',
+    );
+    for (const k of absorbedFixed) console.error(`  - ${k}`);
+  }
+  if (absorbedChanged.length) {
+    console.error(
+      '\nRecorded invisible under-acceptance whose definitions CHANGED - update ' +
+        '`definitions` in test/coverage.json:',
+    );
+    for (const k of absorbedChanged) console.error(`  - ${k}`);
+  }
+  process.exit(1);
+}
+
 console.log('corpus-conformance: OK (no ERROR/MISSING in any covered category).');

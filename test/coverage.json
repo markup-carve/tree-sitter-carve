@@ -16,6 +16,7 @@
     "admonition": { "documents": 74, "nodes": 281 }
   },
   "reasons": {
+    "reference-definition-absorbed": "a reference definition the language collects - the fixture shows none of its text - is paragraph text in the tree. Two causes, both in `src/scanner.c` (tree-sitter-carve#372): `close_paragraph` has no probe that lets a `[label]:` definition interrupt an open paragraph, only the footnote form; and a continued definition list keeps its first item's content column, so a description padded differently from its term is measured against the term's column and the definition opener refuses it.",
     "a-column-0-opener-does-not-close-an-open-list": "a column-0 block opener does not close an open LIST; it folds into the item as lazy paragraph text. `- a` / `# H` builds no heading, while `> q` / `# H` does - so the block quote closes correctly and only the list does not. Both documents here reach it through a `+` continuation marker, which this grammar opens as an ordinary bullet list, after which the column-0 heading below is swallowed the same way.",
     "a-tabbed-frontmatter-opener-swallows-the-break-below": "`---` followed by a TAB is not a frontmatter opener, and the grammar agrees that far - it builds no frontmatter. But it then reads the closing `---` three lines down as an `em_dash` inside the still-open paragraph rather than as a thematic break, so the `<hr>` the fixture expects between the paragraph and `body` is not built.",
     "an-attribute-line-does-not-end-the-paragraph-above-a-list": "a floating attribute line at column 0 does not end the paragraph above it, so the list it is meant to attach to never opens: `para` / `{.x}` / `- b` is ONE paragraph. The fixture expects the paragraph to end at the attribute line and the run to reach the list below it, as `<ul class=\"x\">`.",
@@ -24,6 +25,10 @@
     "marker-line-block-opener-builds-nothing": "a block opener written on a list MARKER line builds nothing. `- # H` gives a list item whose content is a PARAGRAPH, not a heading; `- ---` is read as a document-level thematic break that consumes the marker, so no list is built at all. Verified against the indented spelling, which works: `- a` / `  # H` does build the heading. This is the same shape as the recorded `fence-on-a-marker-line-builds-nothing` - the marker line is one position this grammar does not run block-opener recognition in - now reached by the heading and thematic-break openers too. A TASK checkbox does not change which openers reach it, but it does change what the thematic break degrades INTO, and the sentence above is wrong for that spelling: `- [x] # h` is still a paragraph, while `- [ ] ---` no longer consumes the marker - the list and the item ARE built and `---` becomes an inline `em_dash` inside the item's paragraph. Measured against the neighbour that works, which is what keeps the checkbox out of it: `- [ ] > q` opens its quote with content, so the checkbox does not disturb an opener the marker line already admits. That is why a-task-item-s-checkbox-is-not-decided-by-its-first-block reports `heading: want 1 have 0; thematic_break: want 1 have 0` and no gap for its quote."
   },
   "reasonPredicates": {
+    "reference-definition-absorbed": {
+      "ledger": "invisibleUnderAcceptance",
+      "sourcePattern": "^(?:[ \\t>:*+\\-\\d.)]*[ \\t])?\\[[^\\]^@\\n][^\\]\\n]*\\]: \\S"
+    },
     "a-column-0-opener-does-not-close-an-open-list": {
       "ledger": "underAcceptance",
       "sourcePattern": "^\\+[ \\t]*\\n#{1,6}[ \\t]"
@@ -557,6 +562,224 @@
     }
   },
   "invisibleOverAcceptance": {},
+  "invisibleUnderAcceptance": {
+    "an-abbreviation-at-a-list-item-s-content-column-is-still-not-a-definition-2": {
+      "definitions": "[r]: /u",
+      "reason": "ref:reference-definition-absorbed"
+    },
+    "a-definition-inside-a-container-is-collected-at-that-container-s-content-column": {
+      "definitions": "[r]: /u",
+      "reason": "ref:reference-definition-absorbed"
+    },
+    "a-definition-on-a-footnote-body-s-continuation-line-is-collected": {
+      "definitions": "[r]: /u",
+      "reason": "ref:reference-definition-absorbed"
+    },
+    "a-definition-past-a-footnote-body-s-column-registers-from-its-authored-base": {
+      "definitions": "[r]: /u",
+      "reason": "ref:reference-definition-absorbed"
+    },
+    "the-continuation-marker-at-an-item-s-own-column-and-what-follows-it": {
+      "definitions": "[r]: /u",
+      "reason": "ref:reference-definition-absorbed"
+    },
+    "a-reference-definition-is-anchored-at-end-of-line-10": {
+      "definitions": "[a]: /u {.c}",
+      "reason": "ref:reference-definition-absorbed"
+    },
+    "a-reference-definition-is-anchored-at-end-of-line-11": {
+      "definitions": "[a]: /u {.c}",
+      "reason": "ref:reference-definition-absorbed"
+    },
+    "a-reference-definition-is-anchored-at-end-of-line-12": {
+      "definitions": "[a]: /u {.c}",
+      "reason": "ref:reference-definition-absorbed"
+    },
+    "a-reference-definition-is-anchored-at-end-of-line-13": {
+      "definitions": "[a]: /u {.c}",
+      "reason": "ref:reference-definition-absorbed"
+    },
+    "a-reference-definition-is-anchored-at-end-of-line-14": {
+      "definitions": "[a]: /u {.c}",
+      "reason": "ref:reference-definition-absorbed"
+    },
+    "a-column-zero-definition-ends-an-open-list-item-4": {
+      "definitions": "[r]: /u",
+      "reason": "ref:reference-definition-absorbed"
+    },
+    "a-column-zero-definition-ends-an-open-list-item": {
+      "definitions": "[r]: /u",
+      "reason": "ref:reference-definition-absorbed"
+    },
+    "a-definition-at-a-container-s-content-column-5": {
+      "definitions": "[r]: /u",
+      "reason": "ref:reference-definition-absorbed"
+    },
+    "a-definition-at-a-container-s-content-column": {
+      "definitions": "[r]: /u",
+      "reason": "ref:reference-definition-absorbed"
+    },
+    "a-block-at-a-container-s-content-column-ends-the-paragraph-whatever-it-renders-6": {
+      "definitions": "[r]: /u",
+      "reason": "ref:reference-definition-absorbed"
+    },
+    "a-footnote-definition-s-block-runs-to-the-end-of-its-body-2": {
+      "definitions": "[r]: /u",
+      "reason": "ref:reference-definition-absorbed"
+    },
+    "a-definition-behind-an-alternating-container-prefix-registers-at-the-innermost-content-column-4": {
+      "definitions": "[r]: /url",
+      "reason": "ref:reference-definition-absorbed"
+    },
+    "a-definition-behind-an-alternating-container-prefix-registers-at-the-innermost-content-column": {
+      "definitions": "[r]: /url",
+      "reason": "ref:reference-definition-absorbed"
+    },
+    "a-quote-is-reached-by-its-marker-and-a-column-never-reaches-into-one-2": {
+      "definitions": "[r]: /url",
+      "reason": "ref:reference-definition-absorbed"
+    },
+    "a-quote-is-reached-by-its-marker-and-a-column-never-reaches-into-one-4": {
+      "definitions": "[r]: /url",
+      "reason": "ref:reference-definition-absorbed"
+    },
+    "a-collected-definition-closes-the-item-paragraph-2": {
+      "definitions": "[r]: /u",
+      "reason": "ref:reference-definition-absorbed"
+    },
+    "a-collected-definition-closes-the-item-paragraph": {
+      "definitions": "[r]: /u",
+      "reason": "ref:reference-definition-absorbed"
+    },
+    "a-definition-list-ends-at-its-last-placed-child-too-2": {
+      "definitions": "[r]: /u",
+      "reason": "ref:reference-definition-absorbed"
+    },
+    "an-invisible-line-before-the-blank-does-not-cancel-the-separation-2": {
+      "definitions": "[r]: /u",
+      "reason": "ref:reference-definition-absorbed"
+    },
+    "a-floating-attribute-under-a-definition-attaches-at-column-zero-4": {
+      "definitions": "[r]: /u",
+      "reason": "ref:reference-definition-absorbed"
+    },
+    "a-definition-between-two-open-content-columns-reaches-the-outer-one-2": {
+      "definitions": "[r]: /url",
+      "reason": "ref:reference-definition-absorbed"
+    },
+    "a-definition-between-two-open-content-columns-reaches-the-outer-one-3": {
+      "definitions": "[r]: /url",
+      "reason": "ref:reference-definition-absorbed"
+    },
+    "a-definition-between-two-open-content-columns-reaches-the-outer-one-4": {
+      "definitions": "[r]: /url",
+      "reason": "ref:reference-definition-absorbed"
+    },
+    "a-definition-between-two-open-content-columns-reaches-the-outer-one": {
+      "definitions": "[r]: /url",
+      "reason": "ref:reference-definition-absorbed"
+    },
+    "a-marker-folds-only-strictly-between-the-item-s-base-and-content-column-3": {
+      "definitions": "[t]: /t",
+      "reason": "ref:reference-definition-absorbed"
+    },
+    "a-marker-folds-only-strictly-between-the-item-s-base-and-content-column-7": {
+      "definitions": "[t]: /t",
+      "reason": "ref:reference-definition-absorbed"
+    },
+    "a-marker-folds-only-strictly-between-the-item-s-base-and-content-column-8": {
+      "definitions": "[t]: /t",
+      "reason": "ref:reference-definition-absorbed"
+    },
+    "an-opener-at-or-past-a-description-body-s-column-closes-its-paragraph-2": {
+      "definitions": "[r]: /url",
+      "reason": "ref:reference-definition-absorbed"
+    },
+    "an-opener-at-or-past-a-description-body-s-column-closes-its-paragraph": {
+      "definitions": "[r]: /url",
+      "reason": "ref:reference-definition-absorbed"
+    },
+    "the-host-does-not-change-which-column-a-definition-reaches-10": {
+      "definitions": "[r]: /url",
+      "reason": "ref:reference-definition-absorbed"
+    },
+    "the-host-does-not-change-which-column-a-definition-reaches-13": {
+      "definitions": "[r]: /url",
+      "reason": "ref:reference-definition-absorbed"
+    },
+    "the-host-does-not-change-which-column-a-definition-reaches-15": {
+      "definitions": "[r]: /first; [r]: /second",
+      "reason": "ref:reference-definition-absorbed"
+    },
+    "the-host-does-not-change-which-column-a-definition-reaches-2": {
+      "definitions": "[r]: /url",
+      "reason": "ref:reference-definition-absorbed"
+    },
+    "the-host-does-not-change-which-column-a-definition-reaches-20": {
+      "definitions": "[r]: /url",
+      "reason": "ref:reference-definition-absorbed"
+    },
+    "the-host-does-not-change-which-column-a-definition-reaches-3": {
+      "definitions": "[r]: /url",
+      "reason": "ref:reference-definition-absorbed"
+    },
+    "the-host-does-not-change-which-column-a-definition-reaches-4": {
+      "definitions": "[r]: /url",
+      "reason": "ref:reference-definition-absorbed"
+    },
+    "the-host-does-not-change-which-column-a-definition-reaches-5": {
+      "definitions": "[r]: /url",
+      "reason": "ref:reference-definition-absorbed"
+    },
+    "the-host-does-not-change-which-column-a-definition-reaches-7": {
+      "definitions": "[r]: /url",
+      "reason": "ref:reference-definition-absorbed"
+    },
+    "the-host-does-not-change-which-column-a-definition-reaches-8": {
+      "definitions": "[r]: /url",
+      "reason": "ref:reference-definition-absorbed"
+    },
+    "the-host-does-not-change-which-column-a-definition-reaches-9": {
+      "definitions": "[r]: /url",
+      "reason": "ref:reference-definition-absorbed"
+    },
+    "the-host-does-not-change-which-column-a-definition-reaches": {
+      "definitions": "[r]: /url",
+      "reason": "ref:reference-definition-absorbed"
+    },
+    "a-container-in-a-host-body-owns-a-line-past-its-own-content-column-2": {
+      "definitions": "[r]: /url",
+      "reason": "ref:reference-definition-absorbed"
+    },
+    "a-container-in-a-host-body-owns-a-line-past-its-own-content-column-3": {
+      "definitions": "[r]: /url",
+      "reason": "ref:reference-definition-absorbed"
+    },
+    "a-container-in-a-host-body-owns-a-line-past-its-own-content-column-5": {
+      "definitions": "[r]: /url",
+      "reason": "ref:reference-definition-absorbed"
+    },
+    "a-container-in-a-host-body-owns-a-line-past-its-own-content-column-6": {
+      "definitions": "[r]: /url",
+      "reason": "ref:reference-definition-absorbed"
+    },
+    "a-container-closer-closes-its-container-in-a-footnote-body-too-2": {
+      "definitions": "[r]: /url",
+      "reason": "ref:reference-definition-absorbed"
+    },
+    "a-container-closer-closes-its-container-in-a-footnote-body-too": {
+      "definitions": "[r]: /url",
+      "reason": "ref:reference-definition-absorbed"
+    },
+    "a-nested-note-s-floor-is-two-columns-past-its-own-marker": {
+      "definitions": "[r]: /url",
+      "reason": "ref:reference-definition-absorbed"
+    },
+    "paragraph-interruption-17": {
+      "definitions": "[r]: http://x",
+      "reason": "ref:reference-definition-absorbed"
+    }
+  },
   "batteryDisagreements": {},
   "underAcceptance": {
     "generic-divs-4": {
