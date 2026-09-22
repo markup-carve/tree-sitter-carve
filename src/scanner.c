@@ -8993,15 +8993,14 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   InlineType literal_run_kind;
   // Where the reader stands aside for a word only because a block reading may
   // start here; the word's second chance below is for exactly this position.
-  // Read before this call marks any token end, so the column's rewind costs
-  // nothing. Only a word at the very start of its line: mid-line, the block
-  // readings still on offer (a table row's cells) are not why it stood aside.
+  // That is not only the line start: a word right after a block marker
+  // (`> a*b*`, `- a*b*`) or a cell's pipe (`| a*b* |`) is one too (#434).
   bool deferred_word = false;
   uint32_t deferred_at = s->advances;
   if (valid_symbols[LITERAL_RUN] && !valid_symbols[ERROR] &&
-      !valid_symbols[BLOCK_CLOSE] && carve_is_alnum_ascii(lexer->lookahead) &&
+      carve_is_alnum_ascii(lexer->lookahead) &&
       block_reading_ahead(lexer->lookahead, valid_symbols) &&
-      !zero_width_mark_pending(valid_symbols) && line_column(s, lexer) == 0) {
+      !zero_width_mark_pending(valid_symbols)) {
     deferred_word = true;
   }
   if (valid_symbols[LITERAL_RUN] && !valid_symbols[ERROR] &&
