@@ -2,6 +2,14 @@
 #include "tree_sitter/array.h"
 #include "tree_sitter/parser.h"
 
+// `_Static_assert` is a C11 keyword some MSVC toolchains (e.g. the Windows
+// Python wheel build's cp38-win32 target) don't recognize by default,
+// mis-parsing everything after it. This works on every C standard.
+#define CARVE_CONCAT_(a, b) a##b
+#define CARVE_CONCAT(a, b) CARVE_CONCAT_(a, b)
+#define CARVE_STATIC_ASSERT(cond) \
+    typedef char CARVE_CONCAT(carve_static_assert_line_, __LINE__)[(cond) ? 1 : -1]
+
 // WASM-host compatibility: avoid linking against libc's ctype helpers.
 // Some Tree-sitter consumers (e.g. Zed via wasi-sdk + wasmtime) cannot
 // resolve `isalnum` as an import. The lookahead is a Unicode codepoint
@@ -376,10 +384,10 @@ enum {
   INLINE_STOPS_AT_SPAN_CLOSER = 1 << 1,
 };
 
-_Static_assert(SUBSTITUTION < 0x40,
-               "serialized inline types must fit in six bits");
-_Static_assert((INLINE_BRACED | INLINE_STOPS_AT_SPAN_CLOSER) < 0x04,
-               "serialized inline flags must fit in two bits");
+// serialized inline types must fit in six bits
+CARVE_STATIC_ASSERT(SUBSTITUTION < 0x40);
+// serialized inline flags must fit in two bits
+CARVE_STATIC_ASSERT((INLINE_BRACED | INLINE_STOPS_AT_SPAN_CLOSER) < 0x04);
 
 typedef struct {
   InlineType type;
