@@ -292,6 +292,10 @@ module.exports = grammar({
   extras: (_) => ["\r"],
 
   conflicts: ($) => [
+    // After a quoted fence's `_block_close`, a `>` is either the closer's own
+    // marker or the enclosing quote's; only the end marker after it decides.
+    [$.code_block],
+    [$.raw_block],
     // Every conflict naming `_symbol_fallback` is mirrored for the note's
     // variant of it, `_note_symbol_fallback` - same rules, same ambiguity, one
     // alternative fewer - EXCEPT where the note's shorter alternative list
@@ -1163,6 +1167,9 @@ module.exports = grammar({
         $._block_close,
         optional(
           seq(
+            // A closer inside a quote keeps its `>` markers as marker nodes;
+            // the scanner decided at the newline that this line closes.
+            optional($._block_quote_prefix),
             alias($._code_block_end, $.code_block_marker_end),
             // A closer may carry trailing whitespace: the scanner's own closer
             // test treats a whitespace-only tail as blank (#96), and every
@@ -1190,6 +1197,8 @@ module.exports = grammar({
         $._block_close,
         optional(
           seq(
+            // The same quoted closer as `code_block`'s.
+            optional($._block_quote_prefix),
             alias($._code_block_end, $.raw_block_marker_end),
             $._whitespace,
             $._newline,
