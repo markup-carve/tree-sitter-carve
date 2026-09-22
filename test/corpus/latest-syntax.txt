@@ -3056,3 +3056,136 @@ z
           code: (code)
           (code_block_marker_end)))))
   (paragraph))
+
+==================
+An unclosed code span ends before a heading that interrupts its paragraph
+==================
+a `b
+# h
+
+---
+
+(document
+  (paragraph
+    (verbatim
+      begin_marker: (verbatim_marker_begin)
+      content: (content)
+      end_marker: (verbatim_marker_end)))
+  (section
+    heading: (heading
+      marker: (marker)
+      content: (content))))
+
+==================
+An unclosed code span ends before a quote that interrupts its paragraph
+==================
+a `b
+> q
+
+---
+
+(document
+  (paragraph
+    (verbatim
+      begin_marker: (verbatim_marker_begin)
+      content: (content)
+      end_marker: (verbatim_marker_end)))
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (paragraph))))
+
+==================
+An unclosed code span in a term ends before the description marker
+==================
+:: `a
+b 
+:  d
+
+---
+
+(document
+  (definition_list
+    (list_item
+      marker: (list_marker_definition)
+      term: (term
+        (verbatim
+          begin_marker: (verbatim_marker_begin)
+          content: (content)
+          end_marker: (verbatim_marker_end))))
+    (list_item
+      marker: (list_marker_description)
+      definition: (definition))))
+
+==================
+An unclosed code span in a div ends before the div closer
+==================
+::: note
+a `b
+:::
+
+---
+
+(document
+  (div
+    (div_marker_begin)
+    type: (admonition_type)
+    content: (content
+      (paragraph
+        (verbatim
+          begin_marker: (verbatim_marker_begin)
+          content: (content)
+          end_marker: (verbatim_marker_end))))
+    (div_marker_end)))
+
+==================
+An unclosed code span in a quote ends before a quoted heading
+==================
+> a `b
+> # h
+
+---
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (paragraph
+        (verbatim
+          begin_marker: (verbatim_marker_begin)
+          content: (content)
+          end_marker: (verbatim_marker_end)))
+      (block_quote_marker)
+      (heading
+        marker: (marker)
+        content: (content)))))
+
+==================
+An unclosed code span continues over a lazy line
+==================
+a `b
+c
+
+---
+
+(document
+  (paragraph
+    (verbatim
+      begin_marker: (verbatim_marker_begin)
+      content: (content)
+      end_marker: (verbatim_marker_end))))
+
+==================
+An unclosed code span continues over a list marker line that does not interrupt
+==================
+a `b
+- c
+
+---
+
+(document
+  (paragraph
+    (verbatim
+      begin_marker: (verbatim_marker_begin)
+      content: (content)
+      end_marker: (verbatim_marker_end))))

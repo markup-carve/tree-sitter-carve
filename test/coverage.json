@@ -756,10 +756,6 @@
     "trailing-attributes-on-a-link-reference-definition-2": {
       "reading": "strong html=0 tree=1",
       "reason": "the grammar builds an inline span the language keeps literal here"
-    },
-    "trailing-whitespace-on-a-content-line-is-dropped-13": {
-      "reading": "code#1 html=\"ab\" tree=\"abd\"",
-      "reason": "a span covers different text here than the language’s does"
     }
   },
   "lineTerminatorGaps": {

@@ -1762,6 +1762,21 @@ static bool try_implicit_close_verbatim(Scanner *s, TSLexer *lexer) {
   }
 }
 
+static bool close_paragraph(Scanner *s, TSLexer *lexer);
+
+static bool verbatim_line_ends_paragraph(Scanner *s, TSLexer *lexer,
+                                         uint8_t line_indent) {
+  uint8_t indent = s->indent;
+  uint16_t state = s->state;
+  uint8_t level = s->block_quote_level;
+  s->indent = line_indent;
+  bool ends = close_paragraph(s, lexer);
+  s->indent = indent;
+  s->state = state;
+  s->block_quote_level = level;
+  return ends;
+}
+
 // Parsing verbatim content is also responsible for parsing VERBATIM_END.
 static bool parse_verbatim_content(Scanner *s, TSLexer *lexer) {
   Inline *top = peek_inline(s);
@@ -1800,16 +1815,25 @@ static bool parse_verbatim_content(Scanner *s, TSLexer *lexer) {
       // Advance over the first newline.
       consume_line_end(s, lexer);
       // Remove any whitespace on the next line.
-      consume_whitespace(s, lexer);
+      uint8_t line_indent = consume_whitespace(s, lexer);
       if (lexer->eof(lexer) || at_line_end(lexer)) {
         // Found a blankline, meaning the paragraph containing the varbatim
         // should be closed. So now we can close the verbatim.
         break;
-      } else {
-        // No blankline, continue parsing.
-        marked_at_pipe = false;
-        mark_end(s, lexer);
       }
+      // An unclosed run ends with its paragraph, so a line that interrupts
+      // the paragraph is not the run's content. Asked as a peek: the token
+      // end already stands at the end of the previous line, and the state the
+      // probes touch is put back, since the line is scanned again for real.
+      // A line opening with ticks is read by the loop below: it may be this
+      // run's own closer.
+      if (!in_table_row && lexer->lookahead != '`' &&
+          verbatim_line_ends_paragraph(s, lexer, line_indent)) {
+        break;
+      }
+      // No blankline, continue parsing.
+      marked_at_pipe = false;
+      mark_end(s, lexer);
     } else if (lexer->lookahead == '`') {
       // Pin the end BEFORE the run: a matching one stops the content exactly
       // here, whatever a pipe further back marked. In every non-row document
