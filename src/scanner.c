@@ -214,6 +214,9 @@ typedef enum {
   ATTRIBUTE_MARK_BEGIN,
   // Zero width, between two lines of an unclosed verbatim run.
   VERBATIM_CONTINUE,
+  // A comment-only line read across an unclosed run inside a line block. See
+  // `verbatim_comment_only_line`.
+  VERBATIM_COMMENT_LINE,
 } TokenType;
 
 // The different blocks in Carve that we track,
@@ -283,7 +286,15 @@ typedef struct {
   // past is literal text - and nothing could express that
   // (tree-sitter-carve#84).
   uint8_t content_col;
+  // Per-block-type bits with no shared meaning across types, the way
+  // `Inline::flags` already works. Only `BLOCK_FLAG_LINE_BLOCK` exists today.
+  uint8_t flags;
 } Block;
+
+/// The div is a line block (`::: |`), set where its `|` marker validates.
+/// A code span read across lines inside one strips a comment-only line rather
+/// than reading it as literal text (tree-sitter-carve#320 row 6).
+static const uint8_t BLOCK_FLAG_LINE_BLOCK = 1 << 0;
 
 typedef enum {
   VERBATIM,
@@ -530,6 +541,12 @@ static const uint16_t STATE_FENCE_OWNS_BODY = 1 << 11;
 // be read freely; the run's content token cannot look that far without
 // passing the position where it may have to end.
 static const uint16_t STATE_TABLE_CONTINUATION_NEXT = 1 << 12;
+// Set by `verbatim_line_continues` when the line it just decided to continue
+// into is a comment-only line inside a line block, so `VERBATIM_COMMENT_LINE`
+// - the very next token requested - knows to claim it instead of
+// `VERBATIM_CONTENT`. Cleared at the top of every decision, so it never
+// outlives the one gap it was set for.
+static const uint16_t STATE_NEXT_VERBATIM_LINE_IS_COMMENT = 1 << 13;
 
 static TokenType scan_list_marker_token(Scanner *s, TSLexer *lexer);
 static uint8_t scan_block_quote_markers(Scanner *s, TSLexer *lexer,
@@ -791,6 +808,7 @@ static Block *create_block(BlockType type, uint8_t data) {
   b->type = type;
   b->data = data;
   b->content_col = 0;
+  b->flags = 0;
   return b;
 }
 
@@ -926,6 +944,14 @@ static Block *find_block(Scanner *s, BlockType type) {
     }
   }
   return NULL;
+}
+
+/// Is the nearest open div a line block? Divs do not nest inside each other's
+/// inline content in a way that changes this - the nearest one is the one a
+/// run inside it reads lines under.
+static bool inside_line_block(Scanner *s) {
+  Block *div = find_block(s, DIV);
+  return div != NULL && (div->flags & BLOCK_FLAG_LINE_BLOCK) != 0;
 }
 
 static Block *find_list(Scanner *s) {
@@ -1858,6 +1884,7 @@ static bool code_fence_info_is_modeled(Scanner *s, TSLexer *lexer);
 /// answers stay zero width however far this reads.
 static bool verbatim_line_continues(Scanner *s, TSLexer *lexer) {
   Inline *top = peek_inline(s);
+  s->state &= ~STATE_NEXT_VERBATIM_LINE_IS_COMMENT;
   consume_line_end(s, lexer);
   uint8_t line_indent = consume_whitespace(s, lexer);
   if (lexer->eof(lexer) || at_line_end(lexer)) {
@@ -1873,6 +1900,18 @@ static bool verbatim_line_continues(Scanner *s, TSLexer *lexer) {
     // over the run's own closer; without one the content token reads the run.
     return !code_fence_info_is_modeled(s, lexer) ||
            !code_fence_has_closer_ahead(s, lexer, '`', run, line_indent);
+  }
+  // A comment-only line (the block-level `comment_line` shape, `%%` with
+  // nothing before it on the line) inside a line block does not end the run:
+  // the reference strips the comment and reads on past it
+  // (tree-sitter-carve#320 row 6). Outside a line block a comment line still
+  // ends the run below, through the ordinary close_paragraph reading.
+  if (lexer->lookahead == '%' && inside_line_block(s)) {
+    advance(s, lexer);
+    if (lexer->lookahead == '%') {
+      s->state |= STATE_NEXT_VERBATIM_LINE_IS_COMMENT;
+      return true;
+    }
   }
   uint8_t indent = s->indent;
   uint16_t state = s->state;
@@ -1912,6 +1951,31 @@ static bool verbatim_line_ends_paragraph(Scanner *s, TSLexer *lexer,
   s->state = state;
   s->block_quote_level = level;
   return ends;
+}
+
+/// The comment-only line `verbatim_line_continues` already found and flagged
+/// via `STATE_NEXT_VERBATIM_LINE_IS_COMMENT`. Consumes the newline that
+/// decision stood on, the line's own leading whitespace and its `%%...` text
+/// - the same bytes an ordinary line's `VERBATIM_CONTENT` would claim - so the
+/// only difference is which node this becomes: a `comment_line` sibling the
+/// inline-reading gate can subtract from the span's text, not text itself.
+static bool parse_verbatim_comment_line(Scanner *s, TSLexer *lexer) {
+  if ((s->state & STATE_NEXT_VERBATIM_LINE_IS_COMMENT) == 0) {
+    return false;
+  }
+  s->state &= ~STATE_NEXT_VERBATIM_LINE_IS_COMMENT;
+  consume_line_end(s, lexer);
+  consume_whitespace(s, lexer);
+  while (!lexer->eof(lexer) && !at_line_end(lexer)) {
+    advance(s, lexer);
+  }
+  // Every peek this deep in a verbatim run advances freely because it never
+  // marks an end, so nothing it reads sticks. This token is the opposite: it
+  // has to keep what it consumed, or the parse re-lexes the same bytes as the
+  // same zero-width token forever.
+  mark_end(s, lexer);
+  lexer->result_symbol = VERBATIM_COMMENT_LINE;
+  return true;
 }
 
 // Parsing verbatim content is also responsible for parsing VERBATIM_END.
@@ -5138,6 +5202,9 @@ static bool parse_colon(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     // uncovered on invalid ones.
     //
     push_block(s, DIV, colons);
+    if (c == '|') {
+      peek_block(s)->flags |= BLOCK_FLAG_LINE_BLOCK;
+    }
     // A div's content is FLUSH with its marker, so the marker column - the
     // leading whitespace this line opened with - IS the content column. A
     // top-level div opens at column 0, which stays 0 ("no opinion"), so the
@@ -9433,6 +9500,14 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     return true;
   }
 
+  // The line `verbatim_line_continues` just flagged as comment-only claims
+  // its own token ahead of ordinary content, so the choice in `_verbatim_body`
+  // resolves without either side re-deciding what the other already did.
+  if (valid_symbols[VERBATIM_COMMENT_LINE] &&
+      parse_verbatim_comment_line(s, lexer)) {
+    return true;
+  }
+
   // Verbatim content parsing is responsible for setting VERBATIM_END
   // for normal instances as well.
   if (valid_symbols[VERBATIM_CONTENT] && parse_verbatim_content(s, lexer)) {
@@ -9868,7 +9943,7 @@ unsigned tree_sitter_carve_external_scanner_serialize(void *payload,
   // past tree-sitter's fixed serialization buffer either.
   const size_t scalar_bytes = 15;
   const size_t block_count_bytes = 1;
-  const size_t block_bytes = 3;
+  const size_t block_bytes = 4;
   const size_t inline_bytes = 3;
   if (s->open_blocks->size > UINT8_MAX ||
       s->open_blocks->size >
@@ -9906,6 +9981,7 @@ unsigned tree_sitter_carve_external_scanner_serialize(void *payload,
     buffer[size++] = (char)b->type;
     buffer[size++] = (char)b->data;
     buffer[size++] = (char)b->content_col;
+    buffer[size++] = (char)b->flags;
   }
 
   for (size_t i = 0; i < s->open_inline->size; ++i) {
@@ -9946,8 +10022,10 @@ void tree_sitter_carve_external_scanner_deserialize(void *payload, char *buffer,
       BlockType type = (BlockType)buffer[size++];
       uint8_t level = (uint8_t)buffer[size++];
       uint8_t content_col = (uint8_t)buffer[size++];
+      uint8_t flags = (uint8_t)buffer[size++];
       Block *b = create_block(type, level);
       b->content_col = content_col;
+      b->flags = flags;
       stack_push(s->open_blocks, b);
     }
     while (size + 3 <= length) {
@@ -10105,6 +10183,8 @@ static char *token_type_s(TokenType t) {
     return "VERBATIM_END";
   case VERBATIM_CONTINUE:
     return "VERBATIM_CONTINUE";
+  case VERBATIM_COMMENT_LINE:
+    return "VERBATIM_COMMENT_LINE";
   case VERBATIM_CONTENT:
     return "VERBATIM_CONTENT";
 

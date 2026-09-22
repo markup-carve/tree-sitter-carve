@@ -3701,3 +3701,66 @@ x
       begin_marker: (verbatim_marker_begin)
       content: (content)
       end_marker: (verbatim_marker_end))))
+
+==================
+A comment-only line read across an open span in a line block is subtracted
+==================
+::: |
+a `b
+%% secret
+c
+:::
+
+---
+
+(document
+  (div
+    (div_marker_begin)
+    line_block_marker: (line_block_marker)
+    content: (content
+      (paragraph
+        (verbatim
+          begin_marker: (verbatim_marker_begin)
+          content: (content
+            (comment_line))
+          end_marker: (verbatim_marker_end))))
+    (div_marker_end)))
+
+==================
+A line merely containing a comment in the same span keeps every character
+==================
+::: |
+a `b
+x %% secret
+c
+:::
+
+---
+
+(document
+  (div
+    (div_marker_begin)
+    line_block_marker: (line_block_marker)
+    content: (content
+      (paragraph
+        (verbatim
+          begin_marker: (verbatim_marker_begin)
+          content: (content)
+          end_marker: (verbatim_marker_end))))
+    (div_marker_end)))
+
+==================
+A comment-only line inside a span outside any line block builds no comment node
+==================
+a `b
+%% secret
+c
+
+---
+
+(document
+  (paragraph
+    (verbatim
+      begin_marker: (verbatim_marker_begin)
+      content: (content)
+      end_marker: (verbatim_marker_end))))
