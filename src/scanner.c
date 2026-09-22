@@ -497,6 +497,10 @@ static const uint16_t STATE_SPAN_END_AT_CR = 1 << 6;
 // behavior rather than toward a wrong extent.
 static const uint16_t STATE_BARE_SPAN_OPENER = 1 << 7;
 static const uint16_t STATE_MULTILINE_IDENTIFIER = 1 << 8;
+// The line after this newline closes the open code fence from inside its
+// quote(s). Read at the newline because deciding at the next line's start would
+// consume its `>` markers, and a code line needs them as its own tokens.
+static const uint16_t STATE_QUOTED_FENCE_CLOSER = 1 << 9;
 
 static TokenType scan_list_marker_token(Scanner *s, TSLexer *lexer);
 static uint8_t scan_block_quote_markers(Scanner *s, TSLexer *lexer,
@@ -2316,6 +2320,58 @@ static VerbatimRunEnd read_verbatim_run(Scanner *s, TSLexer *lexer,
   return saw_closer ? VerbatimRunReachesSpanCloser : VerbatimRunReachesBlockEnd;
 }
 
+/// Consume `>` markers, indentation and a fence run from a line start inside a
+/// quote, and report whether that line closes the open code fence.
+static bool scan_quoted_code_fence_closer(Scanner *s, TSLexer *lexer) {
+  Block *top = peek_block(s);
+  uint8_t quotes = count_blocks(s, BLOCK_QUOTE);
+  if (!top || top->type != CODE_BLOCK || quotes == 0) {
+    return false;
+  }
+  bool ending_newline = false;
+  if (scan_block_quote_markers(s, lexer, &ending_newline) != quotes ||
+      ending_newline) {
+    return false;
+  }
+  if (consume_whitespace(s, lexer) != 0) {
+    return false;
+  }
+  char fence_char = (top->data & CODE_FENCE_TILDE) ? '~' : '`';
+  uint8_t width = consume_chars(s, lexer, fence_char);
+  return width >= (top->data & CODE_FENCE_WIDTH) &&
+         code_fence_closer_tail_is_blank(s, lexer);
+}
+
+/// The quoted closer the newline before it announced: `_block_close` first,
+/// zero width, then the end marker, which carries the line's `>` markers the
+/// way a comment fence's closer does.
+static bool parse_quoted_code_fence_closer(Scanner *s, TSLexer *lexer,
+                                           const bool *valid_symbols) {
+  if (!(s->state & STATE_QUOTED_FENCE_CLOSER) || line_column(s, lexer) != 0) {
+    return false;
+  }
+  Block *top = peek_block(s);
+  if (!top || top->type != CODE_BLOCK) {
+    s->state &= ~STATE_QUOTED_FENCE_CLOSER;
+    return false;
+  }
+  if (valid_symbols[CODE_BLOCK_END]) {
+    bool ending_newline = false;
+    scan_block_quote_markers(s, lexer, &ending_newline);
+    consume_chars(s, lexer, (top->data & CODE_FENCE_TILDE) ? '~' : '`');
+    mark_end(s, lexer);
+    remove_block(s);
+    s->state &= ~STATE_QUOTED_FENCE_CLOSER;
+    lexer->result_symbol = CODE_BLOCK_END;
+    return true;
+  }
+  if (valid_symbols[BLOCK_CLOSE]) {
+    lexer->result_symbol = BLOCK_CLOSE;
+    return true;
+  }
+  return false;
+}
+
 static bool parse_code_fence(Scanner *s, TSLexer *lexer,
                              const bool *valid_symbols, char fence_char) {
   bool supports_verbatim = fence_char == '`';
@@ -2323,6 +2379,15 @@ static bool parse_code_fence(Scanner *s, TSLexer *lexer,
       !valid_symbols[BLOCK_CLOSE] &&
       !(supports_verbatim && (valid_symbols[VERBATIM_BEGIN] ||
                               valid_symbols[VERBATIM_END]))) {
+    return false;
+  }
+
+  // A run on a line short of an open fence's quote markers is neither its
+  // closer nor its body: the line leaves the quote, which ends the fence
+  // unclosed. Declined before the run is consumed, so the quote can close.
+  Block *open_fence = peek_block(s);
+  if (open_fence && open_fence->type == CODE_BLOCK &&
+      count_blocks(s, BLOCK_QUOTE) > s->block_quote_level) {
     return false;
   }
 
@@ -6429,6 +6494,11 @@ static bool parse_newline(Scanner *s, TSLexer *lexer,
   // which is where the §12 absorption stops - see `parse_close_paragraph`.
   if (valid_symbols[NEWLINE]) {
     s->state &= ~STATE_FENCE_ABSORBS;
+    // The token end is pinned, so reading the next line here is free.
+    s->state &= ~STATE_QUOTED_FENCE_CLOSER;
+    if (scan_quoted_code_fence_closer(s, lexer)) {
+      s->state |= STATE_QUOTED_FENCE_CLOSER;
+    }
     lexer->result_symbol = NEWLINE;
     return true;
   }
@@ -8648,6 +8718,10 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   // body or closer line belongs to the comment, not to the quote's own
   // structure, and only this function knows a fence is open.
   if (parse_comment_fence(s, lexer, valid_symbols)) {
+    return true;
+  }
+  if (lexer->lookahead == '>' &&
+      parse_quoted_code_fence_closer(s, lexer, valid_symbols)) {
     return true;
   }
   if ((lexer->lookahead == '`' || lexer->lookahead == '~') &&
