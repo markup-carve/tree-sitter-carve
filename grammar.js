@@ -3,6 +3,31 @@ const ELEMENT_PRECEDENCE = 100;
 // A mention's or a tag's name, `tagName` in resources/carve-core.ohm.
 const NAME = /[a-zA-Z0-9][a-zA-Z0-9_-]*(\.[a-zA-Z0-9_-]+)*/;
 
+// A table cell's leading marker run: the kind marker, the alignment run and the
+// attribute block, ending at the one space `cell_padding` spells
+// (`header_cell` and `data_cell` in resources/grammar.ebnf).
+//
+// ONE TOKEN, because the decision needs the whole run. Spelled as parts, the
+// lexer commits to the `{` at the head of every cell, and `|{.total}99 |` -
+// which carries no padding space, so PART 9 section 5 T11 leaves every
+// character of it as content - had no reading left and ERRORed. The payload
+// pattern is the one `scan_valid_inline_attribute` accepts minus its comment
+// form, so a payload this does not match keeps the literal reading it has
+// today. The token covers the padding space as well: an internal token cannot
+// end before its last character.
+const CELL_ATTR_ITEM =
+  "(?:\\.[A-Za-z0-9_][A-Za-z0-9_-]*" +
+  "|#[A-Za-z0-9_][A-Za-z0-9_-]*" +
+  "|:[A-Za-z][A-Za-z0-9-]*" +
+  "|[A-Za-z_][A-Za-z0-9_-]*(?:=(?:\"[^\"\\r\\n]*\"|'[^'\\r\\n]*'|[^\\s\"'{}]+))?)";
+const CELL_MARKER_RUN = new RegExp(
+  "(?:=?(?:[<>~][\\^~v]?|\\?[\\^~v])|=)?\\{[ \\t]*(?:" +
+    CELL_ATTR_ITEM +
+    "(?:[ \\t]+" +
+    CELL_ATTR_ITEM +
+    ")*[ \\t]*)?\\} ",
+);
+
 // The inline element alternatives, shared by ordinary inline content and by a
 // note's content. `options.notes: false` drops the note, the footnote
 // reference and the `[^` fallback opener.
@@ -112,6 +137,27 @@ function inlineElement($, options) {
         ),
       ),
     ),
+  );
+}
+
+// The payload of an attribute block, shared by the inline spelling and the one
+// a table cell carries. A JS helper rather than a rule: the run may be empty,
+// and tree-sitter admits an empty match only inline.
+function attributeArgs($) {
+  return alias(
+    repeat(
+      choice(
+        $.class,
+        $.identifier,
+        $.key_value,
+        $.language_attribute,
+        $.boolean_attribute,
+        alias($._comment, $.comment),
+        $._whitespace1,
+        $._newline_inline,
+      ),
+    ),
+    $.args,
   );
 }
 
@@ -752,7 +798,22 @@ module.exports = grammar({
         $._table_row_end_newline,
       ),
     _table_cell: ($) =>
-      seq(alias($._inline, $.table_cell), alias($._table_cell_end, "|")),
+      seq(
+        alias($._table_cell_body, $.table_cell),
+        alias($._table_cell_end, "|"),
+      ),
+    // A cell carrying attributes may hold nothing else: `|{.x} |` is a one-cell
+    // table whose cell is empty and classed, not a blank row. Spelled as a rule
+    // rather than inline, because an `alias` over a `seq` renames each child
+    // and the row then read one cell as two.
+    _table_cell_body: ($) =>
+      choice(seq($._cell_attribute, optional($._inline)), $._inline),
+
+    // The cell's own attribute block. See `CELL_MARKER_RUN` above for why the
+    // whole run, the markers and the padding space included, is one token.
+    _cell_attribute: ($) =>
+      alias(token.immediate(CELL_MARKER_RUN), $.table_cell_attributes),
+
     _table_cell_alignment: ($) =>
       seq(
         // Note that alignment appearance is already checked in the external
@@ -2184,21 +2245,7 @@ module.exports = grammar({
       seq(
         $._curly_bracket_span_begin,
         $._curly_bracket_span_mark_begin,
-        alias(
-          repeat(
-            choice(
-              $.class,
-              $.identifier,
-              $.key_value,
-              $.language_attribute,
-              $.boolean_attribute,
-              alias($._comment, $.comment),
-              $._whitespace1,
-              $._newline_inline,
-            ),
-          ),
-          $.args,
-        ),
+        attributeArgs($),
         alias($._curly_bracket_span_end, "}"),
       ),
     _curly_bracket_span_begin: (_) => "{",
