@@ -557,67 +557,7 @@
   },
   "invisibleOverAcceptance": {},
   "invisibleUnderAcceptance": {
-    "an-abbreviation-at-a-list-item-s-content-column-is-still-not-a-definition-2": {
-      "definitions": "[r]: /u",
-      "reason": "ref:reference-definition-absorbed"
-    },
     "a-definition-inside-a-container-is-collected-at-that-container-s-content-column": {
-      "definitions": "[r]: /u",
-      "reason": "ref:reference-definition-absorbed"
-    },
-    "a-definition-on-a-footnote-body-s-continuation-line-is-collected": {
-      "definitions": "[r]: /u",
-      "reason": "ref:reference-definition-absorbed"
-    },
-    "a-definition-past-a-footnote-body-s-column-registers-from-its-authored-base": {
-      "definitions": "[r]: /u",
-      "reason": "ref:reference-definition-absorbed"
-    },
-    "the-continuation-marker-at-an-item-s-own-column-and-what-follows-it": {
-      "definitions": "[r]: /u",
-      "reason": "ref:reference-definition-absorbed"
-    },
-    "a-reference-definition-is-anchored-at-end-of-line-10": {
-      "definitions": "[a]: /u {.c}",
-      "reason": "ref:reference-definition-absorbed"
-    },
-    "a-reference-definition-is-anchored-at-end-of-line-11": {
-      "definitions": "[a]: /u {.c}",
-      "reason": "ref:reference-definition-absorbed"
-    },
-    "a-reference-definition-is-anchored-at-end-of-line-12": {
-      "definitions": "[a]: /u {.c}",
-      "reason": "ref:reference-definition-absorbed"
-    },
-    "a-reference-definition-is-anchored-at-end-of-line-13": {
-      "definitions": "[a]: /u {.c}",
-      "reason": "ref:reference-definition-absorbed"
-    },
-    "a-reference-definition-is-anchored-at-end-of-line-14": {
-      "definitions": "[a]: /u {.c}",
-      "reason": "ref:reference-definition-absorbed"
-    },
-    "a-column-zero-definition-ends-an-open-list-item-4": {
-      "definitions": "[r]: /u",
-      "reason": "ref:reference-definition-absorbed"
-    },
-    "a-column-zero-definition-ends-an-open-list-item": {
-      "definitions": "[r]: /u",
-      "reason": "ref:reference-definition-absorbed"
-    },
-    "a-definition-at-a-container-s-content-column-5": {
-      "definitions": "[r]: /u",
-      "reason": "ref:reference-definition-absorbed"
-    },
-    "a-definition-at-a-container-s-content-column": {
-      "definitions": "[r]: /u",
-      "reason": "ref:reference-definition-absorbed"
-    },
-    "a-block-at-a-container-s-content-column-ends-the-paragraph-whatever-it-renders-6": {
-      "definitions": "[r]: /u",
-      "reason": "ref:reference-definition-absorbed"
-    },
-    "a-footnote-definition-s-block-runs-to-the-end-of-its-body-2": {
       "definitions": "[r]: /u",
       "reason": "ref:reference-definition-absorbed"
     },
@@ -637,42 +577,6 @@
       "definitions": "[r]: /url",
       "reason": "ref:reference-definition-absorbed"
     },
-    "a-collected-definition-closes-the-item-paragraph-2": {
-      "definitions": "[r]: /u",
-      "reason": "ref:reference-definition-absorbed"
-    },
-    "a-collected-definition-closes-the-item-paragraph": {
-      "definitions": "[r]: /u",
-      "reason": "ref:reference-definition-absorbed"
-    },
-    "a-definition-list-ends-at-its-last-placed-child-too-2": {
-      "definitions": "[r]: /u",
-      "reason": "ref:reference-definition-absorbed"
-    },
-    "an-invisible-line-before-the-blank-does-not-cancel-the-separation-2": {
-      "definitions": "[r]: /u",
-      "reason": "ref:reference-definition-absorbed"
-    },
-    "a-floating-attribute-under-a-definition-attaches-at-column-zero-4": {
-      "definitions": "[r]: /u",
-      "reason": "ref:reference-definition-absorbed"
-    },
-    "a-definition-between-two-open-content-columns-reaches-the-outer-one-2": {
-      "definitions": "[r]: /url",
-      "reason": "ref:reference-definition-absorbed"
-    },
-    "a-definition-between-two-open-content-columns-reaches-the-outer-one-3": {
-      "definitions": "[r]: /url",
-      "reason": "ref:reference-definition-absorbed"
-    },
-    "a-definition-between-two-open-content-columns-reaches-the-outer-one-4": {
-      "definitions": "[r]: /url",
-      "reason": "ref:reference-definition-absorbed"
-    },
-    "a-definition-between-two-open-content-columns-reaches-the-outer-one": {
-      "definitions": "[r]: /url",
-      "reason": "ref:reference-definition-absorbed"
-    },
     "a-marker-folds-only-strictly-between-the-item-s-base-and-content-column-3": {
       "definitions": "[t]: /t",
       "reason": "ref:reference-definition-absorbed"
@@ -681,79 +585,7 @@
       "definitions": "[t]: /t",
       "reason": "ref:reference-definition-absorbed"
     },
-    "an-opener-at-or-past-a-description-body-s-column-closes-its-paragraph-2": {
-      "definitions": "[r]: /url",
-      "reason": "ref:reference-definition-absorbed"
-    },
-    "an-opener-at-or-past-a-description-body-s-column-closes-its-paragraph": {
-      "definitions": "[r]: /url",
-      "reason": "ref:reference-definition-absorbed"
-    },
-    "the-host-does-not-change-which-column-a-definition-reaches-10": {
-      "definitions": "[r]: /url",
-      "reason": "ref:reference-definition-absorbed"
-    },
-    "the-host-does-not-change-which-column-a-definition-reaches-13": {
-      "definitions": "[r]: /url",
-      "reason": "ref:reference-definition-absorbed"
-    },
-    "the-host-does-not-change-which-column-a-definition-reaches-15": {
-      "definitions": "[r]: /first; [r]: /second",
-      "reason": "ref:reference-definition-absorbed"
-    },
-    "the-host-does-not-change-which-column-a-definition-reaches-2": {
-      "definitions": "[r]: /url",
-      "reason": "ref:reference-definition-absorbed"
-    },
-    "the-host-does-not-change-which-column-a-definition-reaches-20": {
-      "definitions": "[r]: /url",
-      "reason": "ref:reference-definition-absorbed"
-    },
-    "the-host-does-not-change-which-column-a-definition-reaches-3": {
-      "definitions": "[r]: /url",
-      "reason": "ref:reference-definition-absorbed"
-    },
-    "the-host-does-not-change-which-column-a-definition-reaches-4": {
-      "definitions": "[r]: /url",
-      "reason": "ref:reference-definition-absorbed"
-    },
-    "the-host-does-not-change-which-column-a-definition-reaches-5": {
-      "definitions": "[r]: /url",
-      "reason": "ref:reference-definition-absorbed"
-    },
-    "the-host-does-not-change-which-column-a-definition-reaches-6": {
-      "definitions": "[r]: /url",
-      "reason": "ref:reference-definition-absorbed"
-    },
-    "the-host-does-not-change-which-column-a-definition-reaches-7": {
-      "definitions": "[r]: /url",
-      "reason": "ref:reference-definition-absorbed"
-    },
-    "the-host-does-not-change-which-column-a-definition-reaches-8": {
-      "definitions": "[r]: /url",
-      "reason": "ref:reference-definition-absorbed"
-    },
-    "the-host-does-not-change-which-column-a-definition-reaches-9": {
-      "definitions": "[r]: /url",
-      "reason": "ref:reference-definition-absorbed"
-    },
-    "the-host-does-not-change-which-column-a-definition-reaches": {
-      "definitions": "[r]: /url",
-      "reason": "ref:reference-definition-absorbed"
-    },
     "a-container-in-a-host-body-owns-a-line-past-its-own-content-column-2": {
-      "definitions": "[r]: /url",
-      "reason": "ref:reference-definition-absorbed"
-    },
-    "a-container-in-a-host-body-owns-a-line-past-its-own-content-column-3": {
-      "definitions": "[r]: /url",
-      "reason": "ref:reference-definition-absorbed"
-    },
-    "a-container-in-a-host-body-owns-a-line-past-its-own-content-column-5": {
-      "definitions": "[r]: /url",
-      "reason": "ref:reference-definition-absorbed"
-    },
-    "a-container-in-a-host-body-owns-a-line-past-its-own-content-column-6": {
       "definitions": "[r]: /url",
       "reason": "ref:reference-definition-absorbed"
     },
@@ -763,14 +595,6 @@
     },
     "a-container-closer-closes-its-container-in-a-footnote-body-too": {
       "definitions": "[r]: /url",
-      "reason": "ref:reference-definition-absorbed"
-    },
-    "a-nested-note-s-floor-is-two-columns-past-its-own-marker": {
-      "definitions": "[r]: /url",
-      "reason": "ref:reference-definition-absorbed"
-    },
-    "paragraph-interruption-17": {
-      "definitions": "[r]: http://x",
       "reason": "ref:reference-definition-absorbed"
     }
   },

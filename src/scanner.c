@@ -500,6 +500,8 @@ static uint8_t scan_block_quote_markers(Scanner *s, TSLexer *lexer,
 static TokenType scan_unordered_list_marker_token(Scanner *s, TSLexer *lexer);
 static bool scan_valid_inline_attribute(Scanner *s, TSLexer *lexer);
 static bool at_block_opener_margin(Scanner *s, uint32_t column);
+static bool definition_reaches_margin(Scanner *s, uint32_t column);
+static bool list_item_open(Scanner *s);
 static void record_container_content_column(Scanner *s, uint8_t col);
 
 #ifdef DEBUG
@@ -4104,11 +4106,21 @@ static bool parse_open_bracket(Scanner *s, TSLexer *lexer,
   // ` - [t]: /t` keeps the whole second line inside the first item. The line's
   // indent is where its marker began, so a zero indent is the document root's
   // margin and anything else is left to the refusal below.
-  bool at_marker_content_col = s->marker_end_col != 0 && s->indent == 0 &&
-                               line_column(s, lexer) == s->marker_end_col;
-  if ((has_extra_indent(s) && !at_marker_content_col) ||
-      past_container_content_col(s)) {
+  uint32_t column = line_column(s, lexer);
+  bool on_marker_line = s->marker_end_col != 0 && column == s->marker_end_col;
+  bool at_marker_content_col = on_marker_line && s->indent == 0;
+  // On a marker line only a root-margin marker licenses a definition.
+  if (on_marker_line && !at_marker_content_col) {
     return false;
+  }
+  // With an item open, same question as `scan_definition_at_paragraph_end`,
+  // so the probe never ends a paragraph this then refuses.
+  if (!at_marker_content_col) {
+    if (list_item_open(s) ? !definition_reaches_margin(s, column)
+                          : (has_extra_indent(s) ||
+                             past_container_content_col(s))) {
+      return false;
+    }
   }
 
   // Scan initial `[^`
@@ -5811,6 +5823,63 @@ static bool at_block_opener_margin(Scanner *s, uint32_t column) {
   return column == 0;
 }
 
+/// [CARVE-P0-020] relaxes the definition test to "at or past" only while a list
+/// item is open; with none open the exact checks stand.
+static bool list_item_open(Scanner *s) {
+  for (int i = s->open_blocks->size - 1; i >= 0; --i) {
+    if (is_list((*array_get(s->open_blocks, i))->type)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/// Where a reference or footnote DEFINITION may open with an item open
+/// ([CARVE-P0-020], I5): at or past the content column of the innermost item
+/// the line reaches. Headings and fences keep `at_block_opener_margin`.
+///
+/// With an item open, the paragraph-end probe and `parse_open_bracket` must both
+/// ask this: if they disagree, the probe ends a paragraph the opener refuses.
+static bool definition_reaches_margin(Scanner *s, uint32_t column) {
+  if (s->state & STATE_LIST_CONTINUATION) {
+    return column == 0;
+  }
+  for (int i = s->open_blocks->size - 1; i >= 0; --i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (b->type == BLOCK_QUOTE && b->content_col != 0 &&
+        (column == b->content_col ||
+         (column > b->content_col && s->block_quote_level > 0))) {
+      return true;
+    }
+    if (is_list(b->type)) {
+      if (b->content_col != 0 && column >= b->content_col) {
+        return true;
+      }
+      continue;
+    }
+    if (b->type == FOOTNOTE) {
+      if (column >= b->data) {
+        return true;
+      }
+      continue;
+    }
+    // A non-item container keeps the exact test, or an enclosing item would
+    // answer "at or past" for a line the div owns (#282).
+    if ((b->type == DIV || b->type == FIGURE_GROUP ||
+         b->type == TABLE_CAPTION) &&
+        b->content_col != 0) {
+      if (column == b->content_col) {
+        return true;
+      }
+      if (column > b->content_col) {
+        return false;
+      }
+      continue;
+    }
+  }
+  return column == 0;
+}
+
 /// A HEADING interrupts an open paragraph with no blank line before it
 /// (PART 9 §10 I1: `#`..`######` + space).
 ///
@@ -5970,25 +6039,18 @@ static bool scan_definition_at_paragraph_end(Scanner *s, TSLexer *lexer) {
   if (lexer->lookahead != '[') {
     return false;
   }
-  if (!at_block_opener_margin(s, line_column(s, lexer))) {
+  uint32_t column = line_column(s, lexer);
+  if (list_item_open(s) ? !definition_reaches_margin(s, column)
+                        : !at_block_opener_margin(s, column)) {
     return false;
   }
-  // A LAZY line inside an open quote is paragraph text, and a column never
-  // reaches into a quote (corpus 369). The margin test alone cannot refuse it:
-  // an unmarked line lands on the quote's content column exactly as a marked
-  // one does, so the marker is what separates them. carve-js keeps a quoted
-  // line and an unmarked `[^a]: body` under it as one quoted paragraph.
-  //
-  // Asked ONLY here, not in `at_block_opener_margin`, although the heading and
-  // fence peeks share that helper and truncate the quote on the same shape. The
-  // shared fix belongs with its own measurement; widening this one would land
-  // it unmeasured.
-  if (count_blocks(s, BLOCK_QUOTE) > 0 && s->block_quote_level == 0) {
-    return false;
-  }
+  // No lazy-quote test: `block_quote_level` reads 0 here even on a marked line,
+  // and `close_paragraph` has already stopped a lazy one.
   advance(s, lexer);
   if (lexer->lookahead != '^') {
-    return false;
+    // I5: a reference definition interrupts too. `scan_ref_def` validates the
+    // whole line, so `[x]: /u trailing junk` stays paragraph text.
+    return scan_ref_def(s, lexer);
   }
   advance(s, lexer);
   return scan_footnote_after_caret(s, lexer);
