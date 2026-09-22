@@ -1128,10 +1128,10 @@ See [r][].
           (list_item
             marker: (list_marker_dash)
             content: (list_item_content
-              (paragraph)
-              (link_reference_definition
-                label: (link_label)
-                destination: (link_destination))))))))
+              (paragraph))))
+        (link_reference_definition
+          label: (link_label)
+          destination: (link_destination)))))
   (paragraph
     (collapsed_reference_link
       text: (link_text))))
