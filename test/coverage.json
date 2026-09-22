@@ -854,10 +854,6 @@
       "reading": "em html=0 tree=1",
       "reason": "the grammar builds an inline span the language keeps literal here"
     },
-    "inline-code-9": {
-      "reading": "code html=0 tree=1",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
     "inline-extensions-12": {
       "reading": "strong html=0 tree=1",
       "reason": "the grammar builds an inline span the language keeps literal here"

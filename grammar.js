@@ -2386,9 +2386,11 @@ module.exports = grammar({
     // either row honestly (markup-carve/carve-grammars#311). Renamed rather
     // than aliased: an alias would leave both names live and the wrong one is
     // the one people already use.
+    // NO LEADING WHITESPACE. The production is `"{%", ..., "%}"`, so a comment
+    // glued to a word or to an element is still one: `a{% c %} b` renders
+    // `a b` and `*b*{% c %} x` renders an unclassed strong (#359).
     braced_comment: ($) =>
       seq(
-        $._whitespace1,
         $._braced_comment_begin,
         $._curly_bracket_span_mark_begin,
         $._braced_comment_body,

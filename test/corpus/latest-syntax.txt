@@ -1,9 +1,7 @@
 ==================
 Delimited comments stay inert inside prose and strong content
-;; A comment GLUED to a word is content here: `braced_comment` takes a leading
-;; whitespace token, and the attribute block that used to swallow `{% hidden %}`
-;; no longer attaches to text (#336). The language removes it either way, and
-;; the strong span it sits in is unchanged.
+;; A comment GLUED to a word is still a comment: the production is `"{%" ...
+;; "%}"` with nothing required before it (#359).
 ==================
 
 Prose flows {% a delimited comment %} around a hidden note.
@@ -19,7 +17,9 @@ Even *bo{% hidden %}ld* stays one strong span.
   (paragraph
     (strong
       begin_marker: (strong_begin)
-      content: (content)
+      content: (content
+        (braced_comment
+          content: (content)))
       end_marker: (strong_end))))
 
 ==================
@@ -927,3 +927,38 @@ tail
       (paragraph)))
   (paragraph)
   (paragraph))
+
+==================
+A braced comment needs nothing before it (#359)
+;; `braced_comment = "{%", {character - "%}"}, "%}"`: glued to a word, glued
+;; to an element and at the head of a line it is a comment all the same, and
+;; an escaped brace opens none. carve-js renders `ab`, an unclassed strong and
+;; ` b` for the first three, and the fourth literally.
+==================
+
+a{%c%}b
+
+*b*{% c %} x
+
+{% c %} b
+
+a \{% not a comment %} b
+
+---
+
+(document
+  (paragraph
+    (braced_comment
+      content: (content)))
+  (paragraph
+    (strong
+      begin_marker: (strong_begin)
+      content: (content)
+      end_marker: (strong_end))
+    (braced_comment
+      content: (content)))
+  (paragraph
+    (braced_comment
+      content: (content)))
+  (paragraph
+    (backslash_escape)))

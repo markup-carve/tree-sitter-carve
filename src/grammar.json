@@ -7085,10 +7085,6 @@
       "members": [
         {
           "type": "SYMBOL",
-          "name": "_whitespace1"
-        },
-        {
-          "type": "SYMBOL",
           "name": "_braced_comment_begin"
         },
         {
