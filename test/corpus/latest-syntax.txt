@@ -3325,3 +3325,69 @@ tail
               (code_block_marker_begin)
               code: (code)))))))
   (paragraph))
+
+==================
+A braced strikethrough may hold only whitespace
+==================
+{~ ~}
+
+---
+
+(document
+  (paragraph
+    (strikethrough
+      begin_marker: (strikethrough_begin)
+      content: (content)
+      end_marker: (strikethrough_end))))
+
+==================
+A braced strong may hold only whitespace
+==================
+{* *}
+
+---
+
+(document
+  (paragraph
+    (strong
+      begin_marker: (strong_begin)
+      content: (content)
+      end_marker: (strong_end))))
+
+==================
+A braced emphasis may hold only whitespace
+==================
+{/ /}
+
+---
+
+(document
+  (paragraph
+    (emphasis
+      begin_marker: (emphasis_begin)
+      content: (content)
+      end_marker: (emphasis_end))))
+
+==================
+A braced underline may hold only whitespace
+==================
+a {_  _} b
+
+---
+
+(document
+  (paragraph
+    (underline
+      begin_marker: (underline_begin)
+      content: (content)
+      end_marker: (underline_end))))
+
+==================
+An empty braced pair stays literal text
+==================
+{**}
+
+---
+
+(document
+  (paragraph))
