@@ -228,6 +228,12 @@ typedef enum {
   // Zero width, at a one-cell row's closing `|`, when the next line is a `+`
   // continuation row. See `parse_table_row_continuation_seam`.
   TABLE_ROW_CONTINUATION_SEAM,
+
+  // `text %% to end of line`, moved external so it can stop at a forced
+  // span's or the combined token's own closer instead of running past it -
+  // see `innermost_comment_bound`. Appended last for the same index reason
+  // as the tokens above it.
+  TRAILING_COMMENT,
 } TokenType;
 
 // The different blocks in Carve that we track,
@@ -7500,6 +7506,142 @@ static Inline *innermost_braced(Scanner *s) {
   return NULL;
 }
 
+/// Where a `%%` trailing comment must stop early, per CARVE-P9-042 SS21a: a
+/// forced span `{X...X}` and the combined `/*...*/` token are read inline
+/// rather than cut and re-parsed, so (unlike a table cell or link text) their
+/// own closer is not a structural boundary and the comment used to run past
+/// it to end of line. Walks the same innermost-first scope `innermost_braced`
+/// does; a forced span answers with its own marker (closer `<marker>}`), the
+/// combined token answers with no marker at all (closer `*/`). A BARE
+/// emphasis/strong is untouched: only `forced<d>` and `biInner` were widened
+/// in the spec, so `*a %% b*` still runs to end of line.
+static bool innermost_comment_bound(Scanner *s, char *marker) {
+  for (int i = s->open_inline->size - 1; i >= 0; --i) {
+    Inline *e = *array_get(s->open_inline, i);
+    if (e->type == BOLD_ITALIC) {
+      *marker = 0;
+      return true;
+    }
+    if (e->flags & INLINE_BRACED) {
+      *marker = inline_marker(e->type);
+      return true;
+    }
+  }
+  return false;
+}
+
+/// `text %% to end of line` (SS21), bounded at a forced span's or the
+/// combined token's own closer (SS21a) when one is open - see
+/// `innermost_comment_bound`. External rather than a token regex because the
+/// bound is runtime state (which closer, if any, is currently open), not
+/// something a fixed pattern can express; `_cell_trailing_comment` in
+/// grammar.js is the same idea for a table cell's `|`, which a regex CAN
+/// express because the grammar routes a cell's content through its own rule.
+///
+/// The unbounded case matches the retired regex exactly: `[ \t]`, `%%`, then
+/// every character up to (not including) the line ending.
+/// `text %% to end of line` (SS21), bounded at a forced span's or the
+/// combined token's own closer (SS21a) when one is open. Called from TWO
+/// positions in `scan` (see each call site), because neither alone is safe:
+///
+/// A BOUNDED read is asked for EARLY, right after the position's OWN state is
+/// known - `innermost_comment_bound` costs nothing (it only inspects
+/// `open_inline`, never the lexer), so it is checked BEFORE any speculative
+/// advance and the whole call is free everywhere it does not apply. It is
+/// also TRUSTWORTHY there: an entry on `open_inline` only exists from a
+/// PRIOR, already-committed token from an EARLIER call to `scan`, never from
+/// a same-call speculative push, so a bounded read is never fooled by this
+/// call's own probes.
+///
+/// An UNBOUNDED read is asked for LAST, once every other reader this
+/// position could offer has had its turn - a probe that consumes and then
+/// declines leaves every later probe in the same call reading from where it
+/// stopped (the same reason `parse_comment_fence_begin` is last), and an
+/// unbounded read has no witness like `open_inline` to catch a false
+/// positive: at `{_a %% b_} y`'s very first token, the curly-bracket span's
+/// own bare-vs-forced lookahead reads (and does not mark) `{_a ` before
+/// declining - underline was never pushed - so an EARLY unbounded attempt
+/// reads this as a comment running to end of line, where the correct answer
+/// is that no comment starts here at all: `{_` is its own token, reached only
+/// once the whole call declines and tree-sitter's internal lexer restarts
+/// cleanly from the position it actually asked about. `advances_at_entry`
+/// guards exactly that: refuse the unbounded reading once an earlier reader
+/// in this same call has already moved the lexer (tree-sitter-carve#449).
+///
+/// The MIRROR hazard is why a bounded read cannot simply run last too: at
+/// `{_a %% b_}`'s content, the underline IS on `open_inline` by the time this
+/// position is reached, but some other zero-width reader ahead of a LATE
+/// call (offered the same position, since every span type is a candidate
+/// everywhere in `_inline_element`) reads the leading space as harmless
+/// scratch and declines without marking - so a bounded attempt placed last
+/// inherits a lexer already sitting on the `%` and never sees the space its
+/// own prefix needs.
+static bool parse_trailing_comment(Scanner *s, TSLexer *lexer,
+                                   const bool *valid_symbols,
+                                   uint32_t advances_at_entry,
+                                   bool require_bounded) {
+  if (!valid_symbols[TRAILING_COMMENT]) {
+    return false;
+  }
+  char bound_marker = 0;
+  bool bounded = innermost_comment_bound(s, &bound_marker);
+  if (bounded != require_bounded) {
+    return false;
+  }
+  if (lexer->lookahead != ' ' && lexer->lookahead != '\t') {
+    return false;
+  }
+  if (!bounded && s->advances != advances_at_entry) {
+    return false;
+  }
+  // Pin the boundary at the TRUE start before any speculative advance. The
+  // three-character prefix below may fail (`a, {b}` is not a comment), and a
+  // probe that reads ahead without marking first leaves whatever runs after
+  // it in this same `scan` call sitting past this point with no boundary of
+  // its own to fall back on - a zero-width check further down (`check_non_
+  // whitespace`, offered right after this one at the very same position)
+  // never calls `mark_end` itself and instead trusts the lexer's CURRENT
+  // position at return, so it silently swallowed this probe's two stray
+  // characters and the span after them never opened
+  // (tree-sitter-carve#449). Marking here first means a failed probe leaves
+  // the boundary where it already was, whatever it advances over next.
+  mark_end(s, lexer);
+  advance(s, lexer);
+  if (lexer->lookahead != '%') {
+    return false;
+  }
+  advance(s, lexer);
+  if (lexer->lookahead != '%') {
+    return false;
+  }
+  advance(s, lexer);
+
+  char closer_first = bounded ? (bound_marker ? bound_marker : '*') : 0;
+  char closer_second = bounded ? (bound_marker ? '}' : '/') : 0;
+
+  mark_end(s, lexer);
+  while (!lexer->eof(lexer) && !at_line_end(lexer)) {
+    if (bounded && lexer->lookahead == (int32_t)(uint8_t)closer_first) {
+      // The candidate closer's first character ends the comment HERE if the
+      // second follows; mark_end already sits right before it, so returning
+      // now excludes both the candidate and everything after it.
+      advance(s, lexer);
+      if (lexer->lookahead == (int32_t)(uint8_t)closer_second) {
+        lexer->result_symbol = TRAILING_COMMENT;
+        return true;
+      }
+      // Not the closer after all - the candidate character is ordinary
+      // comment content, already consumed; keep reading from here.
+      mark_end(s, lexer);
+      continue;
+    }
+    advance(s, lexer);
+    mark_end(s, lexer);
+  }
+  lexer->result_symbol = TRAILING_COMMENT;
+  return true;
+}
+
 static bool kind_open_in_scope(Scanner *s, InlineType type) {
   for (int i = s->open_inline->size - 1; i >= 0; --i) {
     Inline *e = *array_get(s->open_inline, i);
@@ -9342,6 +9484,12 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
 static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   s->col_base_at_mark = 0;
   s->col_base_marked = false;
+  // Snapshot BEFORE any reader below runs, so a probe positioned late in this
+  // call (see `parse_trailing_comment`) can tell whether it is still looking
+  // at the position tree-sitter actually asked about, or at wherever an
+  // earlier probe's own declined scratch-read left the lexer. See the note at
+  // that call.
+  const uint32_t advances_at_entry = s->advances;
 
   // FIRST, and it answers for the whole call: the reader it runs moves the
   // lexer to the end of the run, so nothing below could read from where it
@@ -9784,6 +9932,12 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   if (parse_comment_end(s, lexer, valid_symbols)) {
     return true;
   }
+  // EARLY, and BOUNDED only - see `parse_trailing_comment`'s own comment for
+  // why the two readings of `%%` need opposite positions in this call.
+  if (parse_trailing_comment(s, lexer, valid_symbols, advances_at_entry,
+                             /*require_bounded=*/true)) {
+    return true;
+  }
 
   // Set by a block probe that declines after consuming a pure marker run; see
   // the contract on `parse_list_marker_or_thematic_break`.
@@ -10080,6 +10234,18 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   // runs after this one, so there is nothing left to poison.
   if (lexer->lookahead == '%' &&
       parse_comment_fence_begin(s, lexer, valid_symbols)) {
+    return true;
+  }
+
+  // LAST, and UNBOUNDED only - see `parse_trailing_comment`'s own comment.
+  // A `%%` that turns out not to be a comment (`a, {~~>b~}` - a bare comma
+  // glued to a space, not `%%`) still consumes the space speculatively before
+  // finding out, and every check between here and the top of `scan`
+  // (`check_non_whitespace`, `parse_open_curly_bracket`, ...) would otherwise
+  // read from where that failed probe left off instead of the position it
+  // was actually offered at (tree-sitter-carve#449).
+  if (parse_trailing_comment(s, lexer, valid_symbols, advances_at_entry,
+                             /*require_bounded=*/false)) {
     return true;
   }
 
@@ -10408,6 +10574,8 @@ static char *token_type_s(TokenType t) {
     return "VERBATIM_COMMENT_LINE";
   case TABLE_ROW_CONTINUATION_SEAM:
     return "TABLE_ROW_CONTINUATION_SEAM";
+  case TRAILING_COMMENT:
+    return "TRAILING_COMMENT";
   case VERBATIM_CONTENT:
     return "VERBATIM_CONTENT";
 

@@ -86,9 +86,6 @@ const EXCLUDED = {
     "contiguous range, so no node can hold both halves without holding the cell " +
     "between them. The spec waives this document's text positions for carve-js, " +
     "carve-rs and carve-php as well (spec/resources/ast-position-waivers.txt).",
-  "a-fence-opened-on-a-list-marker-line-body-below-the-content-column-7":
-    "the fixture is wrong at the pinned 0.1.6 specification tag and clears with " +
-    "the first post-release corpus-pin update (tree-sitter-carve#349).",
 };
 
 const recorded = coverage.inlineReadingGaps ?? {};

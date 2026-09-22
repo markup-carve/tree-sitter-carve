@@ -7667,26 +7667,6 @@
         }
       ]
     },
-    "trailing_comment": {
-      "type": "TOKEN",
-      "content": {
-        "type": "SEQ",
-        "members": [
-          {
-            "type": "PATTERN",
-            "value": "[ \\t]"
-          },
-          {
-            "type": "STRING",
-            "value": "%%"
-          },
-          {
-            "type": "PATTERN",
-            "value": "[^\\r\\n]*"
-          }
-        ]
-      }
-    },
     "_cell_trailing_comment": {
       "type": "TOKEN",
       "content": {
@@ -9747,6 +9727,10 @@
     {
       "type": "SYMBOL",
       "name": "_table_row_continuation_seam"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "trailing_comment"
     }
   ],
   "inline": [],
