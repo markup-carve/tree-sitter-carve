@@ -899,3 +899,31 @@ See [^a].
       (footnote_marker_begin)
       (reference_label)
       (footnote_marker_end))))
+
+==================
+A lazy line indented to a quote's content column builds no ERROR
+;; REGRESSION GUARD. The reading below is WRONG against carve-js, which keeps
+;; both lines as one quoted paragraph, and tree-sitter-carve#331 tracks that.
+;; What it pins is the part that must hold whatever the reading is: no ERROR
+;; node, and the quote's content is a paragraph rather than a definition. A fix
+;; that ends the quote early and leaves an ERROR behind is worse than the wrong
+;; reading it replaced, and that is exactly what #352 shipped.
+;;
+;; No corpus document covers this shape, so every ledger gate passed it. Update
+;; this case when #331 lands, do not delete it.
+==================
+
+> x
+  # H
+
+tail
+
+---
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (paragraph)))
+  (paragraph)
+  (paragraph))
