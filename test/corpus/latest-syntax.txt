@@ -901,16 +901,15 @@ See [^a].
       (footnote_marker_end))))
 
 ==================
-A lazy line indented to a quote's content column builds no ERROR
-;; REGRESSION GUARD. The reading below is WRONG against carve-js, which keeps
-;; both lines as one quoted paragraph, and tree-sitter-carve#331 tracks that.
-;; What it pins is the part that must hold whatever the reading is: no ERROR
-;; node, and the quote's content is a paragraph rather than a definition. A fix
-;; that ends the quote early and leaves an ERROR behind is worse than the wrong
-;; reading it replaced, and that is exactly what #352 shipped.
+A lazy line indented to a quote's content column continues the quoted paragraph
+;; carve-js keeps both lines as ONE quoted paragraph (`x` then `# H`), and so
+;; does this now. It is also the REGRESSION GUARD for #352, which tried the same
+;; fix, ended the quote early and left an ERROR with `x` read as a definition.
+;; What must hold beyond the reading: no ERROR node, and one paragraph in the
+;; quote rather than a definition.
 ;;
-;; No corpus document covers this shape, so every ledger gate passed it. Update
-;; this case when #331 lands, do not delete it.
+;; No corpus document covers this shape, so no ledger gate can see it. Do not
+;; delete this case.
 ==================
 
 > x
@@ -925,7 +924,32 @@ tail
     (block_quote_marker)
     content: (content
       (paragraph)))
-  (paragraph)
+  (paragraph))
+
+==================
+A lazy fence indented to a quote's content column opens no code block
+;; The same rule over a fence: carve-js keeps `> x` over an indented fence as
+;; one quoted paragraph holding an inline code run, not a code block.
+==================
+
+> x
+  ```
+  c
+  ```
+
+tail
+
+---
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (paragraph
+        (verbatim
+          begin_marker: (verbatim_marker_begin)
+          content: (content)
+          end_marker: (verbatim_marker_end)))))
   (paragraph))
 
 ==================
