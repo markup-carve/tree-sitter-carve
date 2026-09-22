@@ -417,6 +417,10 @@ typedef struct {
   // is called at - so the closer records what it consumed.
   uint8_t after_closer_char;
   uint32_t after_closer_col;
+
+  // Width of the attribute block the ordered marker scan just consumed, read
+  // by the same scan call. Transient, never serialized.
+  uint8_t marker_attribute_width;
 } Scanner;
 
 // Tracks if a `[` starts an inline link.
@@ -1276,6 +1280,17 @@ static bool parse_indented_content_spacer(Scanner *s, TSLexer *lexer,
   return true;
 }
 
+/// The column a line must reach to stay in a list item across a blank line:
+/// the recorded content column, so `-   a` / blank / `  b` leaves the item.
+/// Inside a quote the line's indent counts from after the `>` prefix while
+/// `content_col` counts from the line start, so `data` stays the test there.
+static uint8_t list_item_margin(Scanner *s, Block *list) {
+  if (list->content_col == 0 || count_blocks(s, BLOCK_QUOTE) > 0) {
+    return list->data;
+  }
+  return list->content_col;
+}
+
 /// Does this line reach `list`'s items? For a list inside a quote, `indent`
 /// counts from after the `>` markers while `data` may hold an absolute column
 /// (a list nested on a marker line), so compare absolute columns instead.
@@ -1295,7 +1310,7 @@ static bool quoted_line_reaches_list(Scanner *s, TSLexer *lexer, Block *list) {
       break;
     }
   }
-  return s->indent >= list->data;
+  return s->indent >= list_item_margin(s, list);
 }
 
 // Close open list if list markers are different.
@@ -2426,11 +2441,16 @@ static bool parse_code_fence(Scanner *s, TSLexer *lexer,
 /// Returns false only when a `{` is present and does NOT form a valid block -
 /// `1.{not!} item` stays a paragraph, which is what the attribute grammar says.
 static bool scan_marker_attribute(Scanner *s, TSLexer *lexer) {
+  s->marker_attribute_width = 0;
   if (lexer->lookahead != '{') {
     return true;
   }
-
-  return scan_valid_inline_attribute(s, lexer);
+  uint32_t start = line_column(s, lexer);
+  if (!scan_valid_inline_attribute(s, lexer)) {
+    return false;
+  }
+  s->marker_attribute_width = (uint8_t)(line_column(s, lexer) - start);
+  return true;
 }
 
 static bool scan_bullet_list_marker(Scanner *s, TSLexer *lexer, char marker) {
@@ -3180,6 +3200,25 @@ static bool scan_eof_or_blankline(Scanner *s, TSLexer *lexer) {
   }
 }
 
+/// A marker strictly between an item's own marker column and its content
+/// column folds into the item's paragraph as text (`-   lead` / `  - x`). The
+/// item asked is the innermost one whose marker column the line reaches, so
+/// `- - a` / ` - b` folds into the outer item. Not asked inside a quote, where
+/// `data` counts from the quote's prefix and `content_col` from the line start.
+static bool marker_folds_into_item(Scanner *s, uint32_t column) {
+  if (count_blocks(s, BLOCK_QUOTE) > 0) {
+    return false;
+  }
+  for (int i = s->open_blocks->size - 1; i >= 0; --i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (!is_list(b->type) || column + 1 < b->data) {
+      continue;
+    }
+    return b->content_col != 0 && column >= b->data && column < b->content_col;
+  }
+  return false;
+}
+
 // Variant for closing an open PARAGRAPH. A LIST MARKER does NOT interrupt a
 // standalone paragraph: with no open list, a bullet or ordered marker folds
 // into the open paragraph as plain text (§10 -- no list interrupts a
@@ -3348,6 +3387,9 @@ static bool scan_paragraph_closing_marker(Scanner *s, TSLexer *lexer) {
   if (find_list(s) == NULL) {
     return false;
   }
+  if (marker_folds_into_item(s, line_column(s, lexer))) {
+    return false;
+  }
   if (!scan_list_marker(s, lexer)) {
     return false;
   }
@@ -3403,14 +3445,23 @@ static bool handle_ordered_list_marker(Scanner *s, TSLexer *lexer,
     // Mark the token end (after the marker's space) before the content probe,
     // so the scratch advances in `marker_line_has_content` cannot extend it.
     mark_end(s, lexer);
+    // The whole space run is separator (`1.   a` has its content at 5), as for
+    // a bullet; the token takes it and the column is read after it.
+    while (lexer->lookahead == ' ') {
+      advance(s, lexer);
+    }
+    if (!at_line_end(lexer) && !lexer->eof(lexer)) {
+      mark_end(s, lexer);
+    }
+    // The attribute block counts zero, as on a bullet (`1.{#k} a`, corpus 413).
+    uint8_t content_col =
+        (uint8_t)(line_column(s, lexer) - s->marker_attribute_width);
     // A content-less marker line is paragraph text, not a list.
     if (!marker_line_has_content(s, lexer)) {
       return false;
     }
     ensure_list_open(s, list_marker_to_block(marker), s->indent + 1);
-    // The lexer sits just past the marker's separator here (mark_end above), so
-    // this is the content column for every marker WIDTH - `1. `, `a) `, `iv. `.
-    record_list_marker_margin(s, (uint8_t)line_column(s, lexer), false);
+    record_list_marker_margin(s, content_col, false);
     lexer->result_symbol = marker;
     return true;
   } else {
@@ -3632,14 +3683,17 @@ static bool parse_list_marker_or_thematic_break(
   // is taken, because after it the lookahead IS a space and the break test
   // would otherwise say yes.
   bool marker_attribute = false;
+  uint32_t attribute_width = 0;
   if (lexer->lookahead == '{' &&
       (valid_symbols[marker_type] || valid_symbols[LIST_MARKER_TASK_BEGIN])) {
     // No rewind on failure, which is the same contract the ordered path uses:
     // an invalid payload (`-{not!} item`) refuses the token and the line parses
     // as a paragraph, which is what the attribute grammar says it is.
+    uint32_t attribute_start = line_column(s, lexer);
     if (!scan_valid_inline_attribute(s, lexer)) {
       return false;
     }
+    attribute_width = line_column(s, lexer) - attribute_start;
     marker_attribute = true;
   }
 
@@ -3684,8 +3738,14 @@ static bool parse_list_marker_or_thematic_break(
     }
     if (!at_line_end(lexer) && !lexer->eof(lexer)) {
       marker_content_col = (uint8_t)line_column(s, lexer);
+      // The token takes the run too, so the content (`-   # H`) starts at a
+      // block start rather than behind padding no opener accepts.
+      mark_end(s, lexer);
     }
   }
+  // A marker's attribute block counts zero toward the content column
+  // (`-{.outer} parent` / `  - child` nests, corpus 413).
+  marker_content_col = (uint8_t)(marker_content_col - attribute_width);
 
   // Whether the probes below have consumed marker characters from the rest of
   // the line. The lexer cannot rewind, so what they eat decides the CONTENT
@@ -4143,8 +4203,16 @@ static bool parse_open_bracket(Scanner *s, TSLexer *lexer,
   // margin and anything else is left to the refusal below.
   uint32_t column = line_column(s, lexer);
   bool on_marker_line = s->marker_end_col != 0 && column == s->marker_end_col;
-  bool at_marker_content_col = on_marker_line && s->indent == 0;
-  // On a marker line only a root-margin marker licenses a definition.
+  // A nested marker licenses it too when it began at its parent item's
+  // content column (`- lead` / `  - [t]: /t`), where it opened a real list.
+  Block *parent = s->open_blocks->size >= 2
+                      ? *array_get(s->open_blocks, s->open_blocks->size - 2)
+                      : NULL;
+  bool at_marker_content_col =
+      on_marker_line &&
+      (s->indent == 0 || (parent && is_list(parent->type) &&
+                          parent->content_col == s->indent));
+  // On a marker line only a marker at its container's margin licenses one.
   if (on_marker_line && !at_marker_content_col) {
     return false;
   }
@@ -4217,7 +4285,7 @@ static bool parse_list_item_end(Scanner *s, TSLexer *lexer,
   }
 
   // We're still inside the list, don't end it yet.
-  if (s->indent >= list->data) {
+  if (s->indent >= list_item_margin(s, list)) {
     return false;
   }
 
@@ -8911,6 +8979,7 @@ static void init_scalars(Scanner *s) {
   s->state = 0;
   s->after_closer_char = 0;
   s->after_closer_col = 0;
+  s->marker_attribute_width = 0;
 }
 
 static void init(Scanner *s) {

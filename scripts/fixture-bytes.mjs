@@ -16,7 +16,7 @@ import { fileURLToPath } from 'node:url';
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 const MINIMUMS = {
-  'test/corpus/carve.txt': { loneCR: 31, nul: 1 },
+  'test/corpus/carve.txt': { loneCR: 36, nul: 1 },
 };
 
 const count = (bytes) => {

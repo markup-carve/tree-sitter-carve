@@ -560,53 +560,21 @@
     "a-quote-is-reached-by-its-marker-and-a-column-never-reaches-into-one-2": {
       "definitions": "[r]: /url",
       "reason": "ref:reference-definition-absorbed"
-    },
-    "a-marker-folds-only-strictly-between-the-item-s-base-and-content-column-3": {
-      "definitions": "[t]: /t",
-      "reason": "ref:reference-definition-absorbed"
-    },
-    "a-marker-folds-only-strictly-between-the-item-s-base-and-content-column-7": {
-      "definitions": "[t]: /t",
-      "reason": "ref:reference-definition-absorbed"
     }
   },
   "batteryDisagreements": {},
   "underAcceptance": {
+    "an-item-s-attribute-block-moves-its-content-column-its-checkbox-does-not-2": {
+      "gaps": "heading: want 1 have 0",
+      "reason": "a heading past the item's content column. Marker attributes count zero toward that column (column 2 here), and the spec's authored-base clause keeps an opener at or past it inside the item; this grammar opens one only at the exact column. Passed before only because the recorded column wrongly included the attribute block. tree-sitter-carve#390."
+    },
+    "an-item-s-attribute-block-moves-its-content-column-its-checkbox-does-not-8": {
+      "gaps": "heading: want 1 have 0",
+      "reason": "a heading past the item's content column. Marker attributes count zero toward that column (column 2 here), and the spec's authored-base clause keeps an opener at or past it inside the item; this grammar opens one only at the exact column. Passed before only because the recorded column wrongly included the attribute block. tree-sitter-carve#390."
+    },
     "generic-divs-4": {
       "gaps": "admonition_type: want 1 have 0",
       "reason": "the current engine accepts a numeric custom admonition kind in `::: 123`, while the grammar's admonition identifier begins with a letter and leaves the fence as paragraph text. The grammar and its named `admonition_type` token need a deliberate identifier-policy update rather than silently widening during a corpus bump."
-    },
-    "an-item-s-attribute-block-moves-its-content-column-its-checkbox-does-not-4": {
-      "gaps": "heading: want 1 have 0",
-      "reason": "a marker attribute lengthens the list item's authored content column, but the scanner keeps the pre-attribute margin and folds the following heading into the paragraph."
-    },
-    "an-item-s-attribute-block-moves-its-content-column-its-checkbox-does-not-5": {
-      "gaps": "heading: want 1 have 0",
-      "reason": "a marker attribute lengthens the list item's authored content column, but the scanner keeps the pre-attribute margin and folds the following heading into the paragraph."
-    },
-    "an-item-s-attribute-block-moves-its-content-column-its-checkbox-does-not-7": {
-      "gaps": "heading: want 2 have 0",
-      "reason": "marker attributes on the nested items move both authored content columns; the scanner retains the shorter margins and folds both headings into paragraph text."
-    },
-    "an-item-s-attribute-block-moves-its-content-column-its-checkbox-does-not-9": {
-      "gaps": "heading: want 1 have 0",
-      "reason": "a marker attribute lengthens the list item's authored content column, but the scanner keeps the pre-attribute margin and folds the following heading into the paragraph."
-    },
-    "an-item-s-attribute-block-moves-its-content-column-its-checkbox-does-not": {
-      "gaps": "heading: want 1 have 0",
-      "reason": "a marker attribute lengthens the list item's authored content column, but the scanner keeps the pre-attribute margin and folds the following heading into the paragraph."
-    },
-    "a-floating-attribute-does-not-widen-a-list-item-s-content-column-2": {
-      "gaps": "heading: want 1 have 0",
-      "reason": "the marker attribute sets the item margin while the floating attribute belongs to its content; the scanner conflates their widths and folds the heading instead of opening it at the authored content column."
-    },
-    "a-floating-attribute-does-not-widen-a-list-item-s-content-column-3": {
-      "gaps": "heading: want 1 have 0",
-      "reason": "the marker attribute sets the item margin while the floating attribute belongs to its content; the scanner conflates their widths and folds the heading instead of opening it at the authored content column."
-    },
-    "a-floating-attribute-does-not-widen-a-list-item-s-content-column": {
-      "gaps": "heading: want 1 have 0",
-      "reason": "the marker attribute sets the item margin while the floating attribute belongs to its content; the scanner conflates their widths and folds the heading instead of opening it at the authored content column."
     },
     "the-continuation-marker-attaches-one-block-in-every-container-4": {
       "gaps": "block_quote: want 2 have 1",
@@ -691,9 +659,6 @@
     "an-unterminated-container-does-not-extend-the-item-past-a-blank-line-4": {
       "gaps": "admonition_type: want 1 have 0",
       "reason": "ref:fence-on-a-marker-line-builds-nothing"
-    },
-    "attribute-braces-on-a-list-item-marker-line": {
-      "gaps": "heading: want 1 have 0"
     },
     "fence-opener-with-a-nested-list-body-inside-a-list-item": {
       "gaps": "admonition_type: want 1 have 0",
