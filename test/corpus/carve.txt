@@ -6206,9 +6206,7 @@ A lone carriage return does not fuse a full reference with the definition below 
 ;; characters later: one paragraph, no definition, no image, and a
 ;; `full_reference_link` that is in no spelling of the source.
 ===============================================================================
-![Apollo][moon]
-
-[moon]: a.jpg
+![Apollo][moon][moon]: a.jpg
 
 -------------------------------------------------------------------------------
 
@@ -6227,9 +6225,7 @@ A lone carriage return does not fuse a full reference link with the definition b
 ;; full reference LINK fused identically, and so did a definition whose label
 ;; matches nothing in the paragraph above it.
 ===============================================================================
-[Apollo][moon]
-
-[other]: a.jpg
+[Apollo][moon][other]: a.jpg
 
 -------------------------------------------------------------------------------
 
@@ -6249,8 +6245,7 @@ A lone carriage return does not carry a full reference's label down a line (tree
 ;; paragraph, because a full reference is `[text][label]` with the pairs
 ;; touching, and under `\r` it has to be one too.
 ===============================================================================
-[Apollo]
-[moon]
+[Apollo][moon]
 
 -------------------------------------------------------------------------------
 
@@ -6264,9 +6259,7 @@ A collapsed reference is unaffected by a lone carriage return (tree-sitter-carve
 ;; split correctly all along - which is what made `_link_label` saying the
 ;; same thing about its own `[` the whole change.
 ===============================================================================
-![Apollo][]
-
-[Apollo]: a.jpg
+![Apollo][][Apollo]: a.jpg
 
 -------------------------------------------------------------------------------
 
@@ -6386,10 +6379,7 @@ A lone carriage return does not carry a reference label onto the next line (tree
 ;; the reference formed across the wrap, where `\n` and `\r\n` both leave a
 ;; bare paragraph and the definition below it.
 ===============================================================================
-[t][r
-x]
-
-[r x]: /u
+[t][rx][r x]: /u
 
 -------------------------------------------------------------------------------
 
@@ -6423,8 +6413,7 @@ A lone carriage return does not carry an image's reference label onto the next l
 ;; The image spelling of the same label. `full_reference_image` reaches its
 ;; label through the same `_link_label`, so it wrapped identically.
 ===============================================================================
-![a][r
-x]
+![a][rx]
 
 -------------------------------------------------------------------------------
 
@@ -6437,8 +6426,7 @@ A lone carriage return does not carry an inline destination onto the next line (
 ;; `_inline_link_url` rather than inside a label, and the `\r` was skipped
 ;; between two repetitions of its regex.
 ===============================================================================
-![a](/i
-q)
+![a](/iq)
 
 -------------------------------------------------------------------------------
 
@@ -6453,11 +6441,7 @@ A lone carriage return at either edge of an inline destination (tree-sitter-carv
 ;; extra taken at the same kind of boundary, and under `\n` both are a bare
 ;; paragraph too.
 ===============================================================================
-![a](/i
-)
-
-![b](
-q)
+![a](/i)![b](q)
 
 -------------------------------------------------------------------------------
 
@@ -6471,9 +6455,7 @@ An identifier that closes on its line is unaffected by lone carriage returns (tr
 ;; reach its closer before a lone carriage return, so a label written on one
 ;; line still resolves in a document whose terminators are all `\r`.
 ===============================================================================
-[t][r x]
-
-[r x]: /u
+[t][r x][r x]: /u
 
 -------------------------------------------------------------------------------
 
@@ -6495,8 +6477,7 @@ A lone carriage return does not carry a link's inline destination onto the next 
 ;; misfiling tree-sitter-carve#262 reported for the label, one entry further
 ;; down the same ledger.
 ===============================================================================
-[t](url
-more)
+[t](urlmore)
 
 -------------------------------------------------------------------------------
 
@@ -6513,8 +6494,7 @@ A lone carriage return does not bind an inline destination to the bracket above 
 ;; so is `[t]` on one line with `(/u)` on the next. The scanner refuses it
 ;; where it already refuses the same thing for a `{`.
 ===============================================================================
-[t]
-(/u)
+[t](/u)
 
 -------------------------------------------------------------------------------
 
@@ -6531,9 +6511,7 @@ An identifier with a nested pair still resolves on one line (tree-sitter-carve#2
 ;; are written on one line, in a document whose terminators are all lone
 ;; carriage returns.
 ===============================================================================
-[t][a[b]{.x}c]
-
-[t](a(b)c)
+[t][a[b]{.x}c][t](a(b)c)
 
 -------------------------------------------------------------------------------
 
@@ -6560,9 +6538,7 @@ A reference label ends at its first bracket, even one inside ticks (tree-sitter-
 ;; backtick, the rest of the line is paragraph text, and `[a `]` c]: /u`
 ;; defines nothing: it is the ordinary paragraph carve-js renders.
 ===============================================================================
-[t][a `]` c]
-
-[a `]` c]: /u
+[t][a `]` c][a `]` c]: /u
 
 -------------------------------------------------------------------------------
 
@@ -6590,8 +6566,7 @@ A destination whose nested pair closes on the next line is a link in every spell
 ;; the other two spellings keep - a divergence where there had been none.
 ;; Stopping at the FIRST closer leaves this reading untouched.
 ===============================================================================
-[t](/a(b)c
-SECOND)
+[t](/a(b)cSECOND)
 
 -------------------------------------------------------------------------------
 
@@ -6609,10 +6584,7 @@ A label of ordinary punctuation is still plain text (tree-sitter-carve#265)
 ;; `$`, `%` and `#`, each of which reaches its construct only through a brace,
 ;; a bracket or a tick.
 ===============================================================================
-[t][foo-bar
-baz]
-
-[foo-bar baz]: /u
+[t][foo-barbaz][foo-bar baz]: /u
 
 -------------------------------------------------------------------------------
 
