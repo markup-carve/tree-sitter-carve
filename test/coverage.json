@@ -1,19 +1,19 @@
 {
   "_comment": "Coverage matrix for the shared Carve spec corpus (spec/tests/corpus/*.crv). Every NN-slug base category must appear in covered or skip; the coverage-matrix test fails otherwise so a new spec category forces a classify decision. covered = grammar parses every file in the category with no ERROR/MISSING node. skip = at least one file currently produces an ERROR/MISSING node; reason records the unmodeled construct (a grammar gap to surface, not to hack around). A skip key is a CATEGORY (NN-slug) or a single EXAMPLE (NN-slug-2) — use the example form when the rest of the category parses cleanly, so one gap does not drop assertion for its siblings. A key equal to a category name is read as the CATEGORY, so the first example of a category cannot be skipped on its own. REASONS: a ledger entry's `reason` may be `ref:<key>`, resolving against the top-level `reasons` map, so one grammar gap spanning a whole category states its explanation once. coverage-matrix gates it both ways - a ref with no entry fails, and a reasons entry nothing references fails, because a reason nobody points at is an excuse that outlived the gap it excused.",
   "comparisonPopulation": {
-    "thematic_break": { "documents": 10, "nodes": 12 },
-    "block_quote": { "documents": 199, "nodes": 232 },
+    "thematic_break": { "documents": 11, "nodes": 13 },
+    "block_quote": { "documents": 202, "nodes": 236 },
     "table": { "documents": 140, "nodes": 142 },
-    "heading": { "documents": 138, "nodes": 171 },
-    "code_block": { "documents": 80, "nodes": 80 },
-    "list": { "documents": 509, "nodes": 635 },
-    "definition_list": { "documents": 161, "nodes": 162 },
+    "heading": { "documents": 140, "nodes": 173 },
+    "code_block": { "documents": 85, "nodes": 85 },
+    "list": { "documents": 527, "nodes": 655 },
+    "definition_list": { "documents": 186, "nodes": 187 },
     "line_block": { "documents": 36, "nodes": 36 },
-    "div": { "documents": 26, "nodes": 28 },
+    "div": { "documents": 41, "nodes": 43 },
     "raw_block": { "documents": 9, "nodes": 9 },
     "figure_group": { "documents": 9, "nodes": 9 },
     "citation_definition": { "documents": 0, "nodes": 0 },
-    "admonition": { "documents": 74, "nodes": 281 }
+    "admonition": { "documents": 84, "nodes": 291 }
   },
   "reasons": {
     "a-column-0-opener-does-not-close-an-open-list": "a column-0 block opener does not close an open LIST; it folds into the item as lazy paragraph text. `- a` / `# H` builds no heading, while `> q` / `# H` does - so the block quote closes correctly and only the list does not. Both documents here reach it through a `+` continuation marker, which this grammar opens as an ordinary bullet list, after which the column-0 heading below is swallowed the same way.",
@@ -512,7 +512,26 @@
     "an-empty-link-destination-is-not-a-link",
     "a-quote-is-an-ordinary-link-destination-character",
     "a-forced-opener-of-an-open-kind-is-literal",
-    "substitution-content-is-inline-and-only-a-top-level-arrow-splits-it"
+    "substitution-content-is-inline-and-only-a-top-level-arrow-splits-it",
+    "a-bare-colon-opener-in-a-description-body-is-an-opener",
+    "a-bare-colon-run-interrupts-a-paragraph-whether-or-not-a-line-follows-it",
+    "a-caption-s-placeholder-is-any-that-does-not-begin-a-tag",
+    "a-closer-below-the-container-s-column-does-not-count",
+    "a-closer-does-not-rescue-a-marker-line-colon-opener-whose-body-folded-in",
+    "a-code-span-closes-only-on-a-run-of-its-own-length-whatever-the-length",
+    "a-comment-inside-a-forced-span-or-the-combined-token-ends-at-its-closer",
+    "a-definition-body-s-open-code-fence-ends-at-a-line-below-its-column",
+    "a-delimiter-after-an-underscore-or-slash-opens-only-when-that-one-pairs",
+    "a-form-feed-or-a-no-break-space-is-content-wherever-whitespace-is-tested",
+    "a-quote-after-a-bare-delimiter-follows-what-that-delimiter-does",
+    "a-quote-after-an-escaped-quote-closes",
+    "a-run-of-asterisks-inside-a-combined-token-is-content",
+    "an-empty-term-marker-in-a-description-body-is-text",
+    "an-item-s-fence-is-read-once-whatever-block-it-follows",
+    "an-unresolved-reference-s-literal-source-is-html-escaped-like-any-other-text",
+    "any-character-is-content-of-the-combined-bold-italic-token",
+    "footnote-references-take-an-attribute-run-editorial-substitution-and-comment-take-none",
+    "glued-attribute-blocks-on-an-inline-element-merge"
   ],
   "skip": {
     "a-continuation-marker-attaches-one-block-and-the-boundary-is-that-block-s-extent-5": "a `+` continuation marker that attaches NOTHING - the line after it opens a sibling item rather than a block to attach - leaves the first item unclosed and the whole document parses to one top-level ERROR. `- a` / `+` / `- x` / `- y` is three flat items in the fixture. The category's other eight examples, where the marker does attach a block, parse cleanly."
@@ -548,6 +567,50 @@
   "invisibleUnderAcceptance": {},
   "batteryDisagreements": {},
   "underAcceptance": {
+    "a-closer-below-the-container-s-column-does-not-count-4": {
+      "gaps": "code_block: want 1 have 0",
+      "reason": "a fence opened at a definition body's own content column, closed by a run below that column (`\\`\\`\\`` at document column 0): the reference still cuts a code_block whose content runs through the near-miss line to the true closer, while the grammar folds the whole run into one inline verbatim span inside the definition's paragraph."
+    },
+    "a-bare-colon-opener-in-a-description-body-is-an-opener-2": {
+      "gaps": "div: want 1 have 0",
+      "reason": "a bare `:::` on the description marker's own line (`: :::`) opens an empty div in the reference, the same as `- :::` would on a list marker line; the grammar does not open a block on a description marker line and the definition's content stays empty."
+    },
+    "a-bare-colon-opener-in-a-description-body-is-an-opener-7": {
+      "gaps": "div: want 1 have 0",
+      "reason": "past a fence the reference reads as an empty inline code span, it reads the next indented `:::` line as a second, empty div in the definition; the grammar's own fence commits to a genuine code_block there instead and the div is never reached."
+    },
+    "a-closer-does-not-rescue-a-marker-line-colon-opener-whose-body-folded-in-2": {
+      "gaps": "admonition_type: want 1 have 0",
+      "reason": "ref:fence-on-a-marker-line-builds-nothing"
+    },
+    "a-closer-does-not-rescue-a-marker-line-colon-opener-whose-body-folded-in-3": {
+      "gaps": "admonition_type: want 1 have 0",
+      "reason": "the same class as fence-on-a-marker-line-builds-nothing, reached through an ORDERED marker (`1. :::`) rather than the bullet/plus shape that reason's predicate is pinned to; the column-0 guard on the colon fence fails the same way."
+    },
+    "a-closer-does-not-rescue-a-marker-line-colon-opener-whose-body-folded-in-4": {
+      "gaps": "admonition_type: want 1 have 0",
+      "reason": "ref:fence-on-a-marker-line-builds-nothing"
+    },
+    "a-closer-does-not-rescue-a-marker-line-colon-opener-whose-body-folded-in-5": {
+      "gaps": "admonition_type: want 1 have 0",
+      "reason": "ref:fence-on-a-marker-line-builds-nothing"
+    },
+    "a-closer-does-not-rescue-a-marker-line-colon-opener-whose-body-folded-in-6": {
+      "gaps": "admonition_type: want 1 have 0",
+      "reason": "the same class as fence-on-a-marker-line-builds-nothing, reached on a NESTED item's own marker line (`- x` / `  - ::: d`) rather than the top-level one that reason's predicate is pinned to; the column-0 guard on the colon fence fails the same way one level down."
+    },
+    "a-closer-does-not-rescue-a-marker-line-colon-opener-whose-body-folded-in-7": {
+      "gaps": "admonition_type: want 1 have 0",
+      "reason": "ref:fence-on-a-marker-line-builds-nothing"
+    },
+    "a-closer-does-not-rescue-a-marker-line-colon-opener-whose-body-folded-in-8": {
+      "gaps": "admonition_type: want 1 have 0",
+      "reason": "ref:fence-on-a-marker-line-builds-nothing"
+    },
+    "a-form-feed-or-a-no-break-space-is-content-wherever-whitespace-is-tested-9": {
+      "gaps": "thematic_break: want 1 have 0",
+      "reason": "the frontmatter opener's tail check excludes only space/tab from the `language` token and from its own trailing-whitespace scan, so a form feed right after the language word is swallowed into `language` rather than breaking it; `---yaml<FF>` therefore reads as a clean opener and the grammar commits to a frontmatter block, while the reference treats the form feed as content, leaving `---yaml<FF>` as a paragraph and the `---` two lines down as its own thematic_break."
+    },
     "generic-divs-4": {
       "gaps": "admonition_type: want 1 have 0",
       "reason": "the current engine accepts a numeric custom admonition kind in `::: 123`, while the grammar's admonition identifier begins with a letter and leaves the fence as paragraph text. The grammar and its named `admonition_type` token need a deliberate identifier-policy update rather than silently widening during a corpus bump."
@@ -667,8 +730,86 @@
       "reason": "a `---` after a content-less marker errors; carve-js renders a paragraph then a thematic break (tree-sitter-carve#96)"
     }
   },
-  "inlineReadingGaps": {},
+  "inlineReadingGaps": {
+    "glued-attribute-blocks-on-an-inline-element-merge-2": {
+      "reading": "strong html=0 tree=1",
+      "reason": "glued attribute blocks (`{#a .k}{#b k=1}{.k k=2}`) are supposed to merge into one set, the later block winning per key; the grammar attaches only the FIRST block as the element's `inline_attribute` and misreads the rest of the glued run, which is the unimplemented feature this category is named for."
+    },
+    "an-item-s-fence-is-read-once-whatever-block-it-follows-2": {
+      "reading": "code#1 html=\"\" tree=\"by\"",
+      "reason": "a fence opened at a definition body's or a nested container's own content column, closed by a run below that column: the reference cuts the code block off right there and reads the short line plus the trailing marker run as separate, literal text past the container, while the grammar keeps reading through both as one code/verbatim span to the LAST closer-shaped line - the same gap `a-closer-below-the-container-s-column-does-not-count-4` records for the block-level AST count."
+    },
+    "a-definition-body-s-open-code-fence-ends-at-a-line-below-its-column-3": {
+      "reading": "code html=1 tree=0",
+      "reason": "a fence opened at a definition body's or a nested container's own content column, closed by a run below that column: the reference cuts the code block off right there and reads the short line plus the trailing marker run as separate, literal text past the container, while the grammar keeps reading through both as one code/verbatim span to the LAST closer-shaped line - the same gap `a-closer-below-the-container-s-column-does-not-count-4` records for the block-level AST count."
+    },
+    "a-definition-body-s-open-code-fence-ends-at-a-line-below-its-column-5": {
+      "reading": "code html=2 tree=1, code#1 html=\"by\" tree=\"\"",
+      "reason": "a fence opened at a definition body's or a nested container's own content column, closed by a run below that column: the reference cuts the code block off right there and reads the short line plus the trailing marker run as separate, literal text past the container, while the grammar keeps reading through both as one code/verbatim span to the LAST closer-shaped line - the same gap `a-closer-below-the-container-s-column-does-not-count-4` records for the block-level AST count."
+    },
+    "a-definition-body-s-open-code-fence-ends-at-a-line-below-its-column": {
+      "reading": "code html=1 tree=0",
+      "reason": "a fence opened at a definition body's or a nested container's own content column, closed by a run below that column: the reference cuts the code block off right there and reads the short line plus the trailing marker run as separate, literal text past the container, while the grammar keeps reading through both as one code/verbatim span to the LAST closer-shaped line - the same gap `a-closer-below-the-container-s-column-does-not-count-4` records for the block-level AST count."
+    },
+    "a-bare-colon-opener-in-a-description-body-is-an-opener-7": {
+      "reading": "code html=1 tree=0",
+      "reason": "a fence opened at a definition body's or a nested container's own content column, closed by a run below that column: the reference cuts the code block off right there and reads the short line plus the trailing marker run as separate, literal text past the container, while the grammar keeps reading through both as one code/verbatim span to the LAST closer-shaped line - the same gap `a-closer-below-the-container-s-column-does-not-count-4` records for the block-level AST count."
+    },
+    "a-delimiter-after-an-underscore-or-slash-opens-only-when-that-one-pairs-2": {
+      "reading": "strong html=0 tree=1",
+      "reason": "PART 9's delimiter-run rule: a `_` or `/` immediately before another delimiter that does not itself pair should disqualify the FOLLOWING delimiter from opening too, so `_*x* q` stays entirely literal. The grammar does not carry that dependency - once the outer `_`/`/` fails to pair, the inner `*`/other delimiter is still free to open on its own, building a span the reference does not."
+    },
+    "a-delimiter-after-an-underscore-or-slash-opens-only-when-that-one-pairs-5": {
+      "reading": "strong html=0 tree=1",
+      "reason": "PART 9's delimiter-run rule: a `_` or `/` immediately before another delimiter that does not itself pair should disqualify the FOLLOWING delimiter from opening too, so `_*x* q` stays entirely literal. The grammar does not carry that dependency - once the outer `_`/`/` fails to pair, the inner `*`/other delimiter is still free to open on its own, building a span the reference does not."
+    },
+    "a-delimiter-after-an-underscore-or-slash-opens-only-when-that-one-pairs-6": {
+      "reading": "strong html=0 tree=1",
+      "reason": "PART 9's delimiter-run rule: a `_` or `/` immediately before another delimiter that does not itself pair should disqualify the FOLLOWING delimiter from opening too, so `_*x* q` stays entirely literal. The grammar does not carry that dependency - once the outer `_`/`/` fails to pair, the inner `*`/other delimiter is still free to open on its own, building a span the reference does not."
+    },
+    "a-delimiter-after-an-underscore-or-slash-opens-only-when-that-one-pairs": {
+      "reading": "strong html=0 tree=1, em html=0 tree=1, u html=0 tree=1, s html=0 tree=1, mark html=0 tree=1",
+      "reason": "PART 9's delimiter-run rule: a `_` or `/` immediately before another delimiter that does not itself pair should disqualify the FOLLOWING delimiter from opening too, so `_*x* q` stays entirely literal. The grammar does not carry that dependency - once the outer `_`/`/` fails to pair, the inner `*`/other delimiter is still free to open on its own, building a span the reference does not."
+    },
+    "any-character-is-content-of-the-combined-bold-italic-token-2": {
+      "reading": "strong html=5 tree=4, strong#2 html=\"ab\" tree=\"abc\", strong#3 html=\"abc\" tree=\"ab\", em html=5 tree=4, em#2 html=\"ab\" tree=\"abc\", em#3 html=\"abc\" tree=\"ab\"",
+      "reason": "the combined token's opener refuses `/*a<b*/ y` outright (the FIRST of the five documents builds no bold_italic at all), so the pairing shifts by one and the later skeletons read as swapped; a literal `<` right after the opener's leading character is not yet admitted as ordinary content the way the category's other four documents are."
+    },
+    "any-character-is-content-of-the-combined-bold-italic-token-6": {
+      "reading": "strong html=0 tree=1",
+      "reason": "`/*a<TAB>*/ y`: the grammar's `bold_italic_end` folds a whitespace character right before the closer into the closer itself, the same trailing-space exception `_}`/`*}` take on the bare spans, and reads `a` as the whole content; the reference admits no such exception for the combined token - a TAB is content like any other character, no valid closer follows it, and the whole thing falls back to a bare `/` emphasis over the literal `*a<TAB>*`."
+    },
+    "any-character-is-content-of-the-combined-bold-italic-token-7": {
+      "reading": "strong#1 html=\"ab\" tree=\"acb\", em#1 html=\"ab\" tree=\"acb\"",
+      "reason": "the alphanumeric skeleton this check compares is the span's WHOLE raw text, with no notion of a `%%` comment inside it; now that the comment correctly stops at the span's own closer (this PR) rather than running past it, the comment's own characters are real bytes inside the node and count toward the skeleton even though they render as nothing. Excluding a comment's span from this comparison is a gap in the check itself, not a wrong tree."
+    },
+    "a-caption-s-placeholder-is-any-that-does-not-begin-a-tag-6": {
+      "reading": "strong html=1 tree=0",
+      "reason": "`Figure #-a q` on a caption line: `#-a` cannot be a tag (a tag name may not start with `-`), which is the category's own point - the reference reads it as a placeholder wrapped in its own markup, while the grammar's caption content reads the whole line as flat, uninterpreted text with nothing resolved inside it."
+    },
+    "an-unresolved-reference-s-literal-source-is-html-escaped-like-any-other-text": {
+      "reading": "alt html=0 tree=1",
+      "reason": "an unresolved reference/image renders as its literal typed source with no alt-bearing element at all; the grammar still builds a structural `collapsed_reference_link`/`collapsed_reference_image` node from the bracket shape alone; whether a label resolves is a question for the definition table, not the parse, which is why the pair's inner text is already exempt (see the note above `EXCLUDED` in this script) - the alt-tag COUNT is not."
+    },
+    "a-comment-inside-a-forced-span-or-the-combined-token-ends-at-its-closer-2": {
+      "reading": "u#1 html=\"a\" tree=\"ab\"",
+      "reason": "the alphanumeric skeleton this check compares is the span's WHOLE raw text, with no notion of a `%%` comment inside it; now that the comment correctly stops at the span's own closer (this PR) rather than running past it, the comment's own characters are real bytes inside the node and count toward the skeleton even though they render as nothing. Excluding a comment's span from this comparison is a gap in the check itself, not a wrong tree."
+    },
+    "a-comment-inside-a-forced-span-or-the-combined-token-ends-at-its-closer-3": {
+      "reading": "strong#1 html=\"a\" tree=\"ab\", em#1 html=\"a\" tree=\"ab\"",
+      "reason": "the alphanumeric skeleton this check compares is the span's WHOLE raw text, with no notion of a `%%` comment inside it; now that the comment correctly stops at the span's own closer (this PR) rather than running past it, the comment's own characters are real bytes inside the node and count toward the skeleton even though they render as nothing. Excluding a comment's span from this comparison is a gap in the check itself, not a wrong tree."
+    },
+    "a-comment-inside-a-forced-span-or-the-combined-token-ends-at-its-closer-4": {
+      "reading": "strong#1 html=\"ab\" tree=\"acb\", em#1 html=\"ab\" tree=\"acb\"",
+      "reason": "the alphanumeric skeleton this check compares is the span's WHOLE raw text, with no notion of a `%%` comment inside it; now that the comment correctly stops at the span's own closer (this PR) rather than running past it, the comment's own characters are real bytes inside the node and count toward the skeleton even though they render as nothing. Excluding a comment's span from this comparison is a gap in the check itself, not a wrong tree."
+    },
+    "a-comment-inside-a-forced-span-or-the-combined-token-ends-at-its-closer": {
+      "reading": "strong#1 html=\"a\" tree=\"ab\"",
+      "reason": "the alphanumeric skeleton this check compares is the span's WHOLE raw text, with no notion of a `%%` comment inside it; now that the comment correctly stops at the span's own closer (this PR) rather than running past it, the comment's own characters are real bytes inside the node and count toward the skeleton even though they render as nothing. Excluding a comment's span from this comparison is a gap in the check itself, not a wrong tree."
+    }
+  },
   "lineTerminatorGaps": {
+    "a-delimiter-after-an-underscore-or-slash-opens-only-when-that-one-pairs": "the same pairing gap `inlineReadingGaps` already records for this document (`strong`/`em`/`u`/`s`/`mark` all open where the reference stays literal) also depends on which delimiter run the scanner's own lookahead crosses to find a closer; a lone CR moves that boundary differently than LF/CRLF do, so the CR spelling reads a different tree rather than the same wrong one."
   },
   "parseTimeouts": {}
 }

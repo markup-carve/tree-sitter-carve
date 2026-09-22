@@ -2515,13 +2515,14 @@ module.exports = grammar({
         alias($._comment_end_marker, "%"),
       ),
 
-    // Trailing inline comment: `text %% to end of line`.
-    // The `%%` marker comments out the rest of the physical line; it must be
-    // preceded by a space or tab (folded into the token, since tree-sitter has
-    // no lookbehind) so `a%%b` / `50%% off` stay literal, matching the runtime
-    // parsers. Does NOT consume the newline, so the line's structure and
-    // soft-break are preserved.
-    trailing_comment: (_) => token(seq(/[ \t]/, "%%", /[^\r\n]*/)),
+    // Trailing inline comment: `text %% to end of line` - EXTERNAL, declared
+    // in `externals` below rather than here. The `%%` marker comments out the
+    // rest of the physical line, preceded by a space or tab so `a%%b` / `50%%
+    // off` stay literal; it does NOT consume the newline, so the line's
+    // structure and soft-break are preserved. Also stops early at a forced
+    // span's or the combined token's own closer (CARVE-P9-042 SS21a) when one
+    // is open, which a fixed token regex cannot ask - see
+    // `innermost_comment_bound` / `parse_trailing_comment` in src/scanner.c.
     // IN A TABLE CELL THE COMMENT ENDS AT THE CELL'S PIPE. `| d %% tail | e |`
     // keeps both cells, `d` and `e`: spelled to the end of the line, the
     // comment took the row's closing pipes and the row came back as an ERROR
@@ -2943,5 +2944,12 @@ module.exports = grammar({
     // Zero width, at a one-cell row's closing `|`, when an inline span is
     // open and the next line is a `+` continuation row. See `_cell_inline`.
     $._table_row_continuation_seam,
+
+    // `text %% to end of line`. Appended last for the same index reason as
+    // the tokens above it, and external so it can stop at a forced span's or
+    // the combined token's own closer instead of the physical line's end -
+    // see the definition's own comment above and `parse_trailing_comment` in
+    // src/scanner.c.
+    $.trailing_comment,
   ],
 });

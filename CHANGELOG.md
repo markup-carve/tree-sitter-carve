@@ -6,6 +6,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- A `%%` comment inside a forced span (`{*...*}` and the rest of the braced
+  family) or the combined `/*...*/` token now ends at that construct's own
+  closer instead of running past it to the end of the line.
+
 ## [0.1.6] - 2026-09-22
 
 ### Added
