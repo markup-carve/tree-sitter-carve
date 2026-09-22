@@ -7197,7 +7197,7 @@
         },
         {
           "type": "SYMBOL",
-          "name": "_curly_bracket_span_mark_begin"
+          "name": "_attribute_mark_begin"
         },
         {
           "type": "CHOICE",
@@ -9187,10 +9187,6 @@
     [
       "span",
       "_note_symbol_fallback"
-    ],
-    [
-      "_curly_bracket_span_begin",
-      "_curly_bracket_span_fallback"
     ]
   ],
   "precedences": [],
@@ -9654,6 +9650,10 @@
     {
       "type": "SYMBOL",
       "name": "_bold_italic_star"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_attribute_mark_begin"
     }
   ],
   "inline": [],
