@@ -29,9 +29,9 @@ int main(void) {
   Block *last = array_pop(scanner->open_blocks);
   ts_free(last);
   unsigned length = tree_sitter_carve_external_scanner_serialize(scanner, buffer);
-  if (length != 776 || (uint8_t)buffer[10] != 255) {
+  if (length != 781 || (uint8_t)buffer[15] != 255) {
     fprintf(stderr, "255 blocks encoded as %u bytes with count %u\n", length,
-            (uint8_t)buffer[10]);
+            (uint8_t)buffer[15]);
     return 1;
   }
 

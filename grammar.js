@@ -117,6 +117,7 @@ function inlineElement($, options) {
           $._glued_symbol,
           // Text and the symbol fallback matches everything not matched elsewhere.
           notes ? $._symbol_fallback : $._note_symbol_fallback,
+          $._literal_run,
           $._text,
           // One literal `-` inside a braced delete, where the next is its
           // closer's. See `em_dash`.
@@ -2757,5 +2758,9 @@ module.exports = grammar({
     $._em_dash_in_delete,
     $._en_dash_in_delete,
     $._delete_dash,
+    // a run of text and bare delimiters that open and close nothing.
+    // The scanner reads it left to right, so it knows the character BEFORE each
+    // delimiter - the half of the word-boundary rule a token regex cannot say.
+    $._literal_run,
   ],
 });
