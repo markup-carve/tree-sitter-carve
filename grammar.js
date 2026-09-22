@@ -155,10 +155,11 @@ function symbolFallback($, options) {
   return choice(
     // Standalone emphasis and strong markers are required for backtracking
     "/",
-    // `/*` is a token in its own right, so a bare one needs its own
-    // standalone fallback the way `/` and `*` do - otherwise `/* x/`, where
-    // the whitespace check after `/*` fails, has no lexing left at all.
-    "/*",
+    // The bold-italic opener, whose `*` is external for the reason
+    // `bold_italic_begin` gives. A bare one needs its own standalone fallback
+    // the way `/` and `*` do - otherwise `/* x/`, where the whitespace check after `/*` fails, has
+    // no lexing left at all.
+    seq("/", $._non_whitespace_check, $._bold_italic_star),
     "*",
     "_",
     "~",
@@ -172,7 +173,7 @@ function symbolFallback($, options) {
     // unclosed bold-italic could not lose to emphasis at all: the parser
     // commits to `bold_italic_begin` and errors at the end of the line.
     seq(
-      seq("/*", $._non_whitespace_check),
+      seq("/", $._non_whitespace_check, $._bold_italic_star),
       choice($._bold_italic_mark_begin, $._in_fallback),
     ),
     // The BRACED opener needs a fallback branch of its own, exactly as `{*`
@@ -1848,7 +1849,14 @@ module.exports = grammar({
         field("content", alias($._inline_without_trailing_space, $.content)),
         field("end_marker", $.bold_italic_end),
       ),
-    bold_italic_begin: ($) => seq("/*", $._non_whitespace_check),
+    // THE OPENER IS EXTERNAL, so the scanner can decline it. `/**/` is an
+    // emphasis over two literal asterisks (spec fixture 130), and spelled as
+    // the internal token `"/*"` the opener is longer than the `/` an emphasis
+    // opens with: longest match takes both characters before any branch is
+    // scored, so that reading was never offered and the document built
+    // nothing. See `parse_bold_italic_star` in `src/scanner.c`.
+    bold_italic_begin: ($) =>
+      seq("/", $._non_whitespace_check, $._bold_italic_star),
 
     strong: ($) =>
       seq(
@@ -2777,5 +2785,8 @@ module.exports = grammar({
     // The scanner reads it left to right, so it knows the character BEFORE each
     // delimiter - the half of the word-boundary rule a token regex cannot say.
     $._literal_run,
+    // The `*` of a bold-italic opener, external so the scanner can decline it
+    // where no span can follow. See `parse_bold_italic_star`.
+    $._bold_italic_star,
   ],
 });

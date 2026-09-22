@@ -846,14 +846,6 @@
       "reading": "code html=0 tree=1",
       "reason": "the grammar builds an inline span the language keeps literal here"
     },
-    "bold-italic-delimiter-needs-content": {
-      "reading": "em html=1 tree=0",
-      "reason": "the language builds an inline span the grammar does not"
-    },
-    "bold-italic-delimiter-needs-content-2": {
-      "reading": "em html=1 tree=0",
-      "reason": "the language builds an inline span the grammar does not"
-    },
     "doubled-emphasis-delimiters": {
       "reading": "strong html=0 tree=2",
       "reason": "the grammar builds an inline span the language keeps literal here"

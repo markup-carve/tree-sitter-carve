@@ -208,6 +208,8 @@ typedef enum {
   // text and bare delimiters that open and close nothing, read in one
   // left-to-right pass so each delimiter knows the character before it.
   LITERAL_RUN,
+  // The `*` of a bold-italic opener. See `parse_bold_italic_star`.
+  BOLD_ITALIC_STAR,
 } TokenType;
 
 // The different blocks in Carve that we track,
@@ -7795,6 +7797,50 @@ static int parse_literal_run(Scanner *s, TSLexer *lexer,
   return 1;
 }
 
+/// The `*` of a bold-italic opener, declined where no span can follow it.
+///
+/// `/**/` is an EMPHASIS over two literal asterisks (spec fixture 130, and
+/// carve-js agrees), and an empty bold-italic is not a span. The opener's
+/// second character is external so that this call can decide it: spelled as
+/// the internal token `"/*"`, the opener is longer than the `/` an emphasis
+/// opens with, so longest match took both characters before any branch was
+/// scored and the emphasis reading was never offered.
+///
+/// Only the empty shape is declined. `/***/` has one asterisk of content
+/// (fixture 473) and `/*a*/` is untouched.
+///
+/// Declining costs an advance the lexer cannot take back, and the only reader
+/// that runs behind this one at that position is the opener's own
+/// non-whitespace check. It is unharmed: this declines only on `*` `*` `/`, so
+/// the character it then reads is the `/` of the closer, non-whitespace either
+/// way.
+static bool parse_bold_italic_star(Scanner *s, TSLexer *lexer) {
+  if (lexer->lookahead != '*') {
+    return false;
+  }
+  advance(s, lexer);
+  lexer->mark_end(lexer);
+  // MARKER REQUIRES CONTENT, and the content may not open on whitespace:
+  // `/* */` is an emphasis over `* *`, not a bold-italic (spec fixture 130-2).
+  switch (lexer->lookahead) {
+  case ' ':
+  case '\t':
+  case '\r':
+  case '\n':
+    return false;
+  default:
+    break;
+  }
+  if (lexer->lookahead == '*') {
+    advance(s, lexer);
+    if (lexer->lookahead == '/') {
+      return false;
+    }
+  }
+  lexer->result_symbol = BOLD_ITALIC_STAR;
+  return true;
+}
+
 static bool parse_span(Scanner *s, TSLexer *lexer, const bool *valid_symbols,
                        InlineType element) {
   TokenType begin_token = inline_begin_token(element);
@@ -8345,6 +8391,13 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
   }
   if (valid_symbols[SUBSTITUTION_END] &&
       parse_substitution_mark(s, lexer, '}', SUBSTITUTION_END)) {
+    return true;
+  }
+
+  // The bold-italic opener's `*`, BEFORE the zero-width checks and marks that
+  // share its position: both are zero-width, and either would win the lexing
+  // and take the reading with it.
+  if (valid_symbols[BOLD_ITALIC_STAR] && parse_bold_italic_star(s, lexer)) {
     return true;
   }
 

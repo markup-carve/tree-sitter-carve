@@ -2939,7 +2939,12 @@ A footnote definition needs an inline body on the marker line
       (footnote_marker_end))))
 
 ===============================================================================
-An empty bold-italic run is text, not an unterminated span
+An empty bold-italic run is an emphasis over its asterisks (#338)
+;; `/**/` renders `<em>**</em>` (spec fixture 130): an empty bold-italic is no
+;; span, and what is left is an emphasis over two literal asterisks. The
+;; opener's `*` is external so the scanner can decline it here - spelled as one
+;; `"/*"` token it is longer than the `/` an emphasis opens with, and longest
+;; match took the reading away before any branch was scored.
 ===============================================================================
 
 /**/
@@ -2947,10 +2952,17 @@ An empty bold-italic run is text, not an unterminated span
 -------------------------------------------------------------------------------
 
 (document
-  (paragraph))
+  (paragraph
+    (emphasis
+      begin_marker: (emphasis_begin)
+      content: (content)
+      end_marker: (emphasis_end))))
 
 ===============================================================================
-A bold-italic opener followed by whitespace is text
+A bold-italic opener followed by whitespace is an emphasis too (#338)
+;; `/* */` renders `<em>* *</em>` (fixture 130-2). The opener declines on the
+;; whitespace, which leaves the slash to open the emphasis it does in the
+;; language.
 ===============================================================================
 
 /* */
@@ -2958,7 +2970,11 @@ A bold-italic opener followed by whitespace is text
 -------------------------------------------------------------------------------
 
 (document
-  (paragraph))
+  (paragraph
+    (emphasis
+      begin_marker: (emphasis_begin)
+      content: (content)
+      end_marker: (emphasis_end))))
 
 ===============================================================================
 A bold-italic run with content still parses
