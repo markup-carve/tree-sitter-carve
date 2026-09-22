@@ -3821,3 +3821,33 @@ c
       end_marker: (verbatim_marker_end)))
   (comment_line)
   (paragraph))
+
+==================
+A strong run holding a link after an unclosed bracket forms both
+==================
+a [x *y [z](/u)* b
+
+---
+
+(document
+  (paragraph
+    (strong
+      begin_marker: (strong_begin)
+      content: (content
+        (inline_link
+          text: (link_text)
+          destination: (inline_link_destination)))
+      end_marker: (strong_end))))
+
+==================
+A strong closer inside link text does not close a run opened outside it
+==================
+a *[t [z]* w](/u)
+
+---
+
+(document
+  (paragraph
+    (inline_link
+      text: (link_text)
+      destination: (inline_link_destination))))
