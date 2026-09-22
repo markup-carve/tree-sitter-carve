@@ -20,6 +20,7 @@
     "test:corpus": "node scripts/coverage-matrix.mjs && node scripts/corpus-conformance.mjs",
     "test:fixture-bytes": "node scripts/fixture-bytes.mjs",
     "test:parser-warnings": "node scripts/parser-warnings.mjs",
+    "test:fence-closers": "node scripts/fence-closers.mjs",
     "format": "prettier --write grammar.js",
     "check-formatted": "prettier --check grammar.js",
     "build-wasm": "tree-sitter build --wasm",
