@@ -217,6 +217,9 @@ typedef enum {
   // A comment-only line read across an unclosed run inside a line block. See
   // `verbatim_comment_only_line`.
   VERBATIM_COMMENT_LINE,
+  // Zero width, at a one-cell row's closing `|`, when the next line is a `+`
+  // continuation row. See `parse_table_row_continuation_seam`.
+  TABLE_ROW_CONTINUATION_SEAM,
 } TokenType;
 
 // The different blocks in Carve that we track,
@@ -295,6 +298,14 @@ typedef struct {
 /// A code span read across lines inside one strips a comment-only line rather
 /// than reading it as literal text (tree-sitter-carve#320 row 6).
 static const uint8_t BLOCK_FLAG_LINE_BLOCK = 1 << 0;
+// TABLE_ROW only: this row has exactly ONE cell and the line right after
+// it is a well-shaped `+` continuation row. Computed once, safely, while
+// scan_table_row already reads that line to decide the row's own kind -
+// re-deriving it later at the row's closing `|` would mean a reader that
+// might advance and then have to decline, corrupting the shared lexer
+// position for whatever reads that `|` next. See
+// `parse_table_row_continuation_seam` (tree-sitter-carve#437).
+static const uint8_t BLOCK_FLAG_TABLE_ROW_CONTINUES = 1 << 1;
 
 typedef enum {
   VERBATIM,
@@ -2039,8 +2050,13 @@ static bool parse_verbatim_content(Scanner *s, TSLexer *lexer) {
           break;
         }
         // Once only: the line after the continuation row was never read, and
-        // the mark cannot move back to this pipe after it has passed it.
+        // the mark cannot move back to this pipe after it has passed it. The
+        // row-level flag is cleared here too - it is the same one-time
+        // permission `parse_table_row_continuation_seam` reads for a plain
+        // inline join (#437), and this run has already spent it, so the
+        // row's TRUE final `|` must not be offered a second continuation.
         s->state &= ~STATE_TABLE_CONTINUATION_NEXT;
+        row->flags &= (uint8_t)~BLOCK_FLAG_TABLE_ROW_CONTINUES;
         consume_line_end(s, lexer);
         advance(s, lexer);
         while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
@@ -5618,7 +5634,8 @@ static bool scan_separator_row(Scanner *s, TSLexer *lexer) {
   return at_line_end(lexer);
 }
 
-static bool scan_table_row(Scanner *s, TSLexer *lexer, TokenType *row_type) {
+static bool scan_table_row(Scanner *s, TSLexer *lexer, TokenType *row_type,
+                           bool *one_cell_continues) {
   if (s->state & STATE_TABLE_SEPARATOR_NEXT) {
     s->state &= ~STATE_TABLE_SEPARATOR_NEXT;
     *row_type = TABLE_SEPARATOR_BEGIN;
@@ -5725,14 +5742,19 @@ static bool scan_table_row(Scanner *s, TSLexer *lexer, TokenType *row_type) {
     // this is a header, otherwise it's a regular row.
     // We also need to check for any block quote markers on that row.
     bool newline = false;
-    scan_block_quote_markers(s, lexer, &newline);
+    uint8_t next_line_quotes = scan_block_quote_markers(s, lexer, &newline);
+    // A continuation line at the WRONG quote depth belongs to nothing here -
+    // `> | a |` under `+ b |` with no `>` is the row ending normally, then an
+    // ordinary paragraph, not a continuation (tree-sitter-carve#437).
+    bool quote_depth_matches = next_line_quotes == count_blocks(s, BLOCK_QUOTE);
 
     // A `+` line is never a separator row, and both readings start here and
     // consume, so the cheaper question is asked first.
-    if (!newline && lexer->lookahead == '+') {
+    if (!newline && quote_depth_matches && lexer->lookahead == '+') {
       *row_type = TABLE_ROW_BEGIN;
       if (scan_continuation_row(s, lexer)) {
         s->state |= STATE_TABLE_CONTINUATION_NEXT;
+        *one_cell_continues = cell_count == 1;
       }
     } else if (!newline && scan_separator_row(s, lexer)) {
       s->state |= STATE_TABLE_SEPARATOR_NEXT;
@@ -5764,11 +5786,15 @@ static bool parse_table_begin(Scanner *s, TSLexer *lexer,
   mark_end(s, lexer);
 
   TokenType row_type;
-  if (!scan_table_row(s, lexer, &row_type)) {
+  bool one_cell_continues = false;
+  if (!scan_table_row(s, lexer, &row_type, &one_cell_continues)) {
     return false;
   }
 
   push_block(s, TABLE_ROW, 0);
+  if (one_cell_continues) {
+    peek_block(s)->flags |= BLOCK_FLAG_TABLE_ROW_CONTINUES;
+  }
   lexer->result_symbol = row_type;
   return true;
 }
@@ -5883,6 +5909,68 @@ static bool parse_table_cell_end(Scanner *s, TSLexer *lexer) {
   advance(s, lexer); // Consumes the `|`
   lexer->result_symbol = TABLE_CELL_END;
   mark_end(s, lexer);
+  return true;
+}
+
+/// Does a ONE-CELL row's inline content continue past this closing `|` into a
+/// `+` continuation row?
+///
+/// The reference always joins a one-cell row with its continuation before
+/// reading inline markup (spec corpus 354), so this is UNCONDITIONAL: it does
+/// not ask whether a span happens to be open.
+///
+/// The decision is READ, never re-derived here: `BLOCK_FLAG_TABLE_ROW_
+/// CONTINUES` was set, safely, while `scan_table_row` looked at this exact
+/// line and the one below it at the row's OPENING token - the only place a
+/// multi-line lookahead can fail without consequence, because that caller
+/// commits to a token from an EARLIER mark regardless of what the lookahead
+/// finds. This function cannot do the same lookahead itself: once it calls
+/// `advance`, tree-sitter's lexer does not rewind on a later `return false`,
+/// so any reader that might still decline must not have consumed anything
+/// yet. Once the flag and the cell count confirm the row's shape, this
+/// function is fully committed and every path below returns true.
+///
+/// `row->data == 0` doubles as "nothing closed yet" (so this is the
+/// flagged row's only cell) and, combined with the flag, as the guard
+/// against a multi-cell row whose LATER cell happens to reach a line-ending
+/// `|` too - the flag is set only when `scan_table_row` counted exactly one
+/// cell, so a second cell closing here never carries the flag.
+///
+/// The token ends right after the marker's mandatory space and any padding
+/// after it, mirroring what `parse_plus_line` treats as pure indentation
+/// ahead of a `table_continuation_row`'s own content. Everything past that is
+/// left for ordinary `_cell_inline` tokens to read as this SAME cell's
+/// content, closing eventually at that line's own `|` (tree-sitter-carve#437).
+static bool parse_table_row_continuation_seam(Scanner *s, TSLexer *lexer,
+                                              const bool *valid_symbols) {
+  if (!valid_symbols[TABLE_ROW_CONTINUATION_SEAM] ||
+      lexer->lookahead != '|') {
+    return false;
+  }
+  Block *row = find_block(s, TABLE_ROW);
+  if (!row || row->data != 0 ||
+      (row->flags & BLOCK_FLAG_TABLE_ROW_CONTINUES) == 0) {
+    return false;
+  }
+
+  // Committed: the row's shape (one cell, a continuation row follows) was
+  // already confirmed at the row's opening token.
+  advance(s, lexer); // The row's own closing `|`.
+  consume_whitespace(s, lexer);
+  consume_line_end(s, lexer);
+  advance(s, lexer); // The continuation row's `+`.
+  advance(s, lexer); // Its one mandatory space.
+  while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+    advance(s, lexer);
+  }
+  // The flag does not carry forward past this ONE continuation line - a
+  // second stacked `+` line, if there even is one, gets its own answer from
+  // whatever row-open-time check covers it (none does today, so a run
+  // spanning two continuation rows stops at the first one's pipe, matching
+  // `parse_verbatim_content`'s same limit for a code run - #437, #320).
+  row->flags &= (uint8_t)~BLOCK_FLAG_TABLE_ROW_CONTINUES;
+  mark_end(s, lexer);
+  lexer->result_symbol = TABLE_ROW_CONTINUATION_SEAM;
   return true;
 }
 
@@ -7448,6 +7536,41 @@ static bool kind_open_in_scope(Scanner *s, InlineType type) {
 /// wherever the first stopped.
 ///
 /// Asked from the opener, reading ahead only.
+/// Does this row's own line end, right here, give way to a ONE-CELL row's
+/// `+` continuation line? A pure lookahead - `mark_span_begin` has already
+/// pinned this call's token end before running it, so whatever this consumes
+/// while looking is thrown away regardless of the answer (tree-sitter-
+/// carve#437). Mirrors `parse_table_row_continuation_seam`'s own shape check,
+/// but never touches the flag that function consumes for real.
+static bool continuation_row_ahead(Scanner *s, TSLexer *lexer) {
+  Block *row = find_block(s, TABLE_ROW);
+  if (!row || row->data != 0 ||
+      (row->flags & BLOCK_FLAG_TABLE_ROW_CONTINUES) == 0) {
+    return false;
+  }
+  consume_whitespace(s, lexer);
+  if (!at_line_end(lexer)) {
+    return false;
+  }
+  consume_line_end(s, lexer);
+  // A row inside a quote carries the SAME prefix on its continuation line
+  // (`> + c |`), exactly as `scan_table_row` reads it at the row's own open.
+  bool ignored_newline = false;
+  scan_block_quote_markers(s, lexer, &ignored_newline);
+  if (lexer->lookahead != '+') {
+    return false;
+  }
+  advance(s, lexer);
+  if (lexer->lookahead != ' ') {
+    return false;
+  }
+  advance(s, lexer);
+  while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+    advance(s, lexer);
+  }
+  return true;
+}
+
 static bool bare_closer_in_scope(Scanner *s, TSLexer *lexer, char bare,
                                  char braced) {
   bool in_row = find_block(s, TABLE_ROW) != NULL;
@@ -7491,6 +7614,12 @@ static bool bare_closer_in_scope(Scanner *s, TSLexer *lexer, char bare,
       return true;
     }
     if (in_row && c == '|') {
+      // A one-cell row's `+` continuation row is this row's OWN content, not
+      // past its scope, so a closer there counts too (tree-sitter-carve#437).
+      advance(s, lexer);
+      if (continuation_row_ahead(s, lexer)) {
+        continue;
+      }
       return false;
     }
     if (c == braced) {
@@ -7514,13 +7643,17 @@ static bool braced_closer_ahead(Scanner *s, TSLexer *lexer, char marker) {
     }
   }
   // A span does not outlive its table row, and neither does a verbatim run
-  // inside one: the row's closing pipe ends it.
+  // inside one - EXCEPT a one-cell row's own `+` continuation, which is this
+  // row's own content rather than past its scope (tree-sitter-carve#437).
   bool in_row = find_block(s, TABLE_ROW) != NULL;
   char nested[16];
   uint8_t depth = 0;
   while (!lexer->eof(lexer)) {
     if (at_line_end(lexer)) {
       if (in_row) {
+        if (continuation_row_ahead(s, lexer)) {
+          continue;
+        }
         return false;
       }
       if (lexer->lookahead == '\r') {
@@ -9891,6 +10024,9 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     return true;
   }
 
+  if (parse_table_row_continuation_seam(s, lexer, valid_symbols)) {
+    return true;
+  }
   if (valid_symbols[TABLE_CELL_END] && parse_table_cell_end(s, lexer)) {
     return true;
   }
@@ -10262,6 +10398,8 @@ static char *token_type_s(TokenType t) {
     return "VERBATIM_CONTINUE";
   case VERBATIM_COMMENT_LINE:
     return "VERBATIM_COMMENT_LINE";
+  case TABLE_ROW_CONTINUATION_SEAM:
+    return "TABLE_ROW_CONTINUATION_SEAM";
   case VERBATIM_CONTENT:
     return "VERBATIM_CONTENT";
 

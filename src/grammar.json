@@ -2083,6 +2083,10 @@
             {
               "type": "SYMBOL",
               "name": "_whitespace1"
+            },
+            {
+              "type": "SYMBOL",
+              "name": "_table_row_continuation_seam"
             }
           ]
         }
@@ -4796,6 +4800,10 @@
             {
               "type": "SYMBOL",
               "name": "_whitespace1"
+            },
+            {
+              "type": "SYMBOL",
+              "name": "_table_row_continuation_seam"
             }
           ]
         }
@@ -4843,6 +4851,10 @@
                 {
                   "type": "SYMBOL",
                   "name": "_whitespace1"
+                },
+                {
+                  "type": "SYMBOL",
+                  "name": "_table_row_continuation_seam"
                 }
               ]
             }
@@ -9731,6 +9743,10 @@
     {
       "type": "SYMBOL",
       "name": "_verbatim_comment_line"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_table_row_continuation_seam"
     }
   ],
   "inline": [],
