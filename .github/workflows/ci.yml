@@ -25,6 +25,11 @@ jobs:
         run: npm run generate
       - name: Check generated files are up to date
         run: git diff --exit-code -- src/parser.c src/grammar.json src/node-types.json
+      # Dynamic precedence is int16_t in the generated tables, so a value past
+      # 32767 wraps without an error. The compiler's -Woverflow is the only
+      # signal, and editors compile this file on users' machines (#385).
+      - name: Generated tables hold every value grammar.js asks for
+        run: npm run test:parser-warnings
       - name: Run hand-written corpus tests
         run: npm test
       - name: Fixtures keep the bytes their cases depend on

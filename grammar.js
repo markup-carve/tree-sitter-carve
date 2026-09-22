@@ -121,10 +121,12 @@ function inlineElement($, options) {
           prec.dynamic(ELEMENT_PRECEDENCE, $._image),
           prec.dynamic(ELEMENT_PRECEDENCE, $._link),
           prec.dynamic(ELEMENT_PRECEDENCE, $.extension_inline),
-          // Dynamic precedence is additive on the shredded mention/tag parse.
-          // Keep the directive margin above any realistically parseable source
-          // while retaining named child nodes (a lexical token cannot do that).
-          prec.dynamic(10_000 * ELEMENT_PRECEDENCE, $.include_directive),
+          // Dynamic precedence is additive on the shredded mention/tag parse,
+          // so this outranks up to 299 competing elements in one directive
+          // while keeping named children (a lexical token cannot do that).
+          // tree-sitter stores it as int16_t: 327 * ELEMENT_PRECEDENCE is the
+          // ceiling, and scripts/parser-warnings.mjs fails the build past it.
+          prec.dynamic(300 * ELEMENT_PRECEDENCE, $.include_directive),
           prec.dynamic(
             ELEMENT_PRECEDENCE,
             seq($.mention, repeat($._glued_marker)),
