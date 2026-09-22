@@ -5451,11 +5451,15 @@
       "members": [
         {
           "type": "STRING",
-          "value": "/*"
+          "value": "/"
         },
         {
           "type": "SYMBOL",
           "name": "_non_whitespace_check"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "_bold_italic_star"
         }
       ]
     },
@@ -7381,8 +7385,21 @@
           "value": "/"
         },
         {
-          "type": "STRING",
-          "value": "/*"
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "STRING",
+              "value": "/"
+            },
+            {
+              "type": "SYMBOL",
+              "name": "_non_whitespace_check"
+            },
+            {
+              "type": "SYMBOL",
+              "name": "_bold_italic_star"
+            }
+          ]
         },
         {
           "type": "STRING",
@@ -7412,11 +7429,15 @@
               "members": [
                 {
                   "type": "STRING",
-                  "value": "/*"
+                  "value": "/"
                 },
                 {
                   "type": "SYMBOL",
                   "name": "_non_whitespace_check"
+                },
+                {
+                  "type": "SYMBOL",
+                  "name": "_bold_italic_star"
                 }
               ]
             },
@@ -7887,8 +7908,21 @@
           "value": "/"
         },
         {
-          "type": "STRING",
-          "value": "/*"
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "STRING",
+              "value": "/"
+            },
+            {
+              "type": "SYMBOL",
+              "name": "_non_whitespace_check"
+            },
+            {
+              "type": "SYMBOL",
+              "name": "_bold_italic_star"
+            }
+          ]
         },
         {
           "type": "STRING",
@@ -7918,11 +7952,15 @@
               "members": [
                 {
                   "type": "STRING",
-                  "value": "/*"
+                  "value": "/"
                 },
                 {
                   "type": "SYMBOL",
                   "name": "_non_whitespace_check"
+                },
+                {
+                  "type": "SYMBOL",
+                  "name": "_bold_italic_star"
                 }
               ]
             },
@@ -9016,6 +9054,10 @@
     {
       "type": "SYMBOL",
       "name": "_literal_run"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_bold_italic_star"
     }
   ],
   "inline": [],
