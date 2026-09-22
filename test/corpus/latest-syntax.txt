@@ -2974,3 +2974,85 @@ tail
           (class)
           (identifier)))))
   (paragraph))
+
+==================
+A blank line inside a continuation-attached fence is fence body
+==================
+- x
++
+```
+a
+
+b
+```
+
+z
+
+---
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)
+        (list_continuation_marker)
+        (code_block
+          (code_block_marker_begin)
+          code: (code)
+          (code_block_marker_end)))))
+  (paragraph))
+
+==================
+A blank line inside a continuation-attached fence in a description body is fence body
+==================
+:: t
+:  d
++
+```
+a
+
+b
+```
+
+---
+
+(document
+  (definition_list
+    (list_item
+      marker: (list_marker_definition)
+      term: (term))
+    (list_item
+      marker: (list_marker_description)
+      definition: (definition)
+      (list_continuation_marker)
+      (code_block
+        (code_block_marker_begin)
+        code: (code)
+        (code_block_marker_end)))))
+
+==================
+A blank line after a continuation-attached fence ends the attachment
+==================
+- x
++
+```
+a
+```
+
+z
+
+---
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)
+        (list_continuation_marker)
+        (code_block
+          (code_block_marker_begin)
+          code: (code)
+          (code_block_marker_end)))))
+  (paragraph))

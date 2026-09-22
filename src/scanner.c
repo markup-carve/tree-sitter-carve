@@ -8849,8 +8849,12 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     //
     // Clearing here rather than in `remove_block` covers every attached block
     // kind at once, and leaves the multi-row case alone: rows of one table
-    // carry no blank line between them.
-    s->state &= ~STATE_LIST_CONTINUATION;
+    // carry no blank line between them. A blank line inside an attached open
+    // FENCE is fence body, not the end of the block, so the flag stays.
+    Block *open_top = peek_block(s);
+    if (!open_top || open_top->type != CODE_BLOCK) {
+      s->state &= ~STATE_LIST_CONTINUATION;
+    }
   }
 
 #ifdef DEBUG
