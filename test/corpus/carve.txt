@@ -6557,9 +6557,10 @@ A label that is not plain text is left reading as it did (tree-sitter-carve#265)
 ;; the inline grammar, so the scanner refuses only a label in whose text up to
 ;; the carriage return no character is part of an inline delimiter. Everything
 ;; richer is accepted, and this label - which holds a verbatim, and closes on
-;; its own line anyway - still resolves against its definition. A DEFINITION's
-;; label is a character run (`reference_label` in resources/grammar.ebnf), so
-;; the same text builds no verbatim on the definition line.
+;; its own line anyway - is read as it was. The DEFINITION line is not one: a
+;; `reference_label` ends at the first `]` (resources/grammar.ebnf), so
+;; `[a `]` c]: /u` defines nothing and is the ordinary paragraph carve-js
+;; renders.
 ===============================================================================
 [t][a `]` c]
 
@@ -6576,9 +6577,11 @@ A label that is not plain text is left reading as it did (tree-sitter-carve#265)
           begin_marker: (verbatim_marker_begin)
           content: (content)
           end_marker: (verbatim_marker_end)))))
-  (link_reference_definition
-    label: (link_label)
-    destination: (link_destination)))
+  (paragraph
+    (verbatim
+      begin_marker: (verbatim_marker_begin)
+      content: (content)
+      end_marker: (verbatim_marker_end))))
 
 ===============================================================================
 A destination whose nested pair closes on the next line is a link in every spelling (tree-sitter-carve#265)

@@ -1281,22 +1281,14 @@ module.exports = grammar({
         "[",
         // `reference_definition = '[', reference_label, ']', ...` and
         // `reference_label = (character - ']' - '@'), {character - ']'}`
-        // (resources/grammar.ebnf): the label is a CHARACTER RUN, not inline
-        // content, so `[*bold*]: /x` defines a label spelled `*bold*` and
-        // builds no emphasis on a line that renders nothing. The subtracted
-        // `@` keeps `[@key]:` for `citation_definition`.
-        field(
-          "label",
-          alias(
-            token(
-              seq(
-                /[^\]`\\@\r\n]|`+[^`\r\n]*`+|\\[^\r\n]/,
-                repeat(/[^\]`\\\r\n]|`+[^`\r\n]*`+|\\[^\r\n]/),
-              ),
-            ),
-            $.link_label,
-          ),
-        ),
+        // (resources/grammar.ebnf): a CHARACTER RUN that ends at the FIRST
+        // `]`, with no escape and no verbatim exception, so `[*bold*]: /x`
+        // defines a label spelled `*bold*` and builds no emphasis on a line
+        // that renders nothing. `scan_ref_def` in `src/scanner.c` reads the
+        // same run; where the two disagreed about where the label ends, the
+        // line came back as an ERROR. The subtracted `@` keeps `[@key]:` for
+        // `citation_definition`.
+        field("label", alias(token(/[^\]@\r\n][^\]\r\n]*/), $.link_label)),
         $._link_ref_def_label_end,
         "]",
         ":",
