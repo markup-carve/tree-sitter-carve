@@ -3341,6 +3341,24 @@ static void set_content_col(Scanner *s, uint8_t col) {
   }
 }
 
+/// Record where THIS item's content starts, replacing the list's value.
+///
+/// A definition list holds two kinds of item with markers of different widths:
+/// a term (`:: `, body at 3) and a description (`: `, body at 2). The list block
+/// is opened by whichever comes first and `set_content_col` keeps that first
+/// value, so every later item was measured against a column that is not its
+/// own - a definition at a description's column 2 read as short of the term's 3
+/// and was refused. Each definition-list marker therefore records its own
+/// column. `set_content_col`'s fill-once rule is still right for bullet and
+/// ordered lists, where it stops a lazily indented later item moving the
+/// column; a term or description is never lazy, it is a marker.
+static void set_item_content_col(Scanner *s, uint8_t col) {
+  Block *top = peek_block(s);
+  if (top) {
+    top->content_col = col;
+  }
+}
+
 static void ensure_list_open(Scanner *s, BlockType type, uint8_t indent) {
   Block *top = peek_block(s);
   // Found a list with the same type and indent, we should continue it.
@@ -4375,7 +4393,7 @@ static bool parse_colon(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       // markers do. Without it the block reads column 0, and
       // `at_block_opener_margin` - which only answers for a list whose
       // `content_col` is set - has no opinion about a block opener in the body.
-      set_content_col(s, (uint8_t)line_column(s, lexer));
+      set_item_content_col(s, (uint8_t)line_column(s, lexer));
       s->marker_end_col = (uint8_t)line_column(s, lexer);
       lexer->result_symbol = LIST_MARKER_DEFINITION;
       return true;
@@ -4409,7 +4427,7 @@ static bool parse_colon(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     ensure_list_open(s, LIST_DEFINITION, s->indent + 1);
     // The full space run above is marker padding, so the lexer sits at the
     // body's authored content column. See the term branch.
-    set_content_col(s, (uint8_t)line_column(s, lexer));
+    set_item_content_col(s, (uint8_t)line_column(s, lexer));
     s->marker_end_col = (uint8_t)line_column(s, lexer);
     lexer->result_symbol = LIST_MARKER_DESCRIPTION;
     return true;

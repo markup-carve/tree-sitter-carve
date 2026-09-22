@@ -1021,3 +1021,71 @@ A single marker at column 0 is still an opener after the handback
       begin_marker: (strong_begin)
       content: (content)
       end_marker: (strong_end))))
+
+==================
+A definition at a description's column opens, although the term came first
+;; A definition list's block is opened by its first item and used to keep that
+;; item's content column for every later one. The term `:: ` puts it at 3, so
+;; a description's body at 2 read as short of the margin and a definition there
+;; was refused. Each term and description now records its own column. A blank
+;; line precedes the definition so that no paragraph has to be interrupted,
+;; which is a separate question.
+==================
+
+:: u
+: d
+
+  [r]: /url
+
+See [r][].
+
+---
+
+(document
+  (definition_list
+    (list_item
+      marker: (list_marker_definition)
+      term: (term))
+    (list_item
+      marker: (list_marker_description)
+      definition: (definition)
+      (link_reference_definition
+        label: (link_label)
+        destination: (link_destination))))
+  (paragraph
+    (collapsed_reference_link
+      text: (link_text))))
+
+==================
+A footnote definition at a description's column opens, although the term came first
+;; The same margin, reached by a footnote definition instead.
+==================
+
+:: u
+: d
+
+  [^f]: note
+
+See [^f].
+
+---
+
+(document
+  (definition_list
+    (list_item
+      marker: (list_marker_definition)
+      term: (term))
+    (list_item
+      marker: (list_marker_description)
+      definition: (definition)
+      (footnote
+        (footnote_marker_begin)
+        label: (reference_label)
+        (footnote_marker_end)
+        content: (footnote_content
+          (paragraph)))))
+  (paragraph
+    (footnote_reference
+      (footnote_marker_begin)
+      (reference_label)
+      (footnote_marker_end))))
