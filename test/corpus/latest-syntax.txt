@@ -1089,3 +1089,93 @@ See [^f].
       (footnote_marker_begin)
       (reference_label)
       (footnote_marker_end))))
+
+==================
+A reference definition interrupts a paragraph at the document margin
+==================
+d
+[r]: /url
+
+See [r][].
+
+---
+
+(document
+  (paragraph)
+  (link_reference_definition
+    label: (link_label)
+    destination: (link_destination))
+  (paragraph
+    (collapsed_reference_link
+      text: (link_text))))
+
+==================
+A reference definition between two item content columns still interrupts
+==================
+- - x
+   [r]: /url
+
+See [r][].
+
+---
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (list
+          (list_item
+            marker: (list_marker_dash)
+            content: (list_item_content
+              (paragraph)
+              (link_reference_definition
+                label: (link_label)
+                destination: (link_destination))))))))
+  (paragraph
+    (collapsed_reference_link
+      text: (link_text))))
+
+==================
+A footnote definition interrupts a paragraph on a marked quote line
+==================
+> text
+> [^a]: b
+
+See [^a].
+
+---
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (paragraph)
+      (block_quote_marker)
+      (footnote
+        (footnote_marker_begin)
+        label: (reference_label)
+        (footnote_marker_end)
+        content: (footnote_content
+          (paragraph)))))
+  (paragraph
+    (footnote_reference
+      (footnote_marker_begin)
+      (reference_label)
+      (footnote_marker_end))))
+
+==================
+A bracket line with trailing junk does not interrupt a paragraph
+==================
+d
+[x]: /u trailing junk
+
+See [x][].
+
+---
+
+(document
+  (paragraph)
+  (paragraph
+    (collapsed_reference_link
+      text: (link_text))))
