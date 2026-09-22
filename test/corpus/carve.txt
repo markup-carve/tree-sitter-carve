@@ -7807,3 +7807,87 @@ x a/*y*/b
       begin_marker: (bold_italic_begin)
       content: (content)
       end_marker: (bold_italic_end))))
+
+===============================================================================
+A balanced bracket pair inside link text is literal (#422)
+===============================================================================
+a [t[z]](/u) b
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (inline_link
+      text: (link_text)
+      destination: (inline_link_destination))))
+
+===============================================================================
+A balanced bracket pair inside image alt text is literal (#422)
+===============================================================================
+a ![t[z]](/i.png) b
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (inline_image
+      description: (image_description)
+      destination: (inline_link_destination))))
+
+===============================================================================
+A balanced bracket pair inside link text keeps its inline content (#422)
+===============================================================================
+a [t[*z*]](/u) b
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (inline_link
+      text: (link_text
+        (strong
+          begin_marker: (strong_begin)
+          content: (content)
+          end_marker: (strong_end)))
+      destination: (inline_link_destination))))
+
+===============================================================================
+A balanced bracket pair inside a span is literal (#422)
+===============================================================================
+a [x [y] z]{.c} b
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (span
+      content: (content)
+      attribute: (inline_attribute
+        (args
+          (class))))))
+
+===============================================================================
+An unbalanced inner bracket leaves the inner link (#422)
+===============================================================================
+a [t[z](/u) b
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (inline_link
+      text: (link_text)
+      destination: (inline_link_destination))))
+
+===============================================================================
+An inner link is a competing opener for an unclosed bracket (#422)
+===============================================================================
+a [a [b c](/u) d
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (inline_link
+      text: (link_text)
+      destination: (inline_link_destination))))
