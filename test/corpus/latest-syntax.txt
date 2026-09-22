@@ -1557,3 +1557,193 @@ A directive of 200 parts still outranks their shredded reading (tree-sitter-carv
       section: (include_section)
       section: (include_section)
       (include_close))))
+
+==================
+A heading on a quoted line at an item's content column stays in the item
+==================
+> - a
+>   # H
+
+---
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (paragraph)
+            (block_quote_marker)
+            (heading
+              marker: (marker)
+              content: (content))))))))
+
+==================
+A definition on a quoted line at an item's content column stays in the item
+==================
+> - a
+>   [r]: /url
+
+See [r][].
+
+---
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (paragraph)
+            (block_quote_marker)
+            (link_reference_definition
+              label: (link_label)
+              destination: (link_destination)))))))
+  (paragraph
+    (collapsed_reference_link
+      text: (link_text))))
+
+==================
+A definition on a quoted line at a nested item's content column stays in the nested item
+==================
+> - - x
+>     [r]: /url
+
+See [r][].
+
+---
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (list
+              (list_item
+                marker: (list_marker_dash)
+                content: (list_item_content
+                  (paragraph)
+                  (block_quote_marker)
+                  (link_reference_definition
+                    label: (link_label)
+                    destination: (link_destination))))))))))
+  (paragraph
+    (collapsed_reference_link
+      text: (link_text))))
+
+==================
+A definition on a quoted line at the outer item's content column leaves the nested item
+==================
+> - - x
+>   [r]: /url
+
+See [r][].
+
+---
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (list
+              (list_item
+                marker: (list_marker_dash)
+                content: (list_item_content
+                  (paragraph))))
+            (block_quote_marker)
+            (link_reference_definition
+              label: (link_label)
+              destination: (link_destination)))))))
+  (paragraph
+    (collapsed_reference_link
+      text: (link_text))))
+
+==================
+A definition behind an alternating prefix stays in the innermost item
+==================
+- > - - x
+  >     [r]: /url
+
+See [r][].
+
+---
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (block_quote
+          (block_quote_marker)
+          content: (content
+            (list
+              (list_item
+                marker: (list_marker_dash)
+                content: (list_item_content
+                  (list
+                    (list_item
+                      marker: (list_marker_dash)
+                      content: (list_item_content
+                        (paragraph)
+                        (block_quote_marker)
+                        (link_reference_definition
+                          label: (link_label)
+                          destination: (link_destination)))))))))))))
+  (paragraph
+    (collapsed_reference_link
+      text: (link_text))))
+
+==================
+A paragraph after a quoted blank line at a nested item's column stays in the nested item
+==================
+> - - x
+>
+>     y
+
+---
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (list
+              (list_item
+                marker: (list_marker_dash)
+                content: (list_item_content
+                  (paragraph)
+                  (block_quote_marker)
+                  (paragraph))))))))))
+
+==================
+A heading one column short of a quoted item's content column is item text
+==================
+> - a
+>  # H
+
+---
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (paragraph
+              (block_quote_marker))))))))

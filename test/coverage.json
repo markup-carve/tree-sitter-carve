@@ -557,23 +557,7 @@
   },
   "invisibleOverAcceptance": {},
   "invisibleUnderAcceptance": {
-    "a-definition-inside-a-container-is-collected-at-that-container-s-content-column": {
-      "definitions": "[r]: /u",
-      "reason": "ref:reference-definition-absorbed"
-    },
-    "a-definition-behind-an-alternating-container-prefix-registers-at-the-innermost-content-column-4": {
-      "definitions": "[r]: /url",
-      "reason": "ref:reference-definition-absorbed"
-    },
-    "a-definition-behind-an-alternating-container-prefix-registers-at-the-innermost-content-column": {
-      "definitions": "[r]: /url",
-      "reason": "ref:reference-definition-absorbed"
-    },
     "a-quote-is-reached-by-its-marker-and-a-column-never-reaches-into-one-2": {
-      "definitions": "[r]: /url",
-      "reason": "ref:reference-definition-absorbed"
-    },
-    "a-quote-is-reached-by-its-marker-and-a-column-never-reaches-into-one-4": {
       "definitions": "[r]: /url",
       "reason": "ref:reference-definition-absorbed"
     },
