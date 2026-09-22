@@ -1321,7 +1321,7 @@ module.exports = grammar({
         seq(
           field("math_marker", alias("$$", $.math_marker)),
           field("begin_marker", alias($._verbatim_begin, $.math_marker_begin)),
-          field("content", alias($._verbatim_content, $.content)),
+          field("content", alias($._verbatim_body, $.content)),
           field("end_marker", alias($._verbatim_end, $.math_marker_end)),
           $._newline,
         ),
@@ -2497,7 +2497,7 @@ module.exports = grammar({
           "begin_marker",
           alias($._verbatim_begin, $.raw_inline_marker_begin),
         ),
-        field("content", alias($._verbatim_content, $.content)),
+        field("content", alias($._verbatim_body, $.content)),
         field("end_marker", alias($._verbatim_end, $.raw_inline_marker_end)),
         field("attribute", $.raw_inline_attribute),
       ),
@@ -2507,7 +2507,7 @@ module.exports = grammar({
       seq(
         field("math_marker", alias(choice("$$", "$"), $.math_marker)),
         field("begin_marker", alias($._verbatim_begin, $.math_marker_begin)),
-        field("content", alias($._verbatim_content, $.content)),
+        field("content", alias($._verbatim_body, $.content)),
         field("end_marker", alias($._verbatim_end, $.math_marker_end)),
       ),
     // Inline literal: a `!` prefix on a verbatim span (`` !`…` ``). Structurally
@@ -2519,7 +2519,7 @@ module.exports = grammar({
       seq(
         field("marker", alias("!", $.literal_marker)),
         field("open", alias($._verbatim_begin, $.literal_marker_begin)),
-        field("content", alias($._verbatim_content, $.content)),
+        field("content", alias($._verbatim_body, $.content)),
         field("close", alias($._verbatim_end, $.literal_marker_end)),
       ),
     verbatim: ($) =>
@@ -2528,8 +2528,23 @@ module.exports = grammar({
           "begin_marker",
           alias($._verbatim_begin, $.verbatim_marker_begin),
         ),
-        field("content", alias($._verbatim_content, $.content)),
+        field("content", alias($._verbatim_body, $.content)),
         field("end_marker", alias($._verbatim_end, $.verbatim_marker_end)),
+      ),
+
+    // AN UNCLOSED RUN IS READ ONE LINE AT A TIME. Its content used to be a
+    // single token that swallowed every following line up to the paragraph's
+    // end, which left the scanner no position to decide from: a fence below
+    // the run interrupts the paragraph only when a closer lies ahead of it,
+    // the lookahead that answers that reads to the end of the document, and
+    // the external lexer cannot rewind (tree-sitter-carve#427). With a token
+    // per line the decision is taken between them, where reading ahead costs
+    // nothing: `_verbatim_continue` is the scanner saying the next line is
+    // still content.
+    _verbatim_body: ($) =>
+      seq(
+        $._verbatim_content,
+        repeat(seq($._verbatim_continue, $._verbatim_content)),
       ),
 
     _todo_highlights: ($) => choice($.todo, $.note, $.fixme),
@@ -2866,5 +2881,9 @@ module.exports = grammar({
     $._bold_italic_star,
     // An inline attribute's mark after its `{`. See `parse_attribute_mark_begin`.
     $._attribute_mark_begin,
+    // Zero width, between two lines of an unclosed verbatim run: the scanner
+    // has decided the next line continues the run rather than ending it. See
+    // `_verbatim_body`.
+    $._verbatim_continue,
   ],
 });

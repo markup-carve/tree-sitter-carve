@@ -212,6 +212,8 @@ typedef enum {
   BOLD_ITALIC_STAR,
   // An inline attribute's mark after its `{`. See `parse_attribute_mark_begin`.
   ATTRIBUTE_MARK_BEGIN,
+  // Zero width, between two lines of an unclosed verbatim run.
+  VERBATIM_CONTINUE,
 } TokenType;
 
 // The different blocks in Carve that we track,
@@ -1847,6 +1849,42 @@ static char open_verbatim_stop_marker(Scanner *s) {
 
 // Try to close an open verbatim implicitly
 // (should happen on a newline).
+static bool code_fence_has_closer_ahead(Scanner *s, TSLexer *lexer, int32_t c,
+                                        uint8_t width, uint32_t column);
+static bool code_fence_info_is_modeled(Scanner *s, TSLexer *lexer);
+
+/// Does the line after this newline continue the unclosed run, or end it with
+/// its paragraph? Read as a peek: the token end stands at the newline, so both
+/// answers stay zero width however far this reads.
+static bool verbatim_line_continues(Scanner *s, TSLexer *lexer) {
+  Inline *top = peek_inline(s);
+  consume_line_end(s, lexer);
+  uint8_t line_indent = consume_whitespace(s, lexer);
+  if (lexer->eof(lexer) || at_line_end(lexer)) {
+    return false;
+  }
+  if (lexer->lookahead == '`' && top != NULL) {
+    uint8_t run = consume_chars(s, lexer, '`');
+    // Under three backticks cannot open a fence, so it can only be a closer.
+    if (run < 3) {
+      return true;
+    }
+    // A fence interrupts only with a closer ahead (I4), and that reading wins
+    // over the run's own closer; without one the content token reads the run.
+    return !code_fence_info_is_modeled(s, lexer) ||
+           !code_fence_has_closer_ahead(s, lexer, '`', run, line_indent);
+  }
+  uint8_t indent = s->indent;
+  uint16_t state = s->state;
+  uint8_t level = s->block_quote_level;
+  s->indent = line_indent;
+  bool ends = close_paragraph(s, lexer);
+  s->indent = indent;
+  s->state = state;
+  s->block_quote_level = level;
+  return !ends;
+}
+
 static bool try_implicit_close_verbatim(Scanner *s, TSLexer *lexer) {
   Inline *top = peek_inline(s);
   if (!top || top->type != VERBATIM) {
@@ -1892,6 +1930,25 @@ static bool parse_verbatim_content(Scanner *s, TSLexer *lexer) {
   // `| a `x|` | b |` still ends at the ticks with the pipe inside it as
   // content.
   bool in_table_row = find_block(s, TABLE_ROW) != NULL;
+  // At end of input there is no content left to take; the run closes through
+  // the implicit end instead, and a zero-width token here would not progress.
+  if (!in_table_row && lexer->eof(lexer)) {
+    return false;
+  }
+  // After a VERBATIM_CONTINUE the scan stands on the newline the decision was
+  // taken at, so this token opens with it and the next line's indentation. A
+  // run that OPENS at a line end reaches here before any decision was taken,
+  // so a blank line below it still has to end the run: the token stays zero
+  // width there, which leaves the newline to the decision on the next call.
+  if (!in_table_row && at_line_end(lexer)) {
+    consume_line_end(s, lexer);
+    consume_whitespace(s, lexer);
+    if (lexer->eof(lexer) || at_line_end(lexer)) {
+      lexer->result_symbol = VERBATIM_CONTENT;
+      return true;
+    }
+    mark_end(s, lexer);
+  }
   // The closer of the braced span this run sits in, where the opening ticks
   // established that no matching run comes first. See
   // `verbatim_run_reaches_span_closer`.
@@ -1931,23 +1988,19 @@ static bool parse_verbatim_content(Scanner *s, TSLexer *lexer) {
       // We should only end verbatim if the paragraph is ended by a
       // blankline.
 
+      // OUTSIDE A TABLE ROW A CONTENT TOKEN IS ONE LINE: the next line is
+      // reached through VERBATIM_CONTINUE, which the scanner emits only after
+      // deciding that the line continues the run (tree-sitter-carve#427).
+      if (!in_table_row) {
+        break;
+      }
       // Advance over the first newline.
       consume_line_end(s, lexer);
       // Remove any whitespace on the next line.
-      uint8_t line_indent = consume_whitespace(s, lexer);
+      consume_whitespace(s, lexer);
       if (lexer->eof(lexer) || at_line_end(lexer)) {
         // Found a blankline, meaning the paragraph containing the varbatim
         // should be closed. So now we can close the verbatim.
-        break;
-      }
-      // An unclosed run ends with its paragraph, so a line that interrupts
-      // the paragraph is not the run's content. Asked as a peek: the token
-      // end already stands at the end of the previous line, and the state the
-      // probes touch is put back, since the line is scanned again for real.
-      // A line opening with ticks is read by the loop below: it may be this
-      // run's own closer.
-      if (!in_table_row && lexer->lookahead != '`' &&
-          verbatim_line_ends_paragraph(s, lexer, line_indent)) {
         break;
       }
       // No blankline, continue parsing.
@@ -9291,6 +9344,24 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     return true;
   }
 
+  // BETWEEN TWO LINES OF AN UNCLOSED RUN. The content token ends at each line
+  // end, so this is where the run's next line is decided, and where the run
+  // ends at end of input.
+  if ((valid_symbols[VERBATIM_CONTINUE] || valid_symbols[VERBATIM_END]) &&
+      (is_newline || lexer->eof(lexer)) && find_block(s, TABLE_ROW) == NULL) {
+    Inline *run = peek_inline(s);
+    if (run != NULL && run->type == VERBATIM) {
+      if (valid_symbols[VERBATIM_CONTINUE] && !lexer->eof(lexer) &&
+          verbatim_line_continues(s, lexer)) {
+        lexer->result_symbol = VERBATIM_CONTINUE;
+        return true;
+      }
+      remove_inline(s);
+      lexer->result_symbol = VERBATIM_END;
+      return true;
+    }
+  }
+
   if (is_newline && parse_newline(s, lexer, valid_symbols)) {
     return true;
   }
@@ -10023,6 +10094,8 @@ static char *token_type_s(TokenType t) {
     return "VERBATIM_BEGIN";
   case VERBATIM_END:
     return "VERBATIM_END";
+  case VERBATIM_CONTINUE:
+    return "VERBATIM_CONTINUE";
   case VERBATIM_CONTENT:
     return "VERBATIM_CONTENT";
 

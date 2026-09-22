@@ -3550,3 +3550,124 @@ tail
         (code_block_marker_begin)
         code: (code))))
   (paragraph))
+
+==================
+A closed fence below an unclosed code span ends the span
+==================
+a `b
+```
+code
+```
+
+---
+
+(document
+  (paragraph
+    (verbatim
+      begin_marker: (verbatim_marker_begin)
+      content: (content)
+      end_marker: (verbatim_marker_end)))
+  (code_block
+    (code_block_marker_begin)
+    code: (code)
+    (code_block_marker_end)))
+
+==================
+An unterminated fence below an unclosed code span stays its content
+==================
+a `b
+```
+code
+
+---
+
+(document
+  (paragraph
+    (verbatim
+      begin_marker: (verbatim_marker_begin)
+      content: (content)
+      end_marker: (verbatim_marker_end))))
+
+==================
+A run of the span's own width below it closes the span
+==================
+a ```b
+```
+
+---
+
+(document
+  (paragraph
+    (verbatim
+      begin_marker: (verbatim_marker_begin)
+      content: (content)
+      end_marker: (verbatim_marker_end))))
+
+==================
+A blank line below an unclosed code span ends it
+==================
+a `b
+
+c
+
+---
+
+(document
+  (paragraph
+    (verbatim
+      begin_marker: (verbatim_marker_begin)
+      content: (content)
+      end_marker: (verbatim_marker_end)))
+  (paragraph))
+
+==================
+A lazy line below an unclosed code span stays its content
+==================
+a `b
+c
+
+---
+
+(document
+  (paragraph
+    (verbatim
+      begin_marker: (verbatim_marker_begin)
+      content: (content)
+      end_marker: (verbatim_marker_end))))
+
+==================
+A fence of the span's own width below it still opens with a closer ahead
+==================
+a ```b
+```
+x
+```
+
+---
+
+(document
+  (paragraph
+    (verbatim
+      begin_marker: (verbatim_marker_begin)
+      content: (content)
+      end_marker: (verbatim_marker_end)))
+  (code_block
+    (code_block_marker_begin)
+    code: (code)
+    (code_block_marker_end)))
+
+==================
+A run of the span's own width with no fence closer ahead is its closer
+==================
+a ```b
+```
+x
+
+---
+
+(document
+  (paragraph
+    (verbatim
+      begin_marker: (verbatim_marker_begin)
+      content: (content)
+      end_marker: (verbatim_marker_end))))
