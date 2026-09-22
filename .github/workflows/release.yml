@@ -555,3 +555,49 @@ jobs:
       - name: Rehearsal notice
         if: github.event_name == 'workflow_dispatch'
         run: echo "::notice::rehearsal - nothing was published to PyPI"
+
+  # A separate job rather than a step of one publish job, for the same reason
+  # the gates are: this repo ships to three registries, and crates.io and PyPI
+  # run beside each other, so no single job is last. `needs:` all three and the
+  # notes cannot go out while one of them failed.
+  publish-release-notes:
+    name: Publish the release notes
+    runs-on: ubuntu-latest
+    needs: [publish-npm, publish-crates, publish-pypi]
+    permissions:
+      contents: write
+    steps:
+      # A registry publish is not finished until the release page exists. The
+      # tag is pushed, CI publishes, the registry answers 200, and "released"
+      # feels done - while `/releases` still shows a draft, so a reader has no
+      # notes and no changelog for the version they just installed. Doing it
+      # here rather than by hand also means the draft stops being a thing
+      # someone has to remember to publish at the right moment.
+      #
+      # Last, deliberately: a draft that stays a draft is recoverable, and one
+      # published beside a failed publish is not.
+      - name: Publish the release notes
+        if: github.event_name != 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          id="$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate \
+            --jq "[.[] | select(.tag_name == \"$GITHUB_REF_NAME\" and .draft)] | first | .id // empty")"
+          if [ -z "$id" ]; then
+            echo "No draft release for $GITHUB_REF_NAME; nothing to publish."
+            exit 0
+          fi
+          # `tag_name` goes with every PATCH of a release. Omit it on a DRAFT
+          # and GitHub replaces the tag with a generated `untagged-*`
+          # placeholder, because a draft's tag is a string on the object rather
+          # than a git ref - so the field has nothing to fall back to.
+          # `-F` (not `-f`) for draft, so it is sent as a boolean.
+          gh api "repos/$GITHUB_REPOSITORY/releases/$id" -X PATCH \
+            -f tag_name="$GITHUB_REF_NAME" -F draft=false --jq '"published \(.tag_name)"'
+          # Read it back: exit status does not tell you whether the tag survived.
+          gh api "repos/$GITHUB_REPOSITORY/releases/$id" \
+            --jq '"draft=\(.draft) tag=\(.tag_name)"'
+
+      - name: Rehearsal notice
+        if: github.event_name == 'workflow_dispatch'
+        run: echo "::notice::rehearsal - no release notes were published"
