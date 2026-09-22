@@ -826,10 +826,22 @@ module.exports = grammar({
       choice(seq($._cell_attribute, optional($._cell_inline)), $._cell_inline),
     // A cell's inline content: ordinary inline, except that a trailing comment
     // ends at the cell's pipe. See `_cell_trailing_comment`.
+    //
+    // `_table_row_continuation_seam` lets a ONE-CELL row's content continue
+    // past its own closing `|` into a `+` continuation row's content, when an
+    // inline span is open there: the reference joins the two before reading
+    // inline markup, so `| a *b |` / `+ c* |` is one strong over `b c`
+    // (tree-sitter-carve#320, #437). The scanner only emits it in that exact
+    // shape, so a plain row's pipe still ends the cell as it always has.
     _cell_inline: ($) =>
       prec.left(
         repeat1(
-          choice($._cell_inline_element, $._newline_inline, $._whitespace1),
+          choice(
+            $._cell_inline_element,
+            $._newline_inline,
+            $._whitespace1,
+            $._table_row_continuation_seam,
+          ),
         ),
       ),
     _cell_inline_element: ($) => inlineElement($, { cells: true }),
@@ -1769,9 +1781,25 @@ module.exports = grammar({
     // lexer ambiguity, and this one matches nothing `_padding_spaces` does.
     _opener_trailing_tabs: (_) => token.immediate(/[ \t]*\t[ \t]*/),
 
+    // `_table_row_continuation_seam_in_element` is the SAME seam as
+    // `_cell_inline`'s, offered here as its own terminal: an element
+    // (strong, a span, a link, ...) opened inside a ONE-CELL row's content
+    // builds its OWN content through this production, and the seam has to
+    // be reachable from wherever that element's content is read, or the
+    // element can never close on the far side of the boundary. It cannot
+    // reuse `_cell_inline`'s own symbol - see the externals list entry for
+    // why (tree-sitter-carve#437). The scanner only ever emits either one
+    // inside a matching table row, so both are a no-op everywhere else.
     _inline: ($) =>
       prec.left(
-        repeat1(choice($._inline_element, $._newline_inline, $._whitespace1)),
+        repeat1(
+          choice(
+            $._inline_element,
+            $._newline_inline,
+            $._whitespace1,
+            $._table_row_continuation_seam,
+          ),
+        ),
       ),
 
     _inline_single_line: ($) =>
@@ -1780,7 +1808,14 @@ module.exports = grammar({
     _inline_without_trailing_space: ($) =>
       seq(
         prec.left(
-          repeat(choice($._inline_element, $._newline_inline, $._whitespace1)),
+          repeat(
+            choice(
+              $._inline_element,
+              $._newline_inline,
+              $._whitespace1,
+              $._table_row_continuation_seam,
+            ),
+          ),
         ),
         $._inline_element,
       ),
@@ -2905,5 +2940,8 @@ module.exports = grammar({
     // A comment-only line read across an open run inside a line block. See
     // `_verbatim_body`.
     $._verbatim_comment_line,
+    // Zero width, at a one-cell row's closing `|`, when an inline span is
+    // open and the next line is a `+` continuation row. See `_cell_inline`.
+    $._table_row_continuation_seam,
   ],
 });

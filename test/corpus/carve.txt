@@ -24,9 +24,7 @@ tail
     content: (content
       (table
         (table_row
-          (table_cell))
-        (block_quote_marker)
-        (table_continuation_row))))
+          (table_cell)))))
   (paragraph))
 
 ===============================================================================
@@ -6799,9 +6797,7 @@ A lone carriage return after a table continuation row keeps the next line's colu
     content: (content
       (table
         (table_row
-          (table_cell))
-        (block_quote_marker)
-        (table_continuation_row))))
+          (table_cell)))))
   (paragraph))
 ===============================================================================
 A comment line ended by a lone carriage return leaves the next line's column alone (#341)
@@ -8040,3 +8036,93 @@ A `+` line without a closing pipe does not continue a code run (#320)
       begin_marker: (verbatim_marker_begin)
       content: (content)
       end_marker: (verbatim_marker_end))))
+
+===============================================================================
+An open span in a one-cell row continues into its continuation row (#437)
+===============================================================================
+| a *b |
++ c* |
+
+-------------------------------------------------------------------------------
+
+(document
+  (table
+    (table_row
+      (table_cell
+        (strong
+          begin_marker: (strong_begin)
+          content: (content)
+          end_marker: (strong_end))))))
+
+===============================================================================
+A braced span in a one-cell row continues into its continuation row (#437)
+===============================================================================
+| a {*b |
++ c*} |
+
+-------------------------------------------------------------------------------
+
+(document
+  (table
+    (table_row
+      (table_cell
+        (strong
+          begin_marker: (strong_begin)
+          content: (content)
+          end_marker: (strong_end))))))
+
+===============================================================================
+A span open in a row's second cell does not continue into its continuation row (#437)
+===============================================================================
+| x | a *b |
++ y | c* |
+
+-------------------------------------------------------------------------------
+
+(document
+  (table
+    (table_row
+      (table_cell)
+      (table_cell))
+    (table_continuation_row)))
+
+===============================================================================
+An open code run's carry-over needs the continuation line's own quote depth (#437)
+===============================================================================
+> | a `b |
++ c` |
+
+-------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (table
+        (table_row
+          (table_cell
+            (verbatim
+              begin_marker: (verbatim_marker_begin)
+              content: (content)
+              end_marker: (verbatim_marker_end))))
+        (table_continuation_row)))))
+
+===============================================================================
+A one-cell row's span crosses a matching-depth continuation under a quote (#437)
+===============================================================================
+> | a *b |
+> + c* |
+
+-------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (table
+        (table_row
+          (table_cell
+            (strong
+              begin_marker: (strong_begin)
+              content: (content)
+              end_marker: (strong_end))))))))
