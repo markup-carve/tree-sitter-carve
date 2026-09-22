@@ -5812,6 +5812,36 @@ static bool scan_deeper_block_quote_at_paragraph_end(Scanner *s,
   return marker_count > open_depth;
 }
 
+/// A definition line interrupts an open paragraph (PART 9 §10 I5). Answers
+/// what `parse_open_bracket` answers, at the margin the heading peek uses.
+static bool scan_definition_at_paragraph_end(Scanner *s, TSLexer *lexer) {
+  if (lexer->lookahead != '[') {
+    return false;
+  }
+  if (!at_block_opener_margin(s, line_column(s, lexer))) {
+    return false;
+  }
+  // A LAZY line inside an open quote is paragraph text, and a column never
+  // reaches into a quote (corpus 369). The margin test alone cannot refuse it:
+  // an unmarked line lands on the quote's content column exactly as a marked
+  // one does, so the marker is what separates them. carve-js keeps a quoted
+  // line and an unmarked `[^a]: body` under it as one quoted paragraph.
+  //
+  // Asked ONLY here, not in `at_block_opener_margin`, although the heading and
+  // fence peeks share that helper and truncate the quote on the same shape. The
+  // shared fix belongs with its own measurement; widening this one would land
+  // it unmeasured.
+  if (count_blocks(s, BLOCK_QUOTE) > 0 && s->block_quote_level == 0) {
+    return false;
+  }
+  advance(s, lexer);
+  if (lexer->lookahead != '^') {
+    return false;
+  }
+  advance(s, lexer);
+  return scan_footnote_after_caret(s, lexer);
+}
+
 static bool close_paragraph(Scanner *s, TSLexer *lexer) {
   // Workaround for not including the following blankline when closing a
   // paragraph inside a block.
@@ -5836,6 +5866,9 @@ static bool close_paragraph(Scanner *s, TSLexer *lexer) {
     return true;
   }
   if (scan_code_fence_at_paragraph_end(s, lexer)) {
+    return true;
+  }
+  if (scan_definition_at_paragraph_end(s, lexer)) {
     return true;
   }
 

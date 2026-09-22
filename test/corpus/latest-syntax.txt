@@ -848,3 +848,54 @@ Inside a braced delete the dash before the brace belongs to the closer
       begin_marker: (delete_begin)
       content: (content)
       end_marker: (delete_end))))
+
+==================
+A lazy footnote definition inside a quote is paragraph text, not an interrupter
+==================
+
+> x
+  [^a]: body
+
+See [^a].
+
+---
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (paragraph
+        (footnote_reference
+          (footnote_marker_begin)
+          (reference_label)
+          (footnote_marker_end)))))
+  (paragraph
+    (footnote_reference
+      (footnote_marker_begin)
+      (reference_label)
+      (footnote_marker_end))))
+
+==================
+A footnote definition interrupts the paragraph above it
+==================
+
+intro
+[^a]: body
+
+See [^a].
+
+---
+
+(document
+  (paragraph)
+  (footnote
+    (footnote_marker_begin)
+    label: (reference_label)
+    (footnote_marker_end)
+    content: (footnote_content
+      (paragraph)))
+  (paragraph
+    (footnote_reference
+      (footnote_marker_begin)
+      (reference_label)
+      (footnote_marker_end))))
