@@ -133,8 +133,34 @@ function hiddenRanges(nodes, html) {
   return { hidden, unresolvedImages };
 }
 
+// A code span's text is everything a reader sees inside it - comments,
+// destinations, attribute blocks all stay literal there (see `visible`
+// above). The ONE exception is a comment-only line read across an open span
+// inside a line block (tree-sitter-carve#320 row 6): the reference strips
+// that whole line before the paragraph is built, so a `comment_line` child
+// only ever appears when the scanner found a line with NOTHING before its
+// `%%` (a line that merely contains a comment beside real content, e.g.
+// `x %% secret`, gets no such child and keeps every character, unchanged).
+// Subtracting exactly the children the tree marks keeps the exception no
+// wider than what the scanner already narrowed it to.
+function verbatimText(n, nodes, buf) {
+  const comments = nodes
+    .filter((c) => c.node === 'comment_line' && c !== n && inside(c, n))
+    .sort((a, b) => a.start - b.start);
+  if (comments.length === 0) return n.text;
+  let out = Buffer.alloc(0);
+  let cursor = n.start;
+  for (const c of comments) {
+    out = Buffer.concat([out, buf.slice(cursor, c.start)]);
+    cursor = c.end;
+  }
+  out = Buffer.concat([out, buf.slice(cursor, n.end)]);
+  return out.toString('utf8');
+}
+
 export function treeSpans(tree, source, html) {
   const nodes = treeNodes(tree, source);
+  const buf = Buffer.from(source, 'utf8');
   const { hidden } = hiddenRanges(nodes, html);
   const out = [];
   for (const n of nodes) {
@@ -158,6 +184,10 @@ export function treeSpans(tree, source, html) {
     }
     if (n.node === 'bold_italic') {
       out.push({ tag: 'strong', text: n.text }, { tag: 'em', text: n.text });
+      continue;
+    }
+    if (n.node === 'verbatim') {
+      out.push({ tag: 'code', text: verbatimText(n, nodes, buf) });
       continue;
     }
     const tag = NODE_TAG[n.node];

@@ -24,6 +24,18 @@ const escaped = {
   source: "[*bold*]: /x\n\nsee [\\*bold\\*][]\n",
   tree: "(document [0, 0] - [3, 0]\n  (link_reference_definition [0, 0] - [1, 0]\n    label: (link_label [0, 1] - [0, 7])\n    destination: (link_destination [0, 10] - [0, 12]))\n  (paragraph [2, 0] - [3, 0]\n    (collapsed_reference_link [2, 4] - [2, 16]\n      text: (link_text [2, 4] - [2, 14]\n        (backslash_escape [2, 5] - [2, 7])\n        (backslash_escape [2, 11] - [2, 13])))))\n",
 };
+// tree-sitter-carve#320 row 6: a comment-only line read across an open code
+// span inside a line block.
+const commentOnlyLineInSpan = {
+  source: "::: |\na `b\n%% secret\nc\n:::\n",
+  tree: "(document [0, 0] - [5, 0]\n  (div [0, 0] - [5, 0]\n    (div_marker_begin [0, 0] - [0, 4])\n    line_block_marker: (line_block_marker [0, 4] - [0, 5])\n    content: (content [1, 0] - [4, 0]\n      (paragraph [1, 0] - [4, 0]\n        (verbatim [1, 2] - [3, 1]\n          begin_marker: (verbatim_marker_begin [1, 2] - [1, 3])\n          content: (content [1, 3] - [3, 1]\n            (comment_line [1, 4] - [2, 9]))\n          end_marker: (verbatim_marker_end [3, 1] - [3, 1]))))\n    (div_marker_end [4, 0] - [4, 3])))\n",
+};
+// The general rule survives beside it: a line that merely CONTAINS a comment
+// (something precedes the `%%`) keeps every character, comment included.
+const commentBesideContentInSpan = {
+  source: "::: |\na `b\nx %% secret\nc\n:::\n",
+  tree: "(document [0, 0] - [5, 0]\n  (div [0, 0] - [5, 0]\n    (div_marker_begin [0, 0] - [0, 4])\n    line_block_marker: (line_block_marker [0, 4] - [0, 5])\n    content: (content [1, 0] - [4, 0]\n      (paragraph [1, 0] - [4, 0]\n        (verbatim [1, 2] - [3, 1]\n          begin_marker: (verbatim_marker_begin [1, 2] - [1, 3])\n          content: (content [1, 3] - [3, 1])\n          end_marker: (verbatim_marker_end [3, 1] - [3, 1]))))\n    (div_marker_end [4, 0] - [4, 3])))\n",
+};
 
 test('an image the tree does not build fails on its alt text', () => {
   const html = '<p>a <img src="/i.png" alt="t[z]"> b</p>';
@@ -48,4 +60,26 @@ test('a reference that does not resolve is not compared', () => {
 test('a reference that resolves is still compared', () => {
   const html = '<p>see <a href="/x"><strong>bold</strong></a></p>';
   assert.equal(reading(html, escaped.tree, escaped.source), 'strong html=1 tree=0');
+});
+
+test('a comment-only line inside an open span in a line block is subtracted', () => {
+  const html =
+    '<div class="line-block">\n  <p>a <code>b\n\nc</code></p>\n</div>';
+  assert.equal(
+    reading(html, commentOnlyLineInSpan.tree, commentOnlyLineInSpan.source),
+    '',
+  );
+});
+
+test('a comment beside content in the same span keeps every character', () => {
+  const html =
+    '<div class="line-block">\n  <p>a <code>b\nx %% secret\nc</code></p>\n</div>';
+  assert.equal(
+    reading(
+      html,
+      commentBesideContentInSpan.tree,
+      commentBesideContentInSpan.source,
+    ),
+    '',
+  );
 });

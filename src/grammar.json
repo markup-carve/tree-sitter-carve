@@ -7955,8 +7955,22 @@
                 "name": "_verbatim_continue"
               },
               {
-                "type": "SYMBOL",
-                "name": "_verbatim_content"
+                "type": "CHOICE",
+                "members": [
+                  {
+                    "type": "SYMBOL",
+                    "name": "_verbatim_content"
+                  },
+                  {
+                    "type": "ALIAS",
+                    "content": {
+                      "type": "SYMBOL",
+                      "name": "_verbatim_comment_line"
+                    },
+                    "named": true,
+                    "value": "comment_line"
+                  }
+                ]
               }
             ]
           }
@@ -9713,6 +9727,10 @@
     {
       "type": "SYMBOL",
       "name": "_verbatim_continue"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_verbatim_comment_line"
     }
   ],
   "inline": [],

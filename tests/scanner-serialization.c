@@ -26,18 +26,23 @@ int main(void) {
     }
   }
 
-  Block *last = array_pop(scanner->open_blocks);
-  ts_free(last);
+  // A block now serializes as 4 bytes (type, data, content_col, flags), so
+  // the largest count that still fits the fixed buffer is 252, not the
+  // count byte's own UINT8_MAX=255 - the buffer-size guard binds first.
+  for (unsigned i = 0; i < 4; ++i) {
+    Block *last = array_pop(scanner->open_blocks);
+    ts_free(last);
+  }
   unsigned length = tree_sitter_carve_external_scanner_serialize(scanner, buffer);
-  if (length != 781 || (uint8_t)buffer[15] != 255) {
-    fprintf(stderr, "255 blocks encoded as %u bytes with count %u\n", length,
+  if (length != 1024 || (uint8_t)buffer[15] != 252) {
+    fprintf(stderr, "252 blocks encoded as %u bytes with count %u\n", length,
             (uint8_t)buffer[15]);
     return 1;
   }
 
   Scanner *restored = tree_sitter_carve_external_scanner_create();
   tree_sitter_carve_external_scanner_deserialize(restored, buffer, length);
-  if (restored->open_blocks->size != 255 || restored->open_inline->size != 0) {
+  if (restored->open_blocks->size != 252 || restored->open_inline->size != 0) {
     fprintf(stderr, "restored %u blocks and %u inline entries\n",
             restored->open_blocks->size, restored->open_inline->size);
     return 1;
@@ -73,9 +78,28 @@ int main(void) {
   tree_sitter_carve_external_scanner_destroy(spans_back);
   tree_sitter_carve_external_scanner_destroy(spans);
 
+  // A block's own flags (BLOCK_FLAG_LINE_BLOCK) round-trip the same way.
+  Scanner *div = tree_sitter_carve_external_scanner_create();
+  Block *line_block = create_block(DIV, 3);
+  line_block->flags = BLOCK_FLAG_LINE_BLOCK;
+  stack_push(div->open_blocks, line_block);
+  unsigned div_length = tree_sitter_carve_external_scanner_serialize(div, buffer);
+  Scanner *div_back = tree_sitter_carve_external_scanner_create();
+  tree_sitter_carve_external_scanner_deserialize(div_back, buffer, div_length);
+  Block *restored_div = *array_get(div_back->open_blocks, 0);
+  if (div_back->open_blocks->size != 1 ||
+      restored_div->flags != BLOCK_FLAG_LINE_BLOCK) {
+    fprintf(stderr, "restored %u blocks with flags %u, wanted 1 with %u\n",
+            div_back->open_blocks->size, restored_div->flags,
+            BLOCK_FLAG_LINE_BLOCK);
+    return 1;
+  }
+  tree_sitter_carve_external_scanner_destroy(div_back);
+  tree_sitter_carve_external_scanner_destroy(div);
+
   tree_sitter_carve_external_scanner_destroy(restored);
   tree_sitter_carve_external_scanner_destroy(scanner);
-  puts("scanner serialization: 255 blocks round-trip, an inline entry keeps "
-       "its flags, and 256 blocks are refused cleanly.");
+  puts("scanner serialization: 252 blocks round-trip, an inline entry and a "
+       "block's own flags keep them, and 256 blocks are refused cleanly.");
   return 0;
 }

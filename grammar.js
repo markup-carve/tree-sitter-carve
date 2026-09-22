@@ -2544,10 +2544,24 @@ module.exports = grammar({
     // per line the decision is taken between them, where reading ahead costs
     // nothing: `_verbatim_continue` is the scanner saying the next line is
     // still content.
+    //
+    // A comment-only line inside a line block (`::: |`) is the one line a
+    // continued run does NOT read as content: the reference strips it, so the
+    // scanner hands it back as its own `comment_line`, a sibling the
+    // inline-reading gate subtracts from the span's text rather than text
+    // itself (tree-sitter-carve#320 row 6).
     _verbatim_body: ($) =>
       seq(
         $._verbatim_content,
-        repeat(seq($._verbatim_continue, $._verbatim_content)),
+        repeat(
+          seq(
+            $._verbatim_continue,
+            choice(
+              $._verbatim_content,
+              alias($._verbatim_comment_line, $.comment_line),
+            ),
+          ),
+        ),
       ),
 
     _todo_highlights: ($) => choice($.todo, $.note, $.fixme),
@@ -2888,5 +2902,8 @@ module.exports = grammar({
     // has decided the next line continues the run rather than ending it. See
     // `_verbatim_body`.
     $._verbatim_continue,
+    // A comment-only line read across an open run inside a line block. See
+    // `_verbatim_body`.
+    $._verbatim_comment_line,
   ],
 });
