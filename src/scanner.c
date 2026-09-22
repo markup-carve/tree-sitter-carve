@@ -4042,7 +4042,22 @@ static bool parse_open_bracket(Scanner *s, TSLexer *lexer,
   // of the margin disqualify it: SHORT of it (a lazy/top-level indent, via
   // `has_extra_indent`) and PAST it (one column into a nested container, via
   // `past_container_content_col`; tree-sitter-carve#282).
-  if (has_extra_indent(s) || past_container_content_col(s)) {
+  // A definition on a MARKER LINE stands at the item's content column, but the
+  // line indent still reads 0 there - the marker was consumed after it was
+  // measured - so `has_extra_indent` calls it under-indented. `- [^f]: x` and
+  // `:  [^f]: x` collect their footnote and leave the item empty, exactly as
+  // the same definition one line down already does. Same question
+  // `parse_code_fence` asks for a fence on a marker line.
+  // Only a marker that began at its OWN container's margin licenses this. A
+  // marker indented into the folding zone - strictly between an item's base
+  // and its content column - is text rather than a marker, and `- lead` over
+  // ` - [t]: /t` keeps the whole second line inside the first item. The line's
+  // indent is where its marker began, so a zero indent is the document root's
+  // margin and anything else is left to the refusal below.
+  bool at_marker_content_col = s->marker_end_col != 0 && s->indent == 0 &&
+                               line_column(s, lexer) == s->marker_end_col;
+  if ((has_extra_indent(s) && !at_marker_content_col) ||
+      past_container_content_col(s)) {
     return false;
   }
 
@@ -4321,6 +4336,7 @@ static bool parse_colon(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       // `at_block_opener_margin` - which only answers for a list whose
       // `content_col` is set - has no opinion about a block opener in the body.
       set_content_col(s, (uint8_t)line_column(s, lexer));
+      s->marker_end_col = (uint8_t)line_column(s, lexer);
       lexer->result_symbol = LIST_MARKER_DEFINITION;
       return true;
     }
@@ -4354,6 +4370,7 @@ static bool parse_colon(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     // The full space run above is marker padding, so the lexer sits at the
     // body's authored content column. See the term branch.
     set_content_col(s, (uint8_t)line_column(s, lexer));
+    s->marker_end_col = (uint8_t)line_column(s, lexer);
     lexer->result_symbol = LIST_MARKER_DESCRIPTION;
     return true;
   }

@@ -56,3 +56,20 @@ is invisible to it however wrong the tree is.
   rule instead. A table row read one attributed cell as two with every gate green.
 - An over-acceptance inside a run the fixture renders literally builds no inline
   span either way. `test:conformance` reports it only when it becomes an ERROR.
+
+## A gate that looks redundant and is not
+
+`test:conformance` counts over-acceptance twice: once over single-paragraph
+documents, and once as INVISIBLE over-acceptance, where a node that renders
+nothing covers text the fixture still shows. The second looks like a subset of
+the first and is not. It is the only check that can see a
+`link_reference_definition`, a footnote definition or a comment swallowing text
+that the document still displays, because a node producing no output moves no
+inline span and changes no over-acceptance count.
+
+It has caught defects no other gate could twice: a stray
+`link_reference_definition` in a description body, and four documents where a
+definition opened against a content column that a folded marker had set. In
+both cases `test:inline-reading` and `test:under-acceptance` were green.
+
+Do not fold it into the count beside it.
