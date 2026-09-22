@@ -678,16 +678,32 @@
     }
   },
   "inlineReadingGaps": {
+    "an-image-s-alt-text-closes-where-a-link-s-text-closes": {
+      "reading": "alt html=1 tree=0",
+      "reason": "an image description holding a nested bracket pair builds no image, so its alt text is missing from the tree (tree-sitter-carve#422)"
+    },
+    "an-image-s-alt-text-closes-where-a-link-s-text-closes-2": {
+      "reading": "alt html=1 tree=0",
+      "reason": "an image description holding a nested bracket pair builds no image, so its alt text is missing from the tree (tree-sitter-carve#422)"
+    },
+    "an-image-s-alt-text-closes-where-a-link-s-text-closes-3": {
+      "reading": "alt html=1 tree=0",
+      "reason": "an image description holding a nested bracket pair builds no image, so its alt text is missing from the tree (tree-sitter-carve#422)"
+    },
+    "an-image-s-alt-text-closes-where-a-link-s-text-closes-7": {
+      "reading": "alt html=1 tree=0",
+      "reason": "an image description holding a nested bracket pair builds no image, so its alt text is missing from the tree (tree-sitter-carve#422)"
+    },
+    "an-image-s-alt-text-closes-where-a-link-s-text-closes-8": {
+      "reading": "alt html=1 tree=0",
+      "reason": "an image description holding a nested bracket pair builds no image, so its alt text is missing from the tree (tree-sitter-carve#422)"
+    },
     "a-boundary-line-inside-an-open-fence-does-not-end-the-container-3": {
       "reading": "code html=0 tree=1",
       "reason": "the grammar builds an inline span the language keeps literal here"
     },
     "a-boundary-line-inside-an-open-fence-does-not-end-the-container-7": {
       "reading": "code html=0 tree=1",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
-    "a-collapsed-reference-is-matched-by-the-label-the-author-wrote-2": {
-      "reading": "strong html=0 tree=1",
       "reason": "the grammar builds an inline span the language keeps literal here"
     },
     "a-comment-only-line-in-a-line-block-is-removed-before-any-inline-run": {
@@ -748,10 +764,6 @@
     },
     "a-wrapped-attribute-block-ends-at-its-quote-and-reaches-no-line-below-it-3": {
       "reading": "strong html=0 tree=1",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
-    "an-image-s-alt-text-closes-where-a-link-s-text-closes-5": {
-      "reading": "code html=0 tree=1",
       "reason": "the grammar builds an inline span the language keeps literal here"
     },
     "an-unterminated-fence-on-a-nested-lead-in-a-description-body-owns-its-body": {
