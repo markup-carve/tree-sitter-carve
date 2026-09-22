@@ -1166,16 +1166,23 @@ module.exports = grammar({
         optional(field("code", $.code)),
         $._block_close,
         optional(
-          seq(
-            // A closer inside a quote keeps its `>` markers as marker nodes;
-            // the scanner decided at the newline that this line closes.
-            optional($._block_quote_prefix),
-            alias($._code_block_end, $.code_block_marker_end),
-            // A closer may carry trailing whitespace: the scanner's own closer
-            // test treats a whitespace-only tail as blank (#96), and every
-            // engine closes `\u0060\u0060\u0060   ` as a fence.
-            $._whitespace,
-            $._newline,
+          // The reading that took the end marker wins. Both readings of the
+          // quoted closer's `>` can parse to the end of the document, and
+          // without this the one that left the fence unclosed was kept
+          // whenever the quote ended after it.
+          prec.dynamic(
+            1,
+            seq(
+              // A closer inside a quote keeps its `>` markers as marker nodes;
+              // the scanner decided at the newline that this line closes.
+              optional($._block_quote_prefix),
+              alias($._code_block_end, $.code_block_marker_end),
+              // A closer may carry trailing whitespace: the scanner's own
+              // closer test treats a whitespace-only tail as blank (#96), and
+              // every engine closes `\u0060\u0060\u0060   ` as a fence.
+              $._whitespace,
+              $._newline,
+            ),
           ),
         ),
       ),
@@ -1196,12 +1203,15 @@ module.exports = grammar({
         field("content", optional(alias($.code, $.content))),
         $._block_close,
         optional(
-          seq(
-            // The same quoted closer as `code_block`'s.
-            optional($._block_quote_prefix),
-            alias($._code_block_end, $.raw_block_marker_end),
-            $._whitespace,
-            $._newline,
+          // The same quoted closer as `code_block`'s, preferred the same way.
+          prec.dynamic(
+            1,
+            seq(
+              optional($._block_quote_prefix),
+              alias($._code_block_end, $.raw_block_marker_end),
+              $._whitespace,
+              $._newline,
+            ),
           ),
         ),
       ),

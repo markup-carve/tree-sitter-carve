@@ -2728,3 +2728,102 @@ A quoted line indented after a heading stays in the quote
         content: (content))
       (block_quote_marker)
       (paragraph))))
+
+==================
+A quoted fence closes when an unquoted line follows it
+==================
+> ```
+> x
+> ```
+y
+
+---
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (code_block
+        (code_block_marker_begin)
+        code: (code
+          (block_quote_marker))
+        (block_quote_marker)
+        (code_block_marker_end))))
+  (paragraph))
+
+==================
+A quoted fence closes when a blank line and a paragraph follow it
+==================
+> ```
+> x
+> ```
+
+y
+
+---
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (code_block
+        (code_block_marker_begin)
+        code: (code
+          (block_quote_marker))
+        (block_quote_marker)
+        (code_block_marker_end))))
+  (paragraph))
+
+==================
+A quoted raw block closes when a blank line and a paragraph follow it
+==================
+> ```=html
+> <b>x</b>
+> ```
+
+y
+
+---
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (raw_block
+        (raw_block_marker_begin)
+        info: (raw_block_info
+          marker: (language_marker)
+          language: (language))
+        content: (content
+          (block_quote_marker))
+        (block_quote_marker)
+        (raw_block_marker_end))))
+  (paragraph))
+
+==================
+A nested quoted fence closes when the quotes end after it
+==================
+> > ```
+> > x
+> > ```
+
+y
+
+---
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (block_quote
+        (block_quote_marker)
+        content: (content
+          (code_block
+            (code_block_marker_begin)
+            code: (code
+              (block_quote_marker)
+              (block_quote_marker))
+            (block_quote_marker)
+            (block_quote_marker)
+            (code_block_marker_end))))))
+  (paragraph))
