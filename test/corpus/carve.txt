@@ -7051,3 +7051,112 @@ y
           (code_block_marker_begin)
           code: (code)))))
   (paragraph))
+
+===============================================================================
+A fence closer short of its item's content column ends the fence and the item (tree-sitter-carve#394)
+===============================================================================
+- a
+
+  ```
+  x
+ ```
+
+y
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)
+        (code_block
+          (code_block_marker_begin)
+          code: (code)))))
+  (paragraph
+    (verbatim
+      begin_marker: (verbatim_marker_begin)
+      content: (content)
+      end_marker: (verbatim_marker_end)))
+  (paragraph))
+
+===============================================================================
+A fence body line short of its item's content column ends the fence and the item (tree-sitter-carve#394)
+===============================================================================
+- a
+
+  ```
+  x
+ y
+  ```
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)
+        (code_block
+          (code_block_marker_begin)
+          code: (code)))))
+  (paragraph
+    (verbatim
+      begin_marker: (verbatim_marker_begin)
+      content: (content)
+      end_marker: (verbatim_marker_end))))
+
+===============================================================================
+An ordered item's fence ends at a closer short of the item's content column (tree-sitter-carve#394)
+===============================================================================
+1. a
+
+   ```
+   x
+  ```
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_decimal_period)
+      content: (list_item_content
+        (paragraph)
+        (code_block
+          (code_block_marker_begin)
+          code: (code)))))
+  (paragraph
+    (verbatim
+      begin_marker: (verbatim_marker_begin)
+      content: (content)
+      end_marker: (verbatim_marker_end))))
+
+===============================================================================
+A fence opened past an item's content column ends at a line short of that column (tree-sitter-carve#394)
+===============================================================================
+- a
+
+    ```
+    x
+ y
+    ```
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)
+        (code_block
+          (code_block_marker_begin)
+          code: (code)))))
+  (paragraph
+    (verbatim
+      begin_marker: (verbatim_marker_begin)
+      content: (content)
+      end_marker: (verbatim_marker_end))))
