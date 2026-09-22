@@ -5699,8 +5699,25 @@ static bool at_block_opener_margin(Scanner *s, uint32_t column) {
   }
   for (int i = s->open_blocks->size - 1; i >= 0; --i) {
     Block *b = *array_get(s->open_blocks, i);
+    // The quote's own margin is reached only by a line that CARRIES its
+    // marker. An unmarked line landing on the content column is lazy
+    // continuation and belongs to the quoted paragraph (corpus 369), and the
+    // column alone cannot tell the two apart - the quote probes have consumed
+    // the `> ` prefix by here, so a marked line asks about the same column an
+    // indented lazy one does. A lazy line at column ZERO is a different
+    // question and is still answered below: carve-js ends the quote there.
+    // The quote's own margin is reached only by a line that CARRIES its
+    // marker. An unmarked line indented to the content column is lazy
+    // continuation and belongs to the quoted paragraph (corpus 369).
+    //
+    // The INDENT is what separates them, not the marker count: a marked line
+    // has no leading whitespace, because its `> ` prefix is a marker rather
+    // than indentation, while a lazy line reaches the same column by spaces
+    // alone. `block_quote_level` cannot answer it - one route into this peek
+    // runs after `end_paragraph_in_block_quote` has consumed the markers, so a
+    // marked line reads as unmarked there, which is the trap #114 recorded.
     if (b->type == BLOCK_QUOTE && b->content_col != 0 &&
-        (column == b->content_col ||
+        ((column == b->content_col && s->indent < b->content_col) ||
          (column > b->content_col && s->block_quote_level > 0))) {
       return true;
     }
