@@ -689,14 +689,6 @@
       "reading": "alt html=1 tree=0",
       "reason": "an image description holding a nested bracket pair builds no image, so its alt text is missing from the tree (tree-sitter-carve#422)"
     },
-    "a-boundary-line-inside-an-open-fence-does-not-end-the-container-3": {
-      "reading": "code html=0 tree=1",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
-    "a-boundary-line-inside-an-open-fence-does-not-end-the-container-7": {
-      "reading": "code html=0 tree=1",
-      "reason": "the grammar builds an inline span the language keeps literal here"
-    },
     "a-comment-only-line-in-a-line-block-is-removed-before-any-inline-run": {
       "reading": "code#1 html=\"bc\" tree=\"bsecretc\"",
       "reason": "a span covers different text here than the language’s does"
