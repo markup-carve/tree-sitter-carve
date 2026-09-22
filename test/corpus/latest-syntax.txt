@@ -2557,3 +2557,174 @@ A fence at a quoted list item's content column interrupts the item's paragraph
                 (block_quote_marker))
               (block_quote_marker)
               (code_block_marker_end))))))))
+
+==================
+A div at a quoted list item's content column opens in the item
+==================
+> - a
+>
+>   ::: note
+>   x
+>   :::
+
+---
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (paragraph)
+            (block_quote_marker)
+            (div
+              (div_marker_begin)
+              type: (admonition_type)
+              content: (content
+                (paragraph
+                  (block_quote_marker)))
+              (block_quote_marker)
+              (div_marker_end))))))))
+
+==================
+A div interrupts a quoted list item's paragraph
+==================
+> - a
+>   ::: note
+>   x
+>   :::
+
+---
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (paragraph)
+            (block_quote_marker)
+            (div
+              (div_marker_begin)
+              type: (admonition_type)
+              content: (content
+                (paragraph
+                  (block_quote_marker)))
+              (block_quote_marker)
+              (div_marker_end))))))))
+
+==================
+A heading in a div in a quoted list item
+==================
+> - a
+>
+>   ::: note
+>   # h
+>   :::
+
+---
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (paragraph)
+            (block_quote_marker)
+            (div
+              (div_marker_begin)
+              type: (admonition_type)
+              content: (content
+                (heading
+                  marker: (marker)
+                  content: (content)))
+              (block_quote_marker)
+              (div_marker_end))))))))
+
+==================
+A div past a quoted list item's content column closes at its own column
+==================
+> - a
+>
+>    ::: note
+>    x
+>    :::
+
+---
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (paragraph)
+            (block_quote_marker)
+            (div
+              (div_marker_begin)
+              type: (admonition_type)
+              content: (content
+                (paragraph
+                  (block_quote_marker)))
+              (block_quote_marker)
+              (div_marker_end))))))))
+
+==================
+A quoted line after a closed div in a quoted list item leaves the item
+==================
+> - a
+>
+>   ::: note
+>   x
+>   :::
+> y
+
+---
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (paragraph)
+            (block_quote_marker)
+            (div
+              (div_marker_begin)
+              type: (admonition_type)
+              content: (content
+                (paragraph
+                  (block_quote_marker)))
+              (block_quote_marker)
+              (div_marker_end)))))
+      (block_quote_marker)
+      (paragraph))))
+
+==================
+A quoted line indented after a heading stays in the quote
+==================
+> # h
+>  x
+
+---
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (heading
+        marker: (marker)
+        content: (content))
+      (block_quote_marker)
+      (paragraph))))
