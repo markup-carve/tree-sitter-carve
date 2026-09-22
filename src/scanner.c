@@ -2842,6 +2842,18 @@ static bool parse_block_quote(Scanner *s, TSLexer *lexer,
 
   // Finally, start a new block quote if there's any marker.
   if (valid_symbols[BLOCK_QUOTE_BEGIN] && has_marker) {
+    // A quote opens at its container's margin, like every block opener: an
+    // indented `>` at the document margin is paragraph text. The line's first
+    // marker is measured by `indent`, which expands tabs; the lexer column
+    // counts a tab as one.
+    uint32_t margin_col = marker_start_col;
+    if (s->block_quote_level == 0 && s->marker_end_col == 0 &&
+        s->indent > margin_col) {
+      margin_col = s->indent;
+    }
+    if (!at_block_opener_margin(s, margin_col)) {
+      return false;
+    }
     s->state &= ~STATE_AFTER_BLANK_LINE;
     push_block(s, BLOCK_QUOTE, marker_count);
     if (marker_start_col + 2 <= UINT8_MAX) {

@@ -1925,3 +1925,91 @@ See [r][].
   (paragraph
     (collapsed_reference_link
       text: (link_text))))
+
+==================
+An indented quote marker at the document margin is paragraph text
+==================
+x
+
+    > quoted
+
+---
+
+(document
+  (paragraph)
+  (paragraph))
+
+==================
+A quote marker one column in at the document margin is paragraph text
+==================
+ > q
+
+---
+
+(document
+  (paragraph))
+
+==================
+No definition registers behind an indented quote marker
+==================
+[x][r] here.
+
+    > [r]: /u
+
+---
+
+(document
+  (paragraph
+    (full_reference_link
+      text: (link_text)
+      label: (link_label)))
+  (paragraph))
+
+==================
+A quote marker past a list item's content column still opens a quote
+==================
+- a
+
+   > q
+
+---
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)
+        (block_quote
+          (block_quote_marker)
+          content: (content
+            (paragraph)))))))
+
+==================
+A tab-indented quote marker at the document margin is paragraph text
+==================
+	> q
+
+---
+
+(document
+  (paragraph))
+
+==================
+A tab that reaches a list item's content column opens a quote in the item
+==================
+1. a
+	> quote
+
+---
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_decimal_period)
+      content: (list_item_content
+        (paragraph)
+        (block_quote
+          (block_quote_marker)
+          content: (content
+            (paragraph)))))))
