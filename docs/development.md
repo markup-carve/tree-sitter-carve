@@ -45,6 +45,10 @@ A reading taken from a stale artifact is the most common wrong answer here.
   grammar. `npx node-gyp build` rebuilds it.
 - A failed `tree-sitter generate` leaves `src/parser.c` in place, so read its
   exit status before reading any number.
+- A `prec.dynamic` value is stored as `int16_t`, so anything past 32767 wraps
+  in `src/parser.c` and `tree-sitter generate` still succeeds. The only sign is
+  a `-Woverflow` warning when the file is compiled, and
+  `npm run test:parser-warnings` fails on one.
 
 ## What the gates cannot see
 
