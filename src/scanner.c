@@ -5604,7 +5604,8 @@ static bool parse_hard_line_break(Scanner *s, TSLexer *lexer) {
   return true;
 }
 
-static bool end_paragraph_in_block_quote(Scanner *s, TSLexer *lexer) {
+static bool end_paragraph_in_block_quote(Scanner *s, TSLexer *lexer,
+                                         int *markers_seen) {
   Block *block = find_block(s, BLOCK_QUOTE);
   if (!block) {
     return false;
@@ -5613,6 +5614,10 @@ static bool end_paragraph_in_block_quote(Scanner *s, TSLexer *lexer) {
   // Scan all `> ` markers we can find.
   bool ending_newline;
   uint8_t marker_count = scan_block_quote_markers(s, lexer, &ending_newline);
+  // Handed to the caller rather than stored: `block_quote_level` is written
+  // only by `output_block_quote_continuation`, which this route never reaches,
+  // so a stored count would describe a different line (the #114 trap).
+  *markers_seen = marker_count;
 
   // No blockquote marker.
   if (marker_count == 0) {
@@ -5983,8 +5988,29 @@ static bool close_paragraph(Scanner *s, TSLexer *lexer) {
     return true;
   }
 
-  if (end_paragraph_in_block_quote(s, lexer)) {
+  // Set by `end_paragraph_in_block_quote` to the `>` markers the next line
+  // carries; -1 while no quote is open.
+  int markers_seen = -1;
+  if (end_paragraph_in_block_quote(s, lexer, &markers_seen)) {
     return true;
+  }
+
+  // A LAZY line inside a quote - no `>` marker, indented to the quote's content
+  // column - is continuation text of the quoted paragraph (corpus 369), so no
+  // block opener on it interrupts: carve-js keeps `> x` over `  # H`, and the
+  // same over an indented fence, as one quoted paragraph.
+  //
+  // Decided HERE, from the marker count this very call just computed, because
+  // nothing downstream can tell a lazy line from a marked one: at this peek
+  // both read column 2, an `indent` of 0 left over from the previous line, and
+  // a `block_quote_level` of 0. A lazy line at column ZERO is left to the peeks
+  // below, which end the quote there as carve-js does.
+  if (markers_seen == 0) {
+    Block *quote = find_block(s, BLOCK_QUOTE);
+    if (quote && quote->content_col != 0 &&
+        line_column(s, lexer) >= quote->content_col) {
+      return false;
+    }
   }
 
   if (scan_deeper_block_quote_at_paragraph_end(s, lexer)) {
