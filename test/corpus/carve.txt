@@ -7160,3 +7160,100 @@ A fence opened past an item's content column ends at a line short of that column
       begin_marker: (verbatim_marker_begin)
       content: (content)
       end_marker: (verbatim_marker_end))))
+
+===============================================================================
+A quoted fence closer short of its list item's column ends the fence and the item (tree-sitter-carve#407)
+===============================================================================
+> - a
+>
+>   ```
+>   x
+>  ```
+>   y
+
+-------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (paragraph)
+            (block_quote_marker)
+            (code_block
+              (code_block_marker_begin)
+              code: (code
+                (block_quote_marker))))))
+      (block_quote_marker)
+      (paragraph
+        (verbatim
+          begin_marker: (verbatim_marker_begin)
+          content: (content)
+          end_marker: (verbatim_marker_end))))))
+
+===============================================================================
+A quoted fence body line short of its list item's column ends the fence and the item (tree-sitter-carve#407)
+===============================================================================
+> - a
+>
+>   ```
+>   x
+>  y
+>   ```
+
+-------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (paragraph)
+            (block_quote_marker)
+            (code_block
+              (code_block_marker_begin)
+              code: (code
+                (block_quote_marker))))))
+      (block_quote_marker)
+      (paragraph
+        (block_quote_marker)
+        (verbatim
+          begin_marker: (verbatim_marker_begin)
+          content: (content)
+          end_marker: (verbatim_marker_end))))))
+
+===============================================================================
+A quoted fence opened past its item's column keeps a body line at the item's column (tree-sitter-carve#407)
+===============================================================================
+> - a
+>
+>     ```
+>     x
+>   y
+>     ```
+
+-------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (paragraph)
+            (block_quote_marker)
+            (code_block
+              (code_block_marker_begin)
+              code: (code
+                (block_quote_marker)
+                (block_quote_marker))
+              (block_quote_marker)
+              (code_block_marker_end))))))))
