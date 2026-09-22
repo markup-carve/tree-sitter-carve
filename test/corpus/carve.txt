@@ -371,17 +371,19 @@ x ^[a ^[b] /c/]
       end_marker: (emphasis_end))))
 
 ===============================================================================
-An empty note is a literal caret and a span
+An empty note is a literal caret, and the span it leaves is unmodeled
+;; `x ^[]{.c}` renders `x ^<span class="c"></span>`: the note declines and the
+;; empty bracket run takes the attribute. Neither half is built here. The span
+;; needs content this grammar has no rule for, and the attribute no longer
+;; attaches to the text beside it, which is the language's rule for a block
+;; after a word (#336).
 ===============================================================================
 x ^[]{.c}
 
 -------------------------------------------------------------------------------
 
 (document
-  (paragraph
-    attribute: (inline_attribute
-      (args
-        (class)))))
+  (paragraph))
 
 ===============================================================================
 A whitespace-only note is literal too

@@ -5426,6 +5426,14 @@ static bool parse_open_curly_bracket(Scanner *s, TSLexer *lexer,
         // ordinary inline text, so refuse the block-attribute token and let
         // the line parse as a paragraph.
         advance(s, lexer);
+        // ADJACENT BLOCKS ON ONE LINE MERGE (corpus
+        // 114-adjacent-attribute-blocks-on-one-line-merge), so a `{` behind
+        // the closing brace opens another block rather than ending the run.
+        while (lexer->lookahead == '{') {
+          if (!scan_valid_inline_attribute(s, lexer)) {
+            goto no_attribute;
+          }
+        }
         while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
           advance(s, lexer);
         }
