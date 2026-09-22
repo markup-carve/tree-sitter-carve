@@ -3747,7 +3747,7 @@
               "type": "ALIAS",
               "content": {
                 "type": "SYMBOL",
-                "name": "_verbatim_content"
+                "name": "_verbatim_body"
               },
               "named": true,
               "value": "content"
@@ -7701,7 +7701,7 @@
             "type": "ALIAS",
             "content": {
               "type": "SYMBOL",
-              "name": "_verbatim_content"
+              "name": "_verbatim_body"
             },
             "named": true,
             "value": "content"
@@ -7799,7 +7799,7 @@
             "type": "ALIAS",
             "content": {
               "type": "SYMBOL",
-              "name": "_verbatim_content"
+              "name": "_verbatim_body"
             },
             "named": true,
             "value": "content"
@@ -7856,7 +7856,7 @@
             "type": "ALIAS",
             "content": {
               "type": "SYMBOL",
-              "name": "_verbatim_content"
+              "name": "_verbatim_body"
             },
             "named": true,
             "value": "content"
@@ -7900,7 +7900,7 @@
             "type": "ALIAS",
             "content": {
               "type": "SYMBOL",
-              "name": "_verbatim_content"
+              "name": "_verbatim_body"
             },
             "named": true,
             "value": "content"
@@ -7917,6 +7917,31 @@
             },
             "named": true,
             "value": "verbatim_marker_end"
+          }
+        }
+      ]
+    },
+    "_verbatim_body": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "_verbatim_content"
+        },
+        {
+          "type": "REPEAT",
+          "content": {
+            "type": "SEQ",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "_verbatim_continue"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "_verbatim_content"
+              }
+            ]
           }
         }
       ]
@@ -9667,6 +9692,10 @@
     {
       "type": "SYMBOL",
       "name": "_attribute_mark_begin"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_verbatim_continue"
     }
   ],
   "inline": [],
