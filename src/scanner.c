@@ -1276,6 +1276,28 @@ static bool parse_indented_content_spacer(Scanner *s, TSLexer *lexer,
   return true;
 }
 
+/// Does this line reach `list`'s items? For a list inside a quote, `indent`
+/// counts from after the `>` markers while `data` may hold an absolute column
+/// (a list nested on a marker line), so compare absolute columns instead.
+static bool quoted_line_reaches_list(Scanner *s, TSLexer *lexer, Block *list) {
+  bool below_list = false;
+  for (int i = s->open_blocks->size - 1; list->content_col != 0 && i >= 0;
+       --i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (b == list) {
+      below_list = true;
+    } else if (below_list && b->type == BLOCK_QUOTE) {
+      // Only a list opened inside the quote's margin; one attached flush left
+      // by `+` recorded its columns without the quote's prefix.
+      if (list->content_col > b->content_col) {
+        return line_column(s, lexer) >= list->content_col;
+      }
+      break;
+    }
+  }
+  return s->indent >= list->data;
+}
+
 // Close open list if list markers are different.
 static bool parse_list_item_continuation(Scanner *s, TSLexer *lexer) {
   Block *list = find_list(s);
@@ -1283,7 +1305,7 @@ static bool parse_list_item_continuation(Scanner *s, TSLexer *lexer) {
     return false;
   }
 
-  if (s->indent < list->data) {
+  if (!quoted_line_reaches_list(s, lexer, list)) {
     return false;
   }
 
@@ -4267,9 +4289,14 @@ static bool parse_list_item_end(Scanner *s, TSLexer *lexer,
     //   >
     //   >   text
     //
+    // A marked line with no blank before it is asked the same: an opener that
+    // ended the item's paragraph (`> - a` / `>   # H`) stays in the item.
+    if (!ending_newline && valid_symbols[BLOCK_QUOTE_CONTINUATION]) {
+      has_block_quote_continuation = true;
+    }
     if (has_block_quote_continuation) {
       s->indent = consume_whitespace(s, lexer);
-      if (s->indent >= list->data) {
+      if (quoted_line_reaches_list(s, lexer, list)) {
         mark_end(s, lexer);
         output_block_quote_continuation(s, lexer, block_quote_markers,
                                         ending_newline);
