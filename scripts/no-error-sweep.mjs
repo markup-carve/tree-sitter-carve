@@ -58,16 +58,26 @@ const LINES = [
   '%%', '%%%', '| a |', '^ cap', '---', '***',
 ];
 const TAILS = ['x', '', '- b'];
+
+// A container in a list item inside a block quote, then a line that is short of
+// the item's column, at it, or unmarked. The flat vocabulary above never nests,
+// so none of its documents reached this: an unclosed quoted div followed by
+// `> y` parsed to a MISSING marker with every check green (#411).
+const QUOTED_OPENERS = ['>   ::: note', '>   ```', '>   > q'];
+const QUOTED_BODIES = ['>   x', '>', null];
+const QUOTED_TAILS = ['> y', '>  y', '>   y', 'y', '>   :::', '>   ```'];
 // A LITERAL, not `LINES.length * LINES.length * TAILS.length`. Derived from the
 // arrays it is meant to guard, this expectation can never fail: shrinking the
 // vocabulary shrinks the expectation with it, and the sweep reports a smaller
 // question answered as a pass. Measured while writing this - dropping one tail
 // took the run from 2700 documents to 1800 and the population check stayed
 // silent. Update the number deliberately when the vocabulary grows.
-const EXPECTED_DOCUMENTS = 2700;
+const EXPECTED_DOCUMENTS = 2700 + 54;
 
 /** The family a failing document belongs to: the two lines that shaped it. */
 const familyOf = (first, second) => `${JSON.stringify(first)} + ${JSON.stringify(second)}`;
+const quotedFamilyOf = (opener, tail) =>
+  `quoted item: ${JSON.stringify(opener)} + ${JSON.stringify(tail)}`;
 
 const work = mkdtempSync(path.join(tmpdir(), 'carve-no-error-'));
 const byFile = new Map();
@@ -77,6 +87,16 @@ for (const first of LINES) {
       const file = path.join(work, `s${byFile.size}.crv`);
       writeFileSync(file, `${first}\n${second}\n${tail}\n`);
       byFile.set(file, familyOf(first, second));
+    }
+  }
+}
+for (const opener of QUOTED_OPENERS) {
+  for (const body of QUOTED_BODIES) {
+    for (const tail of QUOTED_TAILS) {
+      const file = path.join(work, `s${byFile.size}.crv`);
+      const lines = ['> - a', '>', opener, ...(body === null ? [] : [body]), tail];
+      writeFileSync(file, `${lines.join('\n')}\n`);
+      byFile.set(file, quotedFamilyOf(opener, tail));
     }
   }
 }
@@ -91,7 +111,9 @@ if (byFile.size !== EXPECTED_DOCUMENTS) {
 }
 
 // In batches: one `tree-sitter parse` per document costs a process each, and the
-// CLI prints one line per file in --quiet mode only when the tree has an error.
+// CLI prints one line per file in --quiet mode only when the tree has an error:
+// an ERROR node or a MISSING one, and a tree with only the second prints no
+// ERROR at all, so both count.
 const files = [...byFile.keys()];
 const found = new Map();
 const BATCH = 400;
@@ -126,7 +148,7 @@ for (let i = 0; i < files.length; i += BATCH) {
     });
   }
   for (const line of (run.stdout || '').split('\n')) {
-    if (!line.includes('ERROR')) continue;
+    if (!line.includes('ERROR') && !line.includes('MISSING')) continue;
     const file = line.split(/\s/)[0];
     const family = byFile.get(file);
     if (family) found.set(family, (found.get(family) ?? 0) + 1);

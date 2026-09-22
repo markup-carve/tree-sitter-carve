@@ -7257,3 +7257,223 @@ A quoted fence opened past its item's column keeps a body line at the item's col
                 (block_quote_marker))
               (block_quote_marker)
               (code_block_marker_end))))))))
+
+===============================================================================
+A one-character quoted line folds lazily into a div's paragraph in a quoted list item (tree-sitter-carve#411)
+===============================================================================
+> - a
+>
+>   ::: note
+>   x
+> y
+
+-------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (paragraph)
+            (block_quote_marker)
+            (div
+              (div_marker_begin)
+              type: (admonition_type)
+              content: (content
+                (paragraph
+                  (block_quote_marker)
+                  (block_quote_marker))))))))))
+
+===============================================================================
+A lazy line folds into a quoted div's paragraph and its closer still closes the div (tree-sitter-carve#411)
+===============================================================================
+> - a
+>
+>   ::: note
+>   x
+> y
+>   :::
+
+-------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (paragraph)
+            (block_quote_marker)
+            (div
+              (div_marker_begin)
+              type: (admonition_type)
+              content: (content
+                (paragraph
+                  (block_quote_marker)
+                  (block_quote_marker)))
+              (block_quote_marker)
+              (div_marker_end))))))))
+
+===============================================================================
+An empty quoted div ends with its list item at a short line, whose marker stays the quote's (tree-sitter-carve#411)
+===============================================================================
+> - a
+>
+>   ::: note
+> y
+
+-------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (paragraph)
+            (block_quote_marker)
+            (div
+              (div_marker_begin)
+              type: (admonition_type)))))
+      (block_quote_marker)
+      (paragraph))))
+
+===============================================================================
+An empty quoted div ends with its list item at a short line after a blank one (tree-sitter-carve#411)
+===============================================================================
+> - a
+>
+>   ::: note
+>
+> y
+
+-------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (paragraph)
+            (block_quote_marker)
+            (div
+              (div_marker_begin)
+              type: (admonition_type)
+              (block_quote_marker)))))
+      (block_quote_marker)
+      (paragraph))))
+
+===============================================================================
+A blank line closes a quoted div's paragraph, so a short line ends the div and the item (tree-sitter-carve#411)
+===============================================================================
+> - a
+>
+>   ::: note
+>   x
+>
+> y
+
+-------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (paragraph)
+            (block_quote_marker)
+            (div
+              (div_marker_begin)
+              type: (admonition_type)
+              content: (content
+                (paragraph
+                  (block_quote_marker)))
+              (block_quote_marker)))))
+      (block_quote_marker)
+      (paragraph))))
+
+===============================================================================
+A lazy line folds into a div's paragraph in an unquoted list item (tree-sitter-carve#411)
+===============================================================================
+- a
+
+  ::: note
+  x
+y
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)
+        (div
+          (div_marker_begin)
+          type: (admonition_type)
+          content: (content
+            (paragraph)))))))
+
+===============================================================================
+A one-character quoted line folds lazily into a nested item's paragraph (tree-sitter-carve#411)
+===============================================================================
+> - a
+>   - b
+> 7
+
+-------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (paragraph)
+            (block_quote_marker)
+            (list
+              (list_item
+                marker: (list_marker_dash)
+                content: (list_item_content
+                  (paragraph
+                    (block_quote_marker)))))))))))
+
+===============================================================================
+A marked line of several words ends a list attached to a quote by a continuation marker (tree-sitter-carve#411)
+===============================================================================
+> quoted
++
+- item
+> more words here
+
+-------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (paragraph)
+      (list_continuation_marker)
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (paragraph))))
+      (block_quote_marker)
+      (paragraph))))
