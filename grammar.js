@@ -38,11 +38,50 @@ function inlineElement($, options) {
       // Span is declared separately because it always parses an `inline_attribute`,
       // while the attribute is optional for everything else.
       $.span,
+      // TEXT TAKES NO ATTRIBUTE BLOCK. An inline attribute attaches to an
+      // ELEMENT: `*b*{.c}` and `` `c`{.c} `` carry one, `y{.c}` and
+      // `a--{.c}` are literal braces in the language. Spelled on every
+      // alternative, the block attached to a word run too, and the run it
+      // swallowed took the rest of the line's reading with it.
+      choice(
+        $._smart_punctuation,
+        $.backslash_escape,
+        $.hard_line_break,
+        // An EMPTY braced pair is literal text, and it has to be recognized
+        // BEFORE any of the openers below can commit - see
+        // `_empty_braced_pair`.
+        $._empty_braced_pair,
+        // A NUL byte is one character of content, handed over by the
+        // external scanner because no character class can match it.
+        $._nul_byte,
+        $._include_open_fallback,
+        // Word runs that ABSORB a glued mention / tag / symbol, which is
+        // how the leading word-boundary guard is enforced without
+        // lookbehind (see _glued_* below).
+        seq($._glued_mention, repeat($._glued_marker)),
+        seq($._glued_tag, repeat($._glued_marker)),
+        $._glued_symbol,
+        // Text and the symbol fallback matches everything not matched elsewhere.
+        notes ? $._symbol_fallback : $._note_symbol_fallback,
+        $._literal_run,
+        $._text,
+        // One literal `-` inside a braced delete, where the next is its
+        // closer's. See `em_dash`.
+        $._delete_dash,
+      ),
+      // The brace's own fallback stays available behind text: it is what lets
+      // the scanner decide a `{` that opens no attribute, and without it the
+      // brace is one more text character and the decision never happens.
       seq(
         choice(
-          $._smart_punctuation,
-          $.backslash_escape,
-          $.hard_line_break,
+          notes ? $._symbol_fallback : $._note_symbol_fallback,
+          $._literal_run,
+          $._text,
+        ),
+        $._curly_bracket_span_fallback,
+      ),
+      seq(
+        choice(
           // Elements containing other inline elements needs to have the same precedence level
           // so we can choose the element that's closed first.
           //
@@ -69,13 +108,6 @@ function inlineElement($, options) {
           prec.dynamic(ELEMENT_PRECEDENCE, $.delete),
           $.substitution,
           $.editorial_comment,
-          // An EMPTY braced pair is literal text, and it has to be recognized
-          // BEFORE any of the openers above can commit - see
-          // `_empty_braced_pair`.
-          $._empty_braced_pair,
-          // A NUL byte is one character of content, handed over by the
-          // external scanner because no character class can match it.
-          $._nul_byte,
           // A note's content recognizes neither a note nor a footnote
           // reference, so both drop out there and stay the literal text
           // the spec says they are (corpus 309).
@@ -92,7 +124,6 @@ function inlineElement($, options) {
           // Keep the directive margin above any realistically parseable source
           // while retaining named child nodes (a lexical token cannot do that).
           prec.dynamic(10_000 * ELEMENT_PRECEDENCE, $.include_directive),
-          $._include_open_fallback,
           prec.dynamic(
             ELEMENT_PRECEDENCE,
             seq($.mention, repeat($._glued_marker)),
@@ -109,19 +140,6 @@ function inlineElement($, options) {
           $.braced_comment,
           $.trailing_comment,
           $._todo_highlights,
-          // Word runs that ABSORB a glued mention / tag / symbol, which is
-          // how the leading word-boundary guard is enforced without
-          // lookbehind (see _glued_* below).
-          seq($._glued_mention, repeat($._glued_marker)),
-          seq($._glued_tag, repeat($._glued_marker)),
-          $._glued_symbol,
-          // Text and the symbol fallback matches everything not matched elsewhere.
-          notes ? $._symbol_fallback : $._note_symbol_fallback,
-          $._literal_run,
-          $._text,
-          // One literal `-` inside a braced delete, where the next is its
-          // closer's. See `em_dash`.
-          $._delete_dash,
         ),
         optional(
           // We need a separate fallback token for the opening `{`
@@ -1636,6 +1654,9 @@ module.exports = grammar({
           ),
         ),
         "}",
+        // Adjacent blocks on one line merge, so the line may carry a run of
+        // them (corpus 114-adjacent-attribute-blocks-on-one-line-merge).
+        repeat(seq("{", field("args", attributeArgs($)), "}")),
         $._newline,
       ),
     class: ($) => seq(".", alias($.class_name, "class")),

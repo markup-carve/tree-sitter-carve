@@ -1,5 +1,9 @@
 ==================
 Delimited comments stay inert inside prose and strong content
+;; A comment GLUED to a word is content here: `braced_comment` takes a leading
+;; whitespace token, and the attribute block that used to swallow `{% hidden %}`
+;; no longer attaches to text (#336). The language removes it either way, and
+;; the strong span it sits in is unchanged.
 ==================
 
 Prose flows {% a delimited comment %} around a hidden note.
@@ -15,11 +19,7 @@ Even *bo{% hidden %}ld* stays one strong span.
   (paragraph
     (strong
       begin_marker: (strong_begin)
-      content: (content
-        attribute: (inline_attribute
-          (args
-            (comment
-              content: (content)))))
+      content: (content)
       end_marker: (strong_end))))
 
 ==================

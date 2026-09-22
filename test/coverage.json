@@ -874,10 +874,6 @@
       "reading": "strong html=0 tree=1",
       "reason": "the grammar builds an inline span the language keeps literal here"
     },
-    "leading-attribute-brace-before-an-inline-span-stays-literal-2": {
-      "reading": "code html=1 tree=0",
-      "reason": "the language builds an inline span the grammar does not"
-    },
     "numbered-cross-references-10": {
       "reading": "strong html=1 tree=0",
       "reason": "the language builds an inline span the grammar does not"
