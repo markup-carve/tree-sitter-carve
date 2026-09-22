@@ -3277,7 +3277,10 @@ A run of spaces between the bullet and the checkbox is still a task marker
       marker: (list_marker_task
         checkmark: (unchecked))
       content: (list_item_content
-        (paragraph)))))
+        (paragraph)
+        (heading
+          marker: (marker)
+          content: (content))))))
 
 ===============================================================================
 A container opener in a code fence body is data, not an opener
@@ -6848,3 +6851,18 @@ A definition marker on a description's marker line nests a definition list (tree
         (list_item
           marker: (list_marker_description)
           definition: (definition))))))
+
+===============================================================================
+A padded bullet's content column is past the whole space run (tree-sitter-carve#380)
+===============================================================================
+-   a
+  # H
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)))))

@@ -3651,6 +3651,17 @@ static bool parse_list_marker_or_thematic_break(
   // returns wherever that probe stopped, which broke `- - A` (corpus
   // 103-marker-line-nested-lists) while this was being written.
   uint8_t marker_content_col = (uint8_t)line_column(s, lexer);
+  // The item's content starts after the WHOLE space run: `-   lead` puts it at
+  // column 4. Counted before the thematic-break probe, which can eat an inner
+  // marker too (`* * u`) and would then report a column past it.
+  if (can_be_list_marker) {
+    while (lexer->lookahead == ' ') {
+      advance(s, lexer);
+    }
+    if (!at_line_end(lexer) && !lexer->eof(lexer)) {
+      marker_content_col = (uint8_t)line_column(s, lexer);
+    }
+  }
 
   // Whether the probes below have consumed marker characters from the rest of
   // the line. The lexer cannot rewind, so what they eat decides the CONTENT
