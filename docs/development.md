@@ -29,3 +29,30 @@ grammar parses every one of its corpus inputs cleanly; otherwise it is listed in
 category (after bumping the submodule) fails `test:coverage` until it is
 classified, which is intentional: it forces a decision rather than silently
 dropping coverage.
+
+## Measuring a change
+
+A reading taken from a stale artifact is the most common wrong answer here.
+
+- `tree-sitter parse` shares ONE `carve.so` across every checkout on the machine
+  (`~/.cache/tree-sitter/lib/`) and rebuilds it only when `src/parser.c` is
+  newer. Export `TREE_SITTER_LIBDIR` to a directory of your own and delete the
+  cached library between builds. `test:line-terminators` forks workers, so a
+  shared library can have one run comparing two different grammars.
+- `node-gyp-build` does NOT rebuild after a `src/parser.c` change. It serves the
+  existing `build/Release/*.node`, so `test:binding-parity`, `test:highlights`,
+  `test:marker-separators` and `test:nesting-depth` answer for the previous
+  grammar. `npx node-gyp build` rebuilds it.
+- A failed `tree-sitter generate` leaves `src/parser.c` in place, so read its
+  exit status before reading any number.
+
+## What the gates cannot see
+
+`test:inline-reading` compares inline spans, so a change that moves none of them
+is invisible to it however wrong the tree is.
+
+- `alias()` over an inline `seq` renames each CHILD rather than wrapping them:
+  `alias(seq($._a, $._b), $.cell)` builds two `cell` nodes. Alias a named hidden
+  rule instead. A table row read one attributed cell as two with every gate green.
+- An over-acceptance inside a run the fixture renders literally builds no inline
+  span either way. `test:conformance` reports it only when it becomes an ERROR.
