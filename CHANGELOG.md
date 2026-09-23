@@ -66,9 +66,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - A substitution's halves are inline content split at a top-level arrow; an
   arrow inside a code span, a math run, an inline literal or a comment, or
   behind a backslash, is content (markup-carve/carve#2092, #311).
+- Speculative verbatim lookahead leaves nothing behind. It no longer moves the
+  lone-carriage-return column state or the lexer's marked token end, and it
+  stops at a table row's closing pipe as the content scanner does (#319).
+- An unterminated `{~` no longer traps the parser. The substitution branch sat
+  above the scanner's `ERROR` check, where every symbol reads as valid, so each
+  recovery step pushed another entry and emitted another zero-width token
+  without consuming input; one 14-byte document reached 9.6 GB before it was
+  killed, and now parses in under a millisecond (#321, #324).
 - An inline link's tail parses as a destination and an optional title, so
   `[t](/u "T")` keeps the quoted run out of the destination and `[x](a b)`
   stays paragraph text (#310).
+- An empty destination is no link, so `[x]()` and `![x]()` stay paragraph text
+  where they parsed to a top-level `ERROR`, and a destination opens on a
+  character of its own rather than on a space (markup-carve/carve#2070, #305).
 - A link destination stays opaque while an enclosing span scans for its own
   delimiters, so a slash inside a destination no longer closes an emphasis
   around it (#297).
@@ -94,6 +105,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   column, and one at a quoted item's content column stays in the item. A
   definition at an indented div's content column no longer parses to `ERROR`
   (#386, #387, #389).
+- Each term and description in a definition list reports its own content
+  column, where every item after the first was measured against the column of
+  whichever opened the list. A definition written under a description is
+  collected at the description's column (#372, #377).
 - A bare inline opener no longer pairs with a marker in the next table cell, so
   the row keeps its cell split (#329).
 - A table cell takes its attribute block after the kind and alignment markers,
@@ -156,6 +171,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   build, but `src/scanner.c` ships as source, and a consumer's compiler can lay
   out that frame differently and lose a definition line, a nested quote, a
   table or a comment (#325).
+- The scanner's compile-time checks no longer use `_Static_assert`, a C11
+  keyword MSVC does not accept in its default C mode. It mis-parsed the rest of
+  the statement and failed the Windows prebuild and the cp38-win32 wheel leg,
+  so the first 0.1.6 tag produced no Windows artifacts (#449).
 - A block attribute line is recognized at or past a list marker's own content
   column and interrupts an open paragraph, and a wrapped continuation line
   needs only some indentation rather than exactly one column past the brace:
@@ -195,6 +214,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - A code run left open at a table row's closing pipe carries on into a
   following `+` continuation row for a one-cell row, closing on the
   continuation row's own pipes as content (#440).
+- Inline markup left open at a one-cell row's closing pipe carries into its `+`
+  continuation row, so `| a *b |` over `+ c* |` is one strong over `b c` where
+  no element could reach past the row join. A continuation row must carry the
+  row's own block-quote depth to join at all (#437, #448).
 - An unclosed code span is read one line at a time instead of as a single
   token, so a fence with a closer below the span now interrupts it instead of
   being swallowed as span content (#427, #442).

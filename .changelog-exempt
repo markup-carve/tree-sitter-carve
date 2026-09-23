@@ -7,18 +7,11 @@
 # printed on a passing run too, so what was left out stays visible; one whose
 # pull request falls outside the release being checked prints nothing.
 #
-# The entries below are 0.1.6's, and they are the gap this gate was built to
-# stop rather than a set of changes that owe nothing. 0.1.6 has shipped, so
-# amending its notes now would rewrite a published release to no reader's
-# benefit. They are recorded here instead, which keeps them visible, makes the
-# released 0.1.6 a fixture this gate passes over all 77 of its shipped-source
-# merges, and leaves the gate free to govern the releases that come next.
+# When this gate first ran, eight of 0.1.6's shipped-source merges sat here
+# because the release had already shipped. Six of them described a change a
+# consumer can see, so the 0.1.6 section and the published release notes were
+# corrected to cite them rather than recording the gap as intended. What is
+# left is the one pair that genuinely owes no entry.
 
-305: 0.1.6 had shipped; the scanner lines ride along with a spec corpus bump
-319: 0.1.6 had shipped; the section covers verbatim lookahead without citing it
-324: 0.1.6 had shipped; error recovery in the substitution opener went unwritten
 352: reverted before release by #360, so the pair nets to no change
-360: the revert of #352; together they leave the grammar where it was
-377: 0.1.6 had shipped; the definition-list content column went uncited
-448: 0.1.6 had shipped; landed after #447 reconciled the section and missed it
-449: 0.1.6 had shipped; a portability fix for _Static_assert, never written up
+360: the revert of #352; the two diffs cancel on src/scanner.c, and the guard fixture landing with it is test-only
