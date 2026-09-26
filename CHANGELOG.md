@@ -10,7 +10,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - A `%%` comment inside a forced span (`{*...*}` and the rest of the braced
   family) or the combined `/*...*/` token now ends at that construct's own
-  closer instead of running past it to the end of the line.
+  closer instead of running past it to the end of the line
+  (markup-carve/carve#2170, #431).
 
 ## [0.1.6] - 2026-09-22
 
