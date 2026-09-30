@@ -243,6 +243,9 @@ typedef enum {
   TABLE_LIST_ROW_CHECK,
   TABLE_LIST_END,
   ATTRIBUTED_SPAN_MARK_BEGIN,
+  BOLD_ITALIC_LITERAL_LT,
+  INLINE_ATTRIBUTE_CONTINUE,
+  BOLD_ITALIC_OPEN_CHECK,
 } TokenType;
 
 // The different blocks in Carve that we track,
@@ -397,6 +400,8 @@ enum {
   INLINE_STOPS_AT_SPAN_CLOSER = 1 << 1,
   // Square-bracket labels use this type-specific bit to bound comments.
   INLINE_LABEL = 1 << 1,
+  // An emphasis fallback from a combined opener keeps failed pairs literal.
+  INLINE_COMBINED_FALLBACK = 1 << 1,
 };
 
 // serialized inline types must fit in six bits
@@ -3647,7 +3652,7 @@ static bool scan_continuation_row(Scanner *s, TSLexer *lexer);
 
 static bool parse_table_quote_continuation(Scanner *s, TSLexer *lexer,
                                             const bool *valid_symbols) {
-  bool quote_symbols[ATTRIBUTED_SPAN_MARK_BEGIN + 1];
+  bool quote_symbols[BOLD_ITALIC_OPEN_CHECK + 1];
   memcpy(quote_symbols, valid_symbols, sizeof(quote_symbols));
   quote_symbols[BLOCK_QUOTE_CONTINUATION] = true;
   if (!parse_block_quote(s, lexer, quote_symbols)) return false;
@@ -9163,6 +9168,8 @@ static bool substitution_arrow_ahead(Scanner *s, TSLexer *lexer, bool *closed) {
   return false;
 }
 
+static bool is_bare_delim_kind(int32_t c, InlineType *kind);
+
 static bool mark_span_begin(Scanner *s, TSLexer *lexer,
                             const bool *valid_symbols, InlineType inline_type,
                             TokenType token);
@@ -9255,6 +9262,8 @@ static bool mark_span_begin(Scanner *s, TSLexer *lexer,
                             const bool *valid_symbols, InlineType inline_type,
                             TokenType token) {
   Inline *top = peek_inline(s);
+  bool combined_fallback = inline_type == EMPHASIS &&
+      s->after_closer_char == '*' && s->after_closer_col == line_column(s, lexer);
   bool bare = (s->state & STATE_BARE_SPAN_OPENER) != 0;
   s->state &= ~STATE_BARE_SPAN_OPENER;
   // If IN_FALLBACK is valid then it means we're processing the
@@ -9332,6 +9341,14 @@ static bool mark_span_begin(Scanner *s, TSLexer *lexer,
     // Counted only within the current scope: a marker inside a nested BRACED
     // span belongs to that span, so it must not stop an outer one closing.
     // `{*a {/b *} d/} e*}` keeps its strong, and `~a{+b~+} c~` its strikethrough.
+    // A literal opener leaves its left boundary for the adjacent delimiter.
+    if (bare && (inline_type == UNDERLINE || inline_type == EMPHASIS)) {
+      InlineType following;
+      if (is_bare_delim_kind(lexer->lookahead, &following)) {
+        s->after_closer_char = inline_type == UNDERLINE ? '_' : '/';
+        s->after_closer_col = line_column(s, lexer);
+      }
+    }
     Inline *open = find_inline_in_scope(s, inline_type);
     // A BARE marker inside a braced span of its own kind is content (corpus
     // 471), not a competing opener, so it must not stop that span closing.
@@ -9341,7 +9358,9 @@ static bool mark_span_begin(Scanner *s, TSLexer *lexer,
       } else {
         push_inline_flagged(s, LITERAL_BRACKET, 0, 0);
       }
-    } else if (open != NULL && !(bare && (open->flags & INLINE_BRACED))) {
+    } else if (open != NULL && !(bare && (open->flags & INLINE_BRACED)) &&
+               !(inline_type == EMPHASIS &&
+                 (open->flags & INLINE_COMBINED_FALLBACK))) {
       ++open->data;
     }
     // We need to output the token common to both the fallback symbol and
@@ -9414,7 +9433,11 @@ static bool mark_span_begin(Scanner *s, TSLexer *lexer,
       }
     }
     lexer->result_symbol = token;
-    push_inline_flagged(s, inline_type, 0, bare ? 0 : INLINE_BRACED);
+    if (combined_fallback) {
+      s->after_closer_char = 0;
+      s->after_closer_col = 0;
+      push_inline_flagged(s, inline_type, 1, INLINE_COMBINED_FALLBACK);
+    } else push_inline_flagged(s, inline_type, 0, bare ? 0 : INLINE_BRACED);
     return true;
   }
 }
@@ -10010,7 +10033,8 @@ static int parse_literal_run(Scanner *s, TSLexer *lexer,
     // bare_opener(d) = <!(alnum | d | slash_if(d)), d, !(ws | d)
     bool path_guard = (c == '/' || c == '_') && (prev == '/' || prev == '_') &&
                       prev2 != 0;
-    bool may_open = !carve_is_alnum_ascii(prev) && prev != c && !path_guard &&
+    bool may_open = !carve_is_alnum_ascii(prev) && prev != c &&
+                    prev != '_' && !path_guard &&
                     !next_ws && next != c;
     // The bold-italic opener `/*` may follow a word (`a/*y*/b`), unlike a bare
     // `/`, so it is left to the span machinery.
@@ -10262,6 +10286,169 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   // earlier probe's own declined scratch-read left the lexer. See the note at
   // that call.
   const uint32_t advances_at_entry = s->advances;
+  Inline *combined_fallback = peek_inline(s);
+  if (valid_symbols[LITERAL_RUN] && !valid_symbols[ERROR] && combined_fallback &&
+      combined_fallback->type == EMPHASIS &&
+      (combined_fallback->flags & INLINE_COMBINED_FALLBACK) &&
+      combined_fallback->data == 1 && lexer->lookahead == '*') {
+    advance(s, lexer);
+    mark_end(s, lexer);
+    combined_fallback->data = 0;
+    lexer->result_symbol = LITERAL_RUN;
+    return true;
+  }
+
+  if (valid_symbols[EMPHASIS_END] && valid_symbols[LITERAL_RUN] &&
+      !valid_symbols[ERROR] && combined_fallback &&
+      combined_fallback->type == EMPHASIS &&
+      (combined_fallback->flags & INLINE_COMBINED_FALLBACK) &&
+      lexer->lookahead == '/') {
+    if (parse_span_end(s, lexer, EMPHASIS, EMPHASIS_END)) return true;
+    // A rejected slash close is literal within this fallback, not a new opener.
+    mark_end(s, lexer);
+    lexer->result_symbol = LITERAL_RUN;
+    return true;
+  }
+
+  // Decide continuations before consuming a malformed group's opening brace.
+  if (valid_symbols[INLINE_ATTRIBUTE_CONTINUE] && !valid_symbols[ERROR] &&
+      lexer->lookahead == '{') {
+    advance(s, lexer);
+    mark_end(s, lexer);
+    if (!scan_inline_attribute_body(s, lexer)) return false;
+    lexer->result_symbol = INLINE_ATTRIBUTE_CONTINUE;
+    return true;
+  }
+  // Decide the combined opener before its star, retaining a slash fallback.
+  if (valid_symbols[BOLD_ITALIC_OPEN_CHECK] && !valid_symbols[ERROR] &&
+      lexer->lookahead == '*') {
+    uint32_t opener_column = line_column(s, lexer);
+    mark_end(s, lexer);
+    int32_t previous = 0;
+    uint32_t characters = 0;
+    bool emphasis_closer = false;
+    bool combined_pair = false;
+    while (!lexer->eof(lexer)) {
+      if (at_line_end(lexer)) {
+        consume_line_end(s, lexer);
+        consume_whitespace(s, lexer);
+        if (at_line_end(lexer) || lexer->eof(lexer)) break;
+        // Quote prefixes belong to the host, not to the inline content.
+        unsigned quotes = 0;
+        for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
+          if ((*array_get(s->open_blocks, i))->type == BLOCK_QUOTE) ++quotes;
+        }
+        while (quotes > 0 && lexer->lookahead == '>') {
+          advance(s, lexer);
+          if (lexer->lookahead == ' ' || lexer->lookahead == '\t') advance(s, lexer);
+          --quotes;
+        }
+        previous = '\n';
+      }
+      int32_t current = lexer->lookahead;
+      if (current == '\\') {
+        advance(s, lexer);
+        if (!lexer->eof(lexer) && !at_line_end(lexer)) advance(s, lexer);
+        previous = 'x';
+        characters += 2;
+        continue;
+      }
+      if (current == '`') {
+        uint8_t width = consume_chars(s, lexer, '`');
+        if (read_verbatim_run(s, lexer, width, 0, false) != VerbatimRunCloses) break;
+        previous = 'x';
+        ++characters;
+        continue;
+      }
+      if (current == '[') {
+        advance(s, lexer);
+        if (!scan_until_bracket_close(s, lexer, NULL)) break;
+        advance(s, lexer);
+        if (lexer->lookahead == '(') {
+          advance(s, lexer);
+          if (!scan_inline_link_tail(s, lexer, 0, NULL, NULL)) break;
+          advance(s, lexer);
+        }
+        previous = 'x';
+        ++characters;
+        continue;
+      }
+      if (current == '{') {
+        unsigned depth = 1;
+        advance(s, lexer);
+        while (!lexer->eof(lexer) && depth > 0) {
+          if (at_line_end(lexer)) {
+            consume_line_end(s, lexer);
+            consume_whitespace(s, lexer);
+            if (at_line_end(lexer)) break;
+          }
+          if (lexer->lookahead == '\\') {
+            advance(s, lexer);
+            if (!lexer->eof(lexer)) advance(s, lexer);
+            continue;
+          }
+          if (lexer->lookahead == '{') ++depth;
+          if (lexer->lookahead == '}') --depth;
+          advance(s, lexer);
+        }
+        if (depth > 0) break;
+        previous = 'x';
+        ++characters;
+        continue;
+      }
+      ++characters;
+      advance(s, lexer);
+      if (current == '*' && lexer->lookahead == '/') {
+        bool invalid_pair = characters == 2 || previous == ' ' ||
+                            previous == '\t' || previous == '\n';
+        if (!invalid_pair) {
+          combined_pair = true;
+          break;
+        }
+        advance(s, lexer);
+        if (!carve_is_alnum_ascii(lexer->lookahead)) emphasis_closer = true;
+        previous = '/';
+        ++characters;
+        continue;
+      }
+      if (current == '/' && previous != ' ' && previous != '\t' && previous != '\n' &&
+          previous != 0 && !carve_is_alnum_ascii(lexer->lookahead)) emphasis_closer = true;
+      previous = current;
+    }
+    if (!combined_pair && emphasis_closer &&
+        valid_symbols[EMPHASIS_MARK_BEGIN] && !find_inline_in_scope(s, EMPHASIS)) {
+      s->after_closer_char = '*';
+      s->after_closer_col = opener_column;
+      lexer->result_symbol = EMPHASIS_MARK_BEGIN;
+      return true;
+    }
+    lexer->result_symbol = BOLD_ITALIC_OPEN_CHECK;
+    return true;
+  }
+
+  bool bi_trailing_space = lexer->lookahead == ' ' || lexer->lookahead == '\t';
+
+  // A malformed angle run cannot swallow the combined span's closer.
+  Inline *bi = peek_inline(s);
+  if (valid_symbols[BOLD_ITALIC_LITERAL_LT] && !valid_symbols[ERROR] && bi &&
+      bi->type == BOLD_ITALIC && lexer->lookahead == '<') {
+    advance(s, lexer);
+    mark_end(s, lexer);
+    while (!lexer->eof(lexer) && !at_line_end(lexer)) {
+      if (lexer->lookahead == '>') return false;
+      if (lexer->lookahead == '*') {
+        advance(s, lexer);
+        if (lexer->lookahead == '/') {
+          lexer->result_symbol = BOLD_ITALIC_LITERAL_LT;
+          return true;
+        }
+      } else {
+        advance(s, lexer);
+      }
+    }
+    return false;
+  }
+
   if (valid_symbols[LABEL_MARK_BEGIN] && !valid_symbols[ERROR]) {
     mark_end(s, lexer);
     push_inline_flagged(s, SQUARE_BRACKET_SPAN, 0, INLINE_LABEL);
@@ -10989,7 +11176,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   // in the same way to have consistent precedence handling.
   // Before STRONG: an open bold-italic must be offered the `*/` closer before
   // the `*` in it can be read as a strong delimiter.
-  if (parse_span(s, lexer, valid_symbols, BOLD_ITALIC)) {
+  if (!bi_trailing_space && parse_span(s, lexer, valid_symbols, BOLD_ITALIC)) {
     return true;
   }
   if (parse_span(s, lexer, valid_symbols, EMPHASIS)) {

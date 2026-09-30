@@ -99,3 +99,10 @@ test("code fence metadata does not contribute rendered spans", () => {
 test("container labels contribute rendered spans", () => {
   assert.equal(reading("<div><p class=\"div-label\"><em>i</em></p><p>body</p></div>", "(document [0, 0] - [3, 0]\n(div [0, 0] - [3, 0]\n(div_marker_begin [0, 0] - [0, 3]\n)\n(code_block_label [0, 3] - [0, 8]\n(emphasis [0, 4] - [0, 7]\n(emphasis_begin [0, 4] - [0, 5]\n)\n(content [0, 5] - [0, 6]\n)\n(emphasis_end [0, 6] - [0, 7]\n)))\n(content [1, 0] - [2, 0]\n(paragraph [1, 0] - [2, 0]\n))\n(div_marker_end [2, 0] - [2, 3]\n)))", ":::[/i/]\nbody\n:::\n"), '');
 });
+
+test('an unresolved image preserves a nonbreaking space in its literal source', () => {
+  const source = '![\u00a0x][]\n';
+  const tree = '(document [0, 0] - [1, 0]\n (paragraph [0, 0] - [1, 0]\n (collapsed_reference_image [0, 0] - [0, 8]\n description: (image_description [0, 0] - [0, 6]))))';
+  assert.equal(reading('<p>![&nbsp;x][]</p>', tree, source), '');
+  assert.equal(reading('<p><img src="x" alt="x"></p>', tree, source), '');
+});

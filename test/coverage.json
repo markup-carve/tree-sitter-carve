@@ -636,44 +636,7 @@
       "reason": "a `---` after a content-less marker errors; carve-js renders a paragraph then a thematic break (tree-sitter-carve#96)"
     }
   },
-  "inlineReadingGaps": {
-    "glued-attribute-blocks-on-an-inline-element-merge-2": {
-      "reading": "strong html=0 tree=1",
-      "reason": "glued attribute blocks (`{#a .k}{#b k=1}{.k k=2}`) are supposed to merge into one set, the later block winning per key; the grammar attaches only the FIRST block as the element's `inline_attribute` and misreads the rest of the glued run, which is the unimplemented feature this category is named for."
-    },
-    "a-delimiter-after-an-underscore-or-slash-opens-only-when-that-one-pairs-2": {
-      "reading": "strong html=0 tree=1",
-      "reason": "PART 9's delimiter-run rule: a `_` or `/` immediately before another delimiter that does not itself pair should disqualify the FOLLOWING delimiter from opening too, so `_*x* q` stays entirely literal. The grammar does not carry that dependency - once the outer `_`/`/` fails to pair, the inner `*`/other delimiter is still free to open on its own, building a span the reference does not."
-    },
-    "a-delimiter-after-an-underscore-or-slash-opens-only-when-that-one-pairs-5": {
-      "reading": "strong html=0 tree=1",
-      "reason": "PART 9's delimiter-run rule: a `_` or `/` immediately before another delimiter that does not itself pair should disqualify the FOLLOWING delimiter from opening too, so `_*x* q` stays entirely literal. The grammar does not carry that dependency - once the outer `_`/`/` fails to pair, the inner `*`/other delimiter is still free to open on its own, building a span the reference does not."
-    },
-    "a-delimiter-after-an-underscore-or-slash-opens-only-when-that-one-pairs-6": {
-      "reading": "strong html=0 tree=1",
-      "reason": "PART 9's delimiter-run rule: a `_` or `/` immediately before another delimiter that does not itself pair should disqualify the FOLLOWING delimiter from opening too, so `_*x* q` stays entirely literal. The grammar does not carry that dependency - once the outer `_`/`/` fails to pair, the inner `*`/other delimiter is still free to open on its own, building a span the reference does not."
-    },
-    "a-delimiter-after-an-underscore-or-slash-opens-only-when-that-one-pairs": {
-      "reading": "strong html=0 tree=1, em html=0 tree=1, u html=0 tree=1, s html=0 tree=1, mark html=0 tree=1",
-      "reason": "PART 9's delimiter-run rule: a `_` or `/` immediately before another delimiter that does not itself pair should disqualify the FOLLOWING delimiter from opening too, so `_*x* q` stays entirely literal. The grammar does not carry that dependency - once the outer `_`/`/` fails to pair, the inner `*`/other delimiter is still free to open on its own, building a span the reference does not."
-    },
-    "any-character-is-content-of-the-combined-bold-italic-token-2": {
-      "reading": "strong html=5 tree=4, strong#2 html=\"ab\" tree=\"abc\", strong#3 html=\"abc\" tree=\"ab\", em html=5 tree=4, em#2 html=\"ab\" tree=\"abc\", em#3 html=\"abc\" tree=\"ab\"",
-      "reason": "the combined token's opener refuses `/*a<b*/ y` outright (the FIRST of the five documents builds no bold_italic at all), so the pairing shifts by one and the later skeletons read as swapped; a literal `<` right after the opener's leading character is not yet admitted as ordinary content the way the category's other four documents are."
-    },
-    "any-character-is-content-of-the-combined-bold-italic-token-6": {
-      "reading": "strong html=0 tree=1",
-      "reason": "`/*a<TAB>*/ y`: the grammar's `bold_italic_end` folds a whitespace character right before the closer into the closer itself, the same trailing-space exception `_}`/`*}` take on the bare spans, and reads `a` as the whole content; the reference admits no such exception for the combined token - a TAB is content like any other character, no valid closer follows it, and the whole thing falls back to a bare `/` emphasis over the literal `*a<TAB>*`."
-    },
-    "a-caption-s-placeholder-is-any-that-does-not-begin-a-tag-6": {
-      "reading": "strong html=1 tree=0",
-      "reason": "`Figure #-a q` on a caption line: `#-a` cannot be a tag (a tag name may not start with `-`), which is the category's own point - the reference reads it as a placeholder wrapped in its own markup, while the grammar's caption content reads the whole line as flat, uninterpreted text with nothing resolved inside it."
-    },
-    "an-unresolved-reference-s-literal-source-is-html-escaped-like-any-other-text": {
-      "reading": "alt html=0 tree=1",
-      "reason": "an unresolved reference/image renders as its literal typed source with no alt-bearing element at all; the grammar still builds a structural `collapsed_reference_link`/`collapsed_reference_image` node from the bracket shape alone; whether a label resolves is a question for the definition table, not the parse, which is why the pair's inner text is already exempt (see the note above `EXCLUDED` in this script) - the alt-tag COUNT is not."
-    }
-  },
+  "inlineReadingGaps": {},
   "lineTerminatorGaps": {},
   "parseTimeouts": {}
 }

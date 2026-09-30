@@ -32,7 +32,7 @@ const decode = (s) =>
     .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')
     .replace(/&#39;|&apos;/g, "'")
-    .replace(/&nbsp;/g, ' ')
+    .replace(/&nbsp;/g, '\u00a0')
     .replace(/&amp;/g, '&');
 const skeleton = (s) =>
   decode(s).normalize('NFKC').replace(/[^\p{L}\p{N}]/gu, '').toLowerCase();
