@@ -55,9 +55,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
-- The specification pin moves to carve `39076d7`, and inline readings compare
-  against carve-js 0.1.8. All 536 corpus categories and 2,200 documents are
-  covered, and every recorded block and inline reading gap is resolved
+- The grammar reads every construct in the Carve 0.1.7 specification: all 536
+  corpus categories and 2,200 documents parse with no recorded block or inline
+  reading gap left, where earlier releases carried a list of known gaps
   (#459, #469, #482, #483, #484, #486, #488, #489).
 
 ## [0.1.6] - 2026-09-22
