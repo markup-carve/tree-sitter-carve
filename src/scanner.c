@@ -5526,7 +5526,7 @@ static bool parse_footnote_continuation(Scanner *s, TSLexer *lexer,
 // table row (spec corpus 111-a-pipe-pair-with-no-cell-is-not-a-table: `||`
 // alone stays a paragraph).
 // `unterminated` reports the one failure the caller has to tell apart: the cell
-// ran into the NEWLINE after consuming content, meaning the row never closed on
+// reached a newline or EOF after consuming content, so the row never closed on
 // a pipe. Hitting the newline with nothing but whitespace consumed is the normal
 // way a properly closed row ends, and leaves it false.
 /// One table cell's worth of lookahead.
@@ -5554,7 +5554,9 @@ static bool scan_table_cell(Scanner *s, TSLexer *lexer, bool *separator,
       *separator = false;
       *meaningful = true;
       advance(s, lexer);
-      advance(s, lexer);
+      if (!at_line_end(lexer) && !lexer->eof(lexer)) {
+        advance(s, lexer);
+      }
       break;
     case '\r':
     case '\n':
@@ -5618,6 +5620,7 @@ static bool scan_table_cell(Scanner *s, TSLexer *lexer, bool *separator,
 
     first_char = false;
   }
+  *unterminated = !first_char;
   return false;
 }
 
@@ -5687,9 +5690,9 @@ static bool scan_separator_row(Scanner *s, TSLexer *lexer) {
     return false;
   }
 
-  // Nothing but whitespace and then a newline may follow a table row.
+  // A completed row may end after trailing whitespace at a newline or EOF.
   consume_whitespace(s, lexer);
-  return at_line_end(lexer);
+  return at_line_end(lexer) || lexer->eof(lexer);
 }
 
 static bool scan_table_row(Scanner *s, TSLexer *lexer, TokenType *row_type,
@@ -5785,9 +5788,9 @@ static bool scan_table_row(Scanner *s, TSLexer *lexer, TokenType *row_type,
     return false;
   }
 
-  // Nothing but whitespace and then a newline may follow a table row.
+  // A completed row may end after trailing whitespace at a newline or EOF.
   consume_whitespace(s, lexer);
-  if (!at_line_end(lexer)) {
+  if (!at_line_end(lexer) && !lexer->eof(lexer)) {
     return false;
   }
 
@@ -5975,6 +5978,8 @@ static bool parse_table_end_newline(Scanner *s, TSLexer *lexer) {
       advance(s, lexer);
     }
   }
+
+  consume_whitespace(s, lexer);
 
   // The end of input ends the row too: a row's last cell closes on its pipe and
   // the document may simply stop there. `consume_line_end` takes nothing, so the
@@ -9903,7 +9908,8 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   // is consumed by the row-end-newline token even though it does not start on
   // a newline. The end of input reaches it here for the same reason: `is_newline`
   // is false there, so the branch above never asks (#458).
-  if ((lexer->lookahead == '{' || at_eof) &&
+  if ((lexer->lookahead == '{' || lexer->lookahead == ' ' ||
+       lexer->lookahead == '\t' || at_eof) &&
       valid_symbols[TABLE_ROW_END_NEWLINE] &&
       parse_table_end_newline(s, lexer)) {
     return true;

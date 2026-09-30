@@ -6,6 +6,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Accept table rows and separator rows at EOF. Attached multi-row tables retain
+  their structure without a final newline, resolving the two remaining native
+  EOF errors (#458).
+
 ### Added
 
 - Fold captures for blockquotes, definition lists, tables, footnotes, frontmatter
