@@ -78,6 +78,21 @@ int main(void) {
   tree_sitter_carve_external_scanner_destroy(spans_back);
   tree_sitter_carve_external_scanner_destroy(spans);
 
+  Scanner *label_state = tree_sitter_carve_external_scanner_create();
+  push_inline_flagged(label_state, SQUARE_BRACKET_SPAN, 0, INLINE_LABEL);
+  peek_inline(label_state)->literal_closes = 0x12345678;
+  unsigned label_length = tree_sitter_carve_external_scanner_serialize(label_state, buffer);
+  Scanner *label_back = tree_sitter_carve_external_scanner_create();
+  tree_sitter_carve_external_scanner_deserialize(label_back, buffer, label_length);
+  Inline *restored_label = peek_inline(label_back);
+  if (!restored_label || restored_label->flags != INLINE_LABEL ||
+      restored_label->literal_closes != 0x12345678 || label_length != 22) {
+    fputs("wide label bracket depth did not survive serialization\n", stderr);
+    return 1;
+  }
+  tree_sitter_carve_external_scanner_destroy(label_back);
+  tree_sitter_carve_external_scanner_destroy(label_state);
+
   // A block's own flags (BLOCK_FLAG_LINE_BLOCK) round-trip the same way.
   Scanner *div = tree_sitter_carve_external_scanner_create();
   Block *line_block = create_block(DIV, 3);

@@ -3519,11 +3519,42 @@
           "value": "["
         },
         {
-          "type": "PATTERN",
-          "value": "[^\\]\\r\\n]*"
+          "type": "SYMBOL",
+          "name": "_label_mark_begin"
         },
         {
-          "type": "STRING",
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "CHOICE",
+              "members": [
+                {
+                  "type": "SYMBOL",
+                  "name": "_inline_single_line"
+                },
+                {
+                  "type": "ALIAS",
+                  "content": {
+                    "type": "SYMBOL",
+                    "name": "_label_start_comment"
+                  },
+                  "named": true,
+                  "value": "trailing_comment"
+                }
+              ]
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_square_bracket_span_end"
+          },
+          "named": false,
           "value": "]"
         }
       ]
@@ -9984,6 +10015,14 @@
     {
       "type": "SYMBOL",
       "name": "_empty_list_continuation_marker"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_label_mark_begin"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_label_start_comment"
     }
   ],
   "inline": [],

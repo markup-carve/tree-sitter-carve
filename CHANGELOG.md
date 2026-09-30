@@ -8,6 +8,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Parse inline runs in container labels and keep closing brackets inside
+  closed code or comments. Bound trailing comments at the label close (#459).
 - Accept a continuation marker with no attached block at EOF or before a
   sibling item. Preserve nested lists and loose sibling items after the marker
   (#459).
