@@ -21,7 +21,11 @@
     "z\n \t\nnext\n",
     "z\nnext\n",
     "z\r\nnext\r\n",
-    "z\rnext\r"
+    "z\rnext\r",
+    "z\nb-c\n",
+    "z\r\nb-c\r\n",
+    "z\rb-c\r",
+    "z\n> next\n"
   ],
   "rows": [
     {
@@ -728,6 +732,222 @@
     },
     {
       "reader": "fixed",
+      "family": 0,
+      "tail": 11,
+      "depth": 64,
+      "bytes": 328,
+      "scannerAdvances": 652,
+      "lexerAdvances": 660
+    },
+    {
+      "reader": "fixed",
+      "family": 0,
+      "tail": 11,
+      "depth": 256,
+      "bytes": 1288,
+      "scannerAdvances": 2572,
+      "lexerAdvances": 2580
+    },
+    {
+      "reader": "fixed",
+      "family": 0,
+      "tail": 11,
+      "depth": 1024,
+      "bytes": 5128,
+      "scannerAdvances": 10252,
+      "lexerAdvances": 10260
+    },
+    {
+      "reader": "fixed",
+      "family": 0,
+      "tail": 11,
+      "depth": 4096,
+      "bytes": 20488,
+      "scannerAdvances": 40972,
+      "lexerAdvances": 40980
+    },
+    {
+      "reader": "fixed",
+      "family": 0,
+      "tail": 11,
+      "depth": 16384,
+      "bytes": 81928,
+      "scannerAdvances": 163852,
+      "lexerAdvances": 163860
+    },
+    {
+      "reader": "fixed",
+      "family": 0,
+      "tail": 11,
+      "depth": 32768,
+      "bytes": 163848,
+      "scannerAdvances": 327692,
+      "lexerAdvances": 327700
+    },
+    {
+      "reader": "fixed",
+      "family": 0,
+      "tail": 12,
+      "depth": 64,
+      "bytes": 330,
+      "scannerAdvances": 656,
+      "lexerAdvances": 664
+    },
+    {
+      "reader": "fixed",
+      "family": 0,
+      "tail": 12,
+      "depth": 256,
+      "bytes": 1290,
+      "scannerAdvances": 2576,
+      "lexerAdvances": 2584
+    },
+    {
+      "reader": "fixed",
+      "family": 0,
+      "tail": 12,
+      "depth": 1024,
+      "bytes": 5130,
+      "scannerAdvances": 10256,
+      "lexerAdvances": 10264
+    },
+    {
+      "reader": "fixed",
+      "family": 0,
+      "tail": 12,
+      "depth": 4096,
+      "bytes": 20490,
+      "scannerAdvances": 40976,
+      "lexerAdvances": 40984
+    },
+    {
+      "reader": "fixed",
+      "family": 0,
+      "tail": 12,
+      "depth": 16384,
+      "bytes": 81930,
+      "scannerAdvances": 163856,
+      "lexerAdvances": 163864
+    },
+    {
+      "reader": "fixed",
+      "family": 0,
+      "tail": 12,
+      "depth": 32768,
+      "bytes": 163850,
+      "scannerAdvances": 327696,
+      "lexerAdvances": 327704
+    },
+    {
+      "reader": "fixed",
+      "family": 0,
+      "tail": 13,
+      "depth": 64,
+      "bytes": 328,
+      "scannerAdvances": 652,
+      "lexerAdvances": 660
+    },
+    {
+      "reader": "fixed",
+      "family": 0,
+      "tail": 13,
+      "depth": 256,
+      "bytes": 1288,
+      "scannerAdvances": 2572,
+      "lexerAdvances": 2580
+    },
+    {
+      "reader": "fixed",
+      "family": 0,
+      "tail": 13,
+      "depth": 1024,
+      "bytes": 5128,
+      "scannerAdvances": 10252,
+      "lexerAdvances": 10260
+    },
+    {
+      "reader": "fixed",
+      "family": 0,
+      "tail": 13,
+      "depth": 4096,
+      "bytes": 20488,
+      "scannerAdvances": 40972,
+      "lexerAdvances": 40980
+    },
+    {
+      "reader": "fixed",
+      "family": 0,
+      "tail": 13,
+      "depth": 16384,
+      "bytes": 81928,
+      "scannerAdvances": 163852,
+      "lexerAdvances": 163860
+    },
+    {
+      "reader": "fixed",
+      "family": 0,
+      "tail": 13,
+      "depth": 32768,
+      "bytes": 163848,
+      "scannerAdvances": 327692,
+      "lexerAdvances": 327700
+    },
+    {
+      "reader": "fixed",
+      "family": 0,
+      "tail": 14,
+      "depth": 64,
+      "bytes": 331,
+      "scannerAdvances": 669,
+      "lexerAdvances": 690
+    },
+    {
+      "reader": "fixed",
+      "family": 0,
+      "tail": 14,
+      "depth": 256,
+      "bytes": 1291,
+      "scannerAdvances": 2589,
+      "lexerAdvances": 2610
+    },
+    {
+      "reader": "fixed",
+      "family": 0,
+      "tail": 14,
+      "depth": 1024,
+      "bytes": 5131,
+      "scannerAdvances": 10269,
+      "lexerAdvances": 10290
+    },
+    {
+      "reader": "fixed",
+      "family": 0,
+      "tail": 14,
+      "depth": 4096,
+      "bytes": 20491,
+      "scannerAdvances": 40989,
+      "lexerAdvances": 41010
+    },
+    {
+      "reader": "fixed",
+      "family": 0,
+      "tail": 14,
+      "depth": 16384,
+      "bytes": 81931,
+      "scannerAdvances": 163869,
+      "lexerAdvances": 163890
+    },
+    {
+      "reader": "fixed",
+      "family": 0,
+      "tail": 14,
+      "depth": 32768,
+      "bytes": 163851,
+      "scannerAdvances": 327709,
+      "lexerAdvances": 327730
+    },
+    {
+      "reader": "fixed",
       "family": 1,
       "tail": 0,
       "depth": 64,
@@ -1322,6 +1542,222 @@
     },
     {
       "reader": "fixed",
+      "family": 1,
+      "tail": 11,
+      "depth": 64,
+      "bytes": 392,
+      "scannerAdvances": 780,
+      "lexerAdvances": 788
+    },
+    {
+      "reader": "fixed",
+      "family": 1,
+      "tail": 11,
+      "depth": 256,
+      "bytes": 1544,
+      "scannerAdvances": 3084,
+      "lexerAdvances": 3092
+    },
+    {
+      "reader": "fixed",
+      "family": 1,
+      "tail": 11,
+      "depth": 1024,
+      "bytes": 6152,
+      "scannerAdvances": 12300,
+      "lexerAdvances": 12308
+    },
+    {
+      "reader": "fixed",
+      "family": 1,
+      "tail": 11,
+      "depth": 4096,
+      "bytes": 24584,
+      "scannerAdvances": 49164,
+      "lexerAdvances": 49172
+    },
+    {
+      "reader": "fixed",
+      "family": 1,
+      "tail": 11,
+      "depth": 16384,
+      "bytes": 98312,
+      "scannerAdvances": 196620,
+      "lexerAdvances": 196628
+    },
+    {
+      "reader": "fixed",
+      "family": 1,
+      "tail": 11,
+      "depth": 32768,
+      "bytes": 196616,
+      "scannerAdvances": 393228,
+      "lexerAdvances": 393236
+    },
+    {
+      "reader": "fixed",
+      "family": 1,
+      "tail": 12,
+      "depth": 64,
+      "bytes": 394,
+      "scannerAdvances": 784,
+      "lexerAdvances": 792
+    },
+    {
+      "reader": "fixed",
+      "family": 1,
+      "tail": 12,
+      "depth": 256,
+      "bytes": 1546,
+      "scannerAdvances": 3088,
+      "lexerAdvances": 3096
+    },
+    {
+      "reader": "fixed",
+      "family": 1,
+      "tail": 12,
+      "depth": 1024,
+      "bytes": 6154,
+      "scannerAdvances": 12304,
+      "lexerAdvances": 12312
+    },
+    {
+      "reader": "fixed",
+      "family": 1,
+      "tail": 12,
+      "depth": 4096,
+      "bytes": 24586,
+      "scannerAdvances": 49168,
+      "lexerAdvances": 49176
+    },
+    {
+      "reader": "fixed",
+      "family": 1,
+      "tail": 12,
+      "depth": 16384,
+      "bytes": 98314,
+      "scannerAdvances": 196624,
+      "lexerAdvances": 196632
+    },
+    {
+      "reader": "fixed",
+      "family": 1,
+      "tail": 12,
+      "depth": 32768,
+      "bytes": 196618,
+      "scannerAdvances": 393232,
+      "lexerAdvances": 393240
+    },
+    {
+      "reader": "fixed",
+      "family": 1,
+      "tail": 13,
+      "depth": 64,
+      "bytes": 392,
+      "scannerAdvances": 780,
+      "lexerAdvances": 788
+    },
+    {
+      "reader": "fixed",
+      "family": 1,
+      "tail": 13,
+      "depth": 256,
+      "bytes": 1544,
+      "scannerAdvances": 3084,
+      "lexerAdvances": 3092
+    },
+    {
+      "reader": "fixed",
+      "family": 1,
+      "tail": 13,
+      "depth": 1024,
+      "bytes": 6152,
+      "scannerAdvances": 12300,
+      "lexerAdvances": 12308
+    },
+    {
+      "reader": "fixed",
+      "family": 1,
+      "tail": 13,
+      "depth": 4096,
+      "bytes": 24584,
+      "scannerAdvances": 49164,
+      "lexerAdvances": 49172
+    },
+    {
+      "reader": "fixed",
+      "family": 1,
+      "tail": 13,
+      "depth": 16384,
+      "bytes": 98312,
+      "scannerAdvances": 196620,
+      "lexerAdvances": 196628
+    },
+    {
+      "reader": "fixed",
+      "family": 1,
+      "tail": 13,
+      "depth": 32768,
+      "bytes": 196616,
+      "scannerAdvances": 393228,
+      "lexerAdvances": 393236
+    },
+    {
+      "reader": "fixed",
+      "family": 1,
+      "tail": 14,
+      "depth": 64,
+      "bytes": 395,
+      "scannerAdvances": 797,
+      "lexerAdvances": 818
+    },
+    {
+      "reader": "fixed",
+      "family": 1,
+      "tail": 14,
+      "depth": 256,
+      "bytes": 1547,
+      "scannerAdvances": 3101,
+      "lexerAdvances": 3122
+    },
+    {
+      "reader": "fixed",
+      "family": 1,
+      "tail": 14,
+      "depth": 1024,
+      "bytes": 6155,
+      "scannerAdvances": 12317,
+      "lexerAdvances": 12338
+    },
+    {
+      "reader": "fixed",
+      "family": 1,
+      "tail": 14,
+      "depth": 4096,
+      "bytes": 24587,
+      "scannerAdvances": 49181,
+      "lexerAdvances": 49202
+    },
+    {
+      "reader": "fixed",
+      "family": 1,
+      "tail": 14,
+      "depth": 16384,
+      "bytes": 98315,
+      "scannerAdvances": 196637,
+      "lexerAdvances": 196658
+    },
+    {
+      "reader": "fixed",
+      "family": 1,
+      "tail": 14,
+      "depth": 32768,
+      "bytes": 196619,
+      "scannerAdvances": 393245,
+      "lexerAdvances": 393266
+    },
+    {
+      "reader": "fixed",
       "family": 2,
       "tail": 0,
       "depth": 64,
@@ -1916,6 +2352,222 @@
     },
     {
       "reader": "fixed",
+      "family": 2,
+      "tail": 11,
+      "depth": 64,
+      "bytes": 328,
+      "scannerAdvances": 652,
+      "lexerAdvances": 660
+    },
+    {
+      "reader": "fixed",
+      "family": 2,
+      "tail": 11,
+      "depth": 256,
+      "bytes": 1288,
+      "scannerAdvances": 2572,
+      "lexerAdvances": 2580
+    },
+    {
+      "reader": "fixed",
+      "family": 2,
+      "tail": 11,
+      "depth": 1024,
+      "bytes": 5128,
+      "scannerAdvances": 10252,
+      "lexerAdvances": 10260
+    },
+    {
+      "reader": "fixed",
+      "family": 2,
+      "tail": 11,
+      "depth": 4096,
+      "bytes": 20488,
+      "scannerAdvances": 40972,
+      "lexerAdvances": 40980
+    },
+    {
+      "reader": "fixed",
+      "family": 2,
+      "tail": 11,
+      "depth": 16384,
+      "bytes": 81928,
+      "scannerAdvances": 163852,
+      "lexerAdvances": 163860
+    },
+    {
+      "reader": "fixed",
+      "family": 2,
+      "tail": 11,
+      "depth": 32768,
+      "bytes": 163848,
+      "scannerAdvances": 327692,
+      "lexerAdvances": 327700
+    },
+    {
+      "reader": "fixed",
+      "family": 2,
+      "tail": 12,
+      "depth": 64,
+      "bytes": 330,
+      "scannerAdvances": 656,
+      "lexerAdvances": 664
+    },
+    {
+      "reader": "fixed",
+      "family": 2,
+      "tail": 12,
+      "depth": 256,
+      "bytes": 1290,
+      "scannerAdvances": 2576,
+      "lexerAdvances": 2584
+    },
+    {
+      "reader": "fixed",
+      "family": 2,
+      "tail": 12,
+      "depth": 1024,
+      "bytes": 5130,
+      "scannerAdvances": 10256,
+      "lexerAdvances": 10264
+    },
+    {
+      "reader": "fixed",
+      "family": 2,
+      "tail": 12,
+      "depth": 4096,
+      "bytes": 20490,
+      "scannerAdvances": 40976,
+      "lexerAdvances": 40984
+    },
+    {
+      "reader": "fixed",
+      "family": 2,
+      "tail": 12,
+      "depth": 16384,
+      "bytes": 81930,
+      "scannerAdvances": 163856,
+      "lexerAdvances": 163864
+    },
+    {
+      "reader": "fixed",
+      "family": 2,
+      "tail": 12,
+      "depth": 32768,
+      "bytes": 163850,
+      "scannerAdvances": 327696,
+      "lexerAdvances": 327704
+    },
+    {
+      "reader": "fixed",
+      "family": 2,
+      "tail": 13,
+      "depth": 64,
+      "bytes": 328,
+      "scannerAdvances": 652,
+      "lexerAdvances": 660
+    },
+    {
+      "reader": "fixed",
+      "family": 2,
+      "tail": 13,
+      "depth": 256,
+      "bytes": 1288,
+      "scannerAdvances": 2572,
+      "lexerAdvances": 2580
+    },
+    {
+      "reader": "fixed",
+      "family": 2,
+      "tail": 13,
+      "depth": 1024,
+      "bytes": 5128,
+      "scannerAdvances": 10252,
+      "lexerAdvances": 10260
+    },
+    {
+      "reader": "fixed",
+      "family": 2,
+      "tail": 13,
+      "depth": 4096,
+      "bytes": 20488,
+      "scannerAdvances": 40972,
+      "lexerAdvances": 40980
+    },
+    {
+      "reader": "fixed",
+      "family": 2,
+      "tail": 13,
+      "depth": 16384,
+      "bytes": 81928,
+      "scannerAdvances": 163852,
+      "lexerAdvances": 163860
+    },
+    {
+      "reader": "fixed",
+      "family": 2,
+      "tail": 13,
+      "depth": 32768,
+      "bytes": 163848,
+      "scannerAdvances": 327692,
+      "lexerAdvances": 327700
+    },
+    {
+      "reader": "fixed",
+      "family": 2,
+      "tail": 14,
+      "depth": 64,
+      "bytes": 331,
+      "scannerAdvances": 669,
+      "lexerAdvances": 690
+    },
+    {
+      "reader": "fixed",
+      "family": 2,
+      "tail": 14,
+      "depth": 256,
+      "bytes": 1291,
+      "scannerAdvances": 2589,
+      "lexerAdvances": 2610
+    },
+    {
+      "reader": "fixed",
+      "family": 2,
+      "tail": 14,
+      "depth": 1024,
+      "bytes": 5131,
+      "scannerAdvances": 10269,
+      "lexerAdvances": 10290
+    },
+    {
+      "reader": "fixed",
+      "family": 2,
+      "tail": 14,
+      "depth": 4096,
+      "bytes": 20491,
+      "scannerAdvances": 40989,
+      "lexerAdvances": 41010
+    },
+    {
+      "reader": "fixed",
+      "family": 2,
+      "tail": 14,
+      "depth": 16384,
+      "bytes": 81931,
+      "scannerAdvances": 163869,
+      "lexerAdvances": 163890
+    },
+    {
+      "reader": "fixed",
+      "family": 2,
+      "tail": 14,
+      "depth": 32768,
+      "bytes": 163851,
+      "scannerAdvances": 327709,
+      "lexerAdvances": 327730
+    },
+    {
+      "reader": "fixed",
       "family": 3,
       "tail": 0,
       "depth": 64,
@@ -2507,6 +3159,222 @@
       "bytes": 163849,
       "scannerAdvances": 327701,
       "lexerAdvances": 491564
+    },
+    {
+      "reader": "fixed",
+      "family": 3,
+      "tail": 11,
+      "depth": 64,
+      "bytes": 328,
+      "scannerAdvances": 652,
+      "lexerAdvances": 660
+    },
+    {
+      "reader": "fixed",
+      "family": 3,
+      "tail": 11,
+      "depth": 256,
+      "bytes": 1288,
+      "scannerAdvances": 2572,
+      "lexerAdvances": 2580
+    },
+    {
+      "reader": "fixed",
+      "family": 3,
+      "tail": 11,
+      "depth": 1024,
+      "bytes": 5128,
+      "scannerAdvances": 10252,
+      "lexerAdvances": 10260
+    },
+    {
+      "reader": "fixed",
+      "family": 3,
+      "tail": 11,
+      "depth": 4096,
+      "bytes": 20488,
+      "scannerAdvances": 40972,
+      "lexerAdvances": 40980
+    },
+    {
+      "reader": "fixed",
+      "family": 3,
+      "tail": 11,
+      "depth": 16384,
+      "bytes": 81928,
+      "scannerAdvances": 163852,
+      "lexerAdvances": 163860
+    },
+    {
+      "reader": "fixed",
+      "family": 3,
+      "tail": 11,
+      "depth": 32768,
+      "bytes": 163848,
+      "scannerAdvances": 327692,
+      "lexerAdvances": 327700
+    },
+    {
+      "reader": "fixed",
+      "family": 3,
+      "tail": 12,
+      "depth": 64,
+      "bytes": 330,
+      "scannerAdvances": 656,
+      "lexerAdvances": 664
+    },
+    {
+      "reader": "fixed",
+      "family": 3,
+      "tail": 12,
+      "depth": 256,
+      "bytes": 1290,
+      "scannerAdvances": 2576,
+      "lexerAdvances": 2584
+    },
+    {
+      "reader": "fixed",
+      "family": 3,
+      "tail": 12,
+      "depth": 1024,
+      "bytes": 5130,
+      "scannerAdvances": 10256,
+      "lexerAdvances": 10264
+    },
+    {
+      "reader": "fixed",
+      "family": 3,
+      "tail": 12,
+      "depth": 4096,
+      "bytes": 20490,
+      "scannerAdvances": 40976,
+      "lexerAdvances": 40984
+    },
+    {
+      "reader": "fixed",
+      "family": 3,
+      "tail": 12,
+      "depth": 16384,
+      "bytes": 81930,
+      "scannerAdvances": 163856,
+      "lexerAdvances": 163864
+    },
+    {
+      "reader": "fixed",
+      "family": 3,
+      "tail": 12,
+      "depth": 32768,
+      "bytes": 163850,
+      "scannerAdvances": 327696,
+      "lexerAdvances": 327704
+    },
+    {
+      "reader": "fixed",
+      "family": 3,
+      "tail": 13,
+      "depth": 64,
+      "bytes": 328,
+      "scannerAdvances": 652,
+      "lexerAdvances": 660
+    },
+    {
+      "reader": "fixed",
+      "family": 3,
+      "tail": 13,
+      "depth": 256,
+      "bytes": 1288,
+      "scannerAdvances": 2572,
+      "lexerAdvances": 2580
+    },
+    {
+      "reader": "fixed",
+      "family": 3,
+      "tail": 13,
+      "depth": 1024,
+      "bytes": 5128,
+      "scannerAdvances": 10252,
+      "lexerAdvances": 10260
+    },
+    {
+      "reader": "fixed",
+      "family": 3,
+      "tail": 13,
+      "depth": 4096,
+      "bytes": 20488,
+      "scannerAdvances": 40972,
+      "lexerAdvances": 40980
+    },
+    {
+      "reader": "fixed",
+      "family": 3,
+      "tail": 13,
+      "depth": 16384,
+      "bytes": 81928,
+      "scannerAdvances": 163852,
+      "lexerAdvances": 163860
+    },
+    {
+      "reader": "fixed",
+      "family": 3,
+      "tail": 13,
+      "depth": 32768,
+      "bytes": 163848,
+      "scannerAdvances": 327692,
+      "lexerAdvances": 327700
+    },
+    {
+      "reader": "fixed",
+      "family": 3,
+      "tail": 14,
+      "depth": 64,
+      "bytes": 331,
+      "scannerAdvances": 669,
+      "lexerAdvances": 690
+    },
+    {
+      "reader": "fixed",
+      "family": 3,
+      "tail": 14,
+      "depth": 256,
+      "bytes": 1291,
+      "scannerAdvances": 2589,
+      "lexerAdvances": 2610
+    },
+    {
+      "reader": "fixed",
+      "family": 3,
+      "tail": 14,
+      "depth": 1024,
+      "bytes": 5131,
+      "scannerAdvances": 10269,
+      "lexerAdvances": 10290
+    },
+    {
+      "reader": "fixed",
+      "family": 3,
+      "tail": 14,
+      "depth": 4096,
+      "bytes": 20491,
+      "scannerAdvances": 40989,
+      "lexerAdvances": 41010
+    },
+    {
+      "reader": "fixed",
+      "family": 3,
+      "tail": 14,
+      "depth": 16384,
+      "bytes": 81931,
+      "scannerAdvances": 163869,
+      "lexerAdvances": 163890
+    },
+    {
+      "reader": "fixed",
+      "family": 3,
+      "tail": 14,
+      "depth": 32768,
+      "bytes": 163851,
+      "scannerAdvances": 327709,
+      "lexerAdvances": 327730
     },
     {
       "reader": "fixed",
@@ -3104,6 +3972,222 @@
     },
     {
       "reader": "fixed",
+      "family": 4,
+      "tail": 11,
+      "depth": 64,
+      "bytes": 456,
+      "scannerAdvances": 908,
+      "lexerAdvances": 916
+    },
+    {
+      "reader": "fixed",
+      "family": 4,
+      "tail": 11,
+      "depth": 256,
+      "bytes": 1800,
+      "scannerAdvances": 3596,
+      "lexerAdvances": 3604
+    },
+    {
+      "reader": "fixed",
+      "family": 4,
+      "tail": 11,
+      "depth": 1024,
+      "bytes": 7176,
+      "scannerAdvances": 14348,
+      "lexerAdvances": 14356
+    },
+    {
+      "reader": "fixed",
+      "family": 4,
+      "tail": 11,
+      "depth": 4096,
+      "bytes": 28680,
+      "scannerAdvances": 57356,
+      "lexerAdvances": 57364
+    },
+    {
+      "reader": "fixed",
+      "family": 4,
+      "tail": 11,
+      "depth": 16384,
+      "bytes": 114696,
+      "scannerAdvances": 229388,
+      "lexerAdvances": 229396
+    },
+    {
+      "reader": "fixed",
+      "family": 4,
+      "tail": 11,
+      "depth": 32768,
+      "bytes": 229384,
+      "scannerAdvances": 458764,
+      "lexerAdvances": 458772
+    },
+    {
+      "reader": "fixed",
+      "family": 4,
+      "tail": 12,
+      "depth": 64,
+      "bytes": 458,
+      "scannerAdvances": 912,
+      "lexerAdvances": 920
+    },
+    {
+      "reader": "fixed",
+      "family": 4,
+      "tail": 12,
+      "depth": 256,
+      "bytes": 1802,
+      "scannerAdvances": 3600,
+      "lexerAdvances": 3608
+    },
+    {
+      "reader": "fixed",
+      "family": 4,
+      "tail": 12,
+      "depth": 1024,
+      "bytes": 7178,
+      "scannerAdvances": 14352,
+      "lexerAdvances": 14360
+    },
+    {
+      "reader": "fixed",
+      "family": 4,
+      "tail": 12,
+      "depth": 4096,
+      "bytes": 28682,
+      "scannerAdvances": 57360,
+      "lexerAdvances": 57368
+    },
+    {
+      "reader": "fixed",
+      "family": 4,
+      "tail": 12,
+      "depth": 16384,
+      "bytes": 114698,
+      "scannerAdvances": 229392,
+      "lexerAdvances": 229400
+    },
+    {
+      "reader": "fixed",
+      "family": 4,
+      "tail": 12,
+      "depth": 32768,
+      "bytes": 229386,
+      "scannerAdvances": 458768,
+      "lexerAdvances": 458776
+    },
+    {
+      "reader": "fixed",
+      "family": 4,
+      "tail": 13,
+      "depth": 64,
+      "bytes": 456,
+      "scannerAdvances": 908,
+      "lexerAdvances": 916
+    },
+    {
+      "reader": "fixed",
+      "family": 4,
+      "tail": 13,
+      "depth": 256,
+      "bytes": 1800,
+      "scannerAdvances": 3596,
+      "lexerAdvances": 3604
+    },
+    {
+      "reader": "fixed",
+      "family": 4,
+      "tail": 13,
+      "depth": 1024,
+      "bytes": 7176,
+      "scannerAdvances": 14348,
+      "lexerAdvances": 14356
+    },
+    {
+      "reader": "fixed",
+      "family": 4,
+      "tail": 13,
+      "depth": 4096,
+      "bytes": 28680,
+      "scannerAdvances": 57356,
+      "lexerAdvances": 57364
+    },
+    {
+      "reader": "fixed",
+      "family": 4,
+      "tail": 13,
+      "depth": 16384,
+      "bytes": 114696,
+      "scannerAdvances": 229388,
+      "lexerAdvances": 229396
+    },
+    {
+      "reader": "fixed",
+      "family": 4,
+      "tail": 13,
+      "depth": 32768,
+      "bytes": 229384,
+      "scannerAdvances": 458764,
+      "lexerAdvances": 458772
+    },
+    {
+      "reader": "fixed",
+      "family": 4,
+      "tail": 14,
+      "depth": 64,
+      "bytes": 459,
+      "scannerAdvances": 925,
+      "lexerAdvances": 946
+    },
+    {
+      "reader": "fixed",
+      "family": 4,
+      "tail": 14,
+      "depth": 256,
+      "bytes": 1803,
+      "scannerAdvances": 3613,
+      "lexerAdvances": 3634
+    },
+    {
+      "reader": "fixed",
+      "family": 4,
+      "tail": 14,
+      "depth": 1024,
+      "bytes": 7179,
+      "scannerAdvances": 14365,
+      "lexerAdvances": 14386
+    },
+    {
+      "reader": "fixed",
+      "family": 4,
+      "tail": 14,
+      "depth": 4096,
+      "bytes": 28683,
+      "scannerAdvances": 57373,
+      "lexerAdvances": 57394
+    },
+    {
+      "reader": "fixed",
+      "family": 4,
+      "tail": 14,
+      "depth": 16384,
+      "bytes": 114699,
+      "scannerAdvances": 229405,
+      "lexerAdvances": 229426
+    },
+    {
+      "reader": "fixed",
+      "family": 4,
+      "tail": 14,
+      "depth": 32768,
+      "bytes": 229387,
+      "scannerAdvances": 458781,
+      "lexerAdvances": 458802
+    },
+    {
+      "reader": "fixed",
       "family": 5,
       "tail": 0,
       "depth": 64,
@@ -3695,6 +4779,222 @@
       "bytes": 196617,
       "scannerAdvances": 327701,
       "lexerAdvances": 491564
+    },
+    {
+      "reader": "fixed",
+      "family": 5,
+      "tail": 11,
+      "depth": 64,
+      "bytes": 392,
+      "scannerAdvances": 652,
+      "lexerAdvances": 660
+    },
+    {
+      "reader": "fixed",
+      "family": 5,
+      "tail": 11,
+      "depth": 256,
+      "bytes": 1544,
+      "scannerAdvances": 2572,
+      "lexerAdvances": 2580
+    },
+    {
+      "reader": "fixed",
+      "family": 5,
+      "tail": 11,
+      "depth": 1024,
+      "bytes": 6152,
+      "scannerAdvances": 10252,
+      "lexerAdvances": 10260
+    },
+    {
+      "reader": "fixed",
+      "family": 5,
+      "tail": 11,
+      "depth": 4096,
+      "bytes": 24584,
+      "scannerAdvances": 40972,
+      "lexerAdvances": 40980
+    },
+    {
+      "reader": "fixed",
+      "family": 5,
+      "tail": 11,
+      "depth": 16384,
+      "bytes": 98312,
+      "scannerAdvances": 163852,
+      "lexerAdvances": 163860
+    },
+    {
+      "reader": "fixed",
+      "family": 5,
+      "tail": 11,
+      "depth": 32768,
+      "bytes": 196616,
+      "scannerAdvances": 327692,
+      "lexerAdvances": 327700
+    },
+    {
+      "reader": "fixed",
+      "family": 5,
+      "tail": 12,
+      "depth": 64,
+      "bytes": 394,
+      "scannerAdvances": 656,
+      "lexerAdvances": 664
+    },
+    {
+      "reader": "fixed",
+      "family": 5,
+      "tail": 12,
+      "depth": 256,
+      "bytes": 1546,
+      "scannerAdvances": 2576,
+      "lexerAdvances": 2584
+    },
+    {
+      "reader": "fixed",
+      "family": 5,
+      "tail": 12,
+      "depth": 1024,
+      "bytes": 6154,
+      "scannerAdvances": 10256,
+      "lexerAdvances": 10264
+    },
+    {
+      "reader": "fixed",
+      "family": 5,
+      "tail": 12,
+      "depth": 4096,
+      "bytes": 24586,
+      "scannerAdvances": 40976,
+      "lexerAdvances": 40984
+    },
+    {
+      "reader": "fixed",
+      "family": 5,
+      "tail": 12,
+      "depth": 16384,
+      "bytes": 98314,
+      "scannerAdvances": 163856,
+      "lexerAdvances": 163864
+    },
+    {
+      "reader": "fixed",
+      "family": 5,
+      "tail": 12,
+      "depth": 32768,
+      "bytes": 196618,
+      "scannerAdvances": 327696,
+      "lexerAdvances": 327704
+    },
+    {
+      "reader": "fixed",
+      "family": 5,
+      "tail": 13,
+      "depth": 64,
+      "bytes": 392,
+      "scannerAdvances": 652,
+      "lexerAdvances": 660
+    },
+    {
+      "reader": "fixed",
+      "family": 5,
+      "tail": 13,
+      "depth": 256,
+      "bytes": 1544,
+      "scannerAdvances": 2572,
+      "lexerAdvances": 2580
+    },
+    {
+      "reader": "fixed",
+      "family": 5,
+      "tail": 13,
+      "depth": 1024,
+      "bytes": 6152,
+      "scannerAdvances": 10252,
+      "lexerAdvances": 10260
+    },
+    {
+      "reader": "fixed",
+      "family": 5,
+      "tail": 13,
+      "depth": 4096,
+      "bytes": 24584,
+      "scannerAdvances": 40972,
+      "lexerAdvances": 40980
+    },
+    {
+      "reader": "fixed",
+      "family": 5,
+      "tail": 13,
+      "depth": 16384,
+      "bytes": 98312,
+      "scannerAdvances": 163852,
+      "lexerAdvances": 163860
+    },
+    {
+      "reader": "fixed",
+      "family": 5,
+      "tail": 13,
+      "depth": 32768,
+      "bytes": 196616,
+      "scannerAdvances": 327692,
+      "lexerAdvances": 327700
+    },
+    {
+      "reader": "fixed",
+      "family": 5,
+      "tail": 14,
+      "depth": 64,
+      "bytes": 395,
+      "scannerAdvances": 669,
+      "lexerAdvances": 690
+    },
+    {
+      "reader": "fixed",
+      "family": 5,
+      "tail": 14,
+      "depth": 256,
+      "bytes": 1547,
+      "scannerAdvances": 2589,
+      "lexerAdvances": 2610
+    },
+    {
+      "reader": "fixed",
+      "family": 5,
+      "tail": 14,
+      "depth": 1024,
+      "bytes": 6155,
+      "scannerAdvances": 10269,
+      "lexerAdvances": 10290
+    },
+    {
+      "reader": "fixed",
+      "family": 5,
+      "tail": 14,
+      "depth": 4096,
+      "bytes": 24587,
+      "scannerAdvances": 40989,
+      "lexerAdvances": 41010
+    },
+    {
+      "reader": "fixed",
+      "family": 5,
+      "tail": 14,
+      "depth": 16384,
+      "bytes": 98315,
+      "scannerAdvances": 163869,
+      "lexerAdvances": 163890
+    },
+    {
+      "reader": "fixed",
+      "family": 5,
+      "tail": 14,
+      "depth": 32768,
+      "bytes": 196619,
+      "scannerAdvances": 327709,
+      "lexerAdvances": 327730
     },
     {
       "reader": "fixed",

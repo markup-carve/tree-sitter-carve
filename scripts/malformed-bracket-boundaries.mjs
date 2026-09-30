@@ -19,6 +19,11 @@ const cases = [
   ['x [[a.\nb]]', {}],
   ['> x [[a.\n>\n> next', { block_quote: 1, paragraph: 2 }],
   ['- x [[a.\n\n  more', { list: 1, list_item: 1, paragraph: 2 }],
+  ['x [[a.\nb-c', { paragraph: 1 }],
+  ['x [[a.\n[y](u)', { inline_link: 1 }],
+  ['x [[a.\nb](u)', { inline_link: 1 }],
+  ['x [[a.\nb]{.c}', { span: 1 }],
+  ['[b]: /u\n\nx [[a.\nb][b]', { full_reference_link: 1 }],
   ['x [[a.\nnext', { paragraph: 1 }],
   ['x [[a. b]] c', { paragraph: 1 }],
   ['é x [[a. ž', { paragraph: 1 }],
@@ -89,4 +94,4 @@ const restored = parser.parse(afterShift);
 restored.edit({ startIndex: 1, oldEndIndex: 2, newEndIndex: 1,
   startPosition: { row: 0, column: 1 }, oldEndPosition: { row: 0, column: 2 }, newEndPosition: { row: 0, column: 1 } });
 assert.equal(parser.parse(beforeShift, restored).rootNode.toString(), parser.parse(beforeShift).rootNode.toString());
-console.log('Malformed brackets: 27 boundary controls across LF/CRLF/CR and 16 incremental edits.');
+console.log('Malformed brackets: 32 boundary controls across LF/CRLF/CR and 16 incremental edits.');

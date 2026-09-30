@@ -9,4 +9,4 @@ Fresh full-parser work at 1,024 repeated fragments, ending at EOF:
 | `[[a;` | 13,122,051 | 10,243 | 23,626,247 | 10,248 |
 | `[[a?` | 13,122,051 | 10,243 | 23,626,247 | 10,248 |
 
-[Raw measurements](malformed-bracket-work.json) retain the baseline, runtime version and exact input fragments. CI checks 402 cases through 32,768 fragments, including LF, CRLF, CR, blank-line boundaries, continuation text, Unicode, tabs and balanced multiline punctuation. The limits are 32 scanner and 64 runtime lexer advances per input byte.
+[Raw measurements](malformed-bracket-work.json) retain the baseline, runtime version and exact input fragments. CI checks 546 cases through 32,768 fragments, including LF, CRLF, CR, blank-line boundaries, rich continuation text, block interruptions, Unicode, tabs and balanced multiline punctuation. The limits are 32 scanner and 64 runtime lexer advances per input byte.

@@ -8784,6 +8784,7 @@ static bool parse_plain_bracket_run(Scanner *s, TSLexer *lexer) {
   uint32_t remainder_advances = s->advances;
   uint32_t remainder_column = 0;
   bool have_remainder_column = false;
+  unsigned first_line_depth = 0;
   unsigned prefix = 0;
   while (lexer->lookahead == '[') {
     mark_end(s, lexer);
@@ -8805,6 +8806,7 @@ static bool parse_plain_bracket_run(Scanner *s, TSLexer *lexer) {
       if (plain && punctuation && !continued) {
         remainder_column = line_column(s, lexer) - (s->advances - remainder_advances);
         have_remainder_column = true;
+        first_line_depth = depth;
       }
       int32_t ending = lexer->lookahead;
       advance(s, lexer);
@@ -8812,7 +8814,7 @@ static bool parse_plain_bracket_run(Scanner *s, TSLexer *lexer) {
       while (lexer->lookahead == ' ' || lexer->lookahead == '\t') advance(s, lexer);
       if (lexer->eof(lexer)) break;
       if (at_line_end(lexer)) {
-        if (plain && punctuation && have_remainder_column) {
+        if (have_remainder_column) {
           s->after_closer_char = PLAIN_BRACKET_REMAINDER;
           s->after_closer_col = remainder_column;
           lexer->result_symbol = LITERAL_RUN;
@@ -8844,6 +8846,8 @@ static bool parse_plain_bracket_run(Scanner *s, TSLexer *lexer) {
     if (c == ']') {
       --depth;
       advance(s, lexer);
+      if (have_remainder_column && depth < first_line_depth &&
+          (lexer->lookahead == '(' || lexer->lookahead == '[' || lexer->lookahead == '{')) return false;
       if (lexer->lookahead == '[') plain = false;
       if (depth < prefix - 1 && (lexer->lookahead == '(' ||
           lexer->lookahead == '[' || lexer->lookahead == '{')) return false;
@@ -8859,7 +8863,7 @@ static bool parse_plain_bracket_run(Scanner *s, TSLexer *lexer) {
     }
     advance(s, lexer);
   }
-  if (plain) {
+  if (plain || have_remainder_column) {
     if (punctuation && (!continued || have_remainder_column)) {
       if (!have_remainder_column) {
         remainder_column = line_column(s, lexer) - (s->advances - remainder_advances);

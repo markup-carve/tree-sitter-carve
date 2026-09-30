@@ -13,7 +13,7 @@ int main(int argc, char **argv) {
   assert(ts_parser_set_language(parser, tree_sitter_carve()));
   const unsigned sizes[] = {64, 256, 1024, 4096, 16384, 32768};
   const char *fragments[] = {"[[a. ", "[[a,b ", "[[a; ", "[[a? ", "[[a.\tb ", "[[ž. "};
-  const char *tails[] = {"z", "z\n", "z\r\n", "z\r", "z\n\nnext\n", "z\r\n\r\nnext\r\n", "z\r\rnext\r", "z\n \t\nnext\n", "z\nnext\n", "z\r\nnext\r\n", "z\rnext\r"};
+  const char *tails[] = {"z", "z\n", "z\r\n", "z\r", "z\n\nnext\n", "z\r\n\r\nnext\r\n", "z\r\rnext\r", "z\n \t\nnext\n", "z\nnext\n", "z\r\nnext\r\n", "z\rnext\r", "z\nb-c\n", "z\r\nb-c\r\n", "z\rb-c\r", "z\n> next\n"};
   bool baseline = argc > 1 && strcmp(argv[1], "baseline") == 0;
   for (unsigned family = 0; family < sizeof(fragments)/sizeof(fragments[0]); ++family)
   for (unsigned tail = 0; tail < sizeof(tails)/sizeof(tails[0]); ++tail)
@@ -32,14 +32,14 @@ int main(int argc, char **argv) {
     TSTree *tree = ts_parser_parse_string(parser, NULL, source, bytes);
     assert(tree && !ts_node_has_error(ts_tree_root_node(tree)));
     TSNode root = ts_tree_root_node(tree);
-    assert(ts_node_named_child_count(root) == (tail >= 4 && tail <= 7 ? 2 : 1));
+    assert(ts_node_named_child_count(root) == ((tail >= 4 && tail <= 7) || tail == 14 ? 2 : 1));
     TSNode paragraph = ts_node_named_child(root, 0);
     assert(strcmp(ts_node_type(paragraph), "paragraph") == 0);
     assert(ts_node_named_child_count(paragraph) == 0);
-    if (tail >= 4 && tail <= 7) {
+    if ((tail >= 4 && tail <= 7) || tail == 14) {
       TSNode next = ts_node_named_child(root, 1);
-      assert(strcmp(ts_node_type(next), "paragraph") == 0);
-      assert(ts_node_start_byte(next) > ts_node_end_byte(paragraph));
+      assert(strcmp(ts_node_type(next), tail == 14 ? "block_quote" : "paragraph") == 0);
+      assert(ts_node_start_byte(next) >= ts_node_end_byte(paragraph));
     }
     printf("family=%u tail=%u n=%u bytes=%u scanner=%llu lexer=%llu\n", family, tail, n, bytes, carve_scanner_advances, carve_lexer_advances);
     fflush(stdout);
