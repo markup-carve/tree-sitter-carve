@@ -147,6 +147,7 @@ for (const [ledgerName, ledger] of Object.entries({
   invisibleUnderAcceptance: coverage.invisibleUnderAcceptance ?? {},
   underAcceptance: coverage.underAcceptance ?? {},
   lineTerminatorGaps: coverage.lineTerminatorGaps ?? {},
+  inlineReadingGaps: coverage.inlineReadingGaps ?? {},
 })) {
   for (const [key, entry] of Object.entries(ledger)) {
     const text = typeof entry === 'string' ? entry : (entry.reason ?? '');

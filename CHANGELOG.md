@@ -13,6 +13,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   closer instead of running past it to the end of the line
   (markup-carve/carve#2170, #431).
 
+### Changed
+
+- The spec corpus pin moves to carve 0.1.7 (`551f224`), which brings 265
+  documents in 33 categories the coverage matrix had never seen, and the engine
+  the harness compares against moves to carve-js 0.1.8. Ten grammar gaps arrive
+  with the new documents and are recorded rather than hidden (#459).
+
 ## [0.1.6] - 2026-09-22
 
 ### Added

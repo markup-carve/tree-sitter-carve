@@ -115,6 +115,20 @@ const NODE_FOR = {
   // the container both share. Mapped to `div` this compared 263 admonition
   // nodes against a count that a plain `:::` fence also feeds.
   admonition: 'admonition_type',
+  // The SAME node, deliberately. carve-js 0.1.8 moved the six generated-content
+  // kinds out of `admonition` into their own `directive` type, and the source
+  // spelling did not move with them: `::: toc` is still a colon fence whose word
+  // the grammar tokenizes as `admonition_type`. Both AST types therefore count
+  // into one bucket, which is what keeps the comparison able to see a gap - a
+  // null here would have silently dropped every `::: toc` and `::: footnotes`
+  // out of the population on a pin bump.
+  directive: 'admonition_type',
+  // No source spelling exists to compare against. PART 12 section 33
+  // ([CARVE-P12-055]) is explicit: "Carve 0.1 source spells none, so a parser
+  // produces none" - the node arrives only through AST-JSON ingest, carrying a
+  // payload that is not Carve content. This null is structural, not a count that
+  // happens to be zero today.
+  block_extension: null,
   list_item: null,
   definition_term: null,
   definition_description: null,

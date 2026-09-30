@@ -17,6 +17,7 @@ export function validateReasonPredicates({ coverage, corpusDir }) {
     invisibleUnderAcceptance: coverage.invisibleUnderAcceptance ?? {},
     underAcceptance: coverage.underAcceptance ?? {},
     lineTerminatorGaps: coverage.lineTerminatorGaps ?? {},
+  inlineReadingGaps: coverage.inlineReadingGaps ?? {},
   };
 
   for (const [ledgerName, ledger] of Object.entries(ledgers)) {
