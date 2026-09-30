@@ -1492,9 +1492,18 @@ static Block *find_description_body(Scanner *s) {
 }
 
 // Close open list if list markers are different.
-static bool parse_list_item_continuation(Scanner *s, TSLexer *lexer) {
+static bool parse_list_item_continuation(Scanner *s, TSLexer *lexer,
+                                         bool at_eof) {
   Block *list = find_list(s);
   if (!list) {
+    return false;
+  }
+
+  // The grammar spells every continuation before a block. At the end of input
+  // there is no block to continue into, so a continuation here promises one the
+  // document does not have and the item can never close (#458). The SNAPSHOT,
+  // never a live `lexer->eof`: see the note where it is taken.
+  if (at_eof) {
     return false;
   }
 
@@ -2004,7 +2013,8 @@ static bool parse_verbatim_comment_line(Scanner *s, TSLexer *lexer) {
 }
 
 // Parsing verbatim content is also responsible for parsing VERBATIM_END.
-static bool parse_verbatim_content(Scanner *s, TSLexer *lexer) {
+static bool parse_verbatim_content(Scanner *s, TSLexer *lexer, bool end_valid,
+                                   bool at_eof) {
   Inline *top = peek_inline(s);
   if (!top || top->type != VERBATIM) {
     return false;
@@ -2022,6 +2032,19 @@ static bool parse_verbatim_content(Scanner *s, TSLexer *lexer) {
   // At end of input there is no content left to take; the run closes through
   // the implicit end instead, and a zero-width token here would not progress.
   if (!in_table_row && lexer->eof(lexer)) {
+    // Unless the end is not on offer yet. `_verbatim_body` spells one content
+    // token before it, so a run that reaches the end of input having taken none
+    // can never close and the document lands in ERROR (#458). Zero width: the
+    // next call has the end valid and takes it, so the parse progresses.
+    //
+    // Gated on the SNAPSHOT as well as the read above, because a probe that
+    // advanced and declined can leave the lexer at the end of input on a line
+    // that has not ended, and a zero-width token there restarts the run in the
+    // middle of it (#124).
+    if (!end_valid && at_eof) {
+      lexer->result_symbol = VERBATIM_CONTENT;
+      return true;
+    }
     return false;
   }
   // After a VERBATIM_CONTINUE the scan stands on the newline the decision was
@@ -4825,7 +4848,7 @@ static bool parse_star(Scanner *s, TSLexer *lexer, const bool *valid_symbols,
 }
 
 static bool parse_list_item_end(Scanner *s, TSLexer *lexer,
-                                const bool *valid_symbols) {
+                                const bool *valid_symbols, bool at_eof) {
   // Captured before the block-quote / list-marker scans below advance the
   // lexer: the first non-whitespace character of the line, used to tell whether
   // a `+`-attached TABLE is still continuing (a `|` row).
@@ -4839,13 +4862,24 @@ static bool parse_list_item_end(Scanner *s, TSLexer *lexer,
     return false;
   }
 
-  // We're still inside the list, don't end it yet.
-  if (s->indent >= list_item_margin(s, list)) {
+  // No open inline at block boundary.
+  if (s->open_inline->size > 0) {
     return false;
   }
 
-  // No open inline at block boundary.
-  if (s->open_inline->size > 0) {
+  // At the end of input the item ends whatever column its last line reached.
+  // The indent test below reads the line this scan already consumed, so an item
+  // whose last line stands at its own content column reads as continuing and
+  // the item never closes (#458). The SNAPSHOT, never a live `lexer->eof`: see
+  // the note where it is taken.
+  if (at_eof) {
+    lexer->result_symbol = LIST_ITEM_END;
+    s->blocks_to_close = 1;
+    return true;
+  }
+
+  // We're still inside the list, don't end it yet.
+  if (s->indent >= list_item_margin(s, list)) {
     return false;
   }
 
@@ -5439,13 +5473,9 @@ static bool parse_caption_begin(Scanner *s, TSLexer *lexer) {
   return true;
 }
 
-static bool parse_footnote_end(Scanner *s, TSLexer *lexer) {
+static bool parse_footnote_end(Scanner *s, TSLexer *lexer, bool at_eof) {
   Block *top = peek_block(s);
   if (!top || top->type != FOOTNOTE) {
-    return false;
-  }
-
-  if (s->indent >= top->data) {
     return false;
   }
 
@@ -5454,14 +5484,27 @@ static bool parse_footnote_end(Scanner *s, TSLexer *lexer) {
     return false;
   }
 
+  // At the end of input the body ends whatever column its last line reached,
+  // for the reason given above `parse_list_item_end`'s own end-of-input branch.
+  if (!at_eof && s->indent >= top->data) {
+    return false;
+  }
+
   remove_block(s);
   lexer->result_symbol = FOOTNOTE_END;
   return true;
 }
 
-static bool parse_footnote_continuation(Scanner *s, TSLexer *lexer) {
+static bool parse_footnote_continuation(Scanner *s, TSLexer *lexer,
+                                        bool at_eof) {
   Block *footnote = peek_block(s);
   if (!footnote || footnote->type != FOOTNOTE) {
+    return false;
+  }
+
+  // A continuation stands before a block here too, so there is nothing to
+  // continue into at the end of input. See `parse_list_item_continuation`.
+  if (at_eof) {
     return false;
   }
 
@@ -5894,7 +5937,10 @@ static bool parse_table_end_newline(Scanner *s, TSLexer *lexer) {
     }
   }
 
-  if (!at_line_end(lexer)) {
+  // The end of input ends the row too: a row's last cell closes on its pipe and
+  // the document may simply stop there. `consume_line_end` takes nothing, so the
+  // token is zero-width, which is safe here because a row is never empty (#458).
+  if (!at_line_end(lexer) && !lexer->eof(lexer)) {
     return false;
   }
 
@@ -9810,8 +9856,10 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
 
   // A row attribute block glued to a row's closing pipe (`| a | b |{.head}`)
   // is consumed by the row-end-newline token even though it does not start on
-  // a newline.
-  if (lexer->lookahead == '{' && valid_symbols[TABLE_ROW_END_NEWLINE] &&
+  // a newline. The end of input reaches it here for the same reason: `is_newline`
+  // is false there, so the branch above never asks (#458).
+  if ((lexer->lookahead == '{' || at_eof) &&
+      valid_symbols[TABLE_ROW_END_NEWLINE] &&
       parse_table_end_newline(s, lexer)) {
     return true;
   }
@@ -9858,11 +9906,11 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   }
 
   if (valid_symbols[LIST_ITEM_CONTINUATION] &&
-      parse_list_item_continuation(s, lexer)) {
+      parse_list_item_continuation(s, lexer, at_eof)) {
     return true;
   }
   if (valid_symbols[FOOTNOTE_CONTINUATION] &&
-      parse_footnote_continuation(s, lexer)) {
+      parse_footnote_continuation(s, lexer, at_eof)) {
     return true;
   }
 
@@ -9876,14 +9924,16 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
 
   // Verbatim content parsing is responsible for setting VERBATIM_END
   // for normal instances as well.
-  if (valid_symbols[VERBATIM_CONTENT] && parse_verbatim_content(s, lexer)) {
+  if (valid_symbols[VERBATIM_CONTENT] &&
+      parse_verbatim_content(s, lexer, valid_symbols[VERBATIM_END],
+                             at_eof)) {
     return true;
   }
 
   if (valid_symbols[CLOSE_PARAGRAPH] && parse_close_paragraph(s, lexer)) {
     return true;
   }
-  if (valid_symbols[FOOTNOTE_END] && parse_footnote_end(s, lexer)) {
+  if (valid_symbols[FOOTNOTE_END] && parse_footnote_end(s, lexer, at_eof)) {
     return true;
   }
   if (valid_symbols[LINK_REF_DEF_LABEL_END] &&
@@ -9916,7 +9966,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
 
   // End previous list item before opening new ones.
   if (valid_symbols[LIST_ITEM_END] &&
-      parse_list_item_end(s, lexer, valid_symbols)) {
+      parse_list_item_end(s, lexer, valid_symbols, at_eof)) {
     return true;
   }
 
