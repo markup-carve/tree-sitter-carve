@@ -347,6 +347,7 @@ typedef enum {
   PARENS_SPAN,
   CURLY_BRACKET_SPAN,
   SQUARE_BRACKET_SPAN,
+  LITERAL_BRACKET,
   // An inline note, `^[content]`. Its own type rather than another
   // square-bracket span: a nested `[` bumps the open span's fallback counter
   // (see `mark_span_begin`), and with the note counted as one, `^[a [b] c]`
@@ -910,6 +911,17 @@ static Inline *peek_inline(Scanner *s) {
   } else {
     return NULL;
   }
+}
+
+static bool has_open_span(Scanner *s) {
+  for (uint32_t i = 0; i < s->open_inline->size; ++i) {
+    if ((*array_get(s->open_inline, i))->type != LITERAL_BRACKET) return true;
+  }
+  return false;
+}
+
+static void clear_literal_brackets(Scanner *s) {
+  while (peek_inline(s) && peek_inline(s)->type == LITERAL_BRACKET) remove_inline(s);
 }
 
 static bool disallow_newline(Block *top) {
@@ -1536,7 +1548,7 @@ static bool close_list_nested_block_if_needed(Scanner *s, TSLexer *lexer,
   }
 
   // No open inline at block boundary.
-  if (s->open_inline->size > 0) {
+  if (has_open_span(s)) {
     return false;
   }
 
@@ -1599,7 +1611,7 @@ static bool close_list_nested_block_if_needed(Scanner *s, TSLexer *lexer,
 static bool close_different_list_if_needed(Scanner *s, TSLexer *lexer,
                                            Block *list, TokenType list_marker) {
   // No open inline at block boundary.
-  if (s->open_inline->size > 0) {
+  if (has_open_span(s)) {
     return false;
   }
   if (list_marker != IGNORED) {
@@ -3409,13 +3421,14 @@ static bool parse_block_quote(Scanner *s, TSLexer *lexer,
   }
 
   // No open inline at block boundary.
-  bool any_open_inline = s->open_inline->size > 0;
+  bool any_open_inline = has_open_span(s);
 
   // If we have a marker but with an empty line,
   // we need to close the paragraph.
   if (has_marker && ending_newline && !any_open_inline &&
       valid_symbols[CLOSE_PARAGRAPH]) {
-    lexer->result_symbol = CLOSE_PARAGRAPH;
+    clear_literal_brackets(s);
+  lexer->result_symbol = CLOSE_PARAGRAPH;
     return true;
   }
 
@@ -3439,7 +3452,8 @@ static bool parse_block_quote(Scanner *s, TSLexer *lexer,
   if (after_blank_line && has_marker && highest_block_quote &&
       !any_open_inline) {
     if (valid_symbols[CLOSE_PARAGRAPH]) {
-      lexer->result_symbol = CLOSE_PARAGRAPH;
+      clear_literal_brackets(s);
+  lexer->result_symbol = CLOSE_PARAGRAPH;
       return true;
     }
     if (valid_symbols[BLOCK_CLOSE]) {
@@ -3480,7 +3494,8 @@ static bool parse_block_quote(Scanner *s, TSLexer *lexer,
       !run_continues && !run_stopped_short && !any_open_inline) {
     // Close the paragraph, but allow lazy continuation (without any `>`).
     if (valid_symbols[CLOSE_PARAGRAPH] && has_marker) {
-      lexer->result_symbol = CLOSE_PARAGRAPH;
+      clear_literal_brackets(s);
+  lexer->result_symbol = CLOSE_PARAGRAPH;
       return true;
     }
     if (valid_symbols[BLOCK_CLOSE]) {
@@ -4814,7 +4829,7 @@ static bool parse_link_ref_def_label_end(Scanner *s, TSLexer *lexer) {
   }
 
   // Prevent inline from reaching outside of the link label.
-  if (s->open_inline->size > 0) {
+  if (has_open_span(s)) {
     return false;
   }
 
@@ -5006,7 +5021,7 @@ static bool parse_list_item_end(Scanner *s, TSLexer *lexer,
   }
 
   // No open inline at block boundary.
-  if (s->open_inline->size > 0) {
+  if (has_open_span(s)) {
     return false;
   }
 
@@ -5432,7 +5447,7 @@ static bool parse_colon(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   }
 
   // Don't let inline escape block boundary.
-  if (s->open_inline->size > 0) {
+  if (has_open_span(s)) {
     return false;
   }
 
@@ -5512,7 +5527,7 @@ static bool parse_heading(Scanner *s, TSLexer *lexer,
     }
 
     if (valid_symbols[BLOCK_CLOSE] && top_heading &&
-        s->open_inline->size == 0) {
+        !has_open_span(s)) {
       // An open heading ended at its own newline, whatever this marker's count
       // is -- a same-count marker used to CONTINUE it (djot) and now simply
       // opens the next heading. Close the previous one before opening it.
@@ -5630,7 +5645,7 @@ static bool parse_footnote_end(Scanner *s, TSLexer *lexer,
   }
 
   // Don't let inline escape boundary.
-  if (s->open_inline->size > 0) {
+  if (has_open_span(s)) {
     return false;
   }
 
@@ -6200,7 +6215,7 @@ static bool parse_table_cell_end(Scanner *s, TSLexer *lexer) {
     return false;
   }
   // Can only close a cell (or row) if all inline spans have been closed.
-  if (s->open_inline->size > 0) {
+  if (has_open_span(s)) {
     return false;
   }
 
@@ -6300,7 +6315,7 @@ static bool parse_table_caption_end(Scanner *s, TSLexer *lexer) {
     return false;
   }
   // Don't let inline escape caption.
-  if (s->open_inline->size > 0) {
+  if (has_open_span(s)) {
     return false;
   }
 
@@ -7453,7 +7468,7 @@ static bool close_paragraph(Scanner *s, TSLexer *lexer) {
 
 static bool parse_close_paragraph(Scanner *s, TSLexer *lexer) {
   // No open inline at paragraph boundary.
-  if (s->open_inline->size > 0) {
+  if (has_open_span(s)) {
     return false;
   }
   if (!close_paragraph(s, lexer)) {
@@ -7465,6 +7480,7 @@ static bool parse_close_paragraph(Scanner *s, TSLexer *lexer) {
   // div in every engine.
   s->state &= ~STATE_FENCE_ABSORBS;
   s->state &= ~STATE_MULTILINE_IDENTIFIER;
+  clear_literal_brackets(s);
   lexer->result_symbol = CLOSE_PARAGRAPH;
   return true;
 }
@@ -7560,7 +7576,7 @@ static bool parse_newline(Scanner *s, TSLexer *lexer,
   }
 
   // Only allow `NEWLINE_INLINE` style of newlines with open inline elements.
-  if (s->open_inline->size > 0) {
+  if (has_open_span(s)) {
     return false;
   }
 
@@ -7577,6 +7593,7 @@ static bool parse_newline(Scanner *s, TSLexer *lexer,
       s->state |= STATE_QUOTED_FENCE_CLOSER;
     }
     s->state &= ~STATE_SINGLE_LINE_CAPTION;
+    clear_literal_brackets(s);
     lexer->result_symbol = NEWLINE;
     return true;
   }
@@ -7584,6 +7601,7 @@ static bool parse_newline(Scanner *s, TSLexer *lexer,
   if (valid_symbols[EOF_OR_NEWLINE]) {
     s->state &= ~STATE_FENCE_ABSORBS;
     s->state &= ~STATE_SINGLE_LINE_CAPTION;
+    clear_literal_brackets(s);
     lexer->result_symbol = EOF_OR_NEWLINE;
     return true;
   }
@@ -7864,7 +7882,7 @@ static Inline *innermost_braced(Scanner *s) {
 static bool innermost_comment_bound(Scanner *s, char *marker) {
   for (int i = s->open_inline->size - 1; i >= 0; --i) {
     Inline *e = *array_get(s->open_inline, i);
-    if (e->type == SQUARE_BRACKET_SPAN && (e->flags & INLINE_LABEL)) {
+    if (e->type == SQUARE_BRACKET_SPAN || e->type == INLINE_NOTE) {
       *marker = ']';
       return true;
     }
@@ -8174,6 +8192,8 @@ static bool braced_closer_ahead(Scanner *s, TSLexer *lexer, char marker) {
   // A span does not outlive its table row, and neither does a verbatim run
   // inside one - EXCEPT a one-cell row's own `+` continuation, which is this
   // row's own content rather than past its scope (tree-sitter-carve#437).
+  bool in_bracket = find_inline(s, LITERAL_BRACKET) || find_inline(s, SQUARE_BRACKET_SPAN) || find_inline(s, INLINE_NOTE);
+  unsigned bracket_depth = 0;
   bool in_row = find_block(s, TABLE_ROW) != NULL;
   char nested[16];
   uint8_t depth = 0;
@@ -8223,6 +8243,11 @@ static bool braced_closer_ahead(Scanner *s, TSLexer *lexer, char marker) {
         return false;
       }
       continue;
+    }
+    if (c == '[') ++bracket_depth;
+    if (c == ']') {
+      if (bracket_depth) --bracket_depth;
+      else if (in_bracket) return false;
     }
     if (c == '{') {
       advance(s, lexer);
@@ -8568,6 +8593,7 @@ static bool scan_until_bracket_close(Scanner *s, TSLexer *lexer,
 static bool scan_inline_link_tail(Scanner *s, TSLexer *lexer, char bare, bool *closer, bool *boundary);
 
 static bool bare_closer_skips_brackets(Scanner *s, TSLexer *lexer, char bare) {
+  bool in_bracket = find_inline(s, LITERAL_BRACKET) || find_inline(s, SQUARE_BRACKET_SPAN) || find_inline(s, INLINE_NOTE);
   while (!lexer->eof(lexer)) {
     if (at_line_end(lexer)) {
       consume_line_end(s, lexer);
@@ -8592,6 +8618,7 @@ static bool bare_closer_skips_brackets(Scanner *s, TSLexer *lexer, char bare) {
       }
       continue;
     }
+    if (c == ']' && in_bracket) return false;
     if (c == (int32_t)(unsigned char)bare) {
       return true;
     }
@@ -8728,7 +8755,7 @@ static bool update_square_bracket_lookahead_states(Scanner *s, TSLexer *lexer,
   // An enclosing bracket's `]` is also this one's, and the depth count below
   // already pairs brackets; asking for the enclosing span's end would stop at
   // this bracket's own `]` (`[t[z]](/u)`, #422).
-  if (top && top->type != SQUARE_BRACKET_SPAN) {
+  if (top && top->type != SQUARE_BRACKET_SPAN && top->type != LITERAL_BRACKET) {
     top_type = &top->type;
   }
 
@@ -8793,7 +8820,10 @@ static bool update_square_bracket_lookahead_states(Scanner *s, TSLexer *lexer,
 /// recovery instead of building anything - measured by breaking either rule here
 /// on purpose. Both sides read the same two: a run of n backticks closes on the
 /// next run of n, and a backslash takes the character behind it.
-static bool substitution_arrow_ahead(Scanner *s, TSLexer *lexer) {
+static bool substitution_arrow_ahead(Scanner *s, TSLexer *lexer, bool *closed) {
+  bool in_bracket = find_inline(s, LITERAL_BRACKET) || find_inline(s, SQUARE_BRACKET_SPAN) || find_inline(s, INLINE_NOTE);
+  bool arrow = false;
+  unsigned brackets = 0;
   while (!lexer->eof(lexer)) {
     if (at_line_end(lexer)) {
       consume_line_end(s, lexer);
@@ -8844,13 +8874,20 @@ static bool substitution_arrow_ahead(Scanner *s, TSLexer *lexer) {
       }
       continue;
     }
+    if (lexer->lookahead == '[') ++brackets;
+    if (lexer->lookahead == ']') {
+      if (brackets) --brackets;
+      else if (in_bracket) return false;
+    }
     if (lexer->lookahead == '~') {
       advance(s, lexer);
       if (lexer->lookahead == '>') {
-        return true;
+        if (!in_bracket) return true;
+        arrow = true;
       }
       if (lexer->lookahead == '}') {
-        return false;
+        *closed = true;
+        return arrow;
       }
       continue;
     }
@@ -8874,9 +8911,16 @@ static bool parse_substitution_or_strikethrough(Scanner *s, TSLexer *lexer,
                                                 const bool *valid_symbols) {
   // Zero-width, whatever the reader below advances over.
   mark_end(s, lexer);
-  if (substitution_arrow_ahead(s, lexer)) {
+  bool closed = false;
+  bool bracket = find_inline(s, LITERAL_BRACKET) || find_inline(s, SQUARE_BRACKET_SPAN) || find_inline(s, INLINE_NOTE);
+  if (substitution_arrow_ahead(s, lexer, &closed)) {
     push_inline_flagged(s, SUBSTITUTION, 0, INLINE_BRACED);
     lexer->result_symbol = SUBSTITUTION_BEGIN;
+    return true;
+  }
+  if (bracket && !closed) {
+    if (!valid_symbols[BRACED_FALLBACK]) return false;
+    lexer->result_symbol = BRACED_FALLBACK;
     return true;
   }
   return valid_symbols[STRIKETHROUGH_MARK_BEGIN] &&
@@ -8935,8 +8979,13 @@ static bool mark_span_begin(Scanner *s, TSLexer *lexer,
       // A `[` whose own `]` closes inside the enclosing bracket is a balanced
       // pair of literal brackets there (`[t[z]](/u)`), not a competing opener,
       // and that `]` is text rather than the enclosing close.
-      balanced_bracket = update_square_bracket_lookahead_states(s, lexer, top) &&
-                         top && top->type == SQUARE_BRACKET_SPAN;
+      bool balanced = update_square_bracket_lookahead_states(s, lexer, top);
+      if (balanced && (s->state & (STATE_BRACKET_STARTS_SPAN | STATE_BRACKET_STARTS_INLINE_LINK))) {
+        push_inline_flagged(s, SQUARE_BRACKET_SPAN, 0, INLINE_BRACED);
+        lexer->result_symbol = token;
+        return true;
+      }
+      balanced_bracket = balanced;
     }
 
     // This is where we've reached the `(` in:
@@ -8986,8 +9035,10 @@ static bool mark_span_begin(Scanner *s, TSLexer *lexer,
     // A BARE marker inside a braced span of its own kind is content (corpus
     // 471), not a competing opener, so it must not stop that span closing.
     if (balanced_bracket) {
-      if (top->literal_closes < ((top->flags & INLINE_LABEL) ? UINT32_MAX : UINT8_MAX)) {
-        ++top->literal_closes;
+      if (top && top->type == SQUARE_BRACKET_SPAN && (top->flags & INLINE_LABEL)) {
+        if (top->literal_closes < UINT32_MAX) ++top->literal_closes;
+      } else {
+        push_inline_flagged(s, LITERAL_BRACKET, 0, 0);
       }
     } else if (open != NULL && !(bare && (open->flags & INLINE_BRACED))) {
       ++open->data;
@@ -10020,7 +10071,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
 
   if (valid_symbols[BRACED_FALLBACK] && !valid_symbols[ERROR]) {
     static const InlineType braced_kinds[] = {
-        EMPHASIS, STRONG,    UNDERLINE, HIGHLIGHTED,
+        EMPHASIS, STRONG, STRIKETHROUGH, UNDERLINE, HIGHLIGHTED,
         SUPERSCRIPT, SUBSCRIPT, INSERT,   DELETE,
     };
     for (size_t i = 0; i < sizeof(braced_kinds) / sizeof(braced_kinds[0]);
@@ -10569,6 +10620,14 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   // Returning false hands the `]` to the internal lexer, which takes it as
   // text - the fallback reading, and the one the other two spellings of
   // `newline` already produce.
+  if (lexer->lookahead == ']' && valid_symbols[LITERAL_RUN] &&
+      peek_inline(s) && peek_inline(s)->type == LITERAL_BRACKET) {
+    advance(s, lexer);
+    mark_end(s, lexer);
+    remove_inline(s);
+    lexer->result_symbol = LITERAL_RUN;
+    return true;
+  }
   if (valid_symbols[SQUARE_BRACKET_SPAN_END] && lexer->lookahead == ']') {
     Inline *bracket = peek_inline(s);
     // The `]` of a balanced literal pair inside the span is text (#422).
@@ -10716,6 +10775,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   // this function. Everything between there and here may have advanced.
   if (valid_symbols[EOF_OR_NEWLINE] && at_eof) {
     s->state &= ~STATE_SINGLE_LINE_CAPTION;
+    clear_literal_brackets(s);
     lexer->result_symbol = EOF_OR_NEWLINE;
     return true;
   }

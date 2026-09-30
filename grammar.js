@@ -228,8 +228,9 @@ function symbolFallback($, options) {
       seq("_", $._non_whitespace_check),
       choice($._underline_mark_begin, $._in_fallback),
     ),
+    seq("{~", $._braced_fallback),
     seq(
-      choice("{~", seq("~", $._non_whitespace_check)),
+      seq("~", $._non_whitespace_check),
       choice($._strikethrough_mark_begin, $._in_fallback),
     ),
     // Not sensitive to whitespace
