@@ -3098,7 +3098,8 @@ static bool parse_code_fence(Scanner *s, TSLexer *lexer,
   // Where the run STARTS, read before it is consumed: the opener guard below
   // asks whether the fence stands at a list item's content column, and by then
   // the lexer sits past the ticks.
-  uint32_t fence_col = line_column(s, lexer);
+  uint32_t fence_col = valid_symbols[CODE_BLOCK_BEGIN] || closer_possible
+                           ? line_column(s, lexer) : 0;
   uint8_t width = consume_chars(s, lexer, fence_char);
   if (width == 0) {
     return false;
@@ -10155,9 +10156,8 @@ static int parse_literal_run(Scanner *s, TSLexer *lexer,
       delims_seen++;
     }
   } else if (is_bare_delim_kind(lexer->lookahead, &kind)) {
-    uint32_t col = line_column(s, lexer);
     if (s->after_closer_char != 0 && !HAS_NO_COMBINED_CLOSER(s) &&
-        s->after_closer_col == col) {
+        s->after_closer_col == line_column(s, lexer)) {
       // Right behind a closer of this very marker: nothing of this kind is
       // open any more and the previous character is the marker, so no
       // character of the rest of the run can open or close.
@@ -10701,7 +10701,8 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       if (!s->combined_raw_closer && first_line_complete) through = first_line_end_column;
       if (!through) through = line_column(s, lexer);
       if (through > opener_column) {
-        bool whole_line = !scope && first_line_complete && !s->combined_raw_closer &&
+        bool whole_line = !scope && !disallow_newline(peek_block(s)) &&
+                          first_line_complete && !s->combined_raw_closer &&
                           (first_line_end_column ? first_line_cache_safe :
                            !s->combined_raw_line_end);
         s->after_closer_char = whole_line ? NO_COMBINED_CLOSER_LINE : NO_COMBINED_CLOSER;
@@ -10938,7 +10939,10 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   // we mark it again to make it consume.
   // I found it easier to opt-in to consume tokens.
   mark_end(s, lexer);
-  bool at_line_start = line_column(s, lexer) == 0;
+  // A whole-line negative proof starts after a combined opener and admits no
+  // nested token that crosses the line end. Its remaining tokens are midline.
+  bool at_line_start = s->after_closer_char != NO_COMBINED_CLOSER_LINE &&
+                       line_column(s, lexer) == 0;
   if (at_line_start) {
     s->indent = consume_whitespace(s, lexer);
     // A new line starts a new marker chain (see `marker_end_col`).

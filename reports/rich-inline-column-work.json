@@ -1,0 +1,1334 @@
+{
+  "baseline_commit": "4833402542b3a3bed9f458622b06007103aec33b",
+  "runtime": "tree-sitter 0.25.0",
+  "compiler_flags": [
+    "-std=c11",
+    "-O0",
+    "-D_DEFAULT_SOURCE"
+  ],
+  "fragments": [
+    "/*a ",
+    "/*a [x] ",
+    "/*a {x} ",
+    "/*a `x` ",
+    "/*a \\x ",
+    "/*a ",
+    "/*a "
+  ],
+  "rows": [
+    {
+      "phase": "baseline",
+      "prefix": 0,
+      "tail": 0,
+      "n": 128,
+      "bytes": 514,
+      "scanner_advances": 1542,
+      "lexer_advances": 3085
+    },
+    {
+      "phase": "baseline",
+      "prefix": 0,
+      "tail": 0,
+      "n": 256,
+      "bytes": 1026,
+      "scanner_advances": 3078,
+      "lexer_advances": 6157
+    },
+    {
+      "phase": "baseline",
+      "prefix": 0,
+      "tail": 0,
+      "n": 512,
+      "bytes": 2050,
+      "scanner_advances": 6150,
+      "lexer_advances": 12301
+    },
+    {
+      "phase": "baseline",
+      "prefix": 0,
+      "tail": 0,
+      "n": 1024,
+      "bytes": 4098,
+      "scanner_advances": 12294,
+      "lexer_advances": 24589
+    },
+    {
+      "phase": "baseline",
+      "prefix": 0,
+      "tail": 1,
+      "n": 128,
+      "bytes": 515,
+      "scanner_advances": 1545,
+      "lexer_advances": 3089
+    },
+    {
+      "phase": "baseline",
+      "prefix": 0,
+      "tail": 1,
+      "n": 256,
+      "bytes": 1027,
+      "scanner_advances": 3081,
+      "lexer_advances": 6161
+    },
+    {
+      "phase": "baseline",
+      "prefix": 0,
+      "tail": 1,
+      "n": 512,
+      "bytes": 2051,
+      "scanner_advances": 6153,
+      "lexer_advances": 12305
+    },
+    {
+      "phase": "baseline",
+      "prefix": 0,
+      "tail": 1,
+      "n": 1024,
+      "bytes": 4099,
+      "scanner_advances": 12297,
+      "lexer_advances": 24593
+    },
+    {
+      "phase": "baseline",
+      "prefix": 0,
+      "tail": 2,
+      "n": 128,
+      "bytes": 514,
+      "scanner_advances": 1542,
+      "lexer_advances": 3600
+    },
+    {
+      "phase": "baseline",
+      "prefix": 0,
+      "tail": 2,
+      "n": 256,
+      "bytes": 1026,
+      "scanner_advances": 3078,
+      "lexer_advances": 7184
+    },
+    {
+      "phase": "baseline",
+      "prefix": 0,
+      "tail": 2,
+      "n": 512,
+      "bytes": 2050,
+      "scanner_advances": 6150,
+      "lexer_advances": 14352
+    },
+    {
+      "phase": "baseline",
+      "prefix": 0,
+      "tail": 2,
+      "n": 1024,
+      "bytes": 4098,
+      "scanner_advances": 12294,
+      "lexer_advances": 28688
+    },
+    {
+      "phase": "baseline",
+      "prefix": 0,
+      "tail": 3,
+      "n": 128,
+      "bytes": 513,
+      "scanner_advances": 1539,
+      "lexer_advances": 2056
+    },
+    {
+      "phase": "baseline",
+      "prefix": 0,
+      "tail": 3,
+      "n": 256,
+      "bytes": 1025,
+      "scanner_advances": 3075,
+      "lexer_advances": 4104
+    },
+    {
+      "phase": "baseline",
+      "prefix": 0,
+      "tail": 3,
+      "n": 512,
+      "bytes": 2049,
+      "scanner_advances": 6147,
+      "lexer_advances": 8200
+    },
+    {
+      "phase": "baseline",
+      "prefix": 0,
+      "tail": 3,
+      "n": 1024,
+      "bytes": 4097,
+      "scanner_advances": 12291,
+      "lexer_advances": 16392
+    },
+    {
+      "phase": "baseline",
+      "prefix": 0,
+      "tail": 4,
+      "n": 128,
+      "bytes": 518,
+      "scanner_advances": 1569,
+      "lexer_advances": 6729
+    },
+    {
+      "phase": "baseline",
+      "prefix": 0,
+      "tail": 4,
+      "n": 256,
+      "bytes": 1030,
+      "scanner_advances": 3105,
+      "lexer_advances": 13385
+    },
+    {
+      "phase": "baseline",
+      "prefix": 0,
+      "tail": 4,
+      "n": 512,
+      "bytes": 2054,
+      "scanner_advances": 6177,
+      "lexer_advances": 26697
+    },
+    {
+      "phase": "baseline",
+      "prefix": 0,
+      "tail": 4,
+      "n": 1024,
+      "bytes": 4102,
+      "scanner_advances": 12321,
+      "lexer_advances": 53321
+    },
+    {
+      "phase": "baseline",
+      "prefix": 0,
+      "tail": 5,
+      "n": 128,
+      "bytes": 518,
+      "scanner_advances": 1558,
+      "lexer_advances": 6205
+    },
+    {
+      "phase": "baseline",
+      "prefix": 0,
+      "tail": 5,
+      "n": 256,
+      "bytes": 1030,
+      "scanner_advances": 3094,
+      "lexer_advances": 12349
+    },
+    {
+      "phase": "baseline",
+      "prefix": 0,
+      "tail": 5,
+      "n": 512,
+      "bytes": 2054,
+      "scanner_advances": 6166,
+      "lexer_advances": 24637
+    },
+    {
+      "phase": "baseline",
+      "prefix": 0,
+      "tail": 5,
+      "n": 1024,
+      "bytes": 4102,
+      "scanner_advances": 12310,
+      "lexer_advances": 49213
+    },
+    {
+      "phase": "baseline",
+      "prefix": 0,
+      "tail": 6,
+      "n": 128,
+      "bytes": 518,
+      "scanner_advances": 1558,
+      "lexer_advances": 6199
+    },
+    {
+      "phase": "baseline",
+      "prefix": 0,
+      "tail": 6,
+      "n": 256,
+      "bytes": 1030,
+      "scanner_advances": 3094,
+      "lexer_advances": 12343
+    },
+    {
+      "phase": "baseline",
+      "prefix": 0,
+      "tail": 6,
+      "n": 512,
+      "bytes": 2054,
+      "scanner_advances": 6166,
+      "lexer_advances": 24631
+    },
+    {
+      "phase": "baseline",
+      "prefix": 0,
+      "tail": 6,
+      "n": 1024,
+      "bytes": 4102,
+      "scanner_advances": 12310,
+      "lexer_advances": 49207
+    },
+    {
+      "phase": "baseline",
+      "prefix": 0,
+      "tail": 7,
+      "n": 128,
+      "bytes": 518,
+      "scanner_advances": 1557,
+      "lexer_advances": 5174
+    },
+    {
+      "phase": "baseline",
+      "prefix": 0,
+      "tail": 7,
+      "n": 256,
+      "bytes": 1030,
+      "scanner_advances": 3093,
+      "lexer_advances": 10294
+    },
+    {
+      "phase": "baseline",
+      "prefix": 0,
+      "tail": 7,
+      "n": 512,
+      "bytes": 2054,
+      "scanner_advances": 6165,
+      "lexer_advances": 20534
+    },
+    {
+      "phase": "baseline",
+      "prefix": 0,
+      "tail": 7,
+      "n": 1024,
+      "bytes": 4102,
+      "scanner_advances": 12309,
+      "lexer_advances": 41014
+    },
+    {
+      "phase": "baseline",
+      "prefix": 0,
+      "tail": 8,
+      "n": 128,
+      "bytes": 515,
+      "scanner_advances": 1545,
+      "lexer_advances": 3091
+    },
+    {
+      "phase": "baseline",
+      "prefix": 0,
+      "tail": 8,
+      "n": 256,
+      "bytes": 1027,
+      "scanner_advances": 3081,
+      "lexer_advances": 6163
+    },
+    {
+      "phase": "baseline",
+      "prefix": 0,
+      "tail": 8,
+      "n": 512,
+      "bytes": 2051,
+      "scanner_advances": 6153,
+      "lexer_advances": 12307
+    },
+    {
+      "phase": "baseline",
+      "prefix": 0,
+      "tail": 8,
+      "n": 1024,
+      "bytes": 4099,
+      "scanner_advances": 12297,
+      "lexer_advances": 24595
+    },
+    {
+      "phase": "baseline",
+      "prefix": 1,
+      "tail": 0,
+      "n": 128,
+      "bytes": 1026,
+      "scanner_advances": 16754,
+      "lexer_advances": 2697451
+    },
+    {
+      "phase": "baseline",
+      "prefix": 1,
+      "tail": 0,
+      "n": 256,
+      "bytes": 2050,
+      "scanner_advances": 33714,
+      "lexer_advances": 10769579
+    },
+    {
+      "phase": "baseline",
+      "prefix": 1,
+      "tail": 0,
+      "n": 512,
+      "bytes": 4098,
+      "scanner_advances": 67634,
+      "lexer_advances": 43035691
+    },
+    {
+      "phase": "baseline",
+      "prefix": 2,
+      "tail": 0,
+      "n": 128,
+      "bytes": 1026,
+      "scanner_advances": 16983,
+      "lexer_advances": 3283038
+    },
+    {
+      "phase": "baseline",
+      "prefix": 2,
+      "tail": 0,
+      "n": 256,
+      "bytes": 2050,
+      "scanner_advances": 34263,
+      "lexer_advances": 13121246
+    },
+    {
+      "phase": "baseline",
+      "prefix": 2,
+      "tail": 0,
+      "n": 512,
+      "bytes": 4098,
+      "scanner_advances": 68823,
+      "lexer_advances": 52458462
+    },
+    {
+      "phase": "baseline",
+      "prefix": 3,
+      "tail": 0,
+      "n": 128,
+      "bytes": 1026,
+      "scanner_advances": 15731,
+      "lexer_advances": 3540502
+    },
+    {
+      "phase": "baseline",
+      "prefix": 3,
+      "tail": 0,
+      "n": 256,
+      "bytes": 2050,
+      "scanner_advances": 31731,
+      "lexer_advances": 14160534
+    },
+    {
+      "phase": "baseline",
+      "prefix": 3,
+      "tail": 0,
+      "n": 512,
+      "bytes": 4098,
+      "scanner_advances": 63731,
+      "lexer_advances": 56634262
+    },
+    {
+      "phase": "baseline",
+      "prefix": 4,
+      "tail": 0,
+      "n": 128,
+      "bytes": 898,
+      "scanner_advances": 13586,
+      "lexer_advances": 2529554
+    },
+    {
+      "phase": "baseline",
+      "prefix": 4,
+      "tail": 0,
+      "n": 256,
+      "bytes": 1794,
+      "scanner_advances": 27410,
+      "lexer_advances": 10106642
+    },
+    {
+      "phase": "baseline",
+      "prefix": 4,
+      "tail": 0,
+      "n": 512,
+      "bytes": 3586,
+      "scanner_advances": 55058,
+      "lexer_advances": 40399634
+    },
+    {
+      "phase": "baseline",
+      "prefix": 5,
+      "tail": 0,
+      "n": 128,
+      "bytes": 518,
+      "scanner_advances": 2583,
+      "lexer_advances": 5733
+    },
+    {
+      "phase": "baseline",
+      "prefix": 5,
+      "tail": 0,
+      "n": 256,
+      "bytes": 1030,
+      "scanner_advances": 5143,
+      "lexer_advances": 11365
+    },
+    {
+      "phase": "baseline",
+      "prefix": 5,
+      "tail": 0,
+      "n": 512,
+      "bytes": 2054,
+      "scanner_advances": 10263,
+      "lexer_advances": 22629
+    },
+    {
+      "phase": "baseline",
+      "prefix": 5,
+      "tail": 0,
+      "n": 1024,
+      "bytes": 4102,
+      "scanner_advances": 20503,
+      "lexer_advances": 45157
+    },
+    {
+      "phase": "baseline",
+      "prefix": 6,
+      "tail": 0,
+      "n": 128,
+      "bytes": 518,
+      "scanner_advances": 14500,
+      "lexer_advances": 18077
+    },
+    {
+      "phase": "baseline",
+      "prefix": 6,
+      "tail": 0,
+      "n": 256,
+      "bytes": 1030,
+      "scanner_advances": 29348,
+      "lexer_advances": 34461
+    },
+    {
+      "phase": "baseline",
+      "prefix": 6,
+      "tail": 0,
+      "n": 512,
+      "bytes": 2054,
+      "scanner_advances": 59044,
+      "lexer_advances": 67229
+    },
+    {
+      "phase": "baseline",
+      "prefix": 6,
+      "tail": 0,
+      "n": 1024,
+      "bytes": 4102,
+      "scanner_advances": 118436,
+      "lexer_advances": 132765
+    },
+    {
+      "phase": "fixed",
+      "prefix": 0,
+      "tail": 0,
+      "n": 128,
+      "bytes": 514,
+      "scanner_advances": 1542,
+      "lexer_advances": 3082
+    },
+    {
+      "phase": "fixed",
+      "prefix": 0,
+      "tail": 0,
+      "n": 256,
+      "bytes": 1026,
+      "scanner_advances": 3078,
+      "lexer_advances": 6154
+    },
+    {
+      "phase": "fixed",
+      "prefix": 0,
+      "tail": 0,
+      "n": 512,
+      "bytes": 2050,
+      "scanner_advances": 6150,
+      "lexer_advances": 12298
+    },
+    {
+      "phase": "fixed",
+      "prefix": 0,
+      "tail": 0,
+      "n": 1024,
+      "bytes": 4098,
+      "scanner_advances": 12294,
+      "lexer_advances": 24586
+    },
+    {
+      "phase": "fixed",
+      "prefix": 0,
+      "tail": 0,
+      "n": 4096,
+      "bytes": 16386,
+      "scanner_advances": 49158,
+      "lexer_advances": 98314
+    },
+    {
+      "phase": "fixed",
+      "prefix": 0,
+      "tail": 0,
+      "n": 16384,
+      "bytes": 65538,
+      "scanner_advances": 196614,
+      "lexer_advances": 393226
+    },
+    {
+      "phase": "fixed",
+      "prefix": 0,
+      "tail": 1,
+      "n": 128,
+      "bytes": 515,
+      "scanner_advances": 1545,
+      "lexer_advances": 3086
+    },
+    {
+      "phase": "fixed",
+      "prefix": 0,
+      "tail": 1,
+      "n": 256,
+      "bytes": 1027,
+      "scanner_advances": 3081,
+      "lexer_advances": 6158
+    },
+    {
+      "phase": "fixed",
+      "prefix": 0,
+      "tail": 1,
+      "n": 512,
+      "bytes": 2051,
+      "scanner_advances": 6153,
+      "lexer_advances": 12302
+    },
+    {
+      "phase": "fixed",
+      "prefix": 0,
+      "tail": 1,
+      "n": 1024,
+      "bytes": 4099,
+      "scanner_advances": 12297,
+      "lexer_advances": 24590
+    },
+    {
+      "phase": "fixed",
+      "prefix": 0,
+      "tail": 1,
+      "n": 4096,
+      "bytes": 16387,
+      "scanner_advances": 49161,
+      "lexer_advances": 98318
+    },
+    {
+      "phase": "fixed",
+      "prefix": 0,
+      "tail": 1,
+      "n": 16384,
+      "bytes": 65539,
+      "scanner_advances": 196617,
+      "lexer_advances": 393230
+    },
+    {
+      "phase": "fixed",
+      "prefix": 0,
+      "tail": 2,
+      "n": 128,
+      "bytes": 514,
+      "scanner_advances": 1542,
+      "lexer_advances": 3597
+    },
+    {
+      "phase": "fixed",
+      "prefix": 0,
+      "tail": 2,
+      "n": 256,
+      "bytes": 1026,
+      "scanner_advances": 3078,
+      "lexer_advances": 7181
+    },
+    {
+      "phase": "fixed",
+      "prefix": 0,
+      "tail": 2,
+      "n": 512,
+      "bytes": 2050,
+      "scanner_advances": 6150,
+      "lexer_advances": 14349
+    },
+    {
+      "phase": "fixed",
+      "prefix": 0,
+      "tail": 2,
+      "n": 1024,
+      "bytes": 4098,
+      "scanner_advances": 12294,
+      "lexer_advances": 28685
+    },
+    {
+      "phase": "fixed",
+      "prefix": 0,
+      "tail": 2,
+      "n": 4096,
+      "bytes": 16386,
+      "scanner_advances": 49158,
+      "lexer_advances": 114701
+    },
+    {
+      "phase": "fixed",
+      "prefix": 0,
+      "tail": 2,
+      "n": 16384,
+      "bytes": 65538,
+      "scanner_advances": 196614,
+      "lexer_advances": 458765
+    },
+    {
+      "phase": "fixed",
+      "prefix": 0,
+      "tail": 3,
+      "n": 128,
+      "bytes": 513,
+      "scanner_advances": 1539,
+      "lexer_advances": 2053
+    },
+    {
+      "phase": "fixed",
+      "prefix": 0,
+      "tail": 3,
+      "n": 256,
+      "bytes": 1025,
+      "scanner_advances": 3075,
+      "lexer_advances": 4101
+    },
+    {
+      "phase": "fixed",
+      "prefix": 0,
+      "tail": 3,
+      "n": 512,
+      "bytes": 2049,
+      "scanner_advances": 6147,
+      "lexer_advances": 8197
+    },
+    {
+      "phase": "fixed",
+      "prefix": 0,
+      "tail": 3,
+      "n": 1024,
+      "bytes": 4097,
+      "scanner_advances": 12291,
+      "lexer_advances": 16389
+    },
+    {
+      "phase": "fixed",
+      "prefix": 0,
+      "tail": 3,
+      "n": 4096,
+      "bytes": 16385,
+      "scanner_advances": 49155,
+      "lexer_advances": 65541
+    },
+    {
+      "phase": "fixed",
+      "prefix": 0,
+      "tail": 3,
+      "n": 16384,
+      "bytes": 65537,
+      "scanner_advances": 196611,
+      "lexer_advances": 262149
+    },
+    {
+      "phase": "fixed",
+      "prefix": 0,
+      "tail": 4,
+      "n": 128,
+      "bytes": 518,
+      "scanner_advances": 1569,
+      "lexer_advances": 3125
+    },
+    {
+      "phase": "fixed",
+      "prefix": 0,
+      "tail": 4,
+      "n": 256,
+      "bytes": 1030,
+      "scanner_advances": 3105,
+      "lexer_advances": 6197
+    },
+    {
+      "phase": "fixed",
+      "prefix": 0,
+      "tail": 4,
+      "n": 512,
+      "bytes": 2054,
+      "scanner_advances": 6177,
+      "lexer_advances": 12341
+    },
+    {
+      "phase": "fixed",
+      "prefix": 0,
+      "tail": 4,
+      "n": 1024,
+      "bytes": 4102,
+      "scanner_advances": 12321,
+      "lexer_advances": 24629
+    },
+    {
+      "phase": "fixed",
+      "prefix": 0,
+      "tail": 4,
+      "n": 4096,
+      "bytes": 16390,
+      "scanner_advances": 49185,
+      "lexer_advances": 98357
+    },
+    {
+      "phase": "fixed",
+      "prefix": 0,
+      "tail": 4,
+      "n": 16384,
+      "bytes": 65542,
+      "scanner_advances": 196641,
+      "lexer_advances": 393269
+    },
+    {
+      "phase": "fixed",
+      "prefix": 0,
+      "tail": 5,
+      "n": 128,
+      "bytes": 518,
+      "scanner_advances": 1558,
+      "lexer_advances": 3116
+    },
+    {
+      "phase": "fixed",
+      "prefix": 0,
+      "tail": 5,
+      "n": 256,
+      "bytes": 1030,
+      "scanner_advances": 3094,
+      "lexer_advances": 6188
+    },
+    {
+      "phase": "fixed",
+      "prefix": 0,
+      "tail": 5,
+      "n": 512,
+      "bytes": 2054,
+      "scanner_advances": 6166,
+      "lexer_advances": 12332
+    },
+    {
+      "phase": "fixed",
+      "prefix": 0,
+      "tail": 5,
+      "n": 1024,
+      "bytes": 4102,
+      "scanner_advances": 12310,
+      "lexer_advances": 24620
+    },
+    {
+      "phase": "fixed",
+      "prefix": 0,
+      "tail": 5,
+      "n": 4096,
+      "bytes": 16390,
+      "scanner_advances": 49174,
+      "lexer_advances": 98348
+    },
+    {
+      "phase": "fixed",
+      "prefix": 0,
+      "tail": 5,
+      "n": 16384,
+      "bytes": 65542,
+      "scanner_advances": 196630,
+      "lexer_advances": 393260
+    },
+    {
+      "phase": "fixed",
+      "prefix": 0,
+      "tail": 6,
+      "n": 128,
+      "bytes": 518,
+      "scanner_advances": 1558,
+      "lexer_advances": 3112
+    },
+    {
+      "phase": "fixed",
+      "prefix": 0,
+      "tail": 6,
+      "n": 256,
+      "bytes": 1030,
+      "scanner_advances": 3094,
+      "lexer_advances": 6184
+    },
+    {
+      "phase": "fixed",
+      "prefix": 0,
+      "tail": 6,
+      "n": 512,
+      "bytes": 2054,
+      "scanner_advances": 6166,
+      "lexer_advances": 12328
+    },
+    {
+      "phase": "fixed",
+      "prefix": 0,
+      "tail": 6,
+      "n": 1024,
+      "bytes": 4102,
+      "scanner_advances": 12310,
+      "lexer_advances": 24616
+    },
+    {
+      "phase": "fixed",
+      "prefix": 0,
+      "tail": 6,
+      "n": 4096,
+      "bytes": 16390,
+      "scanner_advances": 49174,
+      "lexer_advances": 98344
+    },
+    {
+      "phase": "fixed",
+      "prefix": 0,
+      "tail": 6,
+      "n": 16384,
+      "bytes": 65542,
+      "scanner_advances": 196630,
+      "lexer_advances": 393256
+    },
+    {
+      "phase": "fixed",
+      "prefix": 0,
+      "tail": 7,
+      "n": 128,
+      "bytes": 518,
+      "scanner_advances": 1557,
+      "lexer_advances": 3117
+    },
+    {
+      "phase": "fixed",
+      "prefix": 0,
+      "tail": 7,
+      "n": 256,
+      "bytes": 1030,
+      "scanner_advances": 3093,
+      "lexer_advances": 6189
+    },
+    {
+      "phase": "fixed",
+      "prefix": 0,
+      "tail": 7,
+      "n": 512,
+      "bytes": 2054,
+      "scanner_advances": 6165,
+      "lexer_advances": 12333
+    },
+    {
+      "phase": "fixed",
+      "prefix": 0,
+      "tail": 7,
+      "n": 1024,
+      "bytes": 4102,
+      "scanner_advances": 12309,
+      "lexer_advances": 24621
+    },
+    {
+      "phase": "fixed",
+      "prefix": 0,
+      "tail": 7,
+      "n": 4096,
+      "bytes": 16390,
+      "scanner_advances": 49173,
+      "lexer_advances": 98349
+    },
+    {
+      "phase": "fixed",
+      "prefix": 0,
+      "tail": 7,
+      "n": 16384,
+      "bytes": 65542,
+      "scanner_advances": 196629,
+      "lexer_advances": 393261
+    },
+    {
+      "phase": "fixed",
+      "prefix": 0,
+      "tail": 8,
+      "n": 128,
+      "bytes": 515,
+      "scanner_advances": 1545,
+      "lexer_advances": 3088
+    },
+    {
+      "phase": "fixed",
+      "prefix": 0,
+      "tail": 8,
+      "n": 256,
+      "bytes": 1027,
+      "scanner_advances": 3081,
+      "lexer_advances": 6160
+    },
+    {
+      "phase": "fixed",
+      "prefix": 0,
+      "tail": 8,
+      "n": 512,
+      "bytes": 2051,
+      "scanner_advances": 6153,
+      "lexer_advances": 12304
+    },
+    {
+      "phase": "fixed",
+      "prefix": 0,
+      "tail": 8,
+      "n": 1024,
+      "bytes": 4099,
+      "scanner_advances": 12297,
+      "lexer_advances": 24592
+    },
+    {
+      "phase": "fixed",
+      "prefix": 0,
+      "tail": 8,
+      "n": 4096,
+      "bytes": 16387,
+      "scanner_advances": 49161,
+      "lexer_advances": 98320
+    },
+    {
+      "phase": "fixed",
+      "prefix": 0,
+      "tail": 8,
+      "n": 16384,
+      "bytes": 65539,
+      "scanner_advances": 196617,
+      "lexer_advances": 393232
+    },
+    {
+      "phase": "fixed",
+      "prefix": 1,
+      "tail": 0,
+      "n": 128,
+      "bytes": 1026,
+      "scanner_advances": 16754,
+      "lexer_advances": 22994
+    },
+    {
+      "phase": "fixed",
+      "prefix": 1,
+      "tail": 0,
+      "n": 256,
+      "bytes": 2050,
+      "scanner_advances": 33714,
+      "lexer_advances": 46226
+    },
+    {
+      "phase": "fixed",
+      "prefix": 1,
+      "tail": 0,
+      "n": 512,
+      "bytes": 4098,
+      "scanner_advances": 67634,
+      "lexer_advances": 92690
+    },
+    {
+      "phase": "fixed",
+      "prefix": 1,
+      "tail": 0,
+      "n": 1024,
+      "bytes": 8194,
+      "scanner_advances": 135474,
+      "lexer_advances": 185618
+    },
+    {
+      "phase": "fixed",
+      "prefix": 1,
+      "tail": 0,
+      "n": 4096,
+      "bytes": 32770,
+      "scanner_advances": 542514,
+      "lexer_advances": 743186
+    },
+    {
+      "phase": "fixed",
+      "prefix": 1,
+      "tail": 0,
+      "n": 16384,
+      "bytes": 131074,
+      "scanner_advances": 2170674,
+      "lexer_advances": 2973458
+    },
+    {
+      "phase": "fixed",
+      "prefix": 2,
+      "tail": 0,
+      "n": 128,
+      "bytes": 1026,
+      "scanner_advances": 16983,
+      "lexer_advances": 24217
+    },
+    {
+      "phase": "fixed",
+      "prefix": 2,
+      "tail": 0,
+      "n": 256,
+      "bytes": 2050,
+      "scanner_advances": 34263,
+      "lexer_advances": 48793
+    },
+    {
+      "phase": "fixed",
+      "prefix": 2,
+      "tail": 0,
+      "n": 512,
+      "bytes": 4098,
+      "scanner_advances": 68823,
+      "lexer_advances": 97945
+    },
+    {
+      "phase": "fixed",
+      "prefix": 2,
+      "tail": 0,
+      "n": 1024,
+      "bytes": 8194,
+      "scanner_advances": 137943,
+      "lexer_advances": 196249
+    },
+    {
+      "phase": "fixed",
+      "prefix": 2,
+      "tail": 0,
+      "n": 4096,
+      "bytes": 32770,
+      "scanner_advances": 552663,
+      "lexer_advances": 786073
+    },
+    {
+      "phase": "fixed",
+      "prefix": 2,
+      "tail": 0,
+      "n": 16384,
+      "bytes": 131074,
+      "scanner_advances": 2211543,
+      "lexer_advances": 3145369
+    },
+    {
+      "phase": "fixed",
+      "prefix": 3,
+      "tail": 0,
+      "n": 128,
+      "bytes": 1026,
+      "scanner_advances": 15731,
+      "lexer_advances": 21453
+    },
+    {
+      "phase": "fixed",
+      "prefix": 3,
+      "tail": 0,
+      "n": 256,
+      "bytes": 2050,
+      "scanner_advances": 31731,
+      "lexer_advances": 43213
+    },
+    {
+      "phase": "fixed",
+      "prefix": 3,
+      "tail": 0,
+      "n": 512,
+      "bytes": 4098,
+      "scanner_advances": 63731,
+      "lexer_advances": 86733
+    },
+    {
+      "phase": "fixed",
+      "prefix": 3,
+      "tail": 0,
+      "n": 1024,
+      "bytes": 8194,
+      "scanner_advances": 127731,
+      "lexer_advances": 173773
+    },
+    {
+      "phase": "fixed",
+      "prefix": 3,
+      "tail": 0,
+      "n": 4096,
+      "bytes": 32770,
+      "scanner_advances": 511731,
+      "lexer_advances": 696013
+    },
+    {
+      "phase": "fixed",
+      "prefix": 3,
+      "tail": 0,
+      "n": 16384,
+      "bytes": 131074,
+      "scanner_advances": 2047731,
+      "lexer_advances": 2784973
+    },
+    {
+      "phase": "fixed",
+      "prefix": 4,
+      "tail": 0,
+      "n": 128,
+      "bytes": 898,
+      "scanner_advances": 13586,
+      "lexer_advances": 20436
+    },
+    {
+      "phase": "fixed",
+      "prefix": 4,
+      "tail": 0,
+      "n": 256,
+      "bytes": 1794,
+      "scanner_advances": 27410,
+      "lexer_advances": 41172
+    },
+    {
+      "phase": "fixed",
+      "prefix": 4,
+      "tail": 0,
+      "n": 512,
+      "bytes": 3586,
+      "scanner_advances": 55058,
+      "lexer_advances": 82644
+    },
+    {
+      "phase": "fixed",
+      "prefix": 4,
+      "tail": 0,
+      "n": 1024,
+      "bytes": 7170,
+      "scanner_advances": 110354,
+      "lexer_advances": 165588
+    },
+    {
+      "phase": "fixed",
+      "prefix": 4,
+      "tail": 0,
+      "n": 4096,
+      "bytes": 28674,
+      "scanner_advances": 442130,
+      "lexer_advances": 663252
+    },
+    {
+      "phase": "fixed",
+      "prefix": 4,
+      "tail": 0,
+      "n": 16384,
+      "bytes": 114690,
+      "scanner_advances": 1769234,
+      "lexer_advances": 2653908
+    },
+    {
+      "phase": "fixed",
+      "prefix": 5,
+      "tail": 0,
+      "n": 128,
+      "bytes": 518,
+      "scanner_advances": 2583,
+      "lexer_advances": 4686
+    },
+    {
+      "phase": "fixed",
+      "prefix": 5,
+      "tail": 0,
+      "n": 256,
+      "bytes": 1030,
+      "scanner_advances": 5143,
+      "lexer_advances": 9294
+    },
+    {
+      "phase": "fixed",
+      "prefix": 5,
+      "tail": 0,
+      "n": 512,
+      "bytes": 2054,
+      "scanner_advances": 10263,
+      "lexer_advances": 18510
+    },
+    {
+      "phase": "fixed",
+      "prefix": 5,
+      "tail": 0,
+      "n": 1024,
+      "bytes": 4102,
+      "scanner_advances": 20503,
+      "lexer_advances": 36942
+    },
+    {
+      "phase": "fixed",
+      "prefix": 5,
+      "tail": 0,
+      "n": 4096,
+      "bytes": 16390,
+      "scanner_advances": 81943,
+      "lexer_advances": 147534
+    },
+    {
+      "phase": "fixed",
+      "prefix": 5,
+      "tail": 0,
+      "n": 16384,
+      "bytes": 65542,
+      "scanner_advances": 327703,
+      "lexer_advances": 589902
+    },
+    {
+      "phase": "fixed",
+      "prefix": 6,
+      "tail": 0,
+      "n": 128,
+      "bytes": 518,
+      "scanner_advances": 14500,
+      "lexer_advances": 17906
+    },
+    {
+      "phase": "fixed",
+      "prefix": 6,
+      "tail": 0,
+      "n": 256,
+      "bytes": 1030,
+      "scanner_advances": 29348,
+      "lexer_advances": 34290
+    },
+    {
+      "phase": "fixed",
+      "prefix": 6,
+      "tail": 0,
+      "n": 512,
+      "bytes": 2054,
+      "scanner_advances": 59044,
+      "lexer_advances": 67058
+    },
+    {
+      "phase": "fixed",
+      "prefix": 6,
+      "tail": 0,
+      "n": 1024,
+      "bytes": 4102,
+      "scanner_advances": 118436,
+      "lexer_advances": 132594
+    },
+    {
+      "phase": "fixed",
+      "prefix": 6,
+      "tail": 0,
+      "n": 4096,
+      "bytes": 16390,
+      "scanner_advances": 474788,
+      "lexer_advances": 525810
+    },
+    {
+      "phase": "fixed",
+      "prefix": 6,
+      "tail": 0,
+      "n": 16384,
+      "bytes": 65542,
+      "scanner_advances": 1900196,
+      "lexer_advances": 2098674
+    }
+  ]
+}

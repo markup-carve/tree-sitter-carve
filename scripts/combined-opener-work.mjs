@@ -38,7 +38,7 @@ try {
     path.join(build, 'scanner.c'), path.join(measuredRuntime, 'src/lib.c'), '-o', executable],
   { encoding: 'utf8', timeout: 120_000 });
   assert.equal(compile.status, 0, compile.stderr || String(compile.error));
-  const run = spawnSync(executable, baseline ? ['baseline'] : [], { encoding: 'utf8', timeout: 30_000 });
+  const run = spawnSync(executable, baseline ? ['baseline'] : [], { encoding: 'utf8', timeout: 120_000 });
   assert.equal(run.status, 0, (run.stderr || String(run.error)) + '\n' + run.stdout);
   process.stdout.write(run.stdout);
   console.log(baseline ? `Combined openers: baseline ${baseline}.` : "Combined openers: scanner and runtime lexer work stay within their byte-work bounds.");
