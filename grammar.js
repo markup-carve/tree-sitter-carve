@@ -178,7 +178,7 @@ function symbolFallback($, options) {
   const notes = options.notes !== false;
   return choice(
     // Standalone emphasis and strong markers are required for backtracking
-    "/",
+    seq("/", choice($._non_whitespace_check, $._literal_slash_boundary)),
     // The bold-italic opener, whose `*` is external for the reason
     // `bold_italic_begin` gives. A bare one needs its own standalone fallback
     // the way `/` and `*` do - otherwise `/* x/`, where the whitespace check after `/*` fails, has
@@ -186,8 +186,7 @@ function symbolFallback($, options) {
     seq(
       "/",
       $._non_whitespace_check,
-      $._bold_italic_open_check,
-      $._bold_italic_star,
+      $._bold_italic_open_decision,
     ),
     "*",
     "_",
@@ -205,8 +204,7 @@ function symbolFallback($, options) {
       seq(
         "/",
         $._non_whitespace_check,
-        $._bold_italic_open_check,
-        $._bold_italic_star,
+        $._bold_italic_open_decision,
       ),
       choice($._bold_italic_mark_begin, $._in_fallback),
     ),
@@ -304,6 +302,8 @@ module.exports = grammar({
   extras: (_) => ["\r"],
 
   conflicts: ($) => [
+    [$.bold_italic_begin, $._symbol_fallback],
+    [$.bold_italic_begin, $._note_symbol_fallback],
     // After a quoted fence's `_block_close`, a `>` is either the closer's own
     // marker or the enclosing quote's; only the end marker after it decides.
     [$.code_block],
@@ -322,8 +322,6 @@ module.exports = grammar({
     // both and the directive wins by dynamic precedence, but only when it
     // completes. An unterminated `{{` therefore stays text instead of erroring.
     [$.include_directive, $._include_open_fallback],
-    [$.bold_italic_begin, $._symbol_fallback],
-    [$.bold_italic_begin, $._note_symbol_fallback],
     [$.emphasis_begin, $._symbol_fallback],
     [$.emphasis_begin, $._note_symbol_fallback],
     [$.strong_begin, $._symbol_fallback],
@@ -2035,12 +2033,19 @@ module.exports = grammar({
     // opens with: longest match takes both characters before any branch is
     // scored, so that reading was never offered and the document built
     // nothing. See `parse_bold_italic_star` in `src/scanner.c`.
+    // A rejected opener within strong retains the enclosing span reading.
+    // Both real and fallback openers share this prefix and its external state.
+    _bold_italic_open_decision: ($) => choice(
+      seq($._bold_italic_open_check, $._bold_italic_star),
+      prec.dynamic(3 * ELEMENT_PRECEDENCE,
+                   seq($._bold_italic_scoped_open_check, $._bold_italic_star)),
+    ),
+
     bold_italic_begin: ($) =>
       seq(
         "/",
         $._non_whitespace_check,
-        $._bold_italic_open_check,
-        $._bold_italic_star,
+        $._bold_italic_open_decision,
       ),
 
     strong: ($) =>
@@ -3100,5 +3105,7 @@ module.exports = grammar({
     $._bold_italic_literal_lt,
     $._inline_attribute_continue,
     $._bold_italic_open_check,
+    $._bold_italic_scoped_open_check,
+    $._literal_slash_boundary,
   ],
 });

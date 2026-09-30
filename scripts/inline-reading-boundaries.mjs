@@ -37,6 +37,13 @@ const cases = [
   '*x /*a b /* c* d\n',
   '/*a #-b q\n',
   '/*a [/*b*/] q\n',
+  '/*a [x]() /*b*/ c\n',
+  '/*a [x](y z /*b*/ c\n',
+  '/*a [x](y \"t\" z /*b*/ c\n',
+  '/a /*x* y/ b/\n',
+  '/*a b* d/ e\n',
+  '*x /*a*/ b*\n',
+  '*x /*a/ b*\n',
   '[/*a b]{.c} d/\n',
   'x [/*a]{.c} y/ z\n',
   '*x /*a b* d/ e\n',
@@ -97,3 +104,11 @@ for (const newline of ['\n', '\r\n', '\r', '']) {
 for (const source of ['x /*a ...\n', '/*a ...\n']) {
   assert.equal(parser.parse(source).rootNode.descendantsOfType('ellipsis').length, 1);
 }
+
+for (const newline of ['\n', '\r\n', '\r']) {
+  const root = parser.parse('> /*a/ b\n>   \n> /*x*/\n'.replace(/\n/g, newline)).rootNode;
+  assert.equal(root.hasError, false);
+  assert.equal(root.descendantsOfType('emphasis').length, 1);
+  assert.equal(root.descendantsOfType('bold_italic').length, 1);
+}
+console.log('Quoted whitespace-only lines keep the following paragraph outside combined lookahead.');

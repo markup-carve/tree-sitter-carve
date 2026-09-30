@@ -45,9 +45,12 @@ int main(int argc, char **argv) {
     if (tail == 6) assert(strcmp(ts_node_type(ts_node_named_child(paragraph, 0)), "verbatim") == 0);
     if (tail == 7) assert(strcmp(ts_node_type(ts_node_named_child(paragraph, 0)), "ellipsis") == 0);
     printf("prefix=%u tail=%u n=%u bytes=%u scanner=%llu lexer=%llu\n", prefix, tail, n, bytes, carve_scanner_advances, carve_lexer_advances);
+    fflush(stdout);
     if (!baseline) {
       assert(carve_scanner_advances <= 32ULL * bytes);
       if (prefix == 0) assert(carve_lexer_advances <= 64ULL * bytes);
+      // Rich tokens retain the runtime's existing quadratic column rescans.
+      // The scanner ceiling above rejects a new quadratic lookahead term.
       else assert(carve_lexer_advances <= 256ULL * n * n + 64ULL * bytes);
     }
     ts_tree_delete(tree);
