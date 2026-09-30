@@ -6,6 +6,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Preserve literal nested braces and paired verbatim brackets inside attributed
+  spans. Keep bare formatting within its owning bracket and stop bracket
+  lookahead at table-cell boundaries while retaining valid continuation rows.
+
+### Added
+
+- Measure nested, scoped and multiline rich markup across 35 families and all
+  three line endings. Check 420 full-parser work cases, 153 engine comparisons
+  and 522 incremental edits. Record remaining quadratic paths in
+  [the work report](reports/rich-markup-work.md).
+
 ## [0.1.7] - 2026-09-30
 
 ### Fixed

@@ -55,6 +55,9 @@ jobs:
         run: npm run test:attributed-span-boundaries && npm run test:literal-bracket-work && npm run test:malformed-brackets && npm run test:bare-span-boundaries
       - name: Bound scanner work for malformed combined openers
         run: npm run test:combined-opener-work && npm run test:rich-inline-columns
+
+      - name: Check nested, scoped and multiline rich markup
+        run: npm run test:rich-markup
       - name: Check opaque quote and table boundaries
         run: npm run test:opaque-quote-bands
       - name: Check block ownership and line endings

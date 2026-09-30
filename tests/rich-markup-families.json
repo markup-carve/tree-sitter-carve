@@ -1,0 +1,602 @@
+[
+  {
+    "name": "plain-nested-brackets",
+    "open": "",
+    "fragment": "/*a [[x]] ",
+    "close": "z\n",
+    "group": "nested",
+    "layout": "repeated",
+    "model": "linear",
+    "counts": {
+      "p": 1,
+      "span": 0,
+      "strong": 0,
+      "em": 0,
+      "code": 0,
+      "bi": 0
+    }
+  },
+  {
+    "name": "plain-nested-braces",
+    "open": "",
+    "fragment": "/*a {x{y}} ",
+    "close": "z\n",
+    "group": "nested",
+    "layout": "repeated",
+    "model": "linear",
+    "counts": {
+      "p": 1,
+      "span": 0,
+      "strong": 0,
+      "em": 0,
+      "code": 0,
+      "bi": 0
+    }
+  },
+  {
+    "name": "plain-verbatim",
+    "open": "",
+    "fragment": "/*a `x` ",
+    "close": "z\n",
+    "group": "nested",
+    "layout": "repeated",
+    "model": "linear",
+    "counts": {
+      "p": 1,
+      "span": 0,
+      "strong": 0,
+      "em": 0,
+      "code": "n",
+      "bi": 0
+    }
+  },
+  {
+    "name": "plain-escape",
+    "open": "",
+    "fragment": "/*a \\x ",
+    "close": "z\n",
+    "group": "nested",
+    "layout": "repeated",
+    "model": "linear",
+    "counts": {
+      "p": 1,
+      "span": 0,
+      "strong": 0,
+      "em": 0,
+      "code": 0,
+      "bi": 0
+    }
+  },
+  {
+    "name": "bare-strong-nested-brackets",
+    "open": "*s ",
+    "fragment": "/*a [[x]] ",
+    "close": "z*\n",
+    "group": "scoped",
+    "layout": "repeated",
+    "model": "quadratic",
+    "counts": {
+      "p": 1,
+      "span": 0,
+      "strong": 1,
+      "em": 0,
+      "code": 0,
+      "bi": 0
+    }
+  },
+  {
+    "name": "bare-strong-nested-braces",
+    "open": "*s ",
+    "fragment": "/*a {x{y}} ",
+    "close": "z*\n",
+    "group": "scoped",
+    "layout": "repeated",
+    "model": "quadratic",
+    "counts": {
+      "p": 1,
+      "span": 0,
+      "strong": 1,
+      "em": 0,
+      "code": 0,
+      "bi": 0
+    }
+  },
+  {
+    "name": "bare-strong-verbatim",
+    "open": "*s ",
+    "fragment": "/*a `x` ",
+    "close": "z*\n",
+    "group": "scoped",
+    "layout": "repeated",
+    "model": "quadratic",
+    "counts": {
+      "p": 1,
+      "span": 0,
+      "strong": 1,
+      "em": 0,
+      "code": "n",
+      "bi": 0
+    }
+  },
+  {
+    "name": "bare-strong-escape",
+    "open": "*s ",
+    "fragment": "/*a \\x ",
+    "close": "z*\n",
+    "group": "scoped",
+    "layout": "repeated",
+    "model": "quadratic",
+    "counts": {
+      "p": 1,
+      "span": 0,
+      "strong": 1,
+      "em": 0,
+      "code": 0,
+      "bi": 0
+    }
+  },
+  {
+    "name": "forced-strong-nested-brackets",
+    "open": "{*s ",
+    "fragment": "/*a [[x]] ",
+    "close": "z*}\n",
+    "group": "scoped",
+    "layout": "repeated",
+    "model": "quadratic",
+    "counts": {
+      "p": 1,
+      "span": 0,
+      "strong": 1,
+      "em": 0,
+      "code": 0,
+      "bi": 0
+    }
+  },
+  {
+    "name": "forced-strong-nested-braces",
+    "open": "{*s ",
+    "fragment": "/*a {x{y}} ",
+    "close": "z*}\n",
+    "group": "scoped",
+    "layout": "repeated",
+    "model": "quadratic",
+    "counts": {
+      "p": 1,
+      "span": 0,
+      "strong": 1,
+      "em": 0,
+      "code": 0,
+      "bi": 0
+    }
+  },
+  {
+    "name": "forced-strong-verbatim",
+    "open": "{*s ",
+    "fragment": "/*a `x` ",
+    "close": "z*}\n",
+    "group": "scoped",
+    "layout": "repeated",
+    "model": "quadratic",
+    "counts": {
+      "p": 1,
+      "span": 0,
+      "strong": 1,
+      "em": 0,
+      "code": "n",
+      "bi": 0
+    }
+  },
+  {
+    "name": "forced-strong-escape",
+    "open": "{*s ",
+    "fragment": "/*a \\x ",
+    "close": "z*}\n",
+    "group": "scoped",
+    "layout": "repeated",
+    "model": "quadratic",
+    "counts": {
+      "p": 1,
+      "span": 0,
+      "strong": 1,
+      "em": 0,
+      "code": 0,
+      "bi": 0
+    }
+  },
+  {
+    "name": "bare-emphasis-nested-brackets",
+    "open": "/s ",
+    "fragment": "/*a [[x]] ",
+    "close": "z/\n",
+    "group": "scoped",
+    "layout": "repeated",
+    "model": "quadratic",
+    "counts": {
+      "p": 1,
+      "span": 0,
+      "strong": 0,
+      "em": 1,
+      "code": 0,
+      "bi": 0
+    }
+  },
+  {
+    "name": "bare-emphasis-nested-braces",
+    "open": "/s ",
+    "fragment": "/*a {x{y}} ",
+    "close": "z/\n",
+    "group": "scoped",
+    "layout": "repeated",
+    "model": "quadratic",
+    "counts": {
+      "p": 1,
+      "span": 0,
+      "strong": 0,
+      "em": 1,
+      "code": 0,
+      "bi": 0
+    }
+  },
+  {
+    "name": "bare-emphasis-verbatim",
+    "open": "/s ",
+    "fragment": "/*a `x` ",
+    "close": "z/\n",
+    "group": "scoped",
+    "layout": "repeated",
+    "model": "quadratic",
+    "counts": {
+      "p": 1,
+      "span": 0,
+      "strong": 0,
+      "em": 1,
+      "code": "n",
+      "bi": 0
+    }
+  },
+  {
+    "name": "bare-emphasis-escape",
+    "open": "/s ",
+    "fragment": "/*a \\x ",
+    "close": "z/\n",
+    "group": "scoped",
+    "layout": "repeated",
+    "model": "quadratic",
+    "counts": {
+      "p": 1,
+      "span": 0,
+      "strong": 0,
+      "em": 1,
+      "code": 0,
+      "bi": 0
+    }
+  },
+  {
+    "name": "forced-emphasis-nested-brackets",
+    "open": "{/s ",
+    "fragment": "/*a [[x]] ",
+    "close": "z/}\n",
+    "group": "scoped",
+    "layout": "repeated",
+    "model": "quadratic",
+    "counts": {
+      "p": 1,
+      "span": 0,
+      "strong": 0,
+      "em": 1,
+      "code": 0,
+      "bi": 0
+    }
+  },
+  {
+    "name": "forced-emphasis-nested-braces",
+    "open": "{/s ",
+    "fragment": "/*a {x{y}} ",
+    "close": "z/}\n",
+    "group": "scoped",
+    "layout": "repeated",
+    "model": "quadratic",
+    "counts": {
+      "p": 1,
+      "span": 0,
+      "strong": 0,
+      "em": 1,
+      "code": 0,
+      "bi": 0
+    }
+  },
+  {
+    "name": "forced-emphasis-verbatim",
+    "open": "{/s ",
+    "fragment": "/*a `x` ",
+    "close": "z/}\n",
+    "group": "scoped",
+    "layout": "repeated",
+    "model": "quadratic",
+    "counts": {
+      "p": 1,
+      "span": 0,
+      "strong": 0,
+      "em": 1,
+      "code": "n",
+      "bi": 0
+    }
+  },
+  {
+    "name": "forced-emphasis-escape",
+    "open": "{/s ",
+    "fragment": "/*a \\x ",
+    "close": "z/}\n",
+    "group": "scoped",
+    "layout": "repeated",
+    "model": "quadratic",
+    "counts": {
+      "p": 1,
+      "span": 0,
+      "strong": 0,
+      "em": 1,
+      "code": 0,
+      "bi": 0
+    }
+  },
+  {
+    "name": "attributed-nested-brackets",
+    "open": "[s ",
+    "fragment": "/*a [[x]] ",
+    "close": "z]{.k}\n",
+    "group": "scoped",
+    "layout": "repeated",
+    "model": "quadratic",
+    "counts": {
+      "p": 1,
+      "span": 1,
+      "strong": 0,
+      "em": 0,
+      "code": 0,
+      "bi": 0
+    }
+  },
+  {
+    "name": "attributed-nested-braces",
+    "open": "[s ",
+    "fragment": "/*a {x{y}} ",
+    "close": "z]{.k}\n",
+    "group": "scoped",
+    "layout": "repeated",
+    "model": "quadratic",
+    "baselineError": true,
+    "counts": {
+      "p": 1,
+      "span": 1,
+      "strong": 0,
+      "em": 0,
+      "code": 0,
+      "bi": 0
+    }
+  },
+  {
+    "name": "attributed-verbatim",
+    "open": "[s ",
+    "fragment": "/*a `x` ",
+    "close": "z]{.k}\n",
+    "group": "scoped",
+    "layout": "repeated",
+    "model": "quadratic",
+    "counts": {
+      "p": 1,
+      "span": 1,
+      "strong": 0,
+      "em": 0,
+      "code": "n",
+      "bi": 0
+    }
+  },
+  {
+    "name": "attributed-escape",
+    "open": "[s ",
+    "fragment": "/*a \\x ",
+    "close": "z]{.k}\n",
+    "group": "scoped",
+    "layout": "repeated",
+    "model": "quadratic",
+    "counts": {
+      "p": 1,
+      "span": 1,
+      "strong": 0,
+      "em": 0,
+      "code": 0,
+      "bi": 0
+    }
+  },
+  {
+    "name": "multiline-nested-brackets",
+    "open": "",
+    "fragment": "/*a [[x]]\n",
+    "close": "z\n",
+    "group": "multiline",
+    "layout": "repeated",
+    "model": "quadratic",
+    "counts": {
+      "p": 1,
+      "span": 0,
+      "strong": 0,
+      "em": 0,
+      "code": 0,
+      "bi": 0
+    }
+  },
+  {
+    "name": "multiline-nested-braces",
+    "open": "",
+    "fragment": "/*a {x{y}}\n",
+    "close": "z\n",
+    "group": "multiline",
+    "layout": "repeated",
+    "model": "quadratic",
+    "counts": {
+      "p": 1,
+      "span": 0,
+      "strong": 0,
+      "em": 0,
+      "code": 0,
+      "bi": 0
+    }
+  },
+  {
+    "name": "multiline-verbatim",
+    "open": "",
+    "fragment": "/*a `x\ny`\n",
+    "close": "z\n",
+    "group": "multiline",
+    "layout": "repeated",
+    "model": "quadratic",
+    "counts": {
+      "p": 1,
+      "span": 0,
+      "strong": 0,
+      "em": 0,
+      "code": "n",
+      "bi": 0
+    }
+  },
+  {
+    "name": "multiline-escape",
+    "open": "",
+    "fragment": "/*a \\x\n",
+    "close": "z\n",
+    "group": "multiline",
+    "layout": "repeated",
+    "model": "quadratic",
+    "counts": {
+      "p": 1,
+      "span": 0,
+      "strong": 0,
+      "em": 0,
+      "code": 0,
+      "bi": 0
+    }
+  },
+  {
+    "name": "depth-attributed",
+    "group": "nested",
+    "open": "[",
+    "fragment": "/*a `y` z",
+    "close": "]{.k}",
+    "layout": "nested",
+    "model": "quadratic",
+    "counts": {
+      "p": 1,
+      "span": "n",
+      "strong": 0,
+      "em": 0,
+      "code": 1,
+      "bi": 0
+    }
+  },
+  {
+    "name": "depth-brackets",
+    "group": "nested",
+    "open": "[",
+    "fragment": "/*a `y` z",
+    "close": "]",
+    "layout": "nested",
+    "model": "linear",
+    "counts": {
+      "p": 1,
+      "span": 0,
+      "strong": 0,
+      "em": 0,
+      "code": 1,
+      "bi": 0
+    }
+  },
+  {
+    "name": "depth-braces",
+    "group": "nested",
+    "open": "{x",
+    "fragment": "/*a `y` z",
+    "close": "}",
+    "layout": "nested",
+    "model": "linear",
+    "counts": {
+      "p": 1,
+      "span": 0,
+      "strong": 0,
+      "em": 0,
+      "code": 1,
+      "bi": 0
+    }
+  },
+  {
+    "name": "table-attributed-nested-brackets",
+    "group": "scoped",
+    "open": "| [s ",
+    "fragment": "/*a [[x]] ",
+    "close": "z]{.k} |\n",
+    "layout": "repeated",
+    "model": "quadratic",
+    "baselineError": false,
+    "counts": {
+      "p": 0,
+      "span": 1,
+      "strong": 0,
+      "em": 0,
+      "code": 0,
+      "bi": 0
+    }
+  },
+  {
+    "name": "table-attributed-nested-braces",
+    "group": "scoped",
+    "open": "| [s ",
+    "fragment": "/*a {x{y}} ",
+    "close": "z]{.k} |\n",
+    "layout": "repeated",
+    "model": "quadratic",
+    "baselineError": true,
+    "counts": {
+      "p": 0,
+      "span": 1,
+      "strong": 0,
+      "em": 0,
+      "code": 0,
+      "bi": 0
+    }
+  },
+  {
+    "name": "table-attributed-verbatim",
+    "group": "scoped",
+    "open": "| [s ",
+    "fragment": "/*a `x` ",
+    "close": "z]{.k} |\n",
+    "layout": "repeated",
+    "model": "quadratic",
+    "baselineError": false,
+    "counts": {
+      "p": 0,
+      "span": 1,
+      "strong": 0,
+      "em": 0,
+      "code": "n",
+      "bi": 0
+    }
+  },
+  {
+    "name": "table-attributed-escape",
+    "group": "scoped",
+    "open": "| [s ",
+    "fragment": "/*a \\x ",
+    "close": "z]{.k} |\n",
+    "layout": "repeated",
+    "model": "quadratic",
+    "baselineError": false,
+    "counts": {
+      "p": 0,
+      "span": 1,
+      "strong": 0,
+      "em": 0,
+      "code": 0,
+      "bi": 0
+    }
+  }
+]
