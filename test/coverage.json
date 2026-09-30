@@ -608,10 +608,7 @@
     }
   },
   "invisibleOverAcceptance": {
-    "a-comment-or-a-definition-under-a-definition-term-folds-at-every-depth-22": {
-      "nodes": "link_reference_definition: [r]: /u",
-      "reason": "the grammar builds a real `link_reference_definition` for a `[r]: /u` line indented under a definition TERM, where the fixture folds that line into the term as text - so the definition's own source is still visible in the expected HTML. The same fold these documents' `definition_list` gaps describe, seen from the other side: a definition node that renders nothing is built where the language has term text. Tracked in tree-sitter-carve#459."
-    }
+
   },
   "invisibleUnderAcceptance": {},
   "batteryDisagreements": {},

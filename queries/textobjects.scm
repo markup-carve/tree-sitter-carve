@@ -146,3 +146,5 @@
 
 (fenced_comment_block
   (content) @comment.inner) @comment.outer
+
+(fenced_comment_block !content) @comment.outer
