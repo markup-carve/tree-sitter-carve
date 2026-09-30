@@ -1,0 +1,1268 @@
+================================================================================
+Block acceptance: a-bare-colon-opener-in-a-description-body-is-an-opener-2
+================================================================================
+:: t
+: :::
+y
+
+--------------------------------------------------------------------------------
+
+(document
+  (definition_list
+    (list_item
+      (list_marker_definition)
+      (term))
+    (list_item
+      (list_marker_description)
+      (div
+        (div_marker_begin))))
+  (paragraph))
+
+================================================================================
+Block acceptance: a-closer-does-not-rescue-a-marker-line-colon-opener-whose-body-folded-in-7
+================================================================================
+- ::: d
+  :::
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (div
+          (div_marker_begin)
+          (admonition_type)
+          (div_marker_end))))))
+
+================================================================================
+Block acceptance: a-closer-does-not-rescue-a-marker-line-colon-opener-whose-body-folded-in-8
+================================================================================
+- ::: d
+  x
+ y
+  :::
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (div
+          (div_marker_begin)
+          (admonition_type)
+          (content
+            (paragraph))
+          (div_marker_end))))))
+
+================================================================================
+Block acceptance: a-form-feed-or-a-no-break-space-is-content-wherever-whitespace-is-tested-9
+================================================================================
+---yaml
+a: 1
+---
+
+t
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (em_dash))
+  (thematic_break)
+  (paragraph))
+
+================================================================================
+Block acceptance: generic-divs-4
+================================================================================
+::: 123
+content
+:::
+
+--------------------------------------------------------------------------------
+
+(document
+  (div
+    (div_marker_begin)
+    (admonition_type)
+    (content
+      (paragraph))
+    (div_marker_end)))
+
+================================================================================
+Block acceptance: the-continuation-marker-attaches-one-block-in-every-container-4
+================================================================================
+> a
++
+> q
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (paragraph)
+      (list_continuation_marker)
+      (block_quote
+        (block_quote_marker)
+        (content
+          (paragraph))))))
+
+================================================================================
+Block acceptance: an-opener-at-or-past-a-description-body-s-column-closes-its-paragraph-5
+================================================================================
+:: term
+:  definition
+    ***
+tail
+
+--------------------------------------------------------------------------------
+
+(document
+  (definition_list
+    (list_item
+      (list_marker_definition)
+      (term))
+    (list_item
+      (list_marker_description)
+      (definition)
+      (thematic_break)))
+  (paragraph))
+
+================================================================================
+Block acceptance: an-opener-at-or-past-a-description-body-s-column-closes-its-paragraph-6
+================================================================================
+:: term
+:  definition
+    | a |
+tail
+
+--------------------------------------------------------------------------------
+
+(document
+  (definition_list
+    (list_item
+      (list_marker_definition)
+      (term))
+    (list_item
+      (list_marker_description)
+      (definition)
+      (table
+        (table_row
+          (table_cell)))))
+  (paragraph))
+
+================================================================================
+Block acceptance: an-empty-unterminated-container-ends-at-a-flush-left-line-3
+================================================================================
+:: t
+:  ::: d
+tail
+
+--------------------------------------------------------------------------------
+
+(document
+  (definition_list
+    (list_item
+      (list_marker_definition)
+      (term))
+    (list_item
+      (list_marker_description)
+      (div
+        (div_marker_begin)
+        (admonition_type))))
+  (paragraph))
+
+================================================================================
+Block acceptance: a-blank-line-before-a-sibling-marker-separates-the-items-whatever-consumed-it
+================================================================================
+- ::: d
+  b
+
+- s
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (div
+          (div_marker_begin)
+          (admonition_type)
+          (content
+            (paragraph)))))
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph)))))
+
+================================================================================
+Block acceptance: a-column-0-line-after-a-container-s-last-block-when-that-block-left-no-paragraph-open-4
+================================================================================
+- ---
+tail
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (thematic_break))))
+  (paragraph))
+
+================================================================================
+Block acceptance: a-continuation-marker-attaches-one-block-and-the-boundary-is-that-block-s-extent-9
+================================================================================
+> quoted
++
+para
++
+# H
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (paragraph)
+      (list_continuation_marker)
+      (paragraph)
+      (list_continuation_marker)
+      (heading
+        (marker)
+        (content)))))
+
+================================================================================
+Block acceptance: a-continuation-row-s-open-run-and-an-escaped-closing-pipe-2
+================================================================================
+| a b \|
+
+--------------------------------------------------------------------------------
+
+(document
+  (table
+    (table_row
+      (table_cell
+        (backslash_escape)))))
+
+================================================================================
+Block acceptance: a-frontmatter-opener-takes-exactly-one-space
+================================================================================
+---  yaml
+title: T
+---
+
+body
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (em_dash))
+  (thematic_break)
+  (paragraph))
+
+================================================================================
+Block acceptance: a-tab-after-a-fence-or-a-frontmatter-opener-depends-on-where-it-sits-3
+================================================================================
+---	yaml
+title: x
+---
+
+body
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (em_dash))
+  (thematic_break)
+  (paragraph))
+
+================================================================================
+Block acceptance: a-task-item-s-checkbox-is-not-decided-by-its-first-block
+================================================================================
+- [ ] > q
+- [x] # h
+- [ ] ---
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_task
+        (unchecked))
+      (list_item_content
+        (block_quote
+          (block_quote_marker)
+          (content
+            (paragraph)))))
+    (list_item
+      (list_marker_task
+        (checked))
+      (list_item_content
+        (heading
+          (marker)
+          (content))))
+    (list_item
+      (list_marker_task
+        (unchecked))
+      (list_item_content
+        (thematic_break)))))
+
+================================================================================
+Block acceptance: an-unterminated-container-does-not-extend-the-item-past-a-blank-line
+================================================================================
+- ::: d
+  b
+
+tail
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (div
+          (div_marker_begin)
+          (admonition_type)
+          (content
+            (paragraph))))))
+  (paragraph))
+
+================================================================================
+Block acceptance: an-unterminated-container-does-not-extend-the-item-past-a-blank-line-2
+================================================================================
+- ::: d
+  b
+tail
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (div
+          (div_marker_begin)
+          (admonition_type)
+          (content
+            (paragraph)))))))
+
+================================================================================
+Block acceptance: an-unterminated-container-does-not-extend-the-item-past-a-blank-line-3
+================================================================================
+- ::: d
+  b
+
+  tail
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (div
+          (div_marker_begin)
+          (admonition_type)
+          (content
+            (paragraph)
+            (paragraph)))))))
+
+================================================================================
+Block acceptance: an-unterminated-container-does-not-extend-the-item-past-a-blank-line-4
+================================================================================
+- ::: d
+  b
+
+  tail
+  :::
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (div
+          (div_marker_begin)
+          (admonition_type)
+          (content
+            (paragraph)
+            (paragraph))
+          (div_marker_end))))))
+
+================================================================================
+Block acceptance: fence-opener-with-a-nested-list-body-inside-a-list-item
+================================================================================
+- ::: note
+  - para text
+  :::
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (div
+          (div_marker_begin)
+          (admonition_type)
+          (content
+            (list
+              (list_item
+                (list_marker_dash)
+                (list_item_content
+                  (paragraph)))))
+          (div_marker_end))))))
+
+================================================================================
+Block acceptance: fence-opener-with-a-nested-list-body-inside-a-list-item-2
+================================================================================
+- ::: note
+  1. para text
+  :::
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (div
+          (div_marker_begin)
+          (admonition_type)
+          (content
+            (list
+              (list_item
+                (list_marker_decimal_period)
+                (list_item_content
+                  (paragraph)))))
+          (div_marker_end))))))
+
+================================================================================
+Block acceptance: fence-opener-with-a-nested-list-body-inside-a-list-item-3
+================================================================================
+- ::: note
+  - one
+  - two
+  :::
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (div
+          (div_marker_begin)
+          (admonition_type)
+          (content
+            (list
+              (list_item
+                (list_marker_dash)
+                (list_item_content
+                  (paragraph)))
+              (list_item
+                (list_marker_dash)
+                (list_item_content
+                  (paragraph)))))
+          (div_marker_end))))))
+
+================================================================================
+Block acceptance: fence-opener-with-a-nested-list-body-inside-a-list-item-4
+================================================================================
+- ::: note
+
+  - para text
+  :::
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (div
+          (div_marker_begin)
+          (admonition_type)
+          (content
+            (list
+              (list_item
+                (list_marker_dash)
+                (list_item_content
+                  (paragraph)))))
+          (div_marker_end))))))
+
+================================================================================
+Block acceptance: fence-opener-with-a-nested-list-body-inside-a-list-item-7
+================================================================================
+- ::: note
+  :::
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (div
+          (div_marker_begin)
+          (admonition_type)
+          (div_marker_end))))))
+
+================================================================================
+Block acceptance: fence-opener-with-a-nested-list-body-inside-a-list-item-5
+================================================================================
+- ::: note
+  - para text
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (div
+          (div_marker_begin)
+          (admonition_type)
+          (content
+            (list
+              (list_item
+                (list_marker_dash)
+                (list_item_content
+                  (paragraph))))))))))
+
+================================================================================
+Block acceptance: fence-opener-with-a-nested-list-body-inside-a-list-item-6
+================================================================================
+- ::: note
+  - para text
+:::
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (div
+          (div_marker_begin)
+          (admonition_type)
+          (content
+            (list
+              (list_item
+                (list_marker_dash)
+                (list_item_content
+                  (paragraph)))))))))
+  (div
+    (div_marker_begin)))
+
+================================================================================
+Block acceptance: list-lazy-continuation-8
+================================================================================
+- item
+  | a | b |
+tail
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph)
+        (table
+          (table_row
+            (table_cell)
+            (table_cell))))))
+  (paragraph))
+
+================================================================================
+Block acceptance: only-lazy-folding-demotes-a-marker-line-colon-opener
+================================================================================
+- ::: d
+
+tail
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (div
+          (div_marker_begin)
+          (admonition_type)
+          (content)))))
+  (paragraph))
+
+================================================================================
+Block acceptance: paragraph-interruption-3
+================================================================================
+text
+---
+more
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph)
+  (thematic_break)
+  (paragraph))
+
+================================================================================
+Block acceptance: paragraph-interruption-8
+================================================================================
+text
+| a | b |
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph)
+  (table
+    (table_row
+      (table_cell)
+      (table_cell))))
+
+================================================================================
+Block acceptance: table-as-a-block-opener-in-a-list-item
+================================================================================
+- one
+  |= H |
+  | x |
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph)
+        (table
+          (table_row
+            (table_cell))
+          (table_row
+            (table_cell)))))))
+
+================================================================================
+Block acceptance: table-row-closing-pipe-3
+================================================================================
+| a
+| b |
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph)
+  (table
+    (table_row
+      (table_cell))))
+
+================================================================================
+Block acceptance: thematic-break-requires-contiguous-markers
+================================================================================
+* * *
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_star)
+      (list_item_content
+        (list
+          (list_item
+            (list_marker_star)
+            (list_item_content
+              (paragraph))))))))
+
+================================================================================
+Block acceptance: a-comment-span-opened-below-every-content-column-is-located-there-8
+================================================================================
+- item
+ %%%
+ hidden
+  %%%
+  ```
+tail
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph)
+        (fenced_comment_block
+          (comment_fence_marker_begin)
+          (content)
+          (comment_fence_marker_end))
+        (code_block
+          (code_block_marker_begin)
+          (code))))))
+
+================================================================================
+Block acceptance: a-definition-body-s-open-code-fence-ends-at-a-line-below-its-column-3
+================================================================================
+:: t
+: a
+  ```
+  b
+ y
+  ```
+
+--------------------------------------------------------------------------------
+
+(document
+  (definition_list
+    (list_item
+      (list_marker_definition)
+      (term))
+    (list_item
+      (list_marker_description)
+      (definition)
+      (code_block
+        (code_block_marker_begin)
+        (code))))
+  (paragraph
+    (verbatim
+      (verbatim_marker_begin)
+      (content)
+      (verbatim_marker_end))))
+
+================================================================================
+Block acceptance: a-definition-body-s-open-code-fence-ends-at-a-line-below-its-column-5
+================================================================================
+:: t
+: a
+  ```
+  b
+ y
+
+z
+  ```
+
+--------------------------------------------------------------------------------
+
+(document
+  (definition_list
+    (list_item
+      (list_marker_definition)
+      (term))
+    (list_item
+      (list_marker_description)
+      (definition
+        (verbatim
+          (verbatim_marker_begin)
+          (content)
+          (verbatim_marker_end)))))
+  (paragraph
+    (verbatim
+      (verbatim_marker_begin)
+      (content)
+      (verbatim_marker_end))))
+
+================================================================================
+Block acceptance: a-definition-body-s-open-code-fence-ends-at-a-line-below-its-column
+================================================================================
+:: t
+: ```
+ y
+  ```
+
+--------------------------------------------------------------------------------
+
+(document
+  (definition_list
+    (list_item
+      (list_marker_definition)
+      (term))
+    (list_item
+      (list_marker_description)
+      (code_block
+        (code_block_marker_begin))))
+  (paragraph
+    (verbatim
+      (verbatim_marker_begin)
+      (content)
+      (verbatim_marker_end))))
+
+================================================================================
+Block acceptance: a-bare-colon-opener-in-a-description-body-is-an-opener-7
+================================================================================
+:: t
+: a
+  ```
+  :::
+ y
+  ```
+
+--------------------------------------------------------------------------------
+
+(document
+  (definition_list
+    (list_item
+      (list_marker_definition)
+      (term))
+    (list_item
+      (list_marker_description)
+      (definition)
+      (code_block
+        (code_block_marker_begin)
+        (code))))
+  (paragraph
+    (verbatim
+      (verbatim_marker_begin)
+      (content)
+      (verbatim_marker_end))))
+
+================================================================================
+Block acceptance: a-fence-closer-below-a-nested-item-s-column-ends-containers-down-to-its-owner-12
+================================================================================
+- a
+  - b
+    ```
+    p
+  - c
+    ```
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph)
+        (list
+          (list_item
+            (list_marker_dash)
+            (list_item_content
+              (paragraph
+                (verbatim
+                  (verbatim_marker_begin)
+                  (content)
+                  (verbatim_marker_end)))))
+          (list_item
+            (list_marker_dash)
+            (list_item_content
+              (paragraph
+                (verbatim
+                  (verbatim_marker_begin)
+                  (content)
+                  (verbatim_marker_end))))))))))
+
+================================================================================
+Block ownership boundary 0
+================================================================================
+- item
+ %%%
+ hidden
+  %%%
+  ```
+tail
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph)
+        (fenced_comment_block
+          (comment_fence_marker_begin)
+          (content)
+          (comment_fence_marker_end))
+        (code_block
+          (code_block_marker_begin)
+          (code))))))
+
+================================================================================
+Block ownership boundary 1
+================================================================================
+- item
+ %%%
+ hidden
+  %%%
+  ```
+
+tail
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph)
+        (fenced_comment_block
+          (comment_fence_marker_begin)
+          (content)
+          (comment_fence_marker_end))
+        (code_block
+          (code_block_marker_begin)
+          (code)))))
+  (paragraph))
+
+================================================================================
+Block ownership boundary 2
+================================================================================
+- item
+ %%%
+ hidden
+  %%%
+  ```
+tail
+  ```
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph)
+        (fenced_comment_block
+          (comment_fence_marker_begin)
+          (content)
+          (comment_fence_marker_end))
+        (code_block
+          (code_block_marker_begin)))))
+  (paragraph
+    (verbatim
+      (verbatim_marker_begin)
+      (content)
+      (verbatim_marker_end))))
+
+================================================================================
+Block ownership boundary 3
+================================================================================
+- item
+ %%%
+ hidden
+  %%%
+  # H
+  ```
+tail
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph)
+        (fenced_comment_block
+          (comment_fence_marker_begin)
+          (content)
+          (comment_fence_marker_end))
+        (heading
+          (marker)
+          (content))
+        (code_block
+          (code_block_marker_begin)))))
+  (paragraph))
+
+================================================================================
+Block ownership boundary 4
+================================================================================
+- item
+ %%%
+ hidden
+  %%%
+  ```
+tail
+- sibling
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph)
+        (fenced_comment_block
+          (comment_fence_marker_begin)
+          (content)
+          (comment_fence_marker_end))
+        (code_block
+          (code_block_marker_begin)
+          (code))))
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph)))))
+
+================================================================================
+Block ownership boundary 5
+================================================================================
+- item
+  | a |
+  | b |
+  | malformed
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph)
+        (table
+          (table_row
+            (table_cell))
+          (table_row
+            (table_cell)))
+        (paragraph)))))
+
+================================================================================
+Block ownership boundary 6
+================================================================================
+- item
+  | a |
+  | b |
+tail
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph)
+        (table
+          (table_row
+            (table_cell))
+          (table_row
+            (table_cell))))))
+  (paragraph))
+
+================================================================================
+Block ownership boundary 7
+================================================================================
+> a
++
+> q
+> q2
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (paragraph)
+      (list_continuation_marker)
+      (block_quote
+        (block_quote_marker)
+        (content
+          (paragraph)))
+      (block_quote_marker)
+      (paragraph))))
+
+================================================================================
+Block ownership boundary 8
+================================================================================
+text
+___
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph)
+  (thematic_break))
+
+================================================================================
+Block ownership boundary 9
+================================================================================
+> a
++
+>b
+> c
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (paragraph)
+      (list_continuation_marker)
+      (paragraph
+        (block_quote_marker)))))
+
+================================================================================
+Block ownership boundary 10
+================================================================================
+> a
++
+   > b
+> c
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (paragraph)
+      (list_continuation_marker)
+      (paragraph
+        (block_quote_marker)
+        (block_quote_marker)))))
+
+================================================================================
+Block ownership boundary 11
+================================================================================
+- # H
+ %x
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (heading
+          (marker)
+          (content)))))
+  (paragraph))
+
+================================================================================
+Block ownership boundary 12
+================================================================================
+- # H
+ %% note
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (heading
+          (marker)
+          (content)))))
+  (comment_line))
+
+================================================================================
+Block ownership boundary 13
+================================================================================
+- item
+ %%%
+ hidden
+  %%%
+  ```
+--flag
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph)
+        (fenced_comment_block
+          (comment_fence_marker_begin)
+          (content)
+          (comment_fence_marker_end))
+        (code_block
+          (code_block_marker_begin)
+          (code))))))
+
+================================================================================
+Block ownership boundary 14
+================================================================================
+- item
+ %%%
+ hidden
+  %%%
+  ```
+: literal
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph)
+        (fenced_comment_block
+          (comment_fence_marker_begin)
+          (content)
+          (comment_fence_marker_end))
+        (code_block
+          (code_block_marker_begin)
+          (code))))))
+
+================================================================================
+Block ownership boundary 15
+================================================================================
+:: t
+: desc
+ %%%
+ c
+ %%%
+  ```
+ x
+  ```
+
+--------------------------------------------------------------------------------
+
+(document
+  (definition_list
+    (list_item
+      (list_marker_definition)
+      (term))
+    (list_item
+      (list_marker_description)
+      (definition)))
+  (fenced_comment_block
+    (comment_fence_marker_begin)
+    (content)
+    (comment_fence_marker_end))
+  (paragraph
+    (verbatim
+      (verbatim_marker_begin)
+      (content)
+      (verbatim_marker_end))))

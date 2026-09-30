@@ -4218,6 +4218,10 @@
       "required": false,
       "types": [
         {
+          "type": "backslash_escape",
+          "named": true
+        },
+        {
           "type": "table_cell_alignment",
           "named": true
         }

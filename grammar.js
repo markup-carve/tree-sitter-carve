@@ -779,12 +779,14 @@ module.exports = grammar({
         seq(
           $._table_regular_row,
           repeat($._table_row),
+          optional($._table_list_end),
           optional($._newline),
           optional($.table_caption),
         ),
       ),
     _table_row: ($) =>
       seq(
+        optional($._table_list_row_check),
         optional(
           repeat1(alias($._table_quote_continuation, $.block_quote_marker)),
         ),
@@ -822,9 +824,17 @@ module.exports = grammar({
         $._table_row_end_newline,
       ),
     _table_cell: ($) =>
+      choice(
+        seq(
+          alias($._table_cell_body, $.table_cell),
+          alias($._table_cell_end, "|"),
+        ),
+        alias($._table_escaped_cell_body, $.table_cell),
+      ),
+    _table_escaped_cell_body: ($) =>
       seq(
-        alias($._table_cell_body, $.table_cell),
-        alias($._table_cell_end, "|"),
+        $._table_cell_body,
+        alias($._table_escaped_cell_end, $.backslash_escape),
       ),
     // A cell carrying attributes may hold nothing else: `|{.x} |` is a one-cell
     // table whose cell is empty and classed, not a blank row. Spelled as a rule
@@ -865,7 +875,10 @@ module.exports = grammar({
         // scanner when `_table_separator_begin` is output.
         // Therefore this regex can be simplified.
         alias(token.immediate(/[^|]+/), $.table_cell_alignment),
-        alias($._table_cell_end, "|"),
+        choice(
+          alias($._table_cell_end, "|"),
+          alias($._table_escaped_cell_end, $.backslash_escape),
+        ),
       ),
     table_caption: ($) =>
       seq(
@@ -1094,7 +1107,7 @@ module.exports = grammar({
     // described something else - a row that reads as covered while being false
     // (markup-carve/carve-grammars#284). `class_name` stays, for the attribute
     // it is actually about.
-    admonition_type: ($) => $._id_no_digit_start,
+    admonition_type: ($) => $._id,
     class_name: ($) => $._id_no_digit_start,
     // An admonition title is INLINE: `::: note "Install *now* via `npm`"`
     // renders the strong and the code span in the title paragraph.
@@ -1352,7 +1365,10 @@ module.exports = grammar({
             ),
             // A `+` continuation marker (PART 9 §17) attaches a flush-left block
             // (not `>`-prefixed) to the quote (corpus 100-block-quote-continuation-marker).
-            seq($.list_continuation_marker, $._block_element),
+            seq(
+              $.list_continuation_marker,
+              choice($.heading, $._block_element),
+            ),
             alias(
               $._empty_list_continuation_marker,
               $.list_continuation_marker,
@@ -3038,5 +3054,8 @@ module.exports = grammar({
     $._label_start_comment,
     $._term_comment,
     $._table_quote_continuation,
+    $._table_escaped_cell_end,
+    $._table_list_row_check,
+    $._table_list_end,
   ],
 });

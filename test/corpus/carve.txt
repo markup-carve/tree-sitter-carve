@@ -997,8 +997,8 @@ body
 
 (document
   (paragraph
-    (em_dash)
     (em_dash))
+  (thematic_break)
   (paragraph))
 
 ===============================================================================

@@ -53,6 +53,8 @@ jobs:
         run: npm run test:bracket-boundaries
       - name: Check opaque quote and table boundaries
         run: npm run test:opaque-quote-bands
+      - name: Check block ownership and line endings
+        run: npm run test:block-boundaries
 
       # The shape-level counterpart to corpus conformance. The corpus checks
       # whole documents the spec ships; the battery checks the one-line forms
