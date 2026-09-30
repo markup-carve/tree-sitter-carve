@@ -8360,6 +8360,7 @@ static bool continuation_row_ahead(Scanner *s, TSLexer *lexer) {
 static bool bare_closer_in_scope(Scanner *s, TSLexer *lexer, char bare,
                                  char braced) {
   bool in_row = find_block(s, TABLE_ROW) != NULL;
+  unsigned bracket_depth = 0;
   while (!lexer->eof(lexer)) {
     if (at_line_end(lexer)) {
       if (in_row) {
@@ -8396,7 +8397,18 @@ static bool bare_closer_in_scope(Scanner *s, TSLexer *lexer, char bare,
       }
       continue;
     }
-    if (c == bare) {
+    if (braced == ']' && c == '[') {
+      ++bracket_depth;
+      advance(s, lexer);
+      continue;
+    }
+    if (braced == ']' && c == ']') {
+      if (bracket_depth == 0) return false;
+      --bracket_depth;
+      advance(s, lexer);
+      continue;
+    }
+    if (c == bare && bracket_depth == 0) {
       return true;
     }
     if (in_row && c == '|') {
@@ -9304,6 +9316,8 @@ static bool parse_attributed_span_mark_begin(Scanner *s, TSLexer *lexer,
       top && (top->flags & INLINE_BRACED) && top->type != INLINE_NOTE ? top : NULL);
   if (balanced && (s->state & STATE_BRACKET_STARTS_SPAN)) {
     push_inline_flagged(s, SQUARE_BRACKET_SPAN, 0, INLINE_BRACED);
+    // Qualification belongs to the opener; its content may contain braces.
+    s->state &= ~STATE_BRACKET_STARTS_SPAN;
     lexer->result_symbol = ATTRIBUTED_SPAN_MARK_BEGIN;
     return true;
   }
@@ -9541,11 +9555,13 @@ static bool mark_span_begin(Scanner *s, TSLexer *lexer,
         // The scan below only LOOKS; the mark pins this zero-width token where
         // it belongs whatever the scan advances over.
         mark_end(s, lexer);
-        if (!bare_closer_in_scope(s, lexer, inline_marker(inline_type),
-                                  in_braced ? inline_marker(around->type)
-                                            : 0)) {
-          return false;
-        }
+        bool bracket_scope = in_braced &&
+            (around->type == SQUARE_BRACKET_SPAN || around->type == INLINE_NOTE);
+        bool closer = bracket_scope && !find_block(s, TABLE_ROW)
+            ? bare_closer_skips_brackets(s, lexer, inline_marker(inline_type), NULL)
+            : bare_closer_in_scope(s, lexer, inline_marker(inline_type),
+                                   in_braced ? inline_marker(around->type) : 0);
+        if (!closer) return false;
       } else {
         // Bracket content and link destinations do not close a bare span
         // opened before the bracket.
