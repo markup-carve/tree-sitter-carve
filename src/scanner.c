@@ -9957,7 +9957,13 @@ static int parse_literal_run(Scanner *s, TSLexer *lexer,
       bool whitespace = current == ' ' || current == '\t';
       if (!carve_is_alnum_ascii(current) && !whitespace && current != '/' && current != '.' &&
           !(current == '*' && previous == '/' && !find_inline(s, STRONG))) break;
-      advance(s, lexer);
+      if (current == '.') {
+        advance(s, lexer);
+        if (lexer->lookahead == '.') {
+          advance(s, lexer);
+          if (lexer->lookahead == '.') break;
+        }
+      } else advance(s, lexer);
       if (!whitespace) mark_end(s, lexer);
       previous = current;
       consumed = true;

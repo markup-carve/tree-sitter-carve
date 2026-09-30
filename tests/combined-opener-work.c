@@ -12,7 +12,7 @@ int main(int argc, char **argv) {
   TSParser *parser = ts_parser_new();
   assert(ts_parser_set_language(parser, tree_sitter_carve()));
   const unsigned sizes[] = {128, 256, 512, 1024, 4096, 16384};
-  const char *tails[] = {"z\n", "z\r\n", "z\r", "z", "z [x]\n", "z {x}\n", "z `x`\n"};
+  const char *tails[] = {"z\n", "z\r\n", "z\r", "z", "z [x]\n", "z {x}\n", "z `x`\n", "z ...\n", "z.\n"};
   bool baseline = argc > 1 && strcmp(argv[1], "baseline") == 0;
   for (unsigned tail = 0; tail < sizeof(tails)/sizeof(tails[0]); ++tail)
   for (unsigned i = 0; i < sizeof(sizes)/sizeof(sizes[0]); ++i) {
@@ -31,8 +31,9 @@ int main(int argc, char **argv) {
     assert(ts_node_named_child_count(root) == 1);
     TSNode paragraph = ts_node_named_child(root, 0);
     assert(strcmp(ts_node_type(paragraph), "paragraph") == 0);
-    assert(ts_node_named_child_count(paragraph) == (tail == 6 ? 1 : 0));
+    assert(ts_node_named_child_count(paragraph) == (tail == 6 || tail == 7 ? 1 : 0));
     if (tail == 6) assert(strcmp(ts_node_type(ts_node_named_child(paragraph, 0)), "verbatim") == 0);
+    if (tail == 7) assert(strcmp(ts_node_type(ts_node_named_child(paragraph, 0)), "ellipsis") == 0);
     printf("tail=%u n=%u bytes=%u scanner=%llu lexer=%llu\n", tail, n, bytes, carve_scanner_advances, carve_lexer_advances);
     if (!baseline) {
       assert(carve_scanner_advances <= 32ULL * bytes);

@@ -32,6 +32,8 @@ const cases = [
   '/*a *b* q\n',
   '*x /*a /* c\n',
   '*x /*a. /* c\n',
+  'x /*a ...\n',
+  '/*a ...\n',
   '*x /*a b /* c* d\n',
   '/*a #-b q\n',
   '/*a [/*b*/] q\n',
@@ -85,4 +87,8 @@ for (const newline of ['\n', '\r\n', '\r', '']) {
     newEndPosition: { row: 0, column: at } });
   assert.equal(parser.parse(oldSource, incremental).rootNode.toString(),
     parser.parse(oldSource).rootNode.toString(), 'Removing the closer restores literal text.');
+}
+
+for (const source of ['x /*a ...\n', '/*a ...\n']) {
+  assert.equal(parser.parse(source).rootNode.descendantsOfType('ellipsis').length, 1);
 }
