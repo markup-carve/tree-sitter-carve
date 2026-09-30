@@ -11,23 +11,23 @@ ERROR or MISSING nodes, but clean trees do not establish correct structure.
 
 | Check | Current result |
 |---|---|
-| Covered corpus | 2,156 clean documents; eight individually skipped documents |
+| Covered corpus | 2,159 clean documents; five individually skipped documents |
 | Block under-acceptance | 55 documents missing expected block structure |
 | Inline reading | 45 documents with different span counts or text |
 | Visible over-acceptance | Five documents gaining unexpected blocks |
 | Invisible over-acceptance | Four documents hidden by unexpected definitions/comments |
 | Hidden reference definitions | All 155 recognized in the covered corpus |
-| Final newline removed, Node runtime 0.25.0 | Two otherwise-clean documents acquire errors |
+| Final newline removed, Node runtime 0.25.0 | No otherwise-clean document acquires errors |
 | Line-ending equivalence | Two recorded divergences across LF, CRLF and CR |
 
 These are exact recorded populations, with checks that also fail when a gap is
-fixed and its entry becomes stale. The eight skips are continuation markers
+fixed and its entry becomes stale. The five skips are continuation markers
 attaching no block, one nested quoted-fence case and one nested link/span case.
 The EOF fix in [#468](https://github.com/markup-carve/tree-sitter-carve/pull/468)
 landed during the audit. After rebasing and rebuilding the native binding, the
-latest corpus retains its two residual errors: multi-row tables attached by a
-continuation marker, whose final row becomes a line block at EOF. The corpus
-refresh adds no residuals. Editor runtimes and the pinned CLI have different
+latest corpus initially retained two residual errors: multi-row tables attached
+by a continuation marker, whose final row became a line block at EOF. Row
+validation now accepts EOF as well as a newline; both residuals are resolved. Editor runtimes and the pinned CLI have different
 readings, so the Node result cannot be replaced with a clean CLI run.
 
 ## New boundary coverage

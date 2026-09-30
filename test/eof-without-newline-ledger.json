@@ -1,8 +1,5 @@
 {
   "corpus": "b4f6a1edbe20a090dfbdb270324e8e207017b209",
   "runtime": "0.25.0",
-  "documents": [
-    "285-adjacent-block-openers-in-an-attached-run-stay-separate-2.crv",
-    "464-a-block-that-opens-a-tight-item-is-written-on-the-marker-line-3.crv"
-  ]
+  "documents": []
 }

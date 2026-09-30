@@ -42,7 +42,11 @@ const corpusDir = path.join(repoRoot, 'spec/tests/corpus');
 
 const parser = new Parser();
 parser.setLanguage(Carve);
-const shape = (source) => parser.parse(source).rootNode.toString().replace(/\s+/g, ' ');
+const shape = (source) => {
+  const root = parser.parse(source).rootNode;
+  assert.equal(root.hasError, false, `EOF control must parse cleanly: ${JSON.stringify(source)}`);
+  return root.toString().replace(/\s+/g, ' ');
+};
 
 // One case per site that a document can legally end on. The terminated reading
 // is the oracle: a site is right when removing the terminator changes nothing.
@@ -80,29 +84,29 @@ const INDEPENDENT = [
   ['an unclosed fence body', '```\nx'],
   ['an unclosed fence body in a div', '::: note\n```\nx'],
   ['an unclosed verbatim run on a lazy line', 'x\n```'],
-];
-
-// The residual of #458, and this check's positive control: the comparison above
-// is worth nothing unless it can fail, and this proves it still can.
-const RESIDUAL = [
-  // A `+`-attached table whose LAST ROW ends at the input. One row degrades to a
-  // paragraph without erroring; two rows leave the second `|` line read as a
-  // line block and the item in ERROR. Unrelated to the columns above: the
-  // attached run sits flush left, so nothing has to unwind.
-  ['a plus-attached table of two rows', '- x\n+\n| a |\n| b |'],
-  // A ROW THAT IS NOT READ AS A ROW. The same class seen without an ERROR: a
-  // row line with no terminator falls back to a paragraph, so the document is
-  // clean and the table is gone. The ledger counts errors and cannot see it.
-  ['a table row', '| a |\n| b |'],
+  ['a plus-attached table of two rows', '- x\n+\n| a |\n| b |', 'table'],
+  ['a table row', '| a |\n| b |', 'table'],
+  ['a final separator row', '| a |\n|---|', 'table_separator'],
+  ['a table row with attributes', '| a |\n| b |{.last}'],
+  ['a quoted table row', '> | a |\n> | b |'],
+  ['a row with trailing spaces', '| a |  ', 'table'],
+  ['a row with a trailing tab', '| a |\t', 'table'],
+  ['a final separator with trailing whitespace', '| a |\n|---| \t', 'table'],
+  ['a backslash ending an invalid row', '| a \\\n| b |', 'paragraph'],
+  ['a row missing its closing pipe', '| a | b'],
+  ['a missing closing pipe after a complete row', '| a | b |\n| c | d'],
+  ['content after a closing pipe', '|a|b|\f'],
+  ['a table row inside a footnote', '[^n]: note\n\n  | a |\n  | b |'],
 ];
 
 const broken = [];
-for (const [site, input] of INDEPENDENT) {
-  if (shape(`${input}\n`) !== shape(input)) broken.push(site);
-}
-const fixed = [];
-for (const [site, input] of RESIDUAL) {
-  if (shape(`${input}\n`) === shape(input)) fixed.push(site);
+for (const [site, input, expected] of INDEPENDENT) {
+  for (const separator of ['\n', '\r\n', '\r']) {
+    const source = input.replaceAll('\n', separator);
+    if (expected) assert.ok(parser.parse(source).rootNode.descendantsOfType(expected).length,
+      `${site}: expected ${expected} structure`);
+    if (shape(source + separator) !== shape(source)) broken.push(`${site}/${JSON.stringify(separator)}`);
+  }
 }
 
 if (broken.length) {
@@ -111,11 +115,23 @@ if (broken.length) {
     + ' document may simply end. `choice($._newline, $._eof_or_newline)` is the fix.');
   process.exit(1);
 }
-if (fixed.length) {
-  console.error('These #458 residual shapes no longer need their terminator:\n  '
-    + fixed.join('\n  '));
-  console.error('\nThat is progress. Move each one into INDEPENDENT so it stays fixed.');
-  process.exit(1);
+// Padding in a cell is not part of its code marker. A declined row-ending
+// probe must leave the next inline token's source range unchanged.
+for (const prefix of ['| a |', '> | a |']) {
+  for (const padding of [' ', '   ', '\t']) {
+    for (const [ticks, suffix, type] of [['`', '', 'verbatim_marker_begin'],
+      ['``', '', 'verbatim_marker_begin'], ['`', '{=html}', 'raw_inline_marker_begin']]) {
+      const input = `${prefix}${padding}${ticks}c${ticks}${suffix} |`;
+      for (const ending of ['', '\n', '\r\n', '\r']) {
+        const root = parser.parse(input + ending).rootNode;
+        assert.equal(root.hasError, false, input);
+        const markers = root.descendantsOfType(type);
+        assert.equal(markers.length, 1, input);
+        assert.equal(markers[0].text, ticks, input);
+        assert.equal(markers[0].startIndex, input.indexOf(ticks), input);
+      }
+    }
+  }
 }
 
 const corpus = spawnSync('git', ['-C', path.join(repoRoot, 'spec'), 'rev-parse', 'HEAD'], {
