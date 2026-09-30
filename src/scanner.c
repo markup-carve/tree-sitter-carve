@@ -487,6 +487,12 @@ typedef struct {
   // Width of the attribute block the ordered marker scan just consumed, read
   // by the same scan call. Transient, never serialized.
   uint8_t marker_attribute_width;
+
+  // Transient raw lookahead facts collected only during a combined-opener probe.
+  bool combined_probe;
+  bool combined_raw_closer;
+  bool combined_raw_line_end;
+  int32_t combined_raw_previous;
 } Scanner;
 
 // Tracks if a `[` starts an inline link.
@@ -717,8 +723,19 @@ static void mark_end(Scanner *s, TSLexer *lexer) {
 }
 
 static void advance(Scanner *s, TSLexer *lexer) {
+  int32_t current = lexer->lookahead;
   lexer->advance(lexer, false);
   s->advances++;
+  if (s->combined_probe) {
+    int32_t previous = s->combined_raw_previous;
+    if ((current == '*' && lexer->lookahead == '/') ||
+        (current == '/' && previous != 0 && previous != ' ' && previous != '\t' &&
+         previous != '\r' && previous != '\n' && !carve_is_alnum_ascii(lexer->lookahead))) {
+      s->combined_raw_closer = true;
+    }
+    if (current == '\r' || current == '\n') s->combined_raw_line_end = true;
+    s->combined_raw_previous = current;
+  }
 }
 
 // `newline = '\n' | '\r\n' | '\r'` (spec `resources/grammar.ebnf`). All three
@@ -9169,6 +9186,8 @@ static bool substitution_arrow_ahead(Scanner *s, TSLexer *lexer, bool *closed) {
 }
 
 #define NO_COMBINED_CLOSER UINT8_MAX
+#define NO_COMBINED_CLOSER_LINE (UINT8_MAX - 1)
+#define HAS_NO_COMBINED_CLOSER(s) ((s)->after_closer_char >= NO_COMBINED_CLOSER_LINE)
 
 static bool is_bare_delim_kind(int32_t c, InlineType *kind);
 
@@ -9264,9 +9283,10 @@ static bool mark_span_begin(Scanner *s, TSLexer *lexer,
                             const bool *valid_symbols, InlineType inline_type,
                             TokenType token) {
   Inline *top = peek_inline(s);
-  bool combined_fallback = inline_type == EMPHASIS &&
-      s->after_closer_char == '*' && s->after_closer_col == line_column(s, lexer);
   bool bare = (s->state & STATE_BARE_SPAN_OPENER) != 0;
+  bool combined_fallback = inline_type == EMPHASIS &&
+      ((s->after_closer_char == '*' && s->after_closer_col == line_column(s, lexer)) ||
+       (bare && lexer->lookahead == '*'));
   s->state &= ~STATE_BARE_SPAN_OPENER;
   // If IN_FALLBACK is valid then it means we're processing the
   // `_symbol_fallback` branch (see `grammar.js`).
@@ -9699,7 +9719,7 @@ static bool parse_span_end(Scanner *s, TSLexer *lexer, InlineType element,
   // nothing (its previous character is the marker) and closes nothing (no span
   // of the kind is open any more). The scanner cannot read behind itself, so
   // the closer leaves the note.
-  if (s->after_closer_char != NO_COMBINED_CLOSER) {
+  if (!HAS_NO_COMBINED_CLOSER(s)) {
     s->after_closer_char = 0;
     s->after_closer_col = 0;
   }
@@ -9945,9 +9965,9 @@ static int parse_literal_run(Scanner *s, TSLexer *lexer,
   bool leftover = false;
   uint32_t delims_seen = 0;
 
-  if (s->after_closer_char == NO_COMBINED_CLOSER &&
-      carve_is_alnum_ascii(lexer->lookahead) &&
-      line_column(s, lexer) < s->after_closer_col) {
+  if (HAS_NO_COMBINED_CLOSER(s) && carve_is_alnum_ascii(lexer->lookahead) &&
+      (s->after_closer_char == NO_COMBINED_CLOSER_LINE ||
+       line_column(s, lexer) < s->after_closer_col)) {
     // Unclosed combined runs are literal. Read their plain words together,
     // retaining other markup and any trailing whitespace for the grammar.
     int32_t previous = 0;
@@ -10015,7 +10035,7 @@ static int parse_literal_run(Scanner *s, TSLexer *lexer,
     }
   } else if (is_bare_delim_kind(lexer->lookahead, &kind)) {
     uint32_t col = line_column(s, lexer);
-    if (s->after_closer_char != 0 && s->after_closer_char != NO_COMBINED_CLOSER &&
+    if (s->after_closer_char != 0 && !HAS_NO_COMBINED_CLOSER(s) &&
         s->after_closer_col == col) {
       // Right behind a closer of this very marker: nothing of this kind is
       // open any more and the previous character is the marker, so no
@@ -10081,7 +10101,7 @@ static int parse_literal_run(Scanner *s, TSLexer *lexer,
     prev2 = prev;
     prev = c;
   }
-  if (s->after_closer_char != NO_COMBINED_CLOSER) {
+  if (!HAS_NO_COMBINED_CLOSER(s)) {
     s->after_closer_char = 0;
     s->after_closer_col = 0;
   }
@@ -10319,13 +10339,16 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
 static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   s->col_base_at_mark = 0;
   s->col_base_marked = false;
+  s->combined_probe = false;
   // Snapshot BEFORE any reader below runs, so a probe positioned late in this
   // call (see `parse_trailing_comment`) can tell whether it is still looking
   // at the position tree-sitter actually asked about, or at wherever an
   // earlier probe's own declined scratch-read left the lexer. See the note at
   // that call.
   const uint32_t advances_at_entry = s->advances;
-  if (s->after_closer_char == NO_COMBINED_CLOSER && line_column(s, lexer) == 0) {
+  if (HAS_NO_COMBINED_CLOSER(s) &&
+      (at_line_end(lexer) || lexer->eof(lexer) ||
+       (s->after_closer_char == NO_COMBINED_CLOSER && line_column(s, lexer) == 0))) {
     s->after_closer_char = 0;
     s->after_closer_col = 0;
   }
@@ -10365,14 +10388,26 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   // Decide the combined opener before its star, retaining a slash fallback.
   if (valid_symbols[BOLD_ITALIC_OPEN_CHECK] && !valid_symbols[ERROR] &&
       lexer->lookahead == '*') {
-    uint32_t opener_column = line_column(s, lexer);
+    uint32_t opener_column = s->after_closer_char == NO_COMBINED_CLOSER_LINE ? 0 :
+                             line_column(s, lexer);
     mark_end(s, lexer);
-    if (s->after_closer_char == NO_COMBINED_CLOSER &&
-        opener_column < s->after_closer_col) {
+    if (HAS_NO_COMBINED_CLOSER(s) &&
+        (s->after_closer_char == NO_COMBINED_CLOSER_LINE ||
+         opener_column < s->after_closer_col)) {
       lexer->result_symbol = BOLD_ITALIC_OPEN_CHECK;
       return true;
     }
     uint32_t plain_prefix_end_column = 0;
+    uint32_t first_line_end_column = 0;
+    bool first_line_cache_safe = true;
+    Inline *scope = peek_inline(s);
+    InlineType scope_type = scope ? scope->type : EMPHASIS;
+    bool scope_braced = scope && (scope->flags & INLINE_BRACED);
+    char scope_marker = scope ? inline_marker(scope_type) : 0;
+    s->combined_probe = true;
+    s->combined_raw_closer = false;
+    s->combined_raw_line_end = false;
+    s->combined_raw_previous = 0;
     int32_t previous = 0;
     uint32_t characters = 0;
     bool emphasis_closer = false;
@@ -10380,6 +10415,12 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     while (!lexer->eof(lexer)) {
       if (at_line_end(lexer)) {
         if (!plain_prefix_end_column) plain_prefix_end_column = line_column(s, lexer);
+        if (!first_line_end_column) {
+          first_line_end_column = line_column(s, lexer);
+          first_line_cache_safe = !s->combined_raw_line_end;
+        }
+        Block *host = peek_block(s);
+        if (disallow_newline(host) || (host && host->type == HEADING)) break;
         consume_line_end(s, lexer);
         consume_whitespace(s, lexer);
         if (at_line_end(lexer) || lexer->eof(lexer)) break;
@@ -10393,9 +10434,22 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
           if (lexer->lookahead == ' ' || lexer->lookahead == '\t') advance(s, lexer);
           --quotes;
         }
+        if (at_line_end(lexer) || lexer->eof(lexer)) break;
+        if (lexer->lookahead == ':' && (find_block(s, DIV) || find_block(s, FIGURE_GROUP))) {
+          uint8_t colons = consume_chars(s, lexer, ':');
+          uint8_t spaces = consume_whitespace(s, lexer);
+          if (colons >= 3 && number_of_colon_fence_blocks_from_top(s, colons) &&
+              (at_line_end(lexer) || lexer->eof(lexer))) break;
+          previous = spaces ? ' ' : ':';
+          characters += colons + spaces;
+          continue;
+        }
         previous = '\n';
       }
       int32_t current = lexer->lookahead;
+      if (scope && (scope_type == SQUARE_BRACKET_SPAN || scope_type == INLINE_NOTE ||
+                    scope_type == CURLY_BRACKET_SPAN || scope_type == PARENS_SPAN) &&
+          current == scope_marker) break;
       if (current == '\\') {
         if (!plain_prefix_end_column) plain_prefix_end_column = line_column(s, lexer);
         advance(s, lexer);
@@ -10452,6 +10506,11 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       }
       ++characters;
       advance(s, lexer);
+      if (scope && scope_type != BOLD_ITALIC && characters > 1 && current == scope_marker &&
+          !(scope_type == STRONG && lexer->lookahead == '/') &&
+          ((scope_braced && lexer->lookahead == '}') ||
+           (!scope_braced && previous != ' ' && previous != '\t' && previous != '\n' &&
+            previous != 0 && !carve_is_alnum_ascii(lexer->lookahead)))) break;
       if (current == '*' && lexer->lookahead == '/') {
         bool invalid_pair = characters == 2 || previous == ' ' ||
                             previous == '\t' || previous == '\n';
@@ -10469,6 +10528,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
           previous != 0 && !carve_is_alnum_ascii(lexer->lookahead)) emphasis_closer = true;
       previous = current;
     }
+    s->combined_probe = false;
     if (!combined_pair && emphasis_closer &&
         valid_symbols[EMPHASIS_MARK_BEGIN] && !find_inline_in_scope(s, EMPHASIS)) {
       s->after_closer_char = '*';
@@ -10478,9 +10538,13 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     }
     if (!combined_pair && !emphasis_closer) {
       uint32_t through = plain_prefix_end_column;
+      if (!s->combined_raw_closer) through = first_line_end_column;
       if (!through) through = line_column(s, lexer);
       if (through > opener_column) {
-        s->after_closer_char = NO_COMBINED_CLOSER;
+        bool whole_line = !scope && !s->combined_raw_closer &&
+                          (first_line_end_column ? first_line_cache_safe :
+                           !s->combined_raw_line_end);
+        s->after_closer_char = whole_line ? NO_COMBINED_CLOSER_LINE : NO_COMBINED_CLOSER;
         s->after_closer_col = through;
       }
     }
@@ -11497,6 +11561,7 @@ static void init_scalars(Scanner *s) {
   s->col_base = 0;
   s->col_base_at_mark = 0;
   s->col_base_marked = false;
+  s->combined_probe = false;
   s->state = 0;
   s->after_closer_char = 0;
   s->after_closer_col = 0;
