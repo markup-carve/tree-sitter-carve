@@ -2474,14 +2474,30 @@ module.exports = grammar({
       // destination neither starts with one (`[x]( "t")` is a paragraph, not a
       // link with the title `t`, carve#2070) nor carries one.
       token.immediate(/([^)\s]|\\\))+/),
-    // `destTitle = titleSp (quoted | squoted)`, `titleSp = " "`: exactly one
+    // `destTitle = titleSp (titleQuoted | titleSquoted)`, `titleSp = " "`: exactly one
     // space, and the title is one token so no extra can be skipped inside it.
     _link_title_space: (_) => token.immediate(" "),
-    _inline_link_title: (_) =>
-      token.immediate(
-        choice(
-          seq('"', /(?:[^"\\\r\n]|\\[^\r\n])*/, '"'),
-          seq("'", /(?:[^'\\\r\n]|\\[^\r\n])*/, "'"),
+    _inline_link_title: ($) =>
+      choice(
+        seq(
+          token.immediate('"'),
+          repeat(
+            choice(
+              token.immediate(/(?:[^"\\\r\n]|\\[^\r\n])+/),
+              seq($._newline_inline, optional($._block_quote_prefix)),
+            ),
+          ),
+          token.immediate('"'),
+        ),
+        seq(
+          token.immediate("'"),
+          repeat(
+            choice(
+              token.immediate(/(?:[^'\\\r\n]|\\[^\r\n])+/),
+              seq($._newline_inline, optional($._block_quote_prefix)),
+            ),
+          ),
+          token.immediate("'"),
         ),
       ),
     _parens_span_begin: (_) => "(",

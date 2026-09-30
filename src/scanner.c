@@ -576,6 +576,7 @@ static const uint16_t STATE_TABLE_CONTINUATION_NEXT = 1 << 12;
 // `VERBATIM_CONTENT`. Cleared at the top of every decision, so it never
 // outlives the one gap it was set for.
 static const uint16_t STATE_NEXT_VERBATIM_LINE_IS_COMMENT = 1 << 13;
+static const uint16_t STATE_SINGLE_LINE_CAPTION = 1 << 14;
 
 static TokenType scan_list_marker_token(Scanner *s, TSLexer *lexer);
 static uint8_t scan_block_quote_markers(Scanner *s, TSLexer *lexer,
@@ -5506,6 +5507,7 @@ static bool parse_caption_begin(Scanner *s, TSLexer *lexer) {
   if (!marker_line_has_content(s, lexer)) {
     return false;
   }
+  s->state |= STATE_SINGLE_LINE_CAPTION;
   lexer->result_symbol = CAPTION_BEGIN;
   return true;
 }
@@ -7464,12 +7466,14 @@ static bool parse_newline(Scanner *s, TSLexer *lexer,
     if (scan_quoted_code_fence_closer(s, lexer)) {
       s->state |= STATE_QUOTED_FENCE_CLOSER;
     }
+    s->state &= ~STATE_SINGLE_LINE_CAPTION;
     lexer->result_symbol = NEWLINE;
     return true;
   }
 
   if (valid_symbols[EOF_OR_NEWLINE]) {
     s->state &= ~STATE_FENCE_ABSORBS;
+    s->state &= ~STATE_SINGLE_LINE_CAPTION;
     lexer->result_symbol = EOF_OR_NEWLINE;
     return true;
   }
@@ -8418,6 +8422,8 @@ static bool scan_until_bracket_close(Scanner *s, TSLexer *lexer,
 /// live versions with the branch this ticket needs instead
 /// (tree-sitter-carve#436). A `[` with no matching `]` ahead is content, not
 /// an opaque run, so it does not stop the search.
+static bool scan_inline_link_tail(Scanner *s, TSLexer *lexer, char bare, bool *closer, bool *boundary);
+
 static bool bare_closer_skips_brackets(Scanner *s, TSLexer *lexer, char bare) {
   while (!lexer->eof(lexer)) {
     if (at_line_end(lexer)) {
@@ -8450,6 +8456,14 @@ static bool bare_closer_skips_brackets(Scanner *s, TSLexer *lexer, char bare) {
       advance(s, lexer);
       if (scan_until_bracket_close(s, lexer, NULL)) {
         advance(s, lexer); // past the matching `]`
+        if (lexer->lookahead == '(') {
+          advance(s, lexer);
+          bool closer = false;
+          bool boundary = false;
+          if (scan_inline_link_tail(s, lexer, bare, &closer, &boundary)) advance(s, lexer);
+          else if (closer) return true;
+          else if (boundary) return false;
+        }
         continue;
       }
       // No matching `]`: this `[` is content, not an opaque run - fall
@@ -8481,18 +8495,23 @@ static bool is_destination_space(int32_t c) {
 ///
 /// `linkTail = "(" dest destTitle? ")"` (resources/carve-core.ohm). Two slots,
 /// not one: `dest` admits no whitespace, and `destTitle` is EXACTLY one space
-/// and then a quoted run that closes on the same line. So `[t](/u  "T")` and
+/// and then a quoted run that may contain line breaks. So `[t](/u  "T")` and
 /// `[t](/u` + TAB + `"T")` are paragraphs (corpus 262, 257) and `[x](a b)` is
 /// one too.
 ///
 /// This reader keeps the grammar's own reading of the destination rather than
 /// the ohm's in one place: nested parentheses are NOT balanced here, matching
 /// `_inline_link_url`, so `[t](/a(b)c` / `SECOND)` reads as it always has.
-static bool scan_inline_link_tail(Scanner *s, TSLexer *lexer) {
+static bool scan_inline_link_tail(Scanner *s, TSLexer *lexer, char bare, bool *closer, bool *boundary) {
+  if (closer) *closer = false;
+  if (boundary) *boundary = false;
   bool any_dest = false;
+  bool escaped = false;
   while (!lexer->eof(lexer) && !at_line_end(lexer) &&
          lexer->lookahead != ')' && !is_destination_space(lexer->lookahead)) {
     any_dest = true;
+    if (closer && lexer->lookahead == bare && !escaped) *closer = true;
+    escaped = lexer->lookahead == '\\' && !escaped;
     // `\)` is the one escape the destination token spells; a backslash before
     // anything else is an ordinary destination character.
     if (lexer->lookahead == '\\') {
@@ -8500,6 +8519,7 @@ static bool scan_inline_link_tail(Scanner *s, TSLexer *lexer) {
       if (lexer->lookahead != ')') {
         continue;
       }
+      escaped = false;
     }
     advance(s, lexer);
   }
@@ -8518,15 +8538,34 @@ static bool scan_inline_link_tail(Scanner *s, TSLexer *lexer) {
     return false;
   }
   advance(s, lexer);
-  while (!lexer->eof(lexer) && !at_line_end(lexer)) {
+  while (!lexer->eof(lexer)) {
+    if (at_line_end(lexer)) {
+      Block *host = peek_block(s);
+      if ((s->state & STATE_SINGLE_LINE_CAPTION) ||
+          (host && (host->type == HEADING || host->type == TABLE_CAPTION || disallow_newline(host)))) {
+        if (boundary) *boundary = true;
+        return false;
+      }
+      consume_line_end(s, lexer);
+      consume_whitespace(s, lexer);
+      if (lexer->eof(lexer) || at_line_end(lexer) || close_paragraph(s, lexer)) {
+        if (boundary) *boundary = true;
+        return false;
+      }
+      continue;
+    }
     if (lexer->lookahead == '\\') {
       advance(s, lexer);
-      if (lexer->eof(lexer) || at_line_end(lexer)) {
+      if (lexer->eof(lexer)) {
+        return false;
+      }
+      if (at_line_end(lexer)) {
         return false;
       }
       advance(s, lexer);
       continue;
     }
+    if (closer && lexer->lookahead == bare) *closer = true;
     if (lexer->lookahead == quote) {
       advance(s, lexer);
       return lexer->lookahead == ')';
@@ -8568,7 +8607,7 @@ static bool update_square_bracket_lookahead_states(Scanner *s, TSLexer *lexer,
     // a title is no link at all (carve#2070), and marking one here left the
     // branch with nothing to build and an ERROR where the text belongs.
     advance(s, lexer);
-    if (scan_inline_link_tail(s, lexer)) {
+    if (scan_inline_link_tail(s, lexer, 0, NULL, NULL)) {
       s->state |= STATE_BRACKET_STARTS_INLINE_LINK;
     } else if (at_line_end(lexer)) {
       s->state |= STATE_MULTILINE_IDENTIFIER;
@@ -8870,12 +8909,11 @@ static bool mark_span_begin(Scanner *s, TSLexer *lexer,
                                             : 0)) {
           return false;
         }
-      } else if (inline_type == STRONG) {
-        // A `*` reachable only inside a later bracket's own extent does not
-        // close a strong opened before it (tree-sitter-carve#436); see
-        // `bare_closer_skips_brackets`.
+      } else {
+        // Bracket content and link destinations do not close a bare span
+        // opened before the bracket.
         mark_end(s, lexer);
-        if (!bare_closer_skips_brackets(s, lexer, inline_marker(STRONG))) {
+        if (!bare_closer_skips_brackets(s, lexer, inline_marker(inline_type))) {
           return false;
         }
       }
@@ -9019,6 +9057,7 @@ static bool identifier_after_bracket_stays_on_one_line(Scanner *s,
     return true;
   }
   advance(s, lexer);
+  if (closer == ')') return scan_inline_link_tail(s, lexer, 0, NULL, NULL);
 
   bool plain = true;
   while (!lexer->eof(lexer)) {
@@ -10489,6 +10528,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   // `at_eof`, not `lexer->eof(lexer)`: see where it is recorded, at the top of
   // this function. Everything between there and here may have advanced.
   if (valid_symbols[EOF_OR_NEWLINE] && at_eof) {
+    s->state &= ~STATE_SINGLE_LINE_CAPTION;
     lexer->result_symbol = EOF_OR_NEWLINE;
     return true;
   }
