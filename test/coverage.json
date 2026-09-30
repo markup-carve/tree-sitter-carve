@@ -869,14 +869,6 @@
       "reading": "code html=2 tree=1, code#1 html=\"p\" tree=\"\"",
       "reason": "a fence opened at a nested item's content column and closed by a run below that column: the reference cuts the block there and gives the next sibling item its own empty code span, while the grammar reads through to the LAST closer-shaped line as one span, so it has one span where the reference has two and the first one covers nothing."
     },
-    "an-emphasis-marker-does-not-pair-across-a-link-bracket": {
-      "reading": "em html=0 tree=1",
-      "reason": "`/[a/](/u)` pairs its `/` run across the link's opening bracket in the tree and builds an emphasis over `[a`; the fixture pairs nothing and leaves the leading `/` literal, with `a/` as the link text. Over-acceptance of the delimiter this category exists to refuse. Tracked in tree-sitter-carve#459."
-    },
-    "a-link-title-crosses-a-soft-wrap-and-an-attribute-value-does-not-3": {
-      "reading": "alt html=1 tree=0",
-      "reason": "an image whose TITLE crosses a soft wrap (`![a](/i \"t` / `u\")`) builds no image at all - the tree is a bare paragraph - so the alt text the fixture carries has nothing to come from. Controlled against the one-line spelling, which works: `![a](/i \"t u\")` builds the inline_image with its title. Tracked in tree-sitter-carve#459."
-    },
     "a-link-inside-a-span-s-label-keeps-its-destination-4": {
       "reading": "em html=1 tree=0",
       "reason": "emphasis inside a span's label is lost once that label also holds a link: `[/[t](/v)/]{.c}` builds the span, the link and the attribute but no emphasis, while `[/t/]{.c}` builds it. The neighbourhood of the `a-link-inside-a-span-s-label-keeps-its-destination-8` skip entry, which is the same pairing failing hard enough to ERROR. Tracked in tree-sitter-carve#459."
@@ -926,8 +918,6 @@
       "reason": "The bracket run does not bound braced delimiter pairing in the scanner."
     }
   },
-  "lineTerminatorGaps": {
-    "a-delimiter-after-an-underscore-or-slash-opens-only-when-that-one-pairs": "the same pairing gap `inlineReadingGaps` already records for this document (`strong`/`em`/`u`/`s`/`mark` all open where the reference stays literal) also depends on which delimiter run the scanner's own lookahead crosses to find a closer; a lone CR moves that boundary differently than LF/CRLF do, so the CR spelling reads a different tree rather than the same wrong one."
-  },
+  "lineTerminatorGaps": {},
   "parseTimeouts": {}
 }

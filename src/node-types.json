@@ -2641,7 +2641,17 @@
   {
     "type": "link_title",
     "named": true,
-    "fields": {}
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "block_quote_marker",
+          "named": true
+        }
+      ]
+    }
   },
   {
     "type": "list",
