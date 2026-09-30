@@ -1750,7 +1750,7 @@
     },
     "children": {
       "multiple": true,
-      "required": true,
+      "required": false,
       "types": [
         {
           "type": "comment_fence_marker_begin",
@@ -4305,6 +4305,10 @@
         },
         {
           "type": "extension_inline",
+          "named": true
+        },
+        {
+          "type": "fenced_comment_block",
           "named": true
         },
         {

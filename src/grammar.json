@@ -843,7 +843,7 @@
             "type": "ALIAS",
             "content": {
               "type": "SYMBOL",
-              "name": "_paragraph_content"
+              "name": "_term_content"
             },
             "named": true,
             "value": "term"
@@ -4904,6 +4904,73 @@
               "name": "_close_paragraph"
             }
           ]
+        }
+      ]
+    },
+    "_term_content": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "_block_quote_prefix"
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        },
+        {
+          "type": "SYMBOL",
+          "name": "_inline"
+        },
+        {
+          "type": "REPEAT",
+          "content": {
+            "type": "SEQ",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "_newline_inline"
+              },
+              {
+                "type": "CHOICE",
+                "members": [
+                  {
+                    "type": "SYMBOL",
+                    "name": "_block_quote_prefix"
+                  },
+                  {
+                    "type": "BLANK"
+                  }
+                ]
+              },
+              {
+                "type": "CHOICE",
+                "members": [
+                  {
+                    "type": "SYMBOL",
+                    "name": "_inline"
+                  },
+                  {
+                    "type": "ALIAS",
+                    "content": {
+                      "type": "SYMBOL",
+                      "name": "_term_comment"
+                    },
+                    "named": true,
+                    "value": "fenced_comment_block"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "type": "SYMBOL",
+          "name": "_eof_or_newline"
         }
       ]
     },
@@ -10023,6 +10090,10 @@
     {
       "type": "SYMBOL",
       "name": "_label_start_comment"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_term_comment"
     }
   ],
   "inline": [],

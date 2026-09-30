@@ -548,7 +548,7 @@ module.exports = grammar({
       seq(
         optional($._block_quote_prefix),
         field("marker", $.list_marker_definition),
-        field("term", alias($._paragraph_content, $.term)),
+        field("term", alias($._term_content, $.term)),
         choice($._eof_or_newline, $._close_paragraph),
         field(
           "definition",
@@ -1791,6 +1791,20 @@ module.exports = grammar({
         // to not select newline up to following text.
         choice($._eof_or_newline, $._close_paragraph),
       ),
+    _term_content: ($) =>
+      seq(
+        optional($._block_quote_prefix),
+        $._inline,
+        repeat(
+          seq(
+            $._newline_inline,
+            optional($._block_quote_prefix),
+            choice($._inline, alias($._term_comment, $.fenced_comment_block)),
+          ),
+        ),
+        $._eof_or_newline,
+      ),
+
     _paragraph_content: ($) =>
       // Newlines inside inline blocks should be of the `_newline_inline` type.
       seq(
@@ -3017,5 +3031,6 @@ module.exports = grammar({
     $._empty_list_continuation_marker,
     $._label_mark_begin,
     $._label_start_comment,
+    $._term_comment,
   ],
 });

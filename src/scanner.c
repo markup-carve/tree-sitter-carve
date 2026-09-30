@@ -237,6 +237,7 @@ typedef enum {
   EMPTY_LIST_CONTINUATION_MARKER,
   LABEL_MARK_BEGIN,
   LABEL_START_COMMENT,
+  TERM_COMMENT,
 } TokenType;
 
 // The different blocks in Carve that we track,
@@ -2740,6 +2741,65 @@ static bool parse_comment_fence_begin(Scanner *s, TSLexer *lexer,
     if (scan_comment_fence_line_width(s, lexer) == percents) {
       push_block(s, COMMENT_FENCE, percents);
       lexer->result_symbol = COMMENT_FENCE_BEGIN;
+      return true;
+    }
+    scan_to_line_end(s, lexer);
+  }
+  return false;
+}
+
+// A closed comment fence is opaque inside the inline run of a term.
+static bool parse_term_comment(Scanner *s, TSLexer *lexer) {
+  Block *list = find_list(s);
+  if (!list || list->type != LIST_DEFINITION ||
+      !(list->flags & BLOCK_FLAG_DEFINITION_TERM)) {
+    return false;
+  }
+  consume_whitespace(s, lexer);
+  if (lexer->lookahead != '%') return false;
+  uint8_t width = consume_chars(s, lexer, '%');
+  if (width < 3) return false;
+  uint32_t margin = 0;
+  bool below_term = false;
+  for (int i = s->open_blocks->size - 1; i >= 0; --i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (b == list) { below_term = true; continue; }
+    if (!below_term) continue;
+    if (is_list(b->type) || b->type == DIV || b->type == FIGURE_GROUP ||
+        b->type == BLOCK_QUOTE) { margin = b->content_col; break; }
+    if (b->type == FOOTNOTE) {
+      margin = b->data;
+      for (int j = i - 1; j >= 0; --j) {
+        Block *parent = *array_get(s->open_blocks, j);
+        if (parent->type == BLOCK_QUOTE) { margin += parent->content_col; break; }
+      }
+      break;
+    }
+  }
+  uint8_t quote_depth = count_blocks(s, BLOCK_QUOTE);
+  scan_to_line_end(s, lexer);
+  while (!lexer->eof(lexer)) {
+    consume_line_end(s, lexer);
+    if (lexer->eof(lexer)) return false;
+    consume_whitespace(s, lexer);
+    uint8_t markers = 0;
+    while (lexer->lookahead == '>') {
+      advance(s, lexer);
+      if (lexer->lookahead == ' ') {
+        advance(s, lexer); ++markers;
+      } else if (at_line_end(lexer) || lexer->eof(lexer)) {
+        ++markers; break;
+      } else break;
+    }
+    if (markers < quote_depth) return false;
+    consume_whitespace(s, lexer);
+    if (!at_line_end(lexer) && !lexer->eof(lexer) &&
+        line_column(s, lexer) < margin) return false;
+    uint8_t run = consume_chars(s, lexer, '%');
+    if (markers == quote_depth && run == width) {
+      scan_to_line_end(s, lexer);
+      mark_end(s, lexer);
+      lexer->result_symbol = TERM_COMMENT;
       return true;
     }
     scan_to_line_end(s, lexer);
@@ -9884,6 +9944,10 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     lexer->result_symbol = LITERAL_RUN;
     return true;
   }
+  if (valid_symbols[TERM_COMMENT] && !valid_symbols[ERROR] &&
+      (lexer->lookahead == '%' || lexer->lookahead == ' ' ||
+       lexer->lookahead == '\t')) return parse_term_comment(s, lexer);
+
 
   // FIRST, and it answers for the whole call: the reader it runs moves the
   // lexer to the end of the run, so nothing below could read from where it

@@ -4475,3 +4475,105 @@ body
 ---
 
 (document (div (div_marker_begin) (code_block_label (emphasis (emphasis_begin) (content) (emphasis_end))) (content (paragraph)) (div_marker_end)))
+
+=============================
+A fenced comment preserves a nested term across blank lines (#459)
+=============================
+[t][r]
+
+:: a
+: b
+  :: c
+    %%%
+
+    hidden
+    %%%
+    [r]: /u
+
+---
+
+(document (paragraph (full_reference_link (link_text) (link_label))) (definition_list (list_item (list_marker_definition) (term)) (list_item (list_marker_description) (definition) (definition_list (list_item (list_marker_definition) (term (fenced_comment_block)))))))
+
+=============================
+A fenced comment preserves a term across blank lines (#459)
+=============================
+:: c
+  %%%
+
+  hidden
+  %%%
+  [r]: /u
+
+---
+
+(document (definition_list (list_item (list_marker_definition) (term (fenced_comment_block)))))
+
+=============================
+An unclosed comment fence stays on the term line (#459)
+=============================
+:: c
+  %%%
+  hidden
+  x
+
+---
+
+(document (definition_list (list_item (list_marker_definition) (term))))
+
+=============================
+A comment fence at the document margin follows the term (#459)
+=============================
+:: c
+%%%
+
+hidden
+%%%
+[r]: /u
+
+---
+
+(document (definition_list (list_item (list_marker_definition) (term))) (fenced_comment_block (comment_fence_marker_begin) (content) (comment_fence_marker_end)) (link_reference_definition (link_label) (link_destination)))
+
+=============================
+A quote boundary ends a fenced comment in a term (#459)
+=============================
+> :: c
+>   %%%
+
+hidden
+>   %%%
+>   [r]: /u
+
+---
+
+(document (block_quote (block_quote_marker) (content (definition_list (list_item (list_marker_definition) (term (block_quote_marker)))))) (paragraph) (block_quote (block_quote_marker) (content (comment_line) (block_quote_marker) (paragraph))))
+
+=============================
+A dedent ends a fenced comment in a nested term (#459)
+=============================
+:: a
+: b
+  :: c
+    %%%
+
+x
+    %%%
+[r]: /u
+
+---
+
+(document (definition_list (list_item (list_marker_definition) (term)) (list_item (list_marker_description) (definition) (definition_list (list_item (list_marker_definition) (term))))) (paragraph) (comment_line) (link_reference_definition (link_label) (link_destination)))
+
+=============================
+Quoted blank lines stay inside a term comment (#459)
+=============================
+> :: c
+>   %%%
+>
+>   hidden
+>   %%%
+>   [r]: /u
+
+---
+
+(document (block_quote (block_quote_marker) (content (definition_list (list_item (list_marker_definition) (term (block_quote_marker) (fenced_comment_block) (block_quote_marker)))))))
