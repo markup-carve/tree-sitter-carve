@@ -3851,3 +3851,71 @@ a *[t [z]* w](/u)
     (inline_link
       text: (link_text)
       destination: (inline_link_destination))))
+
+=============================
+A definition term nests in a description body (#459)
+=============================
+:: a
+: b
+  :: c
+  : d
+
+---
+
+(document
+  (definition_list
+    (list_item (list_marker_definition) (term))
+    (list_item (list_marker_description) (definition)
+      (definition_list
+        (list_item (list_marker_definition) (term))
+        (list_item (list_marker_description) (definition))))))
+
+=============================
+An indented heading folds into a nested definition term (#459)
+=============================
+:: a
+: b
+  :: c
+    # H
+
+---
+
+(document
+  (definition_list
+    (list_item (list_marker_definition) (term))
+    (list_item (list_marker_description) (definition)
+      (definition_list
+        (list_item (list_marker_definition) (term))))))
+
+=============================
+A definition term opens on a bullet marker line (#459)
+=============================
+- :: c
+    # H
+
+---
+
+(document
+  (list
+    (list_item (list_marker_dash) (list_item_content
+      (definition_list
+        (list_item (list_marker_definition) (term)))))))
+
+=============================
+A bullet after a nested definition term belongs to its description (#459)
+=============================
+:: a
+: b
+  :: c
+    - x
+
+---
+
+(document
+  (definition_list
+    (list_item (list_marker_definition) (term))
+    (list_item (list_marker_description) (definition)
+      (definition_list
+        (list_item (list_marker_definition) (term)))
+      (list
+        (list_item (list_marker_dash) (list_item_content (paragraph)))))))

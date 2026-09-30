@@ -320,6 +320,9 @@ static const uint8_t BLOCK_FLAG_LINE_BLOCK = 1 << 0;
 // position for whatever reads that `|` next. See
 // `parse_table_row_continuation_seam` (tree-sitter-carve#437).
 static const uint8_t BLOCK_FLAG_TABLE_ROW_CONTINUES = 1 << 1;
+// Definition terms and description bodies use the same block type. Keep the
+// current item kind so nested terms and folded continuation lines stay scoped.
+static const uint8_t BLOCK_FLAG_DEFINITION_TERM = 1 << 2;
 
 typedef enum {
   VERBATIM,
@@ -3793,6 +3796,10 @@ static bool marker_folds_into_item(Scanner *s, uint32_t column) {
     if (!is_list(b->type) || column + 1 < b->data) {
       continue;
     }
+    if (b->type == LIST_DEFINITION &&
+        (b->flags & BLOCK_FLAG_DEFINITION_TERM)) {
+      return false;
+    }
     return b->content_col != 0 && column >= b->data && column < b->content_col;
   }
   return false;
@@ -5089,11 +5096,14 @@ static bool parse_colon(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       Block *open_definition_list = find_list(s);
       if (open_definition_list &&
           open_definition_list->type == LIST_DEFINITION) {
-        if (!marker_line_nested &&
+        bool nested_in_description =
+            !(open_definition_list->flags & BLOCK_FLAG_DEFINITION_TERM) &&
+            list_indent == open_definition_list->content_col;
+        if (!marker_line_nested && !nested_in_description &&
             list_indent + 1 != open_definition_list->data) {
           return false;
         }
-      } else if (has_extra_indent(s)) {
+      } else if (!marker_line_nested && has_extra_indent(s)) {
         return false;
       }
       // Mark the token end before the content probe (scratch advances must not
@@ -5104,6 +5114,7 @@ static bool parse_colon(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
         return false;
       }
       ensure_list_open(s, LIST_DEFINITION, list_indent + 1);
+      peek_block(s)->flags |= BLOCK_FLAG_DEFINITION_TERM;
       // Record where the term's content starts, as the bullet and ordered
       // markers do. Without it the block reads column 0, and
       // `at_block_opener_margin` - which only answers for a list whose
@@ -5139,6 +5150,7 @@ static bool parse_colon(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       return false;
     }
     ensure_list_open(s, LIST_DEFINITION, list_indent + 1);
+    peek_block(s)->flags &= (uint8_t)~BLOCK_FLAG_DEFINITION_TERM;
     // The full space run above is marker padding, so the lexer sits at the
     // body's authored content column. See the term branch.
     record_list_marker_margin(s, (uint8_t)line_column(s, lexer), true);
@@ -7156,6 +7168,21 @@ static bool close_paragraph(Scanner *s, TSLexer *lexer) {
     if (quote && quote->content_col != 0 && column >= quote->content_col &&
         !item_outside_quotes_reached(s, column)) {
       return false;
+    }
+  }
+
+  // Indented block-looking lines are term text. A list marker with content
+  // ends the term instead, allowing a sibling list in the enclosing body.
+  for (int i = s->open_blocks->size - 1; i >= 0; --i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (is_list(b->type)) {
+      if (b->type == LIST_DEFINITION &&
+          (b->flags & BLOCK_FLAG_DEFINITION_TERM) &&
+          line_column(s, lexer) >= b->data && !at_line_end(lexer) &&
+          !lexer->eof(lexer)) {
+        return scan_list_marker(s, lexer) && marker_line_has_content(s, lexer);
+      }
+      break;
     }
   }
 

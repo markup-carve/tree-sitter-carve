@@ -97,6 +97,24 @@ int main(void) {
   tree_sitter_carve_external_scanner_destroy(div_back);
   tree_sitter_carve_external_scanner_destroy(div);
 
+  Scanner *term = tree_sitter_carve_external_scanner_create();
+  Block *definition = create_block(LIST_DEFINITION, 3);
+  definition->flags = BLOCK_FLAG_DEFINITION_TERM;
+  definition->content_col = 5;
+  stack_push(term->open_blocks, definition);
+  unsigned term_length = tree_sitter_carve_external_scanner_serialize(term, buffer);
+  Scanner *term_back = tree_sitter_carve_external_scanner_create();
+  tree_sitter_carve_external_scanner_deserialize(term_back, buffer, term_length);
+  Block *restored_term = *array_get(term_back->open_blocks, 0);
+  if (restored_term->type != LIST_DEFINITION || restored_term->data != 3 ||
+      restored_term->content_col != 5 ||
+      restored_term->flags != BLOCK_FLAG_DEFINITION_TERM) {
+    fputs("definition term state did not survive serialization\n", stderr);
+    return 1;
+  }
+  tree_sitter_carve_external_scanner_destroy(term_back);
+  tree_sitter_carve_external_scanner_destroy(term);
+
   tree_sitter_carve_external_scanner_destroy(restored);
   tree_sitter_carve_external_scanner_destroy(scanner);
   puts("scanner serialization: 252 blocks round-trip, an inline entry and a "
