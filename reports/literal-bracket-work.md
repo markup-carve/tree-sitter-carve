@@ -15,4 +15,4 @@ Full-parser scanner advance counts at depth 1,024:
 | unclosed | 1,052,675 | 4,100 |
 | unclosed-multiline | 1,060,882 | 4,112 |
 
-[Raw measurements](literal-bracket-work.json) retain the baseline commit and runtime version. These are operation counts, not elapsed timings. CI checks a deterministic byte budget across all ten shapes through depth 16,384. Qualifying tails on batched brackets keep the regular reader.
+[Raw measurements](literal-bracket-work.json) retain the baseline commit and runtime version. These are operation counts, not elapsed timings. CI checks a deterministic byte budget across all ten shapes through depth 16,384. Qualifying tails on batched brackets keep the regular reader. Unfinished runs containing punctuation also keep that reader and can still require quadratic lookahead.

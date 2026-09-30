@@ -8746,6 +8746,9 @@ static bool parse_plain_bracket_run(Scanner *s, TSLexer *lexer) {
   bool plain = true;
   while (!lexer->eof(lexer)) {
     if (at_line_end(lexer)) {
+      Block *host = peek_block(s);
+      if ((s->state & STATE_SINGLE_LINE_CAPTION) ||
+          (host && (host->type == HEADING || host->type == TABLE_CAPTION || disallow_newline(host)))) return false;
       int32_t ending = lexer->lookahead;
       advance(s, lexer);
       if (ending == '\r' && lexer->lookahead == '\n') advance(s, lexer);
@@ -8766,6 +8769,7 @@ static bool parse_plain_bracket_run(Scanner *s, TSLexer *lexer) {
     if (c == ']') {
       --depth;
       advance(s, lexer);
+      if (lexer->lookahead == '[') plain = false;
       if (depth < prefix - 1 && (lexer->lookahead == '(' ||
           lexer->lookahead == '[' || lexer->lookahead == '{')) return false;
       if (depth == 0) {
