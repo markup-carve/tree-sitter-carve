@@ -862,7 +862,16 @@ static Inline *create_inline(InlineType type, uint8_t data) {
   return res;
 }
 
+static void clear_opaque_quote_tail(Scanner *s) {
+  for (int i = s->open_blocks->size - 1; i >= 0; --i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (is_list(b->type)) break;
+    if (b->type == BLOCK_QUOTE) b->flags &= ~BLOCK_FLAG_OPAQUE_QUOTE_TAIL;
+  }
+}
+
 static void push_block(Scanner *s, BlockType type, uint8_t data) {
+  if (type != CODE_BLOCK) clear_opaque_quote_tail(s);
   stack_push(s->open_blocks, create_block(type, data));
 }
 
@@ -2607,7 +2616,7 @@ static bool try_begin_code_block(Scanner *s, TSLexer *lexer, uint8_t width,
   Block *quote = find_block(s, BLOCK_QUOTE);
   Block *list = find_list(s);
   bool marker_head = quote && list && !list_opened_in_quote(s, list) &&
-                     s->marker_end_col != 0 && column == s->marker_end_col;
+                     s->marker_end_col != 0 && column >= s->marker_end_col;
   bool later = quote && (quote->flags & BLOCK_FLAG_OPAQUE_QUOTE_TAIL) && !marker_head;
   if (marker_head) {
     for (int i = s->open_blocks->size - 1; i >= 0; --i) {
@@ -2650,6 +2659,7 @@ static bool try_begin_code_block(Scanner *s, TSLexer *lexer, uint8_t width,
 /// closer?" - the answer is an EXACT width match, the rule the carve engines
 /// follow: a `%%%%` line does not close a `%%%` fence.
 static uint8_t scan_comment_fence_line_width(Scanner *s, TSLexer *lexer) {
+  consume_whitespace(s, lexer);
   bool ending_newline = false;
   uint8_t markers = scan_block_quote_markers(s, lexer, &ending_newline);
   if (ending_newline) {
@@ -10000,9 +10010,11 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
   Scanner *s = (Scanner *)payload;
   s->col_base_marked = false;
   bool found = scan(s, lexer, valid_symbols);
-  if (found && lexer->result_symbol == LITERAL_RUN && peek_block(s) &&
-      peek_block(s)->type == BLOCK_QUOTE) {
-    peek_block(s)->flags &= ~BLOCK_FLAG_OPAQUE_QUOTE_TAIL;
+  if (found && peek_block(s) && peek_block(s)->type == BLOCK_QUOTE &&
+      (lexer->result_symbol == LITERAL_RUN ||
+       lexer->result_symbol == THEMATIC_BREAK_DASH ||
+       lexer->result_symbol == THEMATIC_BREAK_STAR)) {
+    clear_opaque_quote_tail(s);
   }
   if (found && s->col_base_marked) {
     s->col_base = s->col_base_at_mark;
