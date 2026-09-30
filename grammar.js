@@ -1256,8 +1256,25 @@ module.exports = grammar({
     // Double-quoted only, matching the carve impls' code-fence header (the
     // `language` token excludes `"` and the external scanner gates on `"`).
     code_block_header: (_) => token(seq('"', /[^"\r\n]*/, '"')),
+    // A BODY LINE MAY END AT THE INPUT. Spelled `_line`, whose terminator is
+    // `_newline` alone, a fence whose last body line carries no terminator left
+    // the block unfinished and the document in ERROR (#458). The line is split
+    // here rather than given `_eof_or_newline` inside `_line`, because `_line`'s
+    // run matches the empty string: a nullable alternative in this repeat is a
+    // token the parser can take forever at the end of input. A non-empty run
+    // carries the alternative; a blank body line keeps its real newline.
     code: ($) =>
-      prec.left(repeat1(seq(optional($._block_quote_prefix), $._line))),
+      prec.left(
+        repeat1(
+          seq(
+            optional($._block_quote_prefix),
+            choice(
+              seq(/[^\r\n]+/, choice($._newline, $._eof_or_newline)),
+              $._newline,
+            ),
+          ),
+        ),
+      ),
     _line: ($) => seq(/[^\r\n]*/, $._newline),
 
     thematic_break: ($) =>

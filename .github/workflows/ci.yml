@@ -93,7 +93,8 @@ jobs:
       # drives the CLI, whose core completes a construct at the end of input
       # that the core in the Node binding does not, and whose error report
       # cannot see a MISSING hidden token. It counted 27 of the pinned
-      # documents; the binding counts 316 of the same ones (#458).
+      # documents where the binding counted 316 of the same ones, and the
+      # binding is down to 2 of them (#458).
       - name: A document may end without a terminator, through the Node binding
         run: npm run test:eof-without-newline
 

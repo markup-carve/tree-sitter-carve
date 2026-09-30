@@ -2,10 +2,10 @@
 // A DOCUMENT WHOSE LAST LINE HAS NO TERMINATOR, READ THE WAY A CONSUMER READS IT.
 //
 // `scripts/final-terminator.mjs` asks the same question through the tree-sitter
-// CLI, and the CLI cannot answer it. Two measurements on the same commit, the
-// same 2134 pinned documents and the same strip (one trailing newline removed):
-// the pinned CLI 0.22.6 counts 27 documents whose tree carries an error, and
-// this binding counts 316. The gap is not the definition, it is the reader:
+// CLI, and the CLI cannot answer it. Measured on the same commit, the same 2134
+// pinned documents and the same strip (one trailing newline removed), the pinned
+// CLI 0.22.6 counted 27 documents whose tree carries an error and this binding
+// counted 316. The gap is not the definition, it is the reader:
 //
 //   1. The CLI's core completes a construct that has to unwind containers at
 //      the end of input; the core an editor links does not. Measured against
@@ -66,17 +66,34 @@ const INDEPENDENT = [
   ['block attribute line', '{.c}'],
   ['abbreviation_definition', '*[HTML]: HyperText'],
   ['abbreviation_definition after a paragraph', 'text\n\n*[HTML]: HyperText'],
-];
-
-// The residual of #458, and this check's positive control: the comparison above
-// is worth nothing unless it can fail, and these prove it still can. A closer
-// whose column has to unwind a container at the end of input is one mechanism,
-// not nineteen, so one case per container shape is enough.
-const RESIDUAL = [
+  // Containers unwound at the end of input, the residual #458 named. Each one
+  // stands for a container the last line has to leave, not for the construct
+  // that happens to sit on it.
   ['thematic_break in a list item', '- a\n\n  ---'],
   ['div closer in a list item', '- ::: note\n  x\n  :::'],
   ['link_reference_definition in a list item', '- item\n\n  [r]: /u'],
   ['a quoted fence closer', '> ```\nx\n```'],
+  ['link_reference_definition in a footnote body', '[^1]: t\n\n  [r]: /u'],
+  ['thematic_break in a description body', ':: t\n: d\n\n  ---'],
+  // An unterminated construct ending the document, rather than a container.
+  ['a continuation row', '| a |\n+ b |'],
+  ['an unclosed fence body', '```\nx'],
+  ['an unclosed fence body in a div', '::: note\n```\nx'],
+  ['an unclosed verbatim run on a lazy line', 'x\n```'],
+];
+
+// The residual of #458, and this check's positive control: the comparison above
+// is worth nothing unless it can fail, and this proves it still can.
+const RESIDUAL = [
+  // A `+`-attached table whose LAST ROW ends at the input. One row degrades to a
+  // paragraph without erroring; two rows leave the second `|` line read as a
+  // line block and the item in ERROR. Unrelated to the columns above: the
+  // attached run sits flush left, so nothing has to unwind.
+  ['a plus-attached table of two rows', '- x\n+\n| a |\n| b |'],
+  // A ROW THAT IS NOT READ AS A ROW. The same class seen without an ERROR: a
+  // row line with no terminator falls back to a paragraph, so the document is
+  // clean and the table is gone. The ledger counts errors and cannot see it.
+  ['a table row', '| a |\n| b |'],
 ];
 
 const broken = [];
