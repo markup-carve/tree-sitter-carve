@@ -2481,18 +2481,22 @@ module.exports = grammar({
       choice(
         seq(
           token.immediate('"'),
-          repeat(choice(
-            token.immediate(/(?:[^"\\\r\n]|\\[^\r\n])+/),
-            seq($._newline_inline, optional($._block_quote_prefix)),
-          )),
+          repeat(
+            choice(
+              token.immediate(/(?:[^"\\\r\n]|\\[^\r\n])+/),
+              seq($._newline_inline, optional($._block_quote_prefix)),
+            ),
+          ),
           token.immediate('"'),
         ),
         seq(
           token.immediate("'"),
-          repeat(choice(
-            token.immediate(/(?:[^'\\\r\n]|\\[^\r\n])+/),
-            seq($._newline_inline, optional($._block_quote_prefix)),
-          )),
+          repeat(
+            choice(
+              token.immediate(/(?:[^'\\\r\n]|\\[^\r\n])+/),
+              seq($._newline_inline, optional($._block_quote_prefix)),
+            ),
+          ),
           token.immediate("'"),
         ),
       ),
