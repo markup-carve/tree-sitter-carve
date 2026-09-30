@@ -8812,7 +8812,7 @@ static bool parse_plain_bracket_run(Scanner *s, TSLexer *lexer) {
       while (lexer->lookahead == ' ' || lexer->lookahead == '\t') advance(s, lexer);
       if (lexer->eof(lexer)) break;
       if (at_line_end(lexer)) {
-        if (plain && punctuation && !continued) {
+        if (plain && punctuation && have_remainder_column) {
           s->after_closer_char = PLAIN_BRACKET_REMAINDER;
           s->after_closer_col = remainder_column;
           lexer->result_symbol = LITERAL_RUN;
@@ -8821,13 +8821,13 @@ static bool parse_plain_bracket_run(Scanner *s, TSLexer *lexer) {
         return false;
       }
       continued = true;
-      if (punctuation) plain = false;
+      if (punctuation && !have_remainder_column) plain = false;
       continue;
     }
     int32_t c = lexer->lookahead;
     if (c == '.' || c == ',' || c == ';' || c == '?') {
       punctuation = true;
-      if (continued) plain = false;
+      if (continued && !have_remainder_column) plain = false;
       advance(s, lexer);
       // Leave dotted runs available to the ellipsis token.
       if (c == '.' && lexer->lookahead == '.') plain = false;
@@ -8860,7 +8860,7 @@ static bool parse_plain_bracket_run(Scanner *s, TSLexer *lexer) {
     advance(s, lexer);
   }
   if (plain) {
-    if (punctuation && !continued) {
+    if (punctuation && (!continued || have_remainder_column)) {
       if (!have_remainder_column) {
         remainder_column = line_column(s, lexer) - (s->advances - remainder_advances);
       }
@@ -10453,6 +10453,11 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
 // slash closer, bounded before the first rich construct or line break.
 // Its sentinel cannot be mistaken for a delimiter character.
 static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
+  if (s->after_closer_char == PLAIN_BRACKET_REMAINDER &&
+      (lexer->lookahead != '[' || line_column(s, lexer) != s->after_closer_col)) {
+    s->after_closer_char = 0;
+    s->after_closer_col = 0;
+  }
   s->col_base_at_mark = 0;
   s->col_base_marked = false;
   s->combined_probe = false;

@@ -17,6 +17,9 @@ const cases = [
   ['x [[a. --', { en_dash: 1 }],
   ['x [[a. ---', { em_dash: 1 }],
   ['x [[a.\nb]]', {}],
+  ['> x [[a.\n>\n> next', { block_quote: 1, paragraph: 2 }],
+  ['- x [[a.\n\n  more', { list: 1, list_item: 1, paragraph: 2 }],
+  ['x [[a.\nnext', { paragraph: 1 }],
   ['x [[a. b]] c', { paragraph: 1 }],
   ['é x [[a. ž', { paragraph: 1 }],
   ['x [ \t[a. b', { paragraph: 1 }],
@@ -73,4 +76,17 @@ for (const ending of ['\n', '\r\n', '\r']) {
     startPosition: { row: ending === '\r' ? 0 : 1, column: ending === '\r' ? index : 0 }, oldEndPosition: { row: ending === '\r' ? 0 : 1, column: ending === '\r' ? index + 1 : 1 }, newEndPosition: { row: ending === '\r' ? 0 : 1, column: ending === '\r' ? index : 0 } });
   assert.equal(parser.parse(before, joined).rootNode.toString(), parser.parse(before).rootNode.toString());
 }
-console.log('Malformed brackets: 24 boundary controls across LF/CRLF/CR and 14 incremental edits.');
+for (const source of ['# x [[a.', 'x [[a.']) {
+  assert.equal(parser.parse(source).rootNode.hasError, false, source);
+}
+const beforeShift = 'x [[a.\n';
+const afterShift = 'xy [[a.\n';
+const shifted = parser.parse(beforeShift);
+shifted.edit({ startIndex: 1, oldEndIndex: 1, newEndIndex: 2,
+  startPosition: { row: 0, column: 1 }, oldEndPosition: { row: 0, column: 1 }, newEndPosition: { row: 0, column: 2 } });
+assert.equal(parser.parse(afterShift, shifted).rootNode.toString(), parser.parse(afterShift).rootNode.toString());
+const restored = parser.parse(afterShift);
+restored.edit({ startIndex: 1, oldEndIndex: 2, newEndIndex: 1,
+  startPosition: { row: 0, column: 1 }, oldEndPosition: { row: 0, column: 2 }, newEndPosition: { row: 0, column: 1 } });
+assert.equal(parser.parse(beforeShift, restored).rootNode.toString(), parser.parse(beforeShift).rootNode.toString());
+console.log('Malformed brackets: 27 boundary controls across LF/CRLF/CR and 16 incremental edits.');
