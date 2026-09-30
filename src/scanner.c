@@ -7176,9 +7176,12 @@ static bool close_paragraph(Scanner *s, TSLexer *lexer) {
   for (int i = s->open_blocks->size - 1; i >= 0; --i) {
     Block *b = *array_get(s->open_blocks, i);
     if (is_list(b->type)) {
+      uint32_t term_margin = list_opened_in_quote(s, b) && b->content_col >= 3
+                                 ? b->content_col - 2
+                                 : b->data;
       if (b->type == LIST_DEFINITION &&
           (b->flags & BLOCK_FLAG_DEFINITION_TERM) &&
-          line_column(s, lexer) >= b->data && !at_line_end(lexer) &&
+          line_column(s, lexer) >= term_margin && !at_line_end(lexer) &&
           !lexer->eof(lexer)) {
         return scan_list_marker(s, lexer) && marker_line_has_content(s, lexer);
       }
