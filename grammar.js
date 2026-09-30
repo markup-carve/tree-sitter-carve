@@ -1,7 +1,7 @@
 const ELEMENT_PRECEDENCE = 100;
 
 // A mention's or a tag's name, `tagName` in resources/carve-core.ohm.
-const NAME = /[a-zA-Z0-9][a-zA-Z0-9_-]*(\.[a-zA-Z0-9_-]+)*/;
+const NAME = /[a-zA-Z0-9_-]+(\.[a-zA-Z0-9_-]+)*/;
 
 // A table cell's leading marker run: the kind marker, the alignment run and the
 // attribute block, ending at the one space `cell_padding` spells
@@ -65,6 +65,7 @@ function inlineElement($, options) {
         // Text and the symbol fallback matches everything not matched elsewhere.
         notes ? $._symbol_fallback : $._note_symbol_fallback,
         $._literal_run,
+        $._bold_italic_literal_lt,
         $._text,
         // One literal `-` inside a braced delete, where the next is its
         // closer's. See `em_dash`.
@@ -182,7 +183,12 @@ function symbolFallback($, options) {
     // `bold_italic_begin` gives. A bare one needs its own standalone fallback
     // the way `/` and `*` do - otherwise `/* x/`, where the whitespace check after `/*` fails, has
     // no lexing left at all.
-    seq("/", $._non_whitespace_check, $._bold_italic_star),
+    seq(
+      "/",
+      $._non_whitespace_check,
+      $._bold_italic_open_check,
+      $._bold_italic_star,
+    ),
     "*",
     "_",
     "~",
@@ -196,7 +202,12 @@ function symbolFallback($, options) {
     // unclosed bold-italic could not lose to emphasis at all: the parser
     // commits to `bold_italic_begin` and errors at the end of the line.
     seq(
-      seq("/", $._non_whitespace_check, $._bold_italic_star),
+      seq(
+        "/",
+        $._non_whitespace_check,
+        $._bold_italic_open_check,
+        $._bold_italic_star,
+      ),
       choice($._bold_italic_mark_begin, $._in_fallback),
     ),
     // The BRACED opener needs a fallback branch of its own, exactly as `{*`
@@ -2025,7 +2036,12 @@ module.exports = grammar({
     // scored, so that reading was never offered and the document built
     // nothing. See `parse_bold_italic_star` in `src/scanner.c`.
     bold_italic_begin: ($) =>
-      seq("/", $._non_whitespace_check, $._bold_italic_star),
+      seq(
+        "/",
+        $._non_whitespace_check,
+        $._bold_italic_open_check,
+        $._bold_italic_star,
+      ),
 
     strong: ($) =>
       seq(
@@ -2425,7 +2441,22 @@ module.exports = grammar({
 
     _bracketed_text_begin: (_) => "[",
 
+    // A continuation starts only where the next complete attribute is valid.
+    // A malformed brace group stays independent text or markup.
     inline_attribute: ($) =>
+      seq(
+        $._inline_attribute_block,
+        repeat(
+          seq(
+            alias($._inline_attribute_continue, "{"),
+            $._attribute_mark_begin,
+            attributeArgs($),
+            alias($._curly_bracket_span_end, "}"),
+          ),
+        ),
+      ),
+
+    _inline_attribute_block: ($) =>
       seq(
         $._curly_bracket_span_begin,
         // Its own mark, not the brace fallback's: the scanner gives it only
@@ -2734,10 +2765,8 @@ module.exports = grammar({
     // Leading word-boundary guard for mention / tag / symbol (PART 9 §7): a
     // word run glued to one of them swallows it, so it stays literal text.
     // `me@example.com`, `a#b`, `a:b:c`, `10:30:` and `x:rocket:` are text.
-    _glued_mention: (_) =>
-      token(prec(1, /[A-Za-z0-9_]+@[a-zA-Z0-9][a-zA-Z0-9_.-]*/)),
-    _glued_tag: (_) =>
-      token(prec(1, /[A-Za-z0-9_]+#[a-zA-Z0-9][a-zA-Z0-9_.-]*/)),
+    _glued_mention: (_) => token(prec(1, seq(/[A-Za-z0-9_]+/, "@", NAME))),
+    _glued_tag: (_) => token(prec(1, seq(/[A-Za-z0-9_]+/, "#", NAME))),
     // The closing `:` is required, so an inline extension still fires intraword
     // (`foo:kbd[Ctrl]`): `:kbd[` carries no closing colon and is not absorbed.
     _glued_symbol: (_) =>
@@ -3068,5 +3097,8 @@ module.exports = grammar({
     $._table_list_row_check,
     $._table_list_end,
     $._attributed_span_mark_begin,
+    $._bold_italic_literal_lt,
+    $._inline_attribute_continue,
+    $._bold_italic_open_check,
   ],
 });

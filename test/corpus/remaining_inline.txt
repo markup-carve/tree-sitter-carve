@@ -1,0 +1,165 @@
+==================
+Glued attribute blocks remain one attribute run
+==================
+`c`{#a .k}{#b k=1}{.k k=2}
+
+---
+
+(document (paragraph (verbatim begin_marker: (verbatim_marker_begin) content: (content) end_marker: (verbatim_marker_end)) attribute: (inline_attribute (args (identifier) (class)) (args (identifier) (key_value key: (key) value: (value))) (args (class) (key_value key: (key) value: (value))))))
+
+==================
+Malformed attribute after a run preserves its element
+==================
+*b*{.k}{???}
+
+---
+
+(document (paragraph (strong begin_marker: (strong_begin) content: (content) end_marker: (strong_end)) attribute: (inline_attribute (args (class)))))
+
+==================
+Forced markup after an attribute remains independent
+==================
+*c*{.k}{*d*}
+
+---
+
+(document (paragraph (strong begin_marker: (strong_begin) content: (content) end_marker: (strong_end)) attribute: (inline_attribute (args (class))) (strong begin_marker: (strong_begin) content: (content) end_marker: (strong_end))))
+
+==================
+An unpaired underscore blocks adjacent bold
+==================
+_*x* q
+
+---
+
+(document (paragraph))
+
+==================
+A paired underscore admits nested bold
+==================
+_*x*_ q
+
+---
+
+(document (paragraph (underline begin_marker: (underline_begin) content: (content (strong begin_marker: (strong_begin) content: (content) end_marker: (strong_end))) end_marker: (underline_end))))
+
+==================
+An unpaired slash blocks adjacent underline
+==================
+/_x_ q
+
+---
+
+(document (paragraph))
+
+==================
+Combined markup admits a literal less-than
+==================
+/*a<b*/ y
+
+---
+
+(document (paragraph (bold_italic begin_marker: (bold_italic_begin) content: (content) end_marker: (bold_italic_end))))
+
+==================
+A tab before a combined closer falls back to emphasis
+==================
+/*a	*/ y
+
+---
+
+(document (paragraph (emphasis begin_marker: (emphasis_begin) content: (content) end_marker: (emphasis_end))))
+
+==================
+Combined markup retains bounded comments
+==================
+/*a %% secret*/ b
+
+---
+
+(document (paragraph (bold_italic begin_marker: (bold_italic_begin) content: (content (trailing_comment)) end_marker: (bold_italic_end))))
+
+==================
+Tags and mentions admit leading hyphens and underscores
+==================
+#-a #_a @-a @_a
+
+---
+
+(document (paragraph (tag) (tag) (mention) (mention)))
+
+==================
+Caption tags use the same name alphabet
+==================
+![p](p.png)
+^ Figure #-a q
+
+---
+
+(document (paragraph (inline_image description: (image_description) destination: (inline_link_destination))) (caption (caption_marker) content: (caption_content (tag))))
+
+==================
+Rich code before a whitespace closer keeps emphasis fallback
+==================
+/*`x` */ b/ c
+
+---
+
+(document (paragraph (emphasis begin_marker: (emphasis_begin) content: (content (verbatim begin_marker: (verbatim_marker_begin) content: (content) end_marker: (verbatim_marker_end))) end_marker: (emphasis_end))))
+
+==================
+Literal brackets before a whitespace closer keep emphasis fallback
+==================
+/*[a] */ b/ c
+
+---
+
+(document (paragraph (emphasis begin_marker: (emphasis_begin) content: (content) end_marker: (emphasis_end))))
+
+==================
+A missing combined closer keeps an ordinary slash pair
+==================
+/*a b/ c
+
+---
+
+(document (paragraph (emphasis begin_marker: (emphasis_begin) content: (content) end_marker: (emphasis_end))))
+
+==================
+A wrapped combined closer keeps emphasis fallback
+==================
+/*a
+*/ b
+
+---
+
+(document (paragraph (emphasis begin_marker: (emphasis_begin) content: (content) end_marker: (emphasis_end))))
+
+==================
+A quoted wrapped closer keeps emphasis fallback
+==================
+> /*a
+> */ b
+
+---
+
+(document (block_quote (block_quote_marker) content: (content (paragraph (emphasis begin_marker: (emphasis_begin) content: (content) end_marker: (emphasis_end))))))
+
+==================
+An invalid combined closer remains content before a valid pair
+==================
+/*a */ b*/
+
+---
+
+(document (paragraph (bold_italic begin_marker: (bold_italic_begin) content: (content) end_marker: (bold_italic_end))))
+
+==================
+A span carries all adjacent attribute blocks
+==================
+[x]{.a}{#b}
+
+---
+
+(document (paragraph (span content: (content) attribute: (inline_attribute (args (class)) (args (identifier))))))
+
