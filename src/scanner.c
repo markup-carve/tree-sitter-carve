@@ -8360,6 +8360,7 @@ static bool continuation_row_ahead(Scanner *s, TSLexer *lexer) {
 static bool bare_closer_in_scope(Scanner *s, TSLexer *lexer, char bare,
                                  char braced) {
   bool in_row = find_block(s, TABLE_ROW) != NULL;
+  unsigned bracket_depth = 0;
   while (!lexer->eof(lexer)) {
     if (at_line_end(lexer)) {
       if (in_row) {
@@ -8396,7 +8397,18 @@ static bool bare_closer_in_scope(Scanner *s, TSLexer *lexer, char bare,
       }
       continue;
     }
-    if (c == bare) {
+    if (braced == ']' && c == '[') {
+      ++bracket_depth;
+      advance(s, lexer);
+      continue;
+    }
+    if (braced == ']' && c == ']') {
+      if (bracket_depth == 0) return false;
+      --bracket_depth;
+      advance(s, lexer);
+      continue;
+    }
+    if (c == bare && bracket_depth == 0) {
       return true;
     }
     if (in_row && c == '|') {
@@ -8900,7 +8912,6 @@ static bool scan_until_bracket_close(Scanner *s, TSLexer *lexer,
   // The opening `[` is already consumed by the caller, so we start one level
   // in and are looking for the `]` that brings us back out.
   unsigned depth = 0;
-  bool in_row = find_block(s, TABLE_ROW) != NULL;
   while (!lexer->eof(lexer)) {
     if (top && scan_span_end_marker(s, lexer, *top)) {
       return false;
@@ -8917,16 +8928,7 @@ static bool scan_until_bracket_close(Scanner *s, TSLexer *lexer,
     } else if (lexer->lookahead == '\\') {
       advance(s, lexer);
       advance(s, lexer);
-    } else if (lexer->lookahead == '`') {
-      uint8_t width = consume_chars(s, lexer, '`');
-      if (read_verbatim_run(s, lexer, width, 0, in_row) != VerbatimRunCloses) {
-        return false;
-      }
-    } else if (lexer->lookahead == '|' && in_row) {
-      advance(s, lexer);
-      if (!continuation_row_ahead(s, lexer)) return false;
     } else if (at_line_end(lexer)) {
-      if (in_row) return false;
       // One newline is ok in inline spans, but not several in a row.
       consume_line_end(s, lexer);
       consume_whitespace(s, lexer);
@@ -8959,7 +8961,6 @@ static bool bare_closer_skips_brackets(Scanner *s, TSLexer *lexer, char bare,
                                        bool *combined_literal) {
   // A slash emphasis may start with either a literal star or a real strong
   // span. Decide that on its own branch, before its slash closer.
-  bool in_row = find_block(s, TABLE_ROW) != NULL;
   bool saw_strong_closer = false;
   int32_t previous = 0;
   uint32_t characters = 0;
@@ -8967,7 +8968,6 @@ static bool bare_closer_skips_brackets(Scanner *s, TSLexer *lexer, char bare,
   bool in_bracket = find_inline(s, LITERAL_BRACKET) || find_inline(s, SQUARE_BRACKET_SPAN) || find_inline(s, INLINE_NOTE);
   while (!lexer->eof(lexer)) {
     if (at_line_end(lexer)) {
-      if (in_row) return false;
       consume_line_end(s, lexer);
       consume_whitespace(s, lexer);
       if (lexer->eof(lexer) || at_line_end(lexer)) {
@@ -8989,7 +8989,7 @@ static bool bare_closer_skips_brackets(Scanner *s, TSLexer *lexer, char bare,
     }
     if (c == '`') {
       uint8_t width = consume_chars(s, lexer, '`');
-      if (read_verbatim_run(s, lexer, width, 0, in_row) != VerbatimRunCloses) {
+      if (read_verbatim_run(s, lexer, width, 0, false) != VerbatimRunCloses) {
         return false;
       }
       previous = 'x';
@@ -8997,11 +8997,6 @@ static bool bare_closer_skips_brackets(Scanner *s, TSLexer *lexer, char bare,
       continue;
     }
     if (c == ']' && in_bracket) return false;
-    if (c == '|' && in_row) {
-      advance(s, lexer);
-      if (continuation_row_ahead(s, lexer)) continue;
-      return false;
-    }
     if (c == (int32_t)(unsigned char)bare) {
       if (combined_literal) *combined_literal = !saw_strong_closer;
       return true;
@@ -9022,7 +9017,6 @@ static bool bare_closer_skips_brackets(Scanner *s, TSLexer *lexer, char bare,
         ++characters;
         continue;
       }
-      if (in_row) return false;
       // No matching `]`: this `[` is content, not an opaque run - fall
       // through and keep searching from right after it.
       previous = 'x';
@@ -9563,7 +9557,7 @@ static bool mark_span_begin(Scanner *s, TSLexer *lexer,
         mark_end(s, lexer);
         bool bracket_scope = in_braced &&
             (around->type == SQUARE_BRACKET_SPAN || around->type == INLINE_NOTE);
-        bool closer = bracket_scope
+        bool closer = bracket_scope && !find_block(s, TABLE_ROW)
             ? bare_closer_skips_brackets(s, lexer, inline_marker(inline_type), NULL)
             : bare_closer_in_scope(s, lexer, inline_marker(inline_type),
                                    in_braced ? inline_marker(around->type) : 0);

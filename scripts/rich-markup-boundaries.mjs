@@ -8,7 +8,7 @@ import { carveToHtml } from '@markup-carve/carve';
 const parser = new Parser();
 parser.setLanguage(Carve);
 const families = JSON.parse(readFileSync(new URL('../tests/rich-markup-families.json', import.meta.url), 'utf8'));
-const types = { p: ['paragraph'], span: ['span'], em: ['emphasis', 'bold_italic'],
+const types = { p: ['paragraph'], span: ['span', 'editorial_comment'], em: ['emphasis', 'bold_italic'],
   strong: ['strong', 'bold_italic'], code: ['verbatim'], u: ['underline'],
   table: ['table'], tr: ['table_row'], td: ['table_cell'] };
 function snapshot(tree) {
@@ -88,10 +88,12 @@ for (const body of qualified) for (const ending of endings) {
   ++controls;
 }
 const cellBoundaries = [
-  '[s `a]b`]{.k}', '| [s `a]b`]{.k} |',
-  '| [a _b [c | d] e_]{.k} | f |',
   '| [s `a|b`]{.k} |', '| [s a\\|b]{.k} |',
-  '| [a _b |\n+ c_]{.k} |', '| [a _b |\n|+ c_]{.k} |',
+  '| [a _b |\n+ c_]{.k} |',
+  '[s {% a`b %} c]{.k}', '[s {# a`b #} c]{.k}',
+  '[s {% a c]{.k}', '[s {# a c]{.k}',
+  '| [_]{.c}_]{.d} |', '| [*]{.c}*]{.d} |', '| [/]{.c}/]{.d} |',
+  '| [~]{.c}~]{.d} |', '| [=]{.c}=]{.d} |',
 ];
 for (const body of cellBoundaries) for (const ending of endings) {
   const source = (body + '\n').replaceAll('\n', ending);
@@ -103,7 +105,7 @@ for (const body of cellBoundaries) for (const ending of endings) {
     const actual = kinds.reduce((sum, kind) => sum + root.descendantsOfType(kind).length, 0);
     assert.equal(actual, wanted, `${tag}: ${source}`);
   }
-  const literal = source.replaceAll('_', '').replaceAll('`', '');
+  const literal = source.replaceAll('_', '').replaceAll('`', '').replaceAll('%', '').replaceAll('#', '');
   edit(literal, source); edit(source, literal);
   ++controls; edits += 2;
 }

@@ -30,9 +30,9 @@ correct parse.
 The new controls also fix correctness failures found during measurement.
 Attributed-span qualification no longer stays active inside its content, where
 it rejected literal nested braces. Bare formatting search stops at the owning
-bracket. Bracket lookahead skips paired verbatim runs and respects table-cell
-boundaries, escapes and valid `+` continuation rows. The native suite checks
-153 engine comparisons and 522 incremental edits across all three endings.
+bracket. Formatting inside table cells retains its cell boundary, escaped
+pipes and valid `+` continuation rows. The native suite checks
+168 engine comparisons and 552 incremental edits across all three endings.
 
 ## Reproduce and interpret the checks
 
@@ -55,3 +55,21 @@ lookahead inside scoped markup and across line boundaries, then tighten the
 quadratic budgets to linear bounds. Growing attributed depth needs its own
 qualification strategy. The existing flat-paragraph tests continue to check
 linear work through 16,384 repetitions.
+
+## Boundary gaps found during the extension
+
+Five additional reproductions, tracked in [#495](https://github.com/markup-carve/tree-sitter-carve/issues/495),
+still disagree with the pinned engine. Their
+readings match the baseline and are outside the performance matrix:
+
+- ``[s `a]b`]{.k}`` loses its enclosing attributed span.
+- `| [a _b [c | d] e_]{.k} | f |` produces two cells and a span; the
+  engine produces three cells and literal text.
+- `| [x]{title="a|b"} |` produces one cell and a span; the engine splits
+  at the pipe and produces two literal cells.
+- ``[s [t](/a`b) c]{.k}`` adds an outer span that the engine leaves literal.
+- ``[s [b]{title="a`b"} c]{.k}`` also adds an outer span.
+
+Qualification needs to account for opaque regions and cell splitting together.
+A change that treats every backtick as code breaks valid braced and editorial
+comments containing backticks; the new positive controls cover those cases.
