@@ -172,6 +172,48 @@
       "scannerAdvances": 12523795
     },
     {
+      "reader": "baseline",
+      "family": "unclosed",
+      "depth": 64,
+      "bytes": 66,
+      "scannerAdvances": 4355
+    },
+    {
+      "reader": "baseline",
+      "family": "unclosed",
+      "depth": 256,
+      "bytes": 258,
+      "scannerAdvances": 66563
+    },
+    {
+      "reader": "baseline",
+      "family": "unclosed",
+      "depth": 1024,
+      "bytes": 1026,
+      "scannerAdvances": 1052675
+    },
+    {
+      "reader": "baseline",
+      "family": "unclosed-multiline",
+      "depth": 64,
+      "bytes": 70,
+      "scannerAdvances": 4882
+    },
+    {
+      "reader": "baseline",
+      "family": "unclosed-multiline",
+      "depth": 256,
+      "bytes": 262,
+      "scannerAdvances": 68626
+    },
+    {
+      "reader": "baseline",
+      "family": "unclosed-multiline",
+      "depth": 1024,
+      "bytes": 1030,
+      "scannerAdvances": 1060882
+    },
+    {
       "reader": "fixed",
       "family": "plain",
       "depth": 64,
@@ -450,6 +492,76 @@
       "depth": 16384,
       "bytes": 32771,
       "scannerAdvances": 180230
+    },
+    {
+      "reader": "fixed",
+      "family": "unclosed",
+      "depth": 64,
+      "bytes": 66,
+      "scannerAdvances": 260
+    },
+    {
+      "reader": "fixed",
+      "family": "unclosed",
+      "depth": 256,
+      "bytes": 258,
+      "scannerAdvances": 1028
+    },
+    {
+      "reader": "fixed",
+      "family": "unclosed",
+      "depth": 1024,
+      "bytes": 1026,
+      "scannerAdvances": 4100
+    },
+    {
+      "reader": "fixed",
+      "family": "unclosed",
+      "depth": 4096,
+      "bytes": 4098,
+      "scannerAdvances": 16388
+    },
+    {
+      "reader": "fixed",
+      "family": "unclosed",
+      "depth": 16384,
+      "bytes": 16386,
+      "scannerAdvances": 65540
+    },
+    {
+      "reader": "fixed",
+      "family": "unclosed-multiline",
+      "depth": 64,
+      "bytes": 70,
+      "scannerAdvances": 272
+    },
+    {
+      "reader": "fixed",
+      "family": "unclosed-multiline",
+      "depth": 256,
+      "bytes": 262,
+      "scannerAdvances": 1040
+    },
+    {
+      "reader": "fixed",
+      "family": "unclosed-multiline",
+      "depth": 1024,
+      "bytes": 1030,
+      "scannerAdvances": 4112
+    },
+    {
+      "reader": "fixed",
+      "family": "unclosed-multiline",
+      "depth": 4096,
+      "bytes": 4102,
+      "scannerAdvances": 16400
+    },
+    {
+      "reader": "fixed",
+      "family": "unclosed-multiline",
+      "depth": 16384,
+      "bytes": 16390,
+      "scannerAdvances": 65552
     }
   ]
 }
