@@ -1,20 +1,62 @@
 {
-  "_comment": "Coverage matrix for the shared Carve spec corpus (spec/tests/corpus/*.crv). Every NN-slug base category must appear in covered or skip; the coverage-matrix test fails otherwise so a new spec category forces a classify decision. covered = grammar parses every file in the category with no ERROR/MISSING node. skip = at least one file currently produces an ERROR/MISSING node; reason records the unmodeled construct (a grammar gap to surface, not to hack around). A skip key is a CATEGORY (NN-slug) or a single EXAMPLE (NN-slug-2) — use the example form when the rest of the category parses cleanly, so one gap does not drop assertion for its siblings. A key equal to a category name is read as the CATEGORY, so the first example of a category cannot be skipped on its own. REASONS: a ledger entry's `reason` may be `ref:<key>`, resolving against the top-level `reasons` map, so one grammar gap spanning a whole category states its explanation once. coverage-matrix gates it both ways - a ref with no entry fails, and a reasons entry nothing references fails, because a reason nobody points at is an excuse that outlived the gap it excused.",
+  "_comment": "Coverage matrix for the shared Carve spec corpus (spec/tests/corpus/*.crv). Every NN-slug base category must appear in covered or skip; the coverage-matrix test fails otherwise so a new spec category forces a classify decision. covered = grammar parses every file in the category with no ERROR/MISSING node. skip = at least one file currently produces an ERROR/MISSING node; reason records the unmodeled construct (a grammar gap to surface, not to hack around). A skip key is a CATEGORY (NN-slug) or a single EXAMPLE (NN-slug-2) \u2014 use the example form when the rest of the category parses cleanly, so one gap does not drop assertion for its siblings. A key equal to a category name is read as the CATEGORY, so the first example of a category cannot be skipped on its own. REASONS: a ledger entry's `reason` may be `ref:<key>`, resolving against the top-level `reasons` map, so one grammar gap spanning a whole category states its explanation once. coverage-matrix gates it both ways - a ref with no entry fails, and a reasons entry nothing references fails, because a reason nobody points at is an excuse that outlived the gap it excused.",
   "comparisonPopulation": {
-    "thematic_break": { "documents": 12, "nodes": 14 },
-    "block_quote": { "documents": 305, "nodes": 370 },
-    "table": { "documents": 146, "nodes": 148 },
-    "heading": { "documents": 153, "nodes": 186 },
-    "code_block": { "documents": 156, "nodes": 164 },
-    "list": { "documents": 684, "nodes": 846 },
-    "definition_list": { "documents": 230, "nodes": 243 },
-    "line_block": { "documents": 38, "nodes": 38 },
-    "div": { "documents": 70, "nodes": 73 },
-    "raw_block": { "documents": 44, "nodes": 44 },
-    "figure_group": { "documents": 10, "nodes": 10 },
-    "citation_definition": { "documents": 0, "nodes": 0 },
-    "admonition": { "documents": 102, "nodes": 311 },
-    "directive": { "documents": 5, "nodes": 6 }
+    "thematic_break": {
+      "documents": 12,
+      "nodes": 14
+    },
+    "block_quote": {
+      "documents": 305,
+      "nodes": 370
+    },
+    "table": {
+      "documents": 146,
+      "nodes": 148
+    },
+    "heading": {
+      "documents": 153,
+      "nodes": 186
+    },
+    "code_block": {
+      "documents": 156,
+      "nodes": 164
+    },
+    "list": {
+      "documents": 684,
+      "nodes": 846
+    },
+    "definition_list": {
+      "documents": 230,
+      "nodes": 243
+    },
+    "line_block": {
+      "documents": 38,
+      "nodes": 38
+    },
+    "div": {
+      "documents": 70,
+      "nodes": 73
+    },
+    "raw_block": {
+      "documents": 44,
+      "nodes": 44
+    },
+    "figure_group": {
+      "documents": 10,
+      "nodes": 10
+    },
+    "citation_definition": {
+      "documents": 0,
+      "nodes": 0
+    },
+    "admonition": {
+      "documents": 102,
+      "nodes": 311
+    },
+    "directive": {
+      "documents": 5,
+      "nodes": 6
+    }
   },
   "reasons": {},
   "reasonPredicates": {},
@@ -584,9 +626,7 @@
       "reason": "`![a][nope]` + `^ cap` is one paragraph: the reference does not resolve, so the image is literal text and the `^` line is literal with it. Whether it resolves depends on the DEFINITIONS in the document, which a context-free grammar does not have - so the caption is built here and cannot be declined without a symbol table. The renderer decides correctly; highlighting a caption that the language declines is the cost."
     }
   },
-  "invisibleOverAcceptance": {
-
-  },
+  "invisibleOverAcceptance": {},
   "invisibleUnderAcceptance": {},
   "batteryDisagreements": {},
   "underAcceptance": {},
@@ -632,10 +672,6 @@
     "an-unresolved-reference-s-literal-source-is-html-escaped-like-any-other-text": {
       "reading": "alt html=0 tree=1",
       "reason": "an unresolved reference/image renders as its literal typed source with no alt-bearing element at all; the grammar still builds a structural `collapsed_reference_link`/`collapsed_reference_image` node from the bracket shape alone; whether a label resolves is a question for the definition table, not the parse, which is why the pair's inner text is already exempt (see the note above `EXCLUDED` in this script) - the alt-tag COUNT is not."
-    },
-    "a-link-inside-a-span-s-label-keeps-its-destination-4": {
-      "reading": "em html=1 tree=0",
-      "reason": "emphasis inside a span's label is lost once that label also holds a link: `[/[t](/v)/]{.c}` builds the span, the link and the attribute but no emphasis, while `[/t/]{.c}` builds it. The neighbourhood of the `a-link-inside-a-span-s-label-keeps-its-destination-8` skip entry, which is the same pairing failing hard enough to ERROR. Tracked in tree-sitter-carve#459."
     }
   },
   "lineTerminatorGaps": {},
