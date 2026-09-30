@@ -785,7 +785,9 @@ module.exports = grammar({
       ),
     _table_row: ($) =>
       seq(
-        optional($._block_quote_prefix),
+        optional(
+          repeat1(alias($._table_quote_continuation, $.block_quote_marker)),
+        ),
         choice(
           $.table_header,
           $.table_separator,
@@ -795,7 +797,9 @@ module.exports = grammar({
       ),
     _table_regular_row: ($) =>
       seq(
-        optional($._block_quote_prefix),
+        optional(
+          repeat1(alias($._table_quote_continuation, $.block_quote_marker)),
+        ),
         choice($.table_header, $.table_separator, $.table_row),
       ),
     table_continuation_row: ($) => $._table_continuation_row,
@@ -3033,5 +3037,6 @@ module.exports = grammar({
     $._label_mark_begin,
     $._label_start_comment,
     $._term_comment,
+    $._table_quote_continuation,
   ],
 });

@@ -238,6 +238,7 @@ typedef enum {
   LABEL_MARK_BEGIN,
   LABEL_START_COMMENT,
   TERM_COMMENT,
+  TABLE_QUOTE_CONTINUATION,
 } TokenType;
 
 // The different blocks in Carve that we track,
@@ -327,6 +328,8 @@ static const uint8_t BLOCK_FLAG_TABLE_ROW_CONTINUES = 1 << 1;
 // Definition terms and description bodies use the same block type. Keep the
 // current item kind so nested terms and folded continuation lines stay scoped.
 static const uint8_t BLOCK_FLAG_DEFINITION_TERM = 1 << 2;
+static const uint8_t BLOCK_FLAG_OPAQUE_QUOTE_TAIL = 1 << 3;
+static const uint8_t BLOCK_FLAG_LATER_OPAQUE_FENCE = 1 << 4;
 
 typedef enum {
   VERBATIM,
@@ -583,6 +586,7 @@ static const uint16_t STATE_TABLE_CONTINUATION_NEXT = 1 << 12;
 // outlives the one gap it was set for.
 static const uint16_t STATE_NEXT_VERBATIM_LINE_IS_COMMENT = 1 << 13;
 static const uint16_t STATE_SINGLE_LINE_CAPTION = 1 << 14;
+static const uint16_t STATE_LITERAL_QUOTE_BAND = 1 << 15;
 
 static TokenType scan_list_marker_token(Scanner *s, TSLexer *lexer);
 static uint8_t scan_block_quote_markers(Scanner *s, TSLexer *lexer,
@@ -858,7 +862,16 @@ static Inline *create_inline(InlineType type, uint8_t data) {
   return res;
 }
 
+static void clear_opaque_quote_tail(Scanner *s) {
+  for (int i = s->open_blocks->size - 1; i >= 0; --i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (is_list(b->type)) break;
+    if (b->type == BLOCK_QUOTE) b->flags &= ~BLOCK_FLAG_OPAQUE_QUOTE_TAIL;
+  }
+}
+
 static void push_block(Scanner *s, BlockType type, uint8_t data) {
+  if (type != CODE_BLOCK) clear_opaque_quote_tail(s);
   stack_push(s->open_blocks, create_block(type, data));
 }
 
@@ -876,6 +889,14 @@ static void push_inline_flagged(Scanner *s, InlineType type, uint8_t data,
 static void remove_block(Scanner *s) {
   if (s->open_blocks->size > 0) {
     Block *removed = array_pop(s->open_blocks);
+    if (removed->type == CODE_BLOCK &&
+        (removed->flags & BLOCK_FLAG_LATER_OPAQUE_FENCE)) {
+      for (int i = s->open_blocks->size - 1; i >= 0; --i) {
+        Block *b = *array_get(s->open_blocks, i);
+        if (is_list(b->type)) break;
+        if (b->type == BLOCK_QUOTE) b->flags &= ~BLOCK_FLAG_OPAQUE_QUOTE_TAIL;
+      }
+    }
     // Closing a self-terminating container (fenced code, div, block quote,
     // nested list, ...) that a `+` marker attached ends the continuation. A
     // TABLE_ROW / TABLE_CAPTION pop is an INTERNAL table event -- the table is
@@ -2592,8 +2613,21 @@ static bool try_begin_code_block(Scanner *s, TSLexer *lexer, uint8_t width,
   }
   bool owns_body = fence_owns_description_body(s, lexer, width, fence_char,
                                                 column);
+  Block *quote = find_block(s, BLOCK_QUOTE);
+  Block *list = find_list(s);
+  bool marker_head = quote && list && !list_opened_in_quote(s, list) &&
+                     s->marker_end_col != 0 && column >= s->marker_end_col;
+  bool later = quote && (quote->flags & BLOCK_FLAG_OPAQUE_QUOTE_TAIL) && !marker_head;
+  if (marker_head) {
+    for (int i = s->open_blocks->size - 1; i >= 0; --i) {
+      Block *b = *array_get(s->open_blocks, i);
+      if (is_list(b->type)) break;
+      if (b->type == BLOCK_QUOTE) b->flags |= BLOCK_FLAG_OPAQUE_QUOTE_TAIL;
+    }
+  }
   push_block(s, CODE_BLOCK,
              width | (fence_char == '~' ? CODE_FENCE_TILDE : 0));
+  if (later) peek_block(s)->flags |= BLOCK_FLAG_LATER_OPAQUE_FENCE;
   peek_block(s)->content_col = (uint8_t)column;
   if (owns_body) {
     s->state |= STATE_FENCE_OWNS_BODY;
@@ -2625,6 +2659,7 @@ static bool try_begin_code_block(Scanner *s, TSLexer *lexer, uint8_t width,
 /// closer?" - the answer is an EXACT width match, the rule the carve engines
 /// follow: a `%%%%` line does not close a `%%%` fence.
 static uint8_t scan_comment_fence_line_width(Scanner *s, TSLexer *lexer) {
+  consume_whitespace(s, lexer);
   bool ending_newline = false;
   uint8_t markers = scan_block_quote_markers(s, lexer, &ending_newline);
   if (ending_newline) {
@@ -2914,6 +2949,7 @@ static bool scan_quoted_code_fence_closer(Scanner *s, TSLexer *lexer) {
   if (!top || (top->type != CODE_BLOCK && !div) || quotes == 0) {
     return false;
   }
+  consume_whitespace(s, lexer);
   bool ending_newline = false;
   if (scan_block_quote_markers(s, lexer, &ending_newline) != quotes ||
       ending_newline) {
@@ -2950,7 +2986,7 @@ static bool parse_quoted_code_fence_closer(Scanner *s, TSLexer *lexer,
   }
   // A closer indented to a quoted list item's column: the markers are taken,
   // and the end marker carries the indentation before its run.
-  if (line_column(s, lexer) != 0) {
+  if (line_column(s, lexer) != 0 && s->block_quote_level > 0) {
     if (!valid_symbols[CODE_BLOCK_END] ||
         (lexer->lookahead != ' ' && lexer->lookahead != '\t')) {
       return false;
@@ -3564,6 +3600,39 @@ static bool parse_block_quote(Scanner *s, TSLexer *lexer,
   }
 
   return false;
+}
+
+static bool scan_table_row(Scanner *s, TSLexer *lexer, TokenType *row_type,
+                           bool *one_cell_continues);
+static bool scan_continuation_row(Scanner *s, TSLexer *lexer);
+
+static bool parse_table_quote_continuation(Scanner *s, TSLexer *lexer,
+                                            const bool *valid_symbols) {
+  bool quote_symbols[TABLE_QUOTE_CONTINUATION + 1];
+  memcpy(quote_symbols, valid_symbols, sizeof(quote_symbols));
+  quote_symbols[BLOCK_QUOTE_CONTINUATION] = true;
+  if (!parse_block_quote(s, lexer, quote_symbols)) return false;
+  if (lexer->result_symbol != BLOCK_QUOTE_CONTINUATION) {
+    return valid_symbols[lexer->result_symbol];
+  }
+  bool ending = false;
+  uint8_t rest = scan_block_quote_markers(s, lexer, &ending);
+  consume_whitespace(s, lexer);
+  bool row = !ending && s->block_quote_level + rest == count_blocks(s, BLOCK_QUOTE);
+  uint16_t state = s->state;
+  if (row && lexer->lookahead == '|') {
+    advance(s, lexer);
+    TokenType row_type;
+    bool continues = false;
+    row = scan_table_row(s, lexer, &row_type, &continues);
+  } else if (row && lexer->lookahead == '+') {
+    row = scan_continuation_row(s, lexer);
+  } else {
+    row = false;
+  }
+  s->state = state;
+  if (row) lexer->result_symbol = TABLE_QUOTE_CONTINUATION;
+  return row || valid_symbols[BLOCK_QUOTE_CONTINUATION];
 }
 
 static bool is_decimal(char c) { return '0' <= c && c <= '9'; }
@@ -7136,6 +7205,7 @@ static bool code_fence_has_closer_ahead(Scanner *s, TSLexer *lexer, int32_t c,
     // Inside a quote a closer carries the quote's markers, and a line short of
     // them leaves the quote before any closer is found.
     if (quotes > 0) {
+      consume_whitespace(s, lexer);
       bool ending_newline = false;
       if (scan_block_quote_markers(s, lexer, &ending_newline) < quotes) {
         return false;
@@ -9940,6 +10010,12 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
   Scanner *s = (Scanner *)payload;
   s->col_base_marked = false;
   bool found = scan(s, lexer, valid_symbols);
+  if (found && peek_block(s) && peek_block(s)->type == BLOCK_QUOTE &&
+      (lexer->result_symbol == LITERAL_RUN ||
+       lexer->result_symbol == THEMATIC_BREAK_DASH ||
+       lexer->result_symbol == THEMATIC_BREAK_STAR)) {
+    clear_opaque_quote_tail(s);
+  }
   if (found && s->col_base_marked) {
     s->col_base = s->col_base_at_mark;
   }
@@ -10289,6 +10365,40 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   }
 #endif
 
+  if (lexer->lookahead != '>') s->state &= ~STATE_LITERAL_QUOTE_BAND;
+  Block *band_quote = find_block(s, BLOCK_QUOTE);
+  Block *band_list = find_list(s);
+  bool literal_band = at_line_start && band_quote && band_list && !list_opened_in_quote(s, band_list) &&
+      !(s->state & STATE_AFTER_BLANK_LINE) && s->block_quote_level == 0 &&
+      lexer->lookahead == '>' && s->indent > band_list->content_col &&
+      (band_quote->flags & BLOCK_FLAG_OPAQUE_QUOTE_TAIL);
+  if (literal_band || (s->state & STATE_LITERAL_QUOTE_BAND)) {
+    s->state |= STATE_LITERAL_QUOTE_BAND;
+    if (band_quote && valid_symbols[BLOCK_CLOSE] && !valid_symbols[ERROR]) {
+      lexer->result_symbol = BLOCK_CLOSE;
+      remove_block(s);
+      return true;
+    }
+    if (!band_quote && valid_symbols[INDENTED_CONTENT_SPACER] &&
+        !valid_symbols[ERROR]) {
+      lexer->result_symbol = INDENTED_CONTENT_SPACER;
+      return true;
+    }
+    if (!band_quote && valid_symbols[LIST_ITEM_CONTINUATION] && !valid_symbols[ERROR]) {
+      lexer->result_symbol = LIST_ITEM_CONTINUATION;
+      return true;
+    }
+    if (!band_quote && valid_symbols[LITERAL_RUN] && !valid_symbols[ERROR]) {
+      advance(s, lexer);
+      if (lexer->lookahead == ' ') advance(s, lexer);
+      mark_end(s, lexer);
+      s->state &= ~STATE_LITERAL_QUOTE_BAND;
+      lexer->result_symbol = LITERAL_RUN;
+      return true;
+    }
+    return false;
+  }
+
   // Please note that the parse ordering here is quite messy and there's
   // a lot of order dependencies implicit in the implementation.
   // One day we should clean it up but for now just be aware that
@@ -10460,6 +10570,11 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   if (valid_symbols[LIST_ITEM_END] &&
       parse_list_item_end(s, lexer, valid_symbols, at_eof)) {
     return true;
+  }
+
+  if (valid_symbols[TABLE_QUOTE_CONTINUATION] && !valid_symbols[ERROR] &&
+      lexer->lookahead == '>') {
+    return parse_table_quote_continuation(s, lexer, valid_symbols);
   }
 
   if (parse_block_quote(s, lexer, valid_symbols)) {
