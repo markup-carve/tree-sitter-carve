@@ -4,26 +4,6 @@ All notable changes to tree-sitter-carve are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
-
-### Fixed
-
-- Recognize definition terms inside description bodies and on list marker lines.
-  Fold indented headings and reference definitions into term text, while keeping
-  sibling lists in the enclosing description (#459).
-
-- Accept table rows and separator rows at EOF. Attached multi-row tables retain
-  their structure without a final newline, resolving the two remaining native
-  EOF errors (#458).
-
-### Added
-
-- Fold captures for blockquotes, definition lists, tables, footnotes, frontmatter
-  and fenced comments. Add definition, extension and comment text objects, and
-  container context captures.
-- Native query-capture checks and an exact bracket-boundary gap ledger against
-  the latest specification corpus.
-
 ## [0.1.7] - 2026-09-30
 
 ### Fixed
@@ -33,23 +13,40 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   closer instead of running past it to the end of the line
   (markup-carve/carve#2170, #431).
 - A construct on the document's last line completes when that line carries no
-  terminator. A fence, a colon fence, a comment line, a thematic break, a
-  caption, a reference, citation or abbreviation definition and a block
-  attribute line all accepted only a real newline, so each parsed to an error at
-  the end of an unterminated document - the state of a buffer between two
-  keystrokes. How much remains depends on which reader you use: the
-  `tree-sitter` CLI does not report a missing hidden token, so over the pinned
-  corpus it sees 27 documents still failing where the Node binding this package
-  serves sees 316. Both populations are tracked on #458, and
-  `scripts/eof-without-newline.mjs` pins the 316 against the corpus commit and
-  the runtime version it was measured under (#464, #466).
+  terminator, and the containers it sits in close with it. Every line ending
+  accepted only a real newline, so a fence, a colon fence, a comment line, a
+  thematic break, a caption, a reference, citation or abbreviation definition and
+  a block attribute line parsed to an error at the end of an unterminated
+  document - the state of a buffer between two keystrokes. A table row and a
+  separator row now finish at the input after their closing pipe, where a final
+  row used to become paragraph text and an attached multi-row table could leave
+  its item in error; an unfinished cell stays paragraph text. Read through the
+  Node binding this package serves, the documents failing for want of their
+  terminator fall from 316 to none over the pinned corpus. The `tree-sitter` CLI
+  reports fewer than the binding because it cannot see a missing hidden token,
+  which is why `scripts/eof-without-newline.mjs` reads through the binding
+  (#464, #466, #468, #471).
+- A `+` opens a continuation marker only at a marker column. At column 1 or 3 it
+  is lazy text of the paragraph above, which the corpus states by keeping a
+  marker-column sibling as text (#470).
+- Definition terms are recognized inside description bodies and on list marker
+  lines. An indented heading or reference definition folds into the term text,
+  while a sibling list stays in the enclosing description (#473).
+
+### Added
+
+- Fold captures for blockquotes, definition lists, tables, footnotes, frontmatter
+  and fenced comments, plus definition, extension and comment text objects and
+  container context captures. Native query-capture checks and an exact
+  bracket-boundary gap ledger run against the latest specification corpus (#469).
 
 ### Changed
 
-- The spec corpus pin moves to carve 0.1.7 (`551f224`), which brings 265
-  documents in 33 categories the coverage matrix had never seen, and the engine
-  the harness compares against moves to carve-js 0.1.8. Ten grammar gaps arrive
-  with the new documents and are recorded rather than hidden (#459).
+- The spec corpus pin moves through carve 0.1.7 (`551f224`) to `b4f6a1e`, which
+  brings 265 documents in 33 categories the coverage matrix had never seen and
+  then a refresh to 535 categories, and the engine the harness compares against
+  moves to carve-js 0.1.8. Ten grammar gaps arrive with the new documents and are
+  recorded rather than hidden (#459, #469).
 
 ## [0.1.6] - 2026-09-22
 
