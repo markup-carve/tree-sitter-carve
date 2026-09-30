@@ -4797,7 +4797,7 @@ An unterminated fence on a continuation line stays inline verbatim (tree-sitter-
             end_marker: (verbatim_marker_end)))))))
 
 ===============================================================================
-A fence short of the footnote's content column folds into the paragraph (tree-sitter-carve#112)
+A fence below the footnote content column ends the note (#459)
 ===============================================================================
 
 [^a]: note
@@ -4809,22 +4809,7 @@ see[^a]
 
 -------------------------------------------------------------------------------
 
-(document
-  (footnote
-    (footnote_marker_begin)
-    label: (reference_label)
-    (footnote_marker_end)
-    content: (footnote_content
-      (paragraph
-        (verbatim
-          begin_marker: (verbatim_marker_begin)
-          content: (content)
-          end_marker: (verbatim_marker_end)))))
-  (paragraph
-    (footnote_reference
-      (footnote_marker_begin)
-      (reference_label)
-      (footnote_marker_end))))
+(document (footnote (footnote_marker_begin) (reference_label) (footnote_marker_end) (footnote_content (paragraph))) (paragraph (verbatim (verbatim_marker_begin) (content) (verbatim_marker_end))) (paragraph (footnote_reference (footnote_marker_begin) (reference_label) (footnote_marker_end))))
 
 ===============================================================================
 A seven-hash line does not interrupt a paragraph (tree-sitter-carve#112)

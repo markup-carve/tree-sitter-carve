@@ -4,6 +4,16 @@ All notable changes to tree-sitter-carve are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Fixed
+
+- Open fences after quotes at the host content column, on footnote marker lines
+  and in quoted footnote bodies. Close nested notes and lists when a quote ends.
+  Keep bullets in an open description paragraph as text (#459).
+- Measure footnote bodies from their marker column and end them when a line
+  falls below that margin, including notes hosted by a description.
+
 ## [0.1.7] - 2026-09-30
 
 ### Fixed

@@ -2,12 +2,12 @@
   "_comment": "Coverage matrix for the shared Carve spec corpus (spec/tests/corpus/*.crv). Every NN-slug base category must appear in covered or skip; the coverage-matrix test fails otherwise so a new spec category forces a classify decision. covered = grammar parses every file in the category with no ERROR/MISSING node. skip = at least one file currently produces an ERROR/MISSING node; reason records the unmodeled construct (a grammar gap to surface, not to hack around). A skip key is a CATEGORY (NN-slug) or a single EXAMPLE (NN-slug-2) — use the example form when the rest of the category parses cleanly, so one gap does not drop assertion for its siblings. A key equal to a category name is read as the CATEGORY, so the first example of a category cannot be skipped on its own. REASONS: a ledger entry's `reason` may be `ref:<key>`, resolving against the top-level `reasons` map, so one grammar gap spanning a whole category states its explanation once. coverage-matrix gates it both ways - a ref with no entry fails, and a reasons entry nothing references fails, because a reason nobody points at is an excuse that outlived the gap it excused.",
   "comparisonPopulation": {
     "thematic_break": { "documents": 11, "nodes": 13 },
-    "block_quote": { "documents": 266, "nodes": 314 },
+    "block_quote": { "documents": 267, "nodes": 315 },
     "table": { "documents": 144, "nodes": 146 },
     "heading": { "documents": 151, "nodes": 184 },
     "code_block": { "documents": 133, "nodes": 137 },
     "list": { "documents": 645, "nodes": 807 },
-    "definition_list": { "documents": 229, "nodes": 242 },
+    "definition_list": { "documents": 230, "nodes": 243 },
     "line_block": { "documents": 38, "nodes": 38 },
     "div": { "documents": 70, "nodes": 73 },
     "raw_block": { "documents": 36, "nodes": 36 },
@@ -22,8 +22,6 @@
     "a-tabbed-frontmatter-opener-swallows-the-break-below": "`---` followed by a TAB is not a frontmatter opener, and the grammar agrees that far - it builds no frontmatter. But it then reads the closing `---` three lines down as an `em_dash` inside the still-open paragraph rather than as a thematic break, so the `<hr>` the fixture expects between the paragraph and `body` is not built.",
     "fence-on-a-marker-line-builds-nothing": "a code fence opened on a list MARKER line: the item closes with an EMPTY code block and the residue re-parses at document level when the body sits BELOW the item's content column (markup-carve/carve#646). This grammar builds no code_block for any of these, and MEASURED against it, the cause is NOT that the fence is committed to the item with no route out - it is that the fence never opens at all. `parse_backtick` refuses an opener when `has_extra_indent` is true, and on a marker line the fence sits past the line's own indent while the item's content column is only established by the marker itself, so `- ` + fence is read as inline verbatim. The heading marker and the colon fence carry the same column-0 guard and fail the same way on a marker line, while a block quote and a table - which do not - open there correctly. The quote half of that was narrower than it reads and is now closed: its MARKER opened, but the quote took no content and the rest of the line was ejected from the list, repaired in tree-sitter-carve#218 by moving the line's content margin to the quote's own content column when it opens on an item's marker line - the same move this entry's openers need at the LIST marker. So the first half is a column question and the second half, closing the item at the boundary, is the container change; the fully-indented example (-3) needs only the first. Tracked in tree-sitter-carve#160.",
     "marker-line-block-opener-builds-nothing": "a block opener written on a list MARKER line builds nothing. `- # H` gives a list item whose content is a PARAGRAPH, not a heading; `- ---` is read as a document-level thematic break that consumes the marker, so no list is built at all. Verified against the indented spelling, which works: `- a` / `  # H` does build the heading. This is the same shape as the recorded `fence-on-a-marker-line-builds-nothing` - the marker line is one position this grammar does not run block-opener recognition in - now reached by the heading and thematic-break openers too. A TASK checkbox does not change which openers reach it, but it does change what the thematic break degrades INTO, and the sentence above is wrong for that spelling: `- [x] # h` is still a paragraph, while `- [ ] ---` no longer consumes the marker - the list and the item ARE built and `---` becomes an inline `em_dash` inside the item's paragraph. Measured against the neighbour that works, which is what keeps the checkbox out of it: `- [ ] > q` opens its quote with content, so the checkbox does not disturb an opener the marker line already admits. That is why a-task-item-s-checkbox-is-not-decided-by-its-first-block reports `heading: want 1 have 0; thematic_break: want 1 have 0` and no gap for its quote.",
-    "fence-on-a-footnote-definition-marker-line-builds-nothing": "a fence opened on a FOOTNOTE definition's own marker line builds no block: `[^1]: ```=latex` reads as inline verbatim and the raw_block never opens. Controlled against the body spelling, which works: `[^1]: t` / blank / `  ``` ` / `  x` builds the block. The same marker-line class as `fence-on-a-marker-line-builds-nothing`, reached through the footnote definition marker rather than a list marker. Tracked in tree-sitter-carve#459.",
-    "a-fence-after-a-quote-in-the-same-item-builds-nothing": "a fence at a container's content column does not open once a block quote precedes it in that container: `- > q` / `  ``` ` / `  b` / `  ``` ` and `- a` / `  > q` / `  ```js` / `  c` / `  ``` ` both fold into one inline verbatim span, while the same documents without the quote line build the code block. Tracked in tree-sitter-carve#459.",
     "a-container-label-is-one-opaque-token": "a colon fence's bracketed LABEL is one opaque `code_block_label` token, so nothing inside it is parsed as inline: `:::[/i/]` publishes `<em>i</em>` in the fixture and the tree holds no span at all. It is the construct this category is named for and it applies to every inline kind that can sit in a label - emphasis, strong and code all read the same way - and to the admonition spelling `::: note [/i/]` as well as the plain one. Tracked in tree-sitter-carve#459."
   },
   "reasonPredicates": {
@@ -46,14 +44,6 @@
     "marker-line-block-opener-builds-nothing": {
       "ledger": "underAcceptance",
       "sourcePattern": "^[-*+] (?:\\[[ xX]\\] )?(?:#{1,6}[ \\t]|-{3,}[ \\t]*(?:\\n|$))"
-    },
-    "fence-on-a-footnote-definition-marker-line-builds-nothing": {
-      "ledger": "underAcceptance",
-      "sourcePattern": "^\\[\\^[^\\]]*\\]:[ \\t]+(?:`{3,}|~{3,})"
-    },
-    "a-fence-after-a-quote-in-the-same-item-builds-nothing": {
-      "ledger": "underAcceptance",
-      "sourcePattern": "^[ \\t]*(?:[-*+][ \\t]+)?>[ \\t].*\\n[ \\t]+(?:`{3,}|~{3,})"
     },
     "a-container-label-is-one-opaque-token": {
       "ledger": "inlineReadingGaps",
@@ -599,7 +589,6 @@
   ],
   "skip": {
     "a-continuation-marker-attaches-one-block-and-the-boundary-is-that-block-s-extent-5": "a `+` continuation marker that attaches NOTHING - the line after it opens a sibling item rather than a block to attach - leaves the first item unclosed and the whole document parses to one top-level ERROR. `- a` / `+` / `- x` / `- y` is three flat items in the fixture. The category's other eight examples, where the marker does attach a block, parse cleanly.",
-    "a-fence-a-container-inside-a-quote-holds-open-stores-no-claim-12": "an unclosed fence inside a quoted definition's list item, followed by a LAZY line at column 0, parses to one top-level ERROR. Isolated against the two neighbours that do not: the same shape WITHOUT the lazy line parses cleanly, and so does the same shape with the lazy line but WITHOUT the block quote, so the gap needs the quote marker and the line below it together. The tree is already wrong before it errors - the grammar opens a list and a code_block on the `-` line where the fixture has neither, reading `- ` as description text and the fence as inline verbatim that swallows `x` and the lazy line. Tracked in tree-sitter-carve#459.",
     "a-link-inside-a-span-s-label-keeps-its-destination-8": "a span whose own label holds a link, nested inside an outer link: `[[[t](/v)]{.d}](/u)` reads the inner `[t](/v)` as a complete `inline_link` and then errors over the `{.` of the span opener. The fixture is `<a href=\"/u\"><span class=\"d\">t</span></a>` - the outer link wins and the inner one unwraps to its text. The category's other eight examples parse cleanly, including the same span with no outer link (`[[t](/v)]{.c}`) and the same nesting with no span (`[[t](/v)](/u)`), so it is the two together. Tracked in tree-sitter-carve#459.",
     "the-continuation-marker-s-column-gate-reaches-every-container-16": "ref:a-continuation-marker-attaching-nothing-errors",
     "the-continuation-marker-s-column-gate-reaches-every-container-17": "ref:a-continuation-marker-attaching-nothing-errors"
@@ -768,29 +757,9 @@
     "thematic-break-requires-contiguous-markers": {
       "gaps": "list: want 2 have 0"
     },
-    "a-footnote-body-whose-every-block-renders-nothing-is-an-empty-body-3": {
-      "gaps": "raw_block: want 1 have 0",
-      "reason": "ref:fence-on-a-footnote-definition-marker-line-builds-nothing"
-    },
-    "a-footnote-body-whose-every-block-renders-nothing-is-an-empty-body-6": {
-      "gaps": "raw_block: want 1 have 0",
-      "reason": "ref:fence-on-a-footnote-definition-marker-line-builds-nothing"
-    },
-    "an-item-s-fence-is-read-once-whatever-block-it-follows-2": {
-      "gaps": "code_block: want 1 have 0",
-      "reason": "a fence at a list item's content column does not open once a BLOCK QUOTE precedes it in the same item; the whole run folds into one inline verbatim span. Isolated with a control: `- a` / `  ```js` / `  c` / `  ``` ` builds the code block, and inserting `  > q` above the fence removes it. The quote is the variable, not the indent."
-    },
-    "an-opener-under-a-quote-in-a-nested-host-opens-at-one-column-only": {
-      "gaps": "code_block: want 1 have 0",
-      "reason": "ref:a-fence-after-a-quote-in-the-same-item-builds-nothing"
-    },
     "a-comment-span-opened-below-every-content-column-is-located-there-8": {
       "gaps": "code_block: want 1 have 0",
       "reason": "an UNCLOSED fence at a list item's content column, followed by a line at column 0, does not open: the two-line control `- item` / `  ``` ` / `tail` already shows it, so the comment block this document opens above the fence is not part of the cause - a fence after a `%%%` block in the same item opens normally. The fixture reads the lazy `tail` as the block's content."
-    },
-    "a-fence-a-container-inside-a-quote-holds-open-stores-no-claim-6": {
-      "gaps": "code_block: want 1 have 0",
-      "reason": "a fence on its own line inside a FOOTNOTE body does not open while that body sits in a block quote. Controlled by removing only the quote: `[^f]: t` / blank / `  ``` ` / `  x` builds the code block, and the same document behind `> ` markers does not."
     },
     "a-container-label-publishes-its-inline-run-8": {
       "gaps": "code_block: want 1 have 0",
@@ -807,10 +776,6 @@
     "glued-attribute-blocks-on-an-inline-element-merge-2": {
       "reading": "strong html=0 tree=1",
       "reason": "glued attribute blocks (`{#a .k}{#b k=1}{.k k=2}`) are supposed to merge into one set, the later block winning per key; the grammar attaches only the FIRST block as the element's `inline_attribute` and misreads the rest of the glued run, which is the unimplemented feature this category is named for."
-    },
-    "an-item-s-fence-is-read-once-whatever-block-it-follows-2": {
-      "reading": "code#1 html=\"\" tree=\"by\"",
-      "reason": "a fence opened at a definition body's or a nested container's own content column, closed by a run below that column: the reference cuts the code block off right there and reads the short line plus the trailing marker run as separate, literal text past the container, while the grammar keeps reading through both as one code/verbatim span to the LAST closer-shaped line - the same gap `a-closer-below-the-container-s-column-does-not-count-4` records for the block-level AST count."
     },
     "a-definition-body-s-open-code-fence-ends-at-a-line-below-its-column-3": {
       "reading": "code html=1 tree=0",
@@ -904,29 +869,13 @@
       "reading": "code html=0 tree=1",
       "reason": "the inline face of this document's recorded `underAcceptance` gap: the fence degrades to one inline verbatim span, so the tree carries a `code` span the fixture does not have. It goes away with that gap, not separately."
     },
-    "a-fence-a-container-inside-a-quote-holds-open-stores-no-claim-6": {
-      "reading": "code html=0 tree=1",
-      "reason": "the inline face of this document's recorded `underAcceptance` gap: the fence degrades to one inline verbatim span, so the tree carries a `code` span the fixture does not have. It goes away with that gap, not separately."
-    },
-    "a-footnote-body-whose-every-block-renders-nothing-is-an-empty-body-3": {
-      "reading": "code html=0 tree=1",
-      "reason": "the inline face of this document's recorded `underAcceptance` gap: the fence degrades to one inline verbatim span, so the tree carries a `code` span the fixture does not have. It goes away with that gap, not separately."
-    },
-    "a-footnote-body-whose-every-block-renders-nothing-is-an-empty-body-6": {
-      "reading": "code html=0 tree=1",
-      "reason": "the inline face of this document's recorded `underAcceptance` gap: the fence degrades to one inline verbatim span, so the tree carries a `code` span the fixture does not have. It goes away with that gap, not separately."
-    },
     "a-container-label-publishes-its-inline-run-8": {
-      "reading": "code html=0 tree=1",
-      "reason": "the inline face of this document's recorded `underAcceptance` gap: the fence degrades to one inline verbatim span, so the tree carries a `code` span the fixture does not have. It goes away with that gap, not separately."
-    },
-    "an-opener-under-a-quote-in-a-nested-host-opens-at-one-column-only": {
       "reading": "code html=0 tree=1",
       "reason": "the inline face of this document's recorded `underAcceptance` gap: the fence degrades to one inline verbatim span, so the tree carries a `code` span the fixture does not have. It goes away with that gap, not separately."
     },
     "a-fence-closer-below-a-nested-item-s-column-ends-containers-down-to-its-owner-12": {
       "reading": "code html=2 tree=1, code#1 html=\"p\" tree=\"\"",
-      "reason": "a fence opened at a nested item's content column and closed by a run below that column: the reference cuts the block there and gives the next sibling item its own empty code span, while the grammar reads through to the LAST closer-shaped line as one span, so it has one span where the reference has two and the first one covers nothing. The same reading the `an-item-s-fence-is-read-once-whatever-block-it-follows-2` entry records, reached one item deeper."
+      "reason": "a fence opened at a nested item's content column and closed by a run below that column: the reference cuts the block there and gives the next sibling item its own empty code span, while the grammar reads through to the LAST closer-shaped line as one span, so it has one span where the reference has two and the first one covers nothing."
     },
     "an-emphasis-marker-does-not-pair-across-a-link-bracket": {
       "reading": "em html=0 tree=1",
@@ -986,8 +935,7 @@
     }
   },
   "lineTerminatorGaps": {
-    "a-delimiter-after-an-underscore-or-slash-opens-only-when-that-one-pairs": "the same pairing gap `inlineReadingGaps` already records for this document (`strong`/`em`/`u`/`s`/`mark` all open where the reference stays literal) also depends on which delimiter run the scanner's own lookahead crosses to find a closer; a lone CR moves that boundary differently than LF/CRLF do, so the CR spelling reads a different tree rather than the same wrong one.",
-    "a-fence-a-container-inside-a-quote-holds-open-stores-no-claim-12": "the CR spelling reads a different tree than LF for the document the skip list already records: with no clean parse to begin with, the lone CR moves where the top-level ERROR starts rather than producing the same wrong tree. It goes away with the grammar gap, not before it (tree-sitter-carve#459)."
+    "a-delimiter-after-an-underscore-or-slash-opens-only-when-that-one-pairs": "the same pairing gap `inlineReadingGaps` already records for this document (`strong`/`em`/`u`/`s`/`mark` all open where the reference stays literal) also depends on which delimiter run the scanner's own lookahead crosses to find a closer; a lone CR moves that boundary differently than LF/CRLF do, so the CR spelling reads a different tree rather than the same wrong one."
   },
   "parseTimeouts": {}
 }

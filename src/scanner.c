@@ -1217,8 +1217,8 @@ static bool escapes_open_block_quote(Scanner *s, uint32_t column) {
       return b->content_col != 0 && column == b->content_col;
     }
     if (b->type == FOOTNOTE || b->type == TABLE_CAPTION) {
-      // Both push `s->indent + 2`, which IS their content column - the margin
-      // does not follow the label's width. `[^a]: > para` and
+      // The footnote stores its marker column plus two, relative to an
+      // enclosing quote; the caption stores its indentation plus two. `[^a]: > para` and
       // `[^abcd]: > para` behave identically in all three engines: a fence at
       // column 2 ends the quote and opens a div in the footnote, one at column
       // 3 is indented and folds back into the quoted paragraph.
@@ -3970,7 +3970,22 @@ static bool scan_paragraph_closing_marker(Scanner *s, TSLexer *lexer) {
     advance(s, lexer);
     return in_definition_list || marker_line_has_content(s, lexer);
   }
-  if (find_list(s) == NULL) {
+  // A description's paragraph keeps bullet lines as text. An intervening
+  // footnote or other block owns its paragraph independently.
+  Block *list = find_list(s);
+  bool in_list_item = false;
+  for (int i = 0; i < s->open_blocks->size; ++i) {
+    Block *host = *array_get(s->open_blocks, i);
+    if (host == list) {
+      break;
+    }
+    if (is_list(host->type) && host->type != LIST_DEFINITION) {
+      in_list_item = true;
+    }
+  }
+  if (!list || (!in_list_item && list == peek_block(s) &&
+                list->type == LIST_DEFINITION &&
+                !(list->flags & BLOCK_FLAG_DEFINITION_TERM))) {
     return false;
   }
   if (marker_folds_into_item(s, line_column(s, lexer))) {
@@ -4736,7 +4751,8 @@ static bool scan_footnote_after_caret(Scanner *s, TSLexer *lexer) {
 }
 
 static bool parse_footnote_after_caret(Scanner *s, TSLexer *lexer,
-                                       const bool *valid_symbols) {
+                                       const bool *valid_symbols,
+                                       uint32_t marker_col) {
   if (!valid_symbols[FOOTNOTE_MARK_BEGIN]) {
     return false;
   }
@@ -4745,7 +4761,14 @@ static bool parse_footnote_after_caret(Scanner *s, TSLexer *lexer,
   }
 
   if (!valid_symbols[IN_FALLBACK]) {
-    push_block(s, FOOTNOTE, s->indent + 2);
+    Block *quote = find_block(s, BLOCK_QUOTE);
+    uint32_t quote_prefix = quote ? quote->content_col : 0;
+    uint32_t margin = marker_col >= quote_prefix
+                          ? marker_col - quote_prefix + 2
+                          : s->indent + 2;
+    push_block(s, FOOTNOTE, (uint8_t)margin);
+    // The body can begin with a fence on the definition's marker line.
+    s->marker_end_col = (uint8_t)line_column(s, lexer);
   }
 
   lexer->result_symbol = FOOTNOTE_MARK_BEGIN;
@@ -4836,7 +4859,7 @@ static bool parse_open_bracket(Scanner *s, TSLexer *lexer,
     if (lexer->lookahead == ']') {
       return parse_ref_def_begin(s, lexer, valid_symbols);
     }
-    return parse_footnote_after_caret(s, lexer, valid_symbols);
+    return parse_footnote_after_caret(s, lexer, valid_symbols, column);
   }
   return parse_ref_def_begin(s, lexer, valid_symbols);
 }
@@ -5486,7 +5509,8 @@ static bool parse_caption_begin(Scanner *s, TSLexer *lexer) {
   return true;
 }
 
-static bool parse_footnote_end(Scanner *s, TSLexer *lexer, bool at_eof) {
+static bool parse_footnote_end(Scanner *s, TSLexer *lexer,
+                               const bool *valid_symbols, bool at_eof) {
   Block *top = peek_block(s);
   if (!top || top->type != FOOTNOTE) {
     return false;
@@ -5495,6 +5519,29 @@ static bool parse_footnote_end(Scanner *s, TSLexer *lexer, bool at_eof) {
   // Don't let inline escape boundary.
   if (s->open_inline->size > 0) {
     return false;
+  }
+
+  // Inspect indentation after the quote prefix before ending the note.
+  // A quoted blank line can precede another block in the same note.
+  if (!at_eof && lexer->lookahead == '>' &&
+      valid_symbols[BLOCK_QUOTE_CONTINUATION]) {
+    bool ending_newline = false;
+    uint8_t markers = scan_block_quote_markers(s, lexer, &ending_newline);
+    uint8_t quotes = count_blocks(s, BLOCK_QUOTE);
+    bool continuation = markers == quotes;
+    if (continuation && ending_newline) {
+      bool second_newline = false;
+      continuation = scan_block_quote_markers(s, lexer, &second_newline) == quotes;
+    }
+    s->indent = consume_whitespace(s, lexer);
+    if (continuation && s->indent >= top->data) {
+      mark_end(s, lexer);
+      output_block_quote_continuation(s, lexer, markers, ending_newline);
+      return true;
+    }
+    remove_block(s);
+    lexer->result_symbol = FOOTNOTE_END;
+    return true;
   }
 
   // At the end of input the body ends whatever column its last line reached,
@@ -6911,6 +6958,15 @@ static bool scan_heading_at_paragraph_end(Scanner *s, TSLexer *lexer) {
 /// carve-js builds no block at all.
 static bool code_fence_has_closer_ahead(Scanner *s, TSLexer *lexer, int32_t c,
                                         uint8_t width, uint32_t column) {
+  // An opener outside a preceding quote does not require that quote's
+  // markers on its own body and closer lines.
+  uint8_t quotes = 0;
+  for (int i = 0; i < s->open_blocks->size; ++i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (b->type == BLOCK_QUOTE && b->content_col <= column) {
+      ++quotes;
+    }
+  }
   for (;;) {
     // Skip the rest of the current line (the opener's info string, or a body
     // line that was not a closer).
@@ -6923,7 +6979,6 @@ static bool code_fence_has_closer_ahead(Scanner *s, TSLexer *lexer, int32_t c,
     consume_line_end(s, lexer); // over the newline
     // Inside a quote a closer carries the quote's markers, and a line short of
     // them leaves the quote before any closer is found.
-    uint8_t quotes = count_blocks(s, BLOCK_QUOTE);
     if (quotes > 0) {
       bool ending_newline = false;
       if (scan_block_quote_markers(s, lexer, &ending_newline) < quotes) {
@@ -6966,12 +7021,16 @@ static bool code_fence_has_closer_ahead(Scanner *s, TSLexer *lexer, int32_t c,
 /// `code` / ```` ``` ```` into two paragraphs where carve-js keeps one holding
 /// an inline run. A peek that closes a paragraph no opener follows is the same
 /// defect #103 recorded four times over for the colon fence.
-static bool scan_code_fence_at_paragraph_end(Scanner *s, TSLexer *lexer) {
+static bool scan_code_fence_at_paragraph_end(Scanner *s, TSLexer *lexer,
+                                              int markers_seen) {
   int32_t fence_char = lexer->lookahead;
   if (fence_char != '`' && fence_char != '~') {
     return false;
   }
   uint32_t column = line_column(s, lexer);
+  if (markers_seen == 0 && !escapes_open_block_quote(s, column)) {
+    return false;
+  }
   if (!at_block_opener_margin(s, column)) {
     return false;
   }
@@ -7152,6 +7211,24 @@ static bool close_paragraph(Scanner *s, TSLexer *lexer) {
     return true;
   }
 
+  Block *note = find_block(s, FOOTNOTE);
+  if (note && !at_line_end(lexer) && !lexer->eof(lexer)) {
+    uint32_t margin = note->data;
+    bool below_note = false;
+    for (int i = s->open_blocks->size - 1; i >= 0; --i) {
+      Block *b = *array_get(s->open_blocks, i);
+      if (b == note) {
+        below_note = true;
+      } else if (below_note && b->type == BLOCK_QUOTE) {
+        margin += b->content_col;
+        break;
+      }
+    }
+    if (line_column(s, lexer) < margin) {
+      return true;
+    }
+  }
+
   // A LAZY line inside a quote - no `>` marker, indented to the quote's content
   // column - is continuation text of the quoted paragraph (corpus 369), so no
   // block opener on it interrupts: carve-js keeps `> x` over `  # H`, and the
@@ -7200,7 +7277,7 @@ static bool close_paragraph(Scanner *s, TSLexer *lexer) {
   if (scan_heading_at_paragraph_end(s, lexer)) {
     return true;
   }
-  if (scan_code_fence_at_paragraph_end(s, lexer)) {
+  if (scan_code_fence_at_paragraph_end(s, lexer, markers_seen)) {
     return true;
   }
   if (scan_definition_at_paragraph_end(s, lexer)) {
@@ -9873,6 +9950,26 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     return parse_figure_group_marker(s, lexer);
   }
 
+  // Closing a quote can also end its nested note or list. Emit the token
+  // that each container requires before the remaining generic block closes.
+  if (s->blocks_to_close > 0) {
+    Block *closing = peek_block(s);
+    if (closing && closing->type == FOOTNOTE) {
+      if (valid_symbols[INDENTED_CONTENT_SPACER]) {
+        lexer->result_symbol = INDENTED_CONTENT_SPACER;
+        return true;
+      }
+      if (valid_symbols[FOOTNOTE_END]) {
+        remove_block(s);
+        lexer->result_symbol = FOOTNOTE_END;
+        return true;
+      }
+    }
+    if (closing && is_list(closing->type) && valid_symbols[LIST_ITEM_END]) {
+      lexer->result_symbol = LIST_ITEM_END;
+      return true;
+    }
+  }
   if (valid_symbols[BLOCK_CLOSE] && handle_blocks_to_close(s, lexer)) {
     return true;
   }
@@ -10020,7 +10117,8 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   if (valid_symbols[CLOSE_PARAGRAPH] && parse_close_paragraph(s, lexer)) {
     return true;
   }
-  if (valid_symbols[FOOTNOTE_END] && parse_footnote_end(s, lexer, at_eof)) {
+  if (valid_symbols[FOOTNOTE_END] &&
+      parse_footnote_end(s, lexer, valid_symbols, at_eof)) {
     return true;
   }
   if (valid_symbols[LINK_REF_DEF_LABEL_END] &&
