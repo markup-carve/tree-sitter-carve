@@ -29,6 +29,13 @@ const cases = [
   '/*`x` */ b/ c\n',
   '/*a */ b*/\n',
   '/*a */y z/\n',
+  '/*a *b* q\n',
+  '*x /*a /* c\n',
+  '*x /*a. /* c\n',
+  '*x /*a b /* c* d\n',
+  '/*a #-b q\n',
+  '/*a [/*b*/] q\n',
+  '/*a {/q/} q\n',
   '/*a b/ c\n',
   '/*[a] b/ c\n',
   '/*a\n*/ b\n',
@@ -58,3 +65,24 @@ assert.equal(merged.length, 1);
 assert.equal(merged[0].text, '{#a .k}{#b k=1}{.k k=2}');
 assert.equal(merged[0].descendantsOfType('args').length, 3);
 console.log(`Inline boundaries: ${cases.length} engine controls pass across LF, CRLF and CR.`);
+
+for (const newline of ['\n', '\r\n', '\r', '']) {
+  const oldSource = '/*a '.repeat(32) + 'z' + newline;
+  const oldTree = parser.parse(oldSource);
+  const at = oldSource.length - newline.length;
+  oldTree.edit({ startIndex: at, oldEndIndex: at, newEndIndex: at + 2,
+    startPosition: { row: 0, column: at }, oldEndPosition: { row: 0, column: at },
+    newEndPosition: { row: 0, column: at + 2 } });
+  const changed = oldSource.slice(0, at) + '*/' + newline;
+  const incremental = parser.parse(changed, oldTree);
+  const fresh = parser.parse(changed);
+  assert.equal(incremental.rootNode.hasError, false);
+  assert.equal(incremental.rootNode.toString(), fresh.rootNode.toString(),
+    'Adding a closer invalidates the cached negative lookahead.');
+  assert.equal(fresh.rootNode.descendantsOfType('bold_italic').length, 1);
+  incremental.edit({ startIndex: at, oldEndIndex: at + 2, newEndIndex: at,
+    startPosition: { row: 0, column: at }, oldEndPosition: { row: 0, column: at + 2 },
+    newEndPosition: { row: 0, column: at } });
+  assert.equal(parser.parse(oldSource, incremental).rootNode.toString(),
+    parser.parse(oldSource).rootNode.toString(), 'Removing the closer restores literal text.');
+}

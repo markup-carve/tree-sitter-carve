@@ -53,6 +53,8 @@ jobs:
         run: npm run test:bracket-boundaries
       - name: Check attributed spans and literal bracket work
         run: npm run test:attributed-span-boundaries && npm run test:literal-bracket-work
+      - name: Bound scanner work for malformed combined openers
+        run: npm run test:combined-opener-work
       - name: Check opaque quote and table boundaries
         run: npm run test:opaque-quote-bands
       - name: Check block ownership and line endings
