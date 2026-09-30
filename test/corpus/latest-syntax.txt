@@ -4098,3 +4098,48 @@ A line at the description margin follows its hosted note (#459)
 ---
 
 (document (definition_list (list_item (list_marker_definition) (term)) (list_item (list_marker_description) (footnote (footnote_marker_begin) (reference_label) (footnote_marker_end) (footnote_content (paragraph) (list (list_item (list_marker_dash) (list_item_content (paragraph)))))) (paragraph))))
+
+=============================
+A description in a bullet item can end before a nested list (#459)
+=============================
+- :: t
+  :  d
+  - x
+
+---
+
+(document (list (list_item (list_marker_dash) (list_item_content (definition_list (list_item (list_marker_definition) (term)) (list_item (list_marker_description) (definition))) (list (list_item (list_marker_dash) (list_item_content (paragraph))))))))
+
+=============================
+A description in an ordered item can end before a deeper list (#459)
+=============================
+1. :: t
+   :  d
+      - x
+
+---
+
+(document (list (list_item (list_marker_decimal_period) (list_item_content (definition_list (list_item (list_marker_definition) (term)) (list_item (list_marker_description) (definition) (list (list_item (list_marker_dash) (list_item_content (paragraph))))))))))
+
+=============================
+A shallower quote marker ends a nested quoted footnote (#459)
+=============================
+> > [^f]: t
+>   x
+
+y[^f]
+
+---
+
+(document (block_quote (block_quote_marker) (content (block_quote (block_quote_marker) (content (footnote (footnote_marker_begin) (reference_label) (footnote_marker_end) (footnote_content (paragraph))))))) (paragraph) (paragraph (footnote_reference (footnote_marker_begin) (reference_label) (footnote_marker_end))))
+
+=============================
+A quoted blank line before a shallower quote ends the footnote (#459)
+=============================
+> > [^f]: t
+> >
+>     x
+
+---
+
+(document (block_quote (block_quote_marker) (content (block_quote (block_quote_marker) (content (footnote (footnote_marker_begin) (reference_label) (footnote_marker_end) (footnote_content (paragraph))) (block_quote_marker) (block_quote_marker))))) (paragraph))

@@ -1217,8 +1217,8 @@ static bool escapes_open_block_quote(Scanner *s, uint32_t column) {
       return b->content_col != 0 && column == b->content_col;
     }
     if (b->type == FOOTNOTE || b->type == TABLE_CAPTION) {
-      // Both push `s->indent + 2`, which IS their content column - the margin
-      // does not follow the label's width. `[^a]: > para` and
+      // The footnote stores its marker column plus two, relative to an
+      // enclosing quote; the caption stores its indentation plus two. `[^a]: > para` and
       // `[^abcd]: > para` behave identically in all three engines: a fence at
       // column 2 ends the quote and opens a div in the footnote, one at column
       // 3 is indented and folds back into the quoted paragraph.
@@ -3973,7 +3973,18 @@ static bool scan_paragraph_closing_marker(Scanner *s, TSLexer *lexer) {
   // A description's paragraph keeps bullet lines as text. An intervening
   // footnote or other block owns its paragraph independently.
   Block *list = find_list(s);
-  if (!list || (list == peek_block(s) && list->type == LIST_DEFINITION &&
+  bool in_list_item = false;
+  for (int i = 0; i < s->open_blocks->size; ++i) {
+    Block *host = *array_get(s->open_blocks, i);
+    if (host == list) {
+      break;
+    }
+    if (is_list(host->type) && host->type != LIST_DEFINITION) {
+      in_list_item = true;
+    }
+  }
+  if (!list || (!in_list_item && list == peek_block(s) &&
+                list->type == LIST_DEFINITION &&
                 !(list->flags & BLOCK_FLAG_DEFINITION_TERM))) {
     return false;
   }
@@ -5528,6 +5539,9 @@ static bool parse_footnote_end(Scanner *s, TSLexer *lexer,
       output_block_quote_continuation(s, lexer, markers, ending_newline);
       return true;
     }
+    remove_block(s);
+    lexer->result_symbol = FOOTNOTE_END;
+    return true;
   }
 
   // At the end of input the body ends whatever column its last line reached,
