@@ -95,7 +95,7 @@ try {
     budgets: { linear: { scannerPerByte: 32, lexerPerByte: 64, doubling: 3 },
       quadratic: { scannerPerBytePerRepetition: 32, lexerPerBytePerRepetition: 128, doubling: 5 } },
     sizes: [32, 64, 128, 256], endings, families, rows }, null, 2));
-  
+
 } finally {
   rmSync(build, { recursive: true, force: true });
 }
