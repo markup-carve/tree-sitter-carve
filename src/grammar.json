@@ -2729,7 +2729,7 @@
                 },
                 {
                   "type": "SYMBOL",
-                  "name": "_newline"
+                  "name": "_eof_or_newline"
                 }
               ]
             },
@@ -3241,7 +3241,7 @@
                   },
                   {
                     "type": "SYMBOL",
-                    "name": "_newline"
+                    "name": "_eof_or_newline"
                   }
                 ]
               }
@@ -3363,7 +3363,7 @@
                   },
                   {
                     "type": "SYMBOL",
-                    "name": "_newline"
+                    "name": "_eof_or_newline"
                   }
                 ]
               }
@@ -3543,7 +3543,7 @@
         },
         {
           "type": "SYMBOL",
-          "name": "_newline"
+          "name": "_eof_or_newline"
         }
       ]
     },
@@ -3913,7 +3913,7 @@
         },
         {
           "type": "SYMBOL",
-          "name": "_newline"
+          "name": "_eof_or_newline"
         }
       ]
     },
@@ -3987,7 +3987,7 @@
           },
           {
             "type": "SYMBOL",
-            "name": "_newline"
+            "name": "_eof_or_newline"
           }
         ]
       }
@@ -4074,7 +4074,7 @@
         },
         {
           "type": "SYMBOL",
-          "name": "_newline"
+          "name": "_eof_or_newline"
         }
       ]
     },
@@ -4103,7 +4103,7 @@
         },
         {
           "type": "SYMBOL",
-          "name": "_newline"
+          "name": "_eof_or_newline"
         }
       ]
     },
@@ -4265,7 +4265,7 @@
         },
         {
           "type": "SYMBOL",
-          "name": "_newline"
+          "name": "_eof_or_newline"
         }
       ]
     },
@@ -4544,7 +4544,7 @@
         },
         {
           "type": "SYMBOL",
-          "name": "_newline"
+          "name": "_eof_or_newline"
         }
       ]
     },
