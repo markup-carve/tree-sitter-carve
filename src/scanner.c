@@ -579,6 +579,7 @@ static uint8_t scan_block_quote_markers(Scanner *s, TSLexer *lexer,
 static TokenType scan_unordered_list_marker_token(Scanner *s, TSLexer *lexer);
 static bool scan_valid_inline_attribute(Scanner *s, TSLexer *lexer);
 static bool at_block_opener_margin(Scanner *s, uint32_t column);
+static bool continuation_marker_column(Scanner *s, uint32_t column);
 static bool opener_reaches_item_margin(Scanner *s, uint32_t column);
 static bool list_item_open(Scanner *s);
 static bool quoted_item_column_reached(Scanner *s, uint32_t column);
@@ -5856,13 +5857,50 @@ static bool parse_table_begin(Scanner *s, TSLexer *lexer,
   return true;
 }
 
+/// WHERE A `+` IS A CONTINUATION MARKER: at the document margin, or at the
+/// content column of an open container, and nowhere else. One column off and the
+/// `+` is ordinary lazy text of the paragraph above it - spec corpus 435 pins
+/// that with a `ZZZ` control on the same column, which reads as lazy text too.
+static bool continuation_marker_column(Scanner *s, uint32_t column) {
+  if (column == 0) {
+    return true;
+  }
+  for (int i = s->open_blocks->size - 1; i >= 0; --i) {
+    Block *b = *array_get(s->open_blocks, i);
+    uint32_t margin;
+    // WHICH FIELD HOLDS THE MARGIN IS PER TYPE: a footnote's is `data`, a list's
+    // is `content_col` because `data` cannot tell `- ` from `1. ` - the split
+    // `item_outside_quotes_reached` documents. Every other type is skipped rather
+    // than guessed at. A code fence's `content_col` is the FENCE's own column,
+    // not a margin anything continues at, and the grammar offers this marker only
+    // inside a list item, a description and a footnote body, so a div or a
+    // caption cannot host one; including them changed no corpus document.
+    if (is_list(b->type) || b->type == BLOCK_QUOTE) {
+      margin = b->content_col;
+    } else if (b->type == FOOTNOTE) {
+      margin = b->data;
+    } else {
+      continue;
+    }
+    if (margin != 0 && column == margin) {
+      return true;
+    }
+  }
+  return false;
+}
+
 static bool parse_plus_line(Scanner *s, TSLexer *lexer,
                             const bool *valid_symbols) {
   if (lexer->lookahead != '+') {
     return false;
   }
+  // Read before anything moves: `get_column` rewinds to the line start, which
+  // resets the marked token end. A continuation row is not gated on the column -
+  // it is a table row, and the table's own rule places it.
+  bool marker_column = continuation_marker_column(s, line_column(s, lexer));
   advance(s, lexer);
-  if (at_line_end(lexer) && valid_symbols[LIST_CONTINUATION_MARKER]) {
+  if (at_line_end(lexer) && valid_symbols[LIST_CONTINUATION_MARKER] &&
+      marker_column) {
     consume_line_end(s, lexer);
     mark_end(s, lexer);
     s->state &= ~STATE_LIST_CONTINUATION;
@@ -5879,7 +5917,8 @@ static bool parse_plus_line(Scanner *s, TSLexer *lexer,
   while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
     advance(s, lexer);
   }
-  if (at_line_end(lexer) && valid_symbols[LIST_CONTINUATION_MARKER]) {
+  if (at_line_end(lexer) && valid_symbols[LIST_CONTINUATION_MARKER] &&
+      marker_column) {
     consume_line_end(s, lexer);
     mark_end(s, lexer);
     s->state &= ~STATE_LIST_CONTINUATION;
@@ -6622,6 +6661,12 @@ static bool scan_continuation_marker_at_paragraph_end(Scanner *s,
     return false;
   }
   if (find_list(s) == NULL && find_block(s, BLOCK_QUOTE) == NULL) {
+    return false;
+  }
+  // The same column question the marker itself asks. If the two disagree, this
+  // probe ends a paragraph the marker then refuses to open, and the `+` becomes
+  // a block of its own where the language keeps it as lazy text.
+  if (!continuation_marker_column(s, line_column(s, lexer))) {
     return false;
   }
   advance(s, lexer);
