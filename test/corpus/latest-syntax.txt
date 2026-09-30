@@ -3961,3 +3961,140 @@ An indented quoted heading stays in the definition term (#459)
 ---
 
 (document (block_quote (block_quote_marker) (content (definition_list (list_item (list_marker_definition) (term (block_quote_marker)))))))
+
+=============================
+A fence after a quote opens at the list content column (#459)
+=============================
+- a
+  > q
+  ```js
+  c
+  ```
+
+---
+
+(document (list (list_item (list_marker_dash) (list_item_content (paragraph) (block_quote (block_quote_marker) (content (paragraph))) (code_block (code_block_marker_begin) (language) (code) (code_block_marker_end))))))
+
+=============================
+A fence one column past the host stays quoted inline text (#459)
+=============================
+- a
+  > q
+   ```js
+   c
+   ```
+
+---
+
+(document (list (list_item (list_marker_dash) (list_item_content (paragraph) (block_quote (block_quote_marker) (content (paragraph (verbatim (verbatim_marker_begin) (content) (verbatim_marker_end)))))))))
+
+=============================
+A raw fence opens on a footnote marker line (#459)
+=============================
+a[^1]
+
+[^1]: ```=latex
+  \x
+  ```
+
+---
+
+(document (paragraph (footnote_reference (footnote_marker_begin) (reference_label) (footnote_marker_end))) (footnote (footnote_marker_begin) (reference_label) (footnote_marker_end) (footnote_content (raw_block (raw_block_marker_begin) (raw_block_info (language_marker) (language)) (content) (raw_block_marker_end)))))
+
+=============================
+A quoted footnote keeps its fence across a quoted blank line (#459)
+=============================
+> [^f]: t
+>
+>   ```
+>   x
+>   ```
+
+---
+
+(document (block_quote (block_quote_marker) (content (footnote (footnote_marker_begin) (reference_label) (footnote_marker_end) (footnote_content (paragraph) (block_quote_marker) (code_block (code_block_marker_begin) (code (block_quote_marker)) (block_quote_marker) (code_block_marker_end)))))))
+
+=============================
+An unclosed quoted footnote fence ends before an unmarked line (#459)
+=============================
+> [^f]: t
+>
+>   ```
+>   x
+flush
+
+---
+
+(document (block_quote (block_quote_marker) (content (footnote (footnote_marker_begin) (reference_label) (footnote_marker_end) (footnote_content (paragraph) (block_quote_marker) (code_block (code_block_marker_begin) (code (block_quote_marker))))))) (paragraph))
+
+=============================
+An unclosed quoted list fence ends before an unmarked line (#459)
+=============================
+> - ```
+>   x
+flush
+
+---
+
+(document (block_quote (block_quote_marker) (content (list (list_item (list_marker_dash) (list_item_content (code_block (code_block_marker_begin) (code (block_quote_marker)))))))) (paragraph))
+
+=============================
+A bullet in a quoted description stays paragraph text (#459)
+=============================
+> :: t
+> :  d
+>    - ```
+>      x
+flush
+
+---
+
+(document (block_quote (block_quote_marker) (content (definition_list (list_item (list_marker_definition) (term)) (list_item (block_quote_marker) (list_marker_description) (definition (block_quote_marker) (verbatim (verbatim_marker_begin) (content) (verbatim_marker_end))))))))
+
+=============================
+A description-hosted footnote can precede a sibling list (#459)
+=============================
+:: t
+:  [^f]: note
+    - nested
+tail
+
+---
+
+(document (definition_list (list_item (list_marker_definition) (term)) (list_item (list_marker_description) (footnote (footnote_marker_begin) (reference_label) (footnote_marker_end) (footnote_content (paragraph))) (list (list_item (list_marker_dash) (list_item_content (paragraph)))))))
+
+=============================
+A lazy line after a description-hosted note is a document sibling (#459)
+=============================
+:: t
+:  [^f]: note
+     cont
+tail
+
+---
+
+(document (definition_list (list_item (list_marker_definition) (term)) (list_item (list_marker_description) (footnote (footnote_marker_begin) (reference_label) (footnote_marker_end) (footnote_content (paragraph))))) (paragraph))
+
+=============================
+A lazy line after a nested list in a note is a document sibling (#459)
+=============================
+:: t
+:  [^f]: note
+     - nested
+tail
+
+---
+
+(document (definition_list (list_item (list_marker_definition) (term)) (list_item (list_marker_description) (footnote (footnote_marker_begin) (reference_label) (footnote_marker_end) (footnote_content (paragraph) (list (list_item (list_marker_dash) (list_item_content (paragraph)))))))) (paragraph))
+
+=============================
+A line at the description margin follows its hosted note (#459)
+=============================
+:: t
+:  [^f]: note
+     - nested
+   tail
+
+---
+
+(document (definition_list (list_item (list_marker_definition) (term)) (list_item (list_marker_description) (footnote (footnote_marker_begin) (reference_label) (footnote_marker_end) (footnote_content (paragraph) (list (list_item (list_marker_dash) (list_item_content (paragraph)))))) (paragraph))))
