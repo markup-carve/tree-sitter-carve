@@ -12,6 +12,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   family) or the combined `/*...*/` token now ends at that construct's own
   closer instead of running past it to the end of the line
   (markup-carve/carve#2170, #431).
+- A construct on the document's last line completes when that line carries no
+  terminator. Thirteen line endings accepted only a real newline, so a fence, a
+  colon fence, a comment line, a thematic break, a caption, a reference or
+  citation definition or a block attribute line at the end of an unterminated
+  document parsed to an ERROR - the state of a buffer between two keystrokes.
+  Over the pinned corpus, documents gaining an ERROR from the missing terminator
+  alone fall from 232 to 26; the remaining 26 need a container unwind at end of
+  input and are tracked on #458 (#464).
 
 ### Changed
 
