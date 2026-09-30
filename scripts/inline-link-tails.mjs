@@ -35,6 +35,18 @@ for (const newline of ['\n', '\r\n', '\r']) {
 console.log(`Inline link tails: ${checked} title and delimiter controls across LF, CRLF, and CR.`);
 
 for (const newline of ['\n', '\r\n', '\r']) {
+  const source = `[[[t](/v)]{.d}](/u)${newline}`;
+  const tree = parser.parse(source).rootNode;
+  assert.equal(tree.hasError, false, source);
+  const outer = tree.descendantsOfType('inline_link')[0];
+  assert.equal(outer.text, source.slice(0, -newline.length));
+  assert.equal(outer.childForFieldName('destination').text, '(/u)');
+  const span = outer.descendantsOfType('span')[0];
+  assert.equal(span.text, '[[t](/v)]{.d}');
+  assert.equal(span.descendantsOfType('inline_link')[0].text, '[t](/v)');
+  const comment = parser.parse(`[a\t%% hidden](/u)${newline}`).rootNode;
+  assert.equal(comment.hasError, false);
+  assert.equal(comment.descendantsOfType('trailing_comment')[0].text, '\t%% hidden');
   for (const middle of ['', '# heading', '> quote', '::: note']) {
     for (const prefix of ['', '!']) {
       const source = `${prefix}[a](/u "t${newline}${middle}${newline}u")${newline}`;
