@@ -8814,7 +8814,7 @@ static bool parse_plain_bracket_run(Scanner *s, TSLexer *lexer) {
       while (lexer->lookahead == ' ' || lexer->lookahead == '\t') advance(s, lexer);
       if (lexer->eof(lexer)) break;
       if (at_line_end(lexer)) {
-        if (have_remainder_column) {
+        if (have_remainder_column && !find_inline(s, INLINE_NOTE)) {
           s->after_closer_char = PLAIN_BRACKET_REMAINDER;
           s->after_closer_col = remainder_column;
           lexer->result_symbol = LITERAL_RUN;
@@ -8865,6 +8865,7 @@ static bool parse_plain_bracket_run(Scanner *s, TSLexer *lexer) {
   }
   if (plain || have_remainder_column) {
     if (punctuation && (!continued || have_remainder_column)) {
+      if (find_inline(s, INLINE_NOTE)) return false;
       if (!have_remainder_column) {
         remainder_column = line_column(s, lexer) - (s->advances - remainder_advances);
       }

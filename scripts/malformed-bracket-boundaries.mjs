@@ -94,4 +94,8 @@ const restored = parser.parse(afterShift);
 restored.edit({ startIndex: 1, oldEndIndex: 2, newEndIndex: 1,
   startPosition: { row: 0, column: 1 }, oldEndPosition: { row: 0, column: 2 }, newEndPosition: { row: 0, column: 1 } });
 assert.equal(parser.parse(beforeShift, restored).rootNode.toString(), parser.parse(beforeShift).rootNode.toString());
+for (const source of ['x ^[ [[a.\nb]\n', 'x ^[ [[a,\nb]\n']) {
+  assert.match(carveToHtml(source), /^<p>x \^\[/);
+  assert.equal(parser.parse(source).rootNode.descendantsOfType('inline_note').length, 0, source);
+}
 console.log('Malformed brackets: 32 boundary controls across LF/CRLF/CR and 16 incremental edits.');
