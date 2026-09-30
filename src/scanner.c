@@ -234,6 +234,7 @@ typedef enum {
   // see `innermost_comment_bound`. Appended last for the same index reason
   // as the tokens above it.
   TRAILING_COMMENT,
+  EMPTY_LIST_CONTINUATION_MARKER,
 } TokenType;
 
 // The different blocks in Carve that we track,
@@ -5951,6 +5952,46 @@ static bool continuation_marker_column(Scanner *s, uint32_t column) {
   return false;
 }
 
+// An empty continuation consumes its marker without promising a following
+// block. Only a marker of the current list type can be a sibling item.
+static bool emit_plus_line(Scanner *s, TSLexer *lexer,
+                            const bool *valid_symbols) {
+  uint32_t col_base = s->col_base;
+  consume_line_end(s, lexer);
+  mark_end(s, lexer);
+  uint8_t indent = s->indent;
+  uint8_t level = s->block_quote_level;
+  uint16_t state = s->state;
+  Block *list = find_list(s);
+  consume_whitespace(s, lexer);
+  bool empty = lexer->eof(lexer) || (!list && at_line_end(lexer));
+  if (!empty && list && !at_line_end(lexer)) {
+    bool ending_newline = false;
+    scan_block_quote_markers(s, lexer, &ending_newline);
+    s->indent = consume_whitespace(s, lexer);
+    uint32_t marker_column = line_column(s, lexer);
+    TokenType marker = scan_list_marker_token(s, lexer);
+    empty = marker != IGNORED && list_marker_to_block(marker) == list->type &&
+            marker_column + 1 == list->data &&
+            marker_line_has_content(s, lexer);
+  }
+  s->indent = indent;
+  s->block_quote_level = level;
+  s->state = state;
+  TokenType token = empty ? EMPTY_LIST_CONTINUATION_MARKER
+                         : LIST_CONTINUATION_MARKER;
+  if (!valid_symbols[token]) {
+    s->col_base = col_base;
+    return false;
+  }
+  s->state &= ~STATE_LIST_CONTINUATION;
+  if (!empty && list) {
+    s->state |= STATE_LIST_CONTINUATION;
+  }
+  lexer->result_symbol = token;
+  return true;
+}
+
 static bool parse_plus_line(Scanner *s, TSLexer *lexer,
                             const bool *valid_symbols) {
   if (lexer->lookahead != '+') {
@@ -5961,16 +6002,10 @@ static bool parse_plus_line(Scanner *s, TSLexer *lexer,
   // it is a table row, and the table's own rule places it.
   bool marker_column = continuation_marker_column(s, line_column(s, lexer));
   advance(s, lexer);
-  if (at_line_end(lexer) && valid_symbols[LIST_CONTINUATION_MARKER] &&
-      marker_column) {
-    consume_line_end(s, lexer);
-    mark_end(s, lexer);
-    s->state &= ~STATE_LIST_CONTINUATION;
-    if (find_list(s) != NULL) {
-      s->state |= STATE_LIST_CONTINUATION;
-    }
-    lexer->result_symbol = LIST_CONTINUATION_MARKER;
-    return true;
+  if ((at_line_end(lexer) || lexer->eof(lexer)) && marker_column &&
+      (valid_symbols[LIST_CONTINUATION_MARKER] ||
+       valid_symbols[EMPTY_LIST_CONTINUATION_MARKER])) {
+    return emit_plus_line(s, lexer, valid_symbols);
   }
   if (lexer->lookahead != ' ') {
     return false;
@@ -5979,16 +6014,10 @@ static bool parse_plus_line(Scanner *s, TSLexer *lexer,
   while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
     advance(s, lexer);
   }
-  if (at_line_end(lexer) && valid_symbols[LIST_CONTINUATION_MARKER] &&
-      marker_column) {
-    consume_line_end(s, lexer);
-    mark_end(s, lexer);
-    s->state &= ~STATE_LIST_CONTINUATION;
-    if (find_list(s) != NULL) {
-      s->state |= STATE_LIST_CONTINUATION;
-    }
-    lexer->result_symbol = LIST_CONTINUATION_MARKER;
-    return true;
+  if ((at_line_end(lexer) || lexer->eof(lexer)) && marker_column &&
+      (valid_symbols[LIST_CONTINUATION_MARKER] ||
+       valid_symbols[EMPTY_LIST_CONTINUATION_MARKER])) {
+    return emit_plus_line(s, lexer, valid_symbols);
   }
   if (!valid_symbols[TABLE_CONTINUATION_ROW]) {
     return false;
@@ -10144,6 +10173,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   // ending it. Only valid where the grammar expects it.
   if (lexer->lookahead == '+' &&
       (valid_symbols[LIST_CONTINUATION_MARKER] ||
+       valid_symbols[EMPTY_LIST_CONTINUATION_MARKER] ||
        valid_symbols[TABLE_CONTINUATION_ROW]) &&
       parse_plus_line(s, lexer, valid_symbols)) {
     return true;

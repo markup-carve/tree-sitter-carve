@@ -4143,3 +4143,137 @@ A quoted blank line before a shallower quote ends the footnote (#459)
 ---
 
 (document (block_quote (block_quote_marker) (content (block_quote (block_quote_marker) (content (footnote (footnote_marker_begin) (reference_label) (footnote_marker_end) (footnote_content (paragraph))) (block_quote_marker) (block_quote_marker))))) (paragraph))
+
+=============================
+A continuation before sibling list items attaches no block (#459)
+=============================
+- a
++
+- x
+- y
+
+---
+
+(document (list (list_item (list_marker_dash) (list_item_content (paragraph) (list_continuation_marker))) (list_item (list_marker_dash) (list_item_content (paragraph))) (list_item (list_marker_dash) (list_item_content (paragraph)))))
+
+=============================
+A continuation at the item margin can end the document (#459)
+=============================
+- x
+  > q
+  +
+
+---
+
+(document (list (list_item (list_marker_dash) (list_item_content (paragraph) (block_quote (block_quote_marker) (content (paragraph) (list_continuation_marker)))))))
+
+=============================
+A flush continuation after an item quote can end the document (#459)
+=============================
+- x
+  > q
++
+
+---
+
+(document (list (list_item (list_marker_dash) (list_item_content (paragraph) (block_quote (block_quote_marker) (content (paragraph))) (list_continuation_marker)))))
+
+=============================
+A continuation after a quote can end at EOF (#459)
+=============================
+> q
++
+---
+
+(document (block_quote (block_quote_marker) (content (paragraph) (list_continuation_marker))))
+
+=============================
+A quote continuation can still attach a list (#459)
+=============================
+> q
++
+- x
+
+---
+
+(document (block_quote (block_quote_marker) (content (paragraph) (list_continuation_marker) (list (list_item (list_marker_dash) (list_item_content (paragraph)))))))
+
+=============================
+A continuation before a blank line attaches no block (#459)
+=============================
+- a
++
+
+para
+
+---
+
+(document (list (list_item (list_marker_dash) (list_item_content (paragraph) (list_continuation_marker)))) (paragraph))
+
+=============================
+A continuation attaches a list of a different type (#459)
+=============================
+- a
++
+1. x
+
+---
+
+(document (list (list_item (list_marker_dash) (list_item_content (paragraph) (list_continuation_marker) (list (list_item (list_marker_decimal_period) (list_item_content (paragraph))))))))
+
+=============================
+A continuation attaches a star list (#459)
+=============================
+- a
++
+* x
+
+---
+
+(document (list (list_item (list_marker_dash) (list_item_content (paragraph) (list_continuation_marker) (list (list_item (list_marker_star) (list_item_content (paragraph))))))))
+
+=============================
+A continuation attaches a task list (#459)
+=============================
+- a
++
+- [ ] x
+
+---
+
+(document (list (list_item (list_marker_dash) (list_item_content (paragraph) (list_continuation_marker) (list (list_item (list_marker_task (unchecked)) (list_item_content (paragraph))))))))
+
+=============================
+A continuation attaches a definition-like paragraph (#459)
+=============================
+- a
++
+: x
+
+---
+
+(document (list (list_item (list_marker_dash) (list_item_content (paragraph) (list_continuation_marker) (paragraph)))))
+
+=============================
+A blank continuation preserves ordered siblings (#459)
+=============================
+1. a
++
+
+2. b
+
+---
+
+(document (list (list_item (list_marker_decimal_period) (list_item_content (paragraph) (list_continuation_marker))) (list_item (list_marker_decimal_period) (list_item_content (paragraph)))))
+
+=============================
+A blank continuation preserves bullet siblings (#459)
+=============================
+- a
++
+
+- b
+
+---
+
+(document (list (list_item (list_marker_dash) (list_item_content (paragraph) (list_continuation_marker))) (list_item (list_marker_dash) (list_item_content (paragraph)))))

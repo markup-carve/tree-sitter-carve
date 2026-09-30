@@ -768,7 +768,10 @@ module.exports = grammar({
     // a zero-width spacer would force a terminator-less block (a table) to reduce
     // after its first row.
     _list_continuation: ($) =>
-      seq($.list_continuation_marker, $._block_with_heading),
+      choice(
+        seq($.list_continuation_marker, $._block_with_heading),
+        alias($._empty_list_continuation_marker, $.list_continuation_marker),
+      ),
 
     table: ($) =>
       prec.right(
@@ -1334,6 +1337,10 @@ module.exports = grammar({
             // A `+` continuation marker (PART 9 §17) attaches a flush-left block
             // (not `>`-prefixed) to the quote (corpus 100-block-quote-continuation-marker).
             seq($.list_continuation_marker, $._block_element),
+            alias(
+              $._empty_list_continuation_marker,
+              $.list_continuation_marker,
+            ),
           ),
         ),
       ),
@@ -2980,5 +2987,6 @@ module.exports = grammar({
     // see the definition's own comment above and `parse_trailing_comment` in
     // src/scanner.c.
     $.trailing_comment,
+    $._empty_list_continuation_marker,
   ],
 });

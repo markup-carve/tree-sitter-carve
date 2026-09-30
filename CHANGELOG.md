@@ -8,6 +8,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Accept a continuation marker with no attached block at EOF or before a
+  sibling item. Preserve nested lists and loose sibling items after the marker
+  (#459).
 - Open fences after quotes at the host content column, on footnote marker lines
   and in quoted footnote bodies. Close nested notes and lists when a quote ends.
   Keep bullets in an open description paragraph as text (#459).
