@@ -20,8 +20,7 @@
     "a-column-0-opener-does-not-close-an-open-list": "a column-0 block opener does not close an open LIST; it folds into the item as lazy paragraph text. `- a` / `# H` builds no heading, while `> q` / `# H` does - so the block quote closes correctly and only the list does not. Both documents here reach it through a `+` continuation marker, which this grammar opens as an ordinary bullet list, after which the column-0 heading below is swallowed the same way.",
     "a-tabbed-frontmatter-opener-swallows-the-break-below": "`---` followed by a TAB is not a frontmatter opener, and the grammar agrees that far - it builds no frontmatter. But it then reads the closing `---` three lines down as an `em_dash` inside the still-open paragraph rather than as a thematic break, so the `<hr>` the fixture expects between the paragraph and `body` is not built.",
     "fence-on-a-marker-line-builds-nothing": "a code fence opened on a list MARKER line: the item closes with an EMPTY code block and the residue re-parses at document level when the body sits BELOW the item's content column (markup-carve/carve#646). This grammar builds no code_block for any of these, and MEASURED against it, the cause is NOT that the fence is committed to the item with no route out - it is that the fence never opens at all. `parse_backtick` refuses an opener when `has_extra_indent` is true, and on a marker line the fence sits past the line's own indent while the item's content column is only established by the marker itself, so `- ` + fence is read as inline verbatim. The heading marker and the colon fence carry the same column-0 guard and fail the same way on a marker line, while a block quote and a table - which do not - open there correctly. The quote half of that was narrower than it reads and is now closed: its MARKER opened, but the quote took no content and the rest of the line was ejected from the list, repaired in tree-sitter-carve#218 by moving the line's content margin to the quote's own content column when it opens on an item's marker line - the same move this entry's openers need at the LIST marker. So the first half is a column question and the second half, closing the item at the boundary, is the container change; the fully-indented example (-3) needs only the first. Tracked in tree-sitter-carve#160.",
-    "marker-line-block-opener-builds-nothing": "a block opener written on a list MARKER line builds nothing. `- # H` gives a list item whose content is a PARAGRAPH, not a heading; `- ---` is read as a document-level thematic break that consumes the marker, so no list is built at all. Verified against the indented spelling, which works: `- a` / `  # H` does build the heading. This is the same shape as the recorded `fence-on-a-marker-line-builds-nothing` - the marker line is one position this grammar does not run block-opener recognition in - now reached by the heading and thematic-break openers too. A TASK checkbox does not change which openers reach it, but it does change what the thematic break degrades INTO, and the sentence above is wrong for that spelling: `- [x] # h` is still a paragraph, while `- [ ] ---` no longer consumes the marker - the list and the item ARE built and `---` becomes an inline `em_dash` inside the item's paragraph. Measured against the neighbour that works, which is what keeps the checkbox out of it: `- [ ] > q` opens its quote with content, so the checkbox does not disturb an opener the marker line already admits. That is why a-task-item-s-checkbox-is-not-decided-by-its-first-block reports `heading: want 1 have 0; thematic_break: want 1 have 0` and no gap for its quote.",
-    "a-container-label-is-one-opaque-token": "a colon fence's bracketed LABEL is one opaque `code_block_label` token, so nothing inside it is parsed as inline: `:::[/i/]` publishes `<em>i</em>` in the fixture and the tree holds no span at all. It is the construct this category is named for and it applies to every inline kind that can sit in a label - emphasis, strong and code all read the same way - and to the admonition spelling `::: note [/i/]` as well as the plain one. Tracked in tree-sitter-carve#459."
+    "marker-line-block-opener-builds-nothing": "a block opener written on a list MARKER line builds nothing. `- # H` gives a list item whose content is a PARAGRAPH, not a heading; `- ---` is read as a document-level thematic break that consumes the marker, so no list is built at all. Verified against the indented spelling, which works: `- a` / `  # H` does build the heading. This is the same shape as the recorded `fence-on-a-marker-line-builds-nothing` - the marker line is one position this grammar does not run block-opener recognition in - now reached by the heading and thematic-break openers too. A TASK checkbox does not change which openers reach it, but it does change what the thematic break degrades INTO, and the sentence above is wrong for that spelling: `- [x] # h` is still a paragraph, while `- [ ] ---` no longer consumes the marker - the list and the item ARE built and `---` becomes an inline `em_dash` inside the item's paragraph. Measured against the neighbour that works, which is what keeps the checkbox out of it: `- [ ] > q` opens its quote with content, so the checkbox does not disturb an opener the marker line already admits. That is why a-task-item-s-checkbox-is-not-decided-by-its-first-block reports `heading: want 1 have 0; thematic_break: want 1 have 0` and no gap for its quote."
   },
   "reasonPredicates": {
     "a-column-0-opener-does-not-close-an-open-list": {
@@ -39,10 +38,6 @@
     "marker-line-block-opener-builds-nothing": {
       "ledger": "underAcceptance",
       "sourcePattern": "^[-*+] (?:\\[[ xX]\\] )?(?:#{1,6}[ \\t]|-{3,}[ \\t]*(?:\\n|$))"
-    },
-    "a-container-label-is-one-opaque-token": {
-      "ledger": "inlineReadingGaps",
-      "sourcePattern": "^:{3,}(?:[ \\t]+[A-Za-z]+)?[ \\t]*\\["
     }
   },
   "covered": [
@@ -752,10 +747,6 @@
     "a-comment-span-opened-below-every-content-column-is-located-there-8": {
       "gaps": "code_block: want 1 have 0",
       "reason": "an UNCLOSED fence at a list item's content column, followed by a line at column 0, does not open: the two-line control `- item` / `  ``` ` / `tail` already shows it, so the comment block this document opens above the fence is not part of the cause - a fence after a `%%%` block in the same item opens normally. The fixture reads the lazy `tail` as the block's content."
-    },
-    "a-container-label-publishes-its-inline-run-8": {
-      "gaps": "code_block: want 1 have 0",
-      "reason": "a code span inside a fence's bracketed label breaks the opener: ``` ``` js [a b] ``` opens its code block and ``` ``` js [a `]` b] ``` does not, so it is the backtick run inside the label rather than the bracket. The whole fence degrades to inline verbatim."
     }
   },
   "errorFamilies": {
@@ -809,10 +800,6 @@
       "reading": "strong html=0 tree=1",
       "reason": "`/*a<TAB>*/ y`: the grammar's `bold_italic_end` folds a whitespace character right before the closer into the closer itself, the same trailing-space exception `_}`/`*}` take on the bare spans, and reads `a` as the whole content; the reference admits no such exception for the combined token - a TAB is content like any other character, no valid closer follows it, and the whole thing falls back to a bare `/` emphasis over the literal `*a<TAB>*`."
     },
-    "any-character-is-content-of-the-combined-bold-italic-token-7": {
-      "reading": "strong#1 html=\"ab\" tree=\"acb\", em#1 html=\"ab\" tree=\"acb\"",
-      "reason": "the alphanumeric skeleton this check compares is the span's WHOLE raw text, with no notion of a `%%` comment inside it; now that the comment correctly stops at the span's own closer (this PR) rather than running past it, the comment's own characters are real bytes inside the node and count toward the skeleton even though they render as nothing. Excluding a comment's span from this comparison is a gap in the check itself, not a wrong tree."
-    },
     "a-caption-s-placeholder-is-any-that-does-not-begin-a-tag-6": {
       "reading": "strong html=1 tree=0",
       "reason": "`Figure #-a q` on a caption line: `#-a` cannot be a tag (a tag name may not start with `-`), which is the category's own point - the reference reads it as a placeholder wrapped in its own markup, while the grammar's caption content reads the whole line as flat, uninterpreted text with nothing resolved inside it."
@@ -821,47 +808,7 @@
       "reading": "alt html=0 tree=1",
       "reason": "an unresolved reference/image renders as its literal typed source with no alt-bearing element at all; the grammar still builds a structural `collapsed_reference_link`/`collapsed_reference_image` node from the bracket shape alone; whether a label resolves is a question for the definition table, not the parse, which is why the pair's inner text is already exempt (see the note above `EXCLUDED` in this script) - the alt-tag COUNT is not."
     },
-    "a-comment-inside-a-forced-span-or-the-combined-token-ends-at-its-closer-2": {
-      "reading": "u#1 html=\"a\" tree=\"ab\"",
-      "reason": "the alphanumeric skeleton this check compares is the span's WHOLE raw text, with no notion of a `%%` comment inside it; now that the comment correctly stops at the span's own closer (this PR) rather than running past it, the comment's own characters are real bytes inside the node and count toward the skeleton even though they render as nothing. Excluding a comment's span from this comparison is a gap in the check itself, not a wrong tree."
-    },
-    "a-comment-inside-a-forced-span-or-the-combined-token-ends-at-its-closer-3": {
-      "reading": "strong#1 html=\"a\" tree=\"ab\", em#1 html=\"a\" tree=\"ab\"",
-      "reason": "the alphanumeric skeleton this check compares is the span's WHOLE raw text, with no notion of a `%%` comment inside it; now that the comment correctly stops at the span's own closer (this PR) rather than running past it, the comment's own characters are real bytes inside the node and count toward the skeleton even though they render as nothing. Excluding a comment's span from this comparison is a gap in the check itself, not a wrong tree."
-    },
-    "a-comment-inside-a-forced-span-or-the-combined-token-ends-at-its-closer-4": {
-      "reading": "strong#1 html=\"ab\" tree=\"acb\", em#1 html=\"ab\" tree=\"acb\"",
-      "reason": "the alphanumeric skeleton this check compares is the span's WHOLE raw text, with no notion of a `%%` comment inside it; now that the comment correctly stops at the span's own closer (this PR) rather than running past it, the comment's own characters are real bytes inside the node and count toward the skeleton even though they render as nothing. Excluding a comment's span from this comparison is a gap in the check itself, not a wrong tree."
-    },
-    "a-comment-inside-a-forced-span-or-the-combined-token-ends-at-its-closer": {
-      "reading": "strong#1 html=\"a\" tree=\"ab\"",
-      "reason": "the alphanumeric skeleton this check compares is the span's WHOLE raw text, with no notion of a `%%` comment inside it; now that the comment correctly stops at the span's own closer (this PR) rather than running past it, the comment's own characters are real bytes inside the node and count toward the skeleton even though they render as nothing. Excluding a comment's span from this comparison is a gap in the check itself, not a wrong tree."
-    },
-    "a-container-label-publishes-its-inline-run": {
-      "reading": "em html=1 tree=0",
-      "reason": "ref:a-container-label-is-one-opaque-token"
-    },
-    "a-container-label-publishes-its-inline-run-2": {
-      "reading": "strong html=1 tree=0",
-      "reason": "ref:a-container-label-is-one-opaque-token"
-    },
-    "a-container-label-publishes-its-inline-run-3": {
-      "reading": "code html=1 tree=0",
-      "reason": "ref:a-container-label-is-one-opaque-token"
-    },
-    "a-container-label-publishes-its-inline-run-5": {
-      "reading": "em html=1 tree=0",
-      "reason": "ref:a-container-label-is-one-opaque-token"
-    },
-    "a-container-label-publishes-its-inline-run-6": {
-      "reading": "code html=1 tree=0",
-      "reason": "ref:a-container-label-is-one-opaque-token"
-    },
     "a-comment-span-opened-below-every-content-column-is-located-there-8": {
-      "reading": "code html=0 tree=1",
-      "reason": "the inline face of this document's recorded `underAcceptance` gap: the fence degrades to one inline verbatim span, so the tree carries a `code` span the fixture does not have. It goes away with that gap, not separately."
-    },
-    "a-container-label-publishes-its-inline-run-8": {
       "reading": "code html=0 tree=1",
       "reason": "the inline face of this document's recorded `underAcceptance` gap: the fence degrades to one inline verbatim span, so the tree carries a `code` span the fixture does not have. It goes away with that gap, not separately."
     },
@@ -872,18 +819,6 @@
     "a-link-inside-a-span-s-label-keeps-its-destination-4": {
       "reading": "em html=1 tree=0",
       "reason": "emphasis inside a span's label is lost once that label also holds a link: `[/[t](/v)/]{.c}` builds the span, the link and the attribute but no emphasis, while `[/t/]{.c}` builds it. The neighbourhood of the `a-link-inside-a-span-s-label-keeps-its-destination-8` skip entry, which is the same pairing failing hard enough to ERROR. Tracked in tree-sitter-carve#459."
-    },
-    "a-container-label-preserves-closed-inline-constructs-before-cutting-a-comment-2": {
-      "reading": "del html=1 tree=0",
-      "reason": "Container labels are opaque code_block_label tokens rather than inline content. The source range parses cleanly but has no matching inline node."
-    },
-    "a-container-label-preserves-closed-inline-constructs-before-cutting-a-comment-5": {
-      "reading": "code html=1 tree=0",
-      "reason": "Container labels are opaque code_block_label tokens rather than inline content. The source range parses cleanly but has no matching inline node."
-    },
-    "a-container-label-preserves-closed-inline-constructs-before-cutting-a-comment": {
-      "reading": "ins html=1 tree=0",
-      "reason": "Container labels are opaque code_block_label tokens rather than inline content. The source range parses cleanly but has no matching inline node."
     },
     "a-braced-span-cannot-close-beyond-its-bracket-run-10": {
       "reading": "ins html=0 tree=1, del html=0 tree=1",

@@ -4277,3 +4277,201 @@ A blank continuation preserves bullet siblings (#459)
 ---
 
 (document (list (list_item (list_marker_dash) (list_item_content (paragraph) (list_continuation_marker))) (list_item (list_marker_dash) (list_item_content (paragraph)))))
+
+=============================
+A container label publishes inline emphasis (#459)
+=============================
+:::[/i/]
+body
+:::
+
+---
+
+(document (div (div_marker_begin) (code_block_label (emphasis (emphasis_begin) (content) (emphasis_end))) (content (paragraph)) (div_marker_end)))
+
+=============================
+A container label keeps a braced insert before a comment (#459)
+=============================
+:::[{+a %% secret+}]
+body
+:::
+
+---
+
+(document (div (div_marker_begin) (code_block_label (insert (insert_begin) (content (trailing_comment)) (insert_end))) (content (paragraph)) (div_marker_end)))
+
+=============================
+A container label keeps opaque code containing a closing bracket (#459)
+=============================
+:::[a `]` b]
+body
+:::
+
+---
+
+(document (div (div_marker_begin) (code_block_label (verbatim (verbatim_marker_begin) (content) (verbatim_marker_end))) (content (paragraph)) (div_marker_end)))
+
+=============================
+A code fence label keeps opaque code containing a closing bracket (#459)
+=============================
+``` js [a `]` b]
+c
+```
+
+---
+
+(document (code_block (code_block_marker_begin) (language) (code_block_label (verbatim (verbatim_marker_begin) (content) (verbatim_marker_end))) (code) (code_block_marker_end)))
+
+=============================
+A container label keeps a closing bracket inside a braced comment (#459)
+=============================
+:::[{% ] %} after]
+body
+:::
+
+---
+
+(document (div (div_marker_begin) (code_block_label (braced_comment (content))) (content (paragraph)) (div_marker_end)))
+
+=============================
+A container label keeps a closing bracket inside an editorial comment (#459)
+=============================
+:::[{# ] #} after]
+body
+:::
+
+---
+
+(document (div (div_marker_begin) (code_block_label (editorial_comment (content))) (content (paragraph)) (div_marker_end)))
+
+=============================
+A trailing comment ends at the container label close (#459)
+=============================
+:::[a %% secret]
+body
+:::
+
+---
+
+(document (div (div_marker_begin) (code_block_label (trailing_comment)) (content (paragraph)) (div_marker_end)))
+
+=============================
+An unclosed braced comment stays literal in a container label (#459)
+=============================
+:::[a {% b]
+body
+:::
+
+---
+
+(document (div (div_marker_begin) (code_block_label) (content (paragraph)) (div_marker_end)))
+
+=============================
+An unclosed editorial comment stays literal in a container label (#459)
+=============================
+:::[a {# b]
+body
+:::
+
+---
+
+(document (div (div_marker_begin) (code_block_label) (content (paragraph)) (div_marker_end)))
+
+=============================
+An unclosed editorial comment stays literal in code metadata (#459)
+=============================
+``` js [a {# b]
+c
+```
+
+---
+
+(document (code_block (code_block_marker_begin) (language) (code_block_label) (code) (code_block_marker_end)))
+
+=============================
+A label comment keeps its boundary beyond closed code (#459)
+=============================
+:::[a %% `]` b]
+body
+:::
+
+---
+
+(document (div (div_marker_begin) (code_block_label (trailing_comment)) (content (paragraph)) (div_marker_end)))
+
+=============================
+A label comment keeps its boundary beyond a closed comment (#459)
+=============================
+:::[a %% {% ] %} b]
+body
+:::
+
+---
+
+(document (div (div_marker_begin) (code_block_label (trailing_comment)) (content (paragraph)) (div_marker_end)))
+
+=============================
+An unclosed label comment leaves closed code structural (#459)
+=============================
+:::[a {% `]` b]
+body
+:::
+
+---
+
+(document (div (div_marker_begin) (code_block_label (verbatim (verbatim_marker_begin) (content) (verbatim_marker_end))) (content (paragraph)) (div_marker_end)))
+
+=============================
+An unclosed editorial opener leaves a closed comment structural (#459)
+=============================
+:::[a {# {% ] %} c]
+body
+:::
+
+---
+
+(document (div (div_marker_begin) (code_block_label (braced_comment (content))) (content (paragraph)) (div_marker_end)))
+
+=============================
+A code label comment keeps its boundary beyond closed code (#459)
+=============================
+``` js [a %% `]` b]
+c
+```
+
+---
+
+(document (code_block (code_block_marker_begin) (language) (code_block_label (trailing_comment)) (code) (code_block_marker_end)))
+
+=============================
+A label starts with a comment without padding (#459)
+=============================
+:::[%% a]
+body
+:::
+
+---
+
+(document (div (div_marker_begin) (code_block_label (trailing_comment)) (content (paragraph)) (div_marker_end)))
+
+=============================
+Code metadata starts with a comment without padding (#459)
+=============================
+``` js [%% a]
+c
+```
+
+---
+
+(document (code_block (code_block_marker_begin) (language) (code_block_label (trailing_comment)) (code) (code_block_marker_end)))
+
+=============================
+Deep literal label brackets preserve inline emphasis (#459)
+=============================
+:::[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[/x/]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]
+body
+:::
+
+---
+
+(document (div (div_marker_begin) (code_block_label (emphasis (emphasis_begin) (content) (emphasis_end))) (content (paragraph)) (div_marker_end)))

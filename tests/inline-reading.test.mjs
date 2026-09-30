@@ -83,3 +83,19 @@ test('a comment beside content in the same span keeps every character', () => {
     '',
   );
 });
+
+test("parsed trailing comments do not contribute visible span text", () => {
+  assert.equal(reading("<p><ins>a</ins></p>", "(document [0, 0] - [1, 0]\n(paragraph [0, 0] - [1, 0]\n(insert [0, 0] - [0, 15]\n(insert_begin [0, 0] - [0, 2]\n)\n(content [0, 2] - [0, 13]\n(trailing_comment [0, 3] - [0, 13]\n))\n(insert_end [0, 13] - [0, 15]\n))))", "{+a %% secret+}\n"), '');
+});
+
+test("a code span keeps comment-like text literal", () => {
+  assert.equal(reading("<p><code>a %% secret</code></p>", "(document [0, 0] - [1, 0]\n(paragraph [0, 0] - [1, 0]\n(verbatim [0, 0] - [0, 13]\n(verbatim_marker_begin [0, 0] - [0, 1]\n)\n(content [0, 1] - [0, 12]\n)\n(verbatim_marker_end [0, 12] - [0, 13]\n))))", "`a %% secret`\n"), '');
+});
+
+test("code fence metadata does not contribute rendered spans", () => {
+  assert.equal(reading("<pre><code>c\n</code></pre>", "(document [0, 0] - [3, 0]\n(code_block [0, 0] - [3, 0]\n(code_block_marker_begin [0, 0] - [0, 3]\n)\n(language [0, 4] - [0, 6]\n)\n(code_block_label [0, 7] - [0, 12]\n(emphasis [0, 8] - [0, 11]\n(emphasis_begin [0, 8] - [0, 9]\n)\n(content [0, 9] - [0, 10]\n)\n(emphasis_end [0, 10] - [0, 11]\n)))\n(code [1, 0] - [2, 0]\n)\n(code_block_marker_end [2, 0] - [2, 3]\n)))", "``` js [/i/]\nc\n```\n"), '');
+});
+
+test("container labels contribute rendered spans", () => {
+  assert.equal(reading("<div><p class=\"div-label\"><em>i</em></p><p>body</p></div>", "(document [0, 0] - [3, 0]\n(div [0, 0] - [3, 0]\n(div_marker_begin [0, 0] - [0, 3]\n)\n(code_block_label [0, 3] - [0, 8]\n(emphasis [0, 4] - [0, 7]\n(emphasis_begin [0, 4] - [0, 5]\n)\n(content [0, 5] - [0, 6]\n)\n(emphasis_end [0, 6] - [0, 7]\n)))\n(content [1, 0] - [2, 0]\n(paragraph [1, 0] - [2, 0]\n))\n(div_marker_end [2, 0] - [2, 3]\n)))", ":::[/i/]\nbody\n:::\n"), '');
+});

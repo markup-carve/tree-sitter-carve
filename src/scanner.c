@@ -235,6 +235,8 @@ typedef enum {
   // as the tokens above it.
   TRAILING_COMMENT,
   EMPTY_LIST_CONTINUATION_MARKER,
+  LABEL_MARK_BEGIN,
+  LABEL_START_COMMENT,
 } TokenType;
 
 // The different blocks in Carve that we track,
@@ -392,6 +394,8 @@ enum {
   // in closes, so its content ends at that closer. Decided at the opening
   // ticks, where the lexer may still read ahead.
   INLINE_STOPS_AT_SPAN_CLOSER = 1 << 1,
+  // Square-bracket labels use this type-specific bit to bound comments.
+  INLINE_LABEL = 1 << 1,
 };
 
 // serialized inline types must fit in six bits
@@ -411,7 +415,7 @@ typedef struct {
   uint8_t flags;
   // Square-bracket spans only: how many `]` ahead close a balanced pair of
   // literal brackets inside this one (`[t[z]](/u)`) rather than this span.
-  uint8_t literal_closes;
+  uint32_t literal_closes;
 } Inline;
 
 typedef struct {
@@ -1669,18 +1673,76 @@ static bool colon_fence_tail_is_only_trailing_whitespace(Scanner *s,
   return at_line_end(lexer) || lexer->eof(lexer);
 }
 
-/// The `[label]` slot: `label = '[', { character - ']' }, ']'`. Consumes it and
-/// requires the line to end there.
-static bool colon_fence_label_slot_closes_the_line(Scanner *s, TSLexer *lexer) {
-  advance(s, lexer); // the '['
-  while (lexer->lookahead != ']' && !at_line_end(lexer) && !lexer->eof(lexer)) {
+// Read label lookahead into a line buffer so an unclosed comment can be
+// reconsidered as literal text without rewinding the lexer.
+static bool label_slot_closes_the_line(Scanner *s, TSLexer *lexer) {
+  size_t size = 0, capacity = 64;
+  char *line = ts_malloc(capacity);
+  if (!line) return false;
+  while (!at_line_end(lexer) && !lexer->eof(lexer)) {
+    if (size == capacity) {
+      capacity *= 2;
+      char *grown = ts_realloc(line, capacity);
+      if (!grown) { ts_free(line); return false; }
+      line = grown;
+    }
+    line[size++] = lexer->lookahead < 128 ? (char)lexer->lookahead : 'x';
     advance(s, lexer);
   }
-  if (lexer->lookahead != ']') {
-    return false;
+  size_t *percent_close = ts_malloc((size + 1) * sizeof(size_t));
+  size_t *hash_close = ts_malloc((size + 1) * sizeof(size_t));
+  if (!percent_close || !hash_close) {
+    ts_free(line); ts_free(percent_close); ts_free(hash_close); return false;
   }
-  advance(s, lexer);
-  return colon_fence_tail_is_only_trailing_whitespace(s, lexer);
+  percent_close[size] = hash_close[size] = size;
+  for (size_t i = size; i-- > 0;) {
+    percent_close[i] = i + 1 < size && line[i] == '%' && line[i + 1] == '}'
+                          ? i : percent_close[i + 1];
+    hash_close[i] = i + 1 < size && line[i] == '#' && line[i + 1] == '}'
+                          ? i : hash_close[i + 1];
+  }
+  unsigned depth = 1;
+  bool accepted = false;
+  for (size_t i = 1; i < size;) {
+    char c = line[i];
+    if (c == '\\') { i += i + 1 < size ? 2 : 1; continue; }
+    if (c == '{' && i + 1 < size &&
+        (line[i + 1] == '%' || line[i + 1] == '#')) {
+      size_t end = line[i + 1] == '%' ? percent_close[i + 2]
+                                     : hash_close[i + 2];
+      if (end < size) { i = end + 2; continue; }
+    }
+    if (c == '`') {
+      size_t width = 0;
+      while (i + width < size && line[i + width] == '`') ++width;
+      i += width;
+      bool closed = false;
+      while (i < size) {
+        if (line[i] != '`') { ++i; continue; }
+        size_t run = 0;
+        while (i + run < size && line[i + run] == '`') ++run;
+        i += run;
+        if (run == width) { closed = true; break; }
+      }
+      if (!closed) break;
+      continue;
+    }
+    if (c == '[') ++depth;
+    if (c == ']' && --depth == 0) {
+      accepted = true;
+      for (++i; i < size; ++i) {
+        if (line[i] != ' ' && line[i] != '\t') { accepted = false; break; }
+      }
+      break;
+    }
+    ++i;
+  }
+  ts_free(line); ts_free(percent_close); ts_free(hash_close);
+  return accepted;
+}
+
+static bool colon_fence_label_slot_closes_the_line(Scanner *s, TSLexer *lexer) {
+  return label_slot_closes_the_line(s, lexer);
 }
 
 /// The metadata slot between two tokens on a colon-fence opener. Returns
@@ -2421,19 +2483,7 @@ static bool code_fence_info_is_modeled(Scanner *s, TSLexer *lexer) {
     if (had_token && !saw_ws) {
       return false; // glued to a preceding token
     }
-    advance(s, lexer);
-    while (lexer->lookahead != ']' && !at_line_end(lexer) &&
-           !lexer->eof(lexer)) {
-      advance(s, lexer);
-    }
-    if (lexer->lookahead != ']') {
-      return false;
-    }
-    advance(s, lexer);
-    while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
-      advance(s, lexer);
-    }
-    return at_line_end(lexer) || lexer->eof(lexer);
+    return label_slot_closes_the_line(s, lexer);
   }
 
   // Anything else (e.g. `key="x"`, a bare second word) is not a fence.
@@ -7754,6 +7804,10 @@ static Inline *innermost_braced(Scanner *s) {
 static bool innermost_comment_bound(Scanner *s, char *marker) {
   for (int i = s->open_inline->size - 1; i >= 0; --i) {
     Inline *e = *array_get(s->open_inline, i);
+    if (e->type == SQUARE_BRACKET_SPAN && (e->flags & INLINE_LABEL)) {
+      *marker = ']';
+      return true;
+    }
     if (e->type == BOLD_ITALIC) {
       *marker = 0;
       return true;
@@ -7816,7 +7870,7 @@ static bool parse_trailing_comment(Scanner *s, TSLexer *lexer,
                                    const bool *valid_symbols,
                                    uint32_t advances_at_entry,
                                    bool require_bounded) {
-  if (!valid_symbols[TRAILING_COMMENT]) {
+  if (!valid_symbols[TRAILING_COMMENT] && !valid_symbols[LABEL_START_COMMENT]) {
     return false;
   }
   char bound_marker = 0;
@@ -7824,7 +7878,10 @@ static bool parse_trailing_comment(Scanner *s, TSLexer *lexer,
   if (bounded != require_bounded) {
     return false;
   }
-  if (lexer->lookahead != ' ' && lexer->lookahead != '\t') {
+  bool unspaced = valid_symbols[LABEL_START_COMMENT] && bound_marker == ']' &&
+                  lexer->lookahead == '%' && s->advances == advances_at_entry;
+  TokenType comment_token = unspaced ? LABEL_START_COMMENT : TRAILING_COMMENT;
+  if (!unspaced && lexer->lookahead != ' ' && lexer->lookahead != '\t') {
     return false;
   }
   if (!bounded && s->advances != advances_at_entry) {
@@ -7842,7 +7899,7 @@ static bool parse_trailing_comment(Scanner *s, TSLexer *lexer,
   // (tree-sitter-carve#449). Marking here first means a failed probe leaves
   // the boundary where it already was, whatever it advances over next.
   mark_end(s, lexer);
-  advance(s, lexer);
+  if (!unspaced) advance(s, lexer);
   if (lexer->lookahead != '%') {
     return false;
   }
@@ -7855,15 +7912,41 @@ static bool parse_trailing_comment(Scanner *s, TSLexer *lexer,
   char closer_first = bounded ? (bound_marker ? bound_marker : '*') : 0;
   char closer_second = bounded ? (bound_marker ? '}' : '/') : 0;
 
+  if (bound_marker == ']') {
+    bool outer_label = false;
+    for (int i = s->open_inline->size - 1; i >= 0; --i) {
+      Inline *e = *array_get(s->open_inline, i);
+      if (e->type == SQUARE_BRACKET_SPAN) {
+        outer_label = (e->flags & INLINE_LABEL) && e->literal_closes == 0;
+        break;
+      }
+    }
+    if (outer_label) {
+      // A validated label ends at its final non-whitespace bracket. Code and
+      // comments inside the discarded tail still determine that boundary.
+      bool found = false;
+      while (!lexer->eof(lexer) && !at_line_end(lexer)) {
+        if (lexer->lookahead == ']') { mark_end(s, lexer); found = true; }
+        advance(s, lexer);
+      }
+      if (!found) return false;
+      lexer->result_symbol = comment_token;
+      return true;
+    }
+  }
   mark_end(s, lexer);
   while (!lexer->eof(lexer) && !at_line_end(lexer)) {
     if (bounded && lexer->lookahead == (int32_t)(uint8_t)closer_first) {
       // The candidate closer's first character ends the comment HERE if the
       // second follows; mark_end already sits right before it, so returning
       // now excludes both the candidate and everything after it.
+      if (bound_marker == ']') {
+        lexer->result_symbol = comment_token;
+        return true;
+      }
       advance(s, lexer);
       if (lexer->lookahead == (int32_t)(uint8_t)closer_second) {
-        lexer->result_symbol = TRAILING_COMMENT;
+        lexer->result_symbol = comment_token;
         return true;
       }
       // Not the closer after all - the candidate character is ordinary
@@ -7874,7 +7957,7 @@ static bool parse_trailing_comment(Scanner *s, TSLexer *lexer,
     advance(s, lexer);
     mark_end(s, lexer);
   }
-  lexer->result_symbol = TRAILING_COMMENT;
+  lexer->result_symbol = comment_token;
   return true;
 }
 
@@ -8843,7 +8926,7 @@ static bool mark_span_begin(Scanner *s, TSLexer *lexer,
     // A BARE marker inside a braced span of its own kind is content (corpus
     // 471), not a competing opener, so it must not stop that span closing.
     if (balanced_bracket) {
-      if (top->literal_closes < UINT8_MAX) {
+      if (top->literal_closes < ((top->flags & INLINE_LABEL) ? UINT32_MAX : UINT8_MAX)) {
         ++top->literal_closes;
       }
     } else if (open != NULL && !(bare && (open->flags & INLINE_BRACED))) {
@@ -9761,6 +9844,46 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   // earlier probe's own declined scratch-read left the lexer. See the note at
   // that call.
   const uint32_t advances_at_entry = s->advances;
+  if (valid_symbols[LABEL_MARK_BEGIN] && !valid_symbols[ERROR]) {
+    mark_end(s, lexer);
+    push_inline_flagged(s, SQUARE_BRACKET_SPAN, 0, INLINE_LABEL);
+    lexer->result_symbol = LABEL_MARK_BEGIN;
+    return true;
+  }
+
+
+  Inline *label = peek_inline(s);
+  if (valid_symbols[LITERAL_RUN] && !valid_symbols[ERROR] && label &&
+      label->type == SQUARE_BRACKET_SPAN && (label->flags & INLINE_LABEL) &&
+      lexer->lookahead == '[') {
+    // A literal bracket nest whose closes are consecutive cannot form a
+    // link or attributed span. Consume its openers together so markup in
+    // the body does not compete with a branch for every literal bracket.
+    uint32_t opens = 0;
+    while (lexer->lookahead == '[') {
+      advance(s, lexer); ++opens; mark_end(s, lexer);
+    }
+    if (opens < 2) return false;
+    bool plain = true;
+    while (!lexer->eof(lexer) && !at_line_end(lexer) && lexer->lookahead != ']') {
+      if (lexer->lookahead == '[') return false;
+      if (!carve_is_alnum_ascii(lexer->lookahead) && lexer->lookahead < 128 &&
+          lexer->lookahead != ' ' && lexer->lookahead != '\t') plain = false;
+      advance(s, lexer);
+    }
+    uint32_t closes = 0;
+    while (closes < opens && lexer->lookahead == ']') {
+      advance(s, lexer); ++closes;
+    }
+    if (closes != opens || lexer->lookahead != ']') return false;
+    if (plain) mark_end(s, lexer);
+    advance(s, lexer);
+    consume_whitespace(s, lexer);
+    if (!at_line_end(lexer) && !lexer->eof(lexer)) return false;
+    if (!plain) label->literal_closes += opens;
+    lexer->result_symbol = LITERAL_RUN;
+    return true;
+  }
 
   // FIRST, and it answers for the whole call: the reader it runs moves the
   // lexer to the end of the run, so nothing below could read from where it
@@ -10637,6 +10760,11 @@ unsigned tree_sitter_carve_external_scanner_serialize(void *payload,
   const size_t block_count_bytes = 1;
   const size_t block_bytes = 4;
   const size_t inline_bytes = 3;
+  size_t label_bytes = 0;
+  for (size_t i = 0; i < s->open_inline->size; ++i) {
+    Inline *e = *array_get(s->open_inline, i);
+    if (e->type == SQUARE_BRACKET_SPAN && (e->flags & INLINE_LABEL)) label_bytes += 3;
+  }
   if (s->open_blocks->size > UINT8_MAX ||
       s->open_blocks->size >
           (SIZE_MAX - scalar_bytes - block_count_bytes) / block_bytes ||
@@ -10646,7 +10774,7 @@ unsigned tree_sitter_carve_external_scanner_serialize(void *payload,
               inline_bytes ||
       scalar_bytes + block_count_bytes +
               s->open_blocks->size * block_bytes +
-              s->open_inline->size * inline_bytes >
+              s->open_inline->size * inline_bytes + label_bytes >
           TREE_SITTER_SERIALIZATION_BUFFER_SIZE) {
     return 0;
   }
@@ -10682,6 +10810,11 @@ unsigned tree_sitter_carve_external_scanner_serialize(void *payload,
     buffer[size++] = (char)((uint8_t)x->type | (uint8_t)(x->flags << 6));
     buffer[size++] = (char)x->data;
     buffer[size++] = (char)x->literal_closes;
+    if (x->type == SQUARE_BRACKET_SPAN && (x->flags & INLINE_LABEL)) {
+      buffer[size++] = (char)(x->literal_closes >> 8);
+      buffer[size++] = (char)(x->literal_closes >> 16);
+      buffer[size++] = (char)(x->literal_closes >> 24);
+    }
   }
 
   return size;
@@ -10723,7 +10856,13 @@ void tree_sitter_carve_external_scanner_deserialize(void *payload, char *buffer,
     while (size + 3 <= length) {
       uint8_t packed = (uint8_t)buffer[size++];
       uint8_t data = (uint8_t)buffer[size++];
-      uint8_t literal_closes = (uint8_t)buffer[size++];
+      uint32_t literal_closes = (uint8_t)buffer[size++];
+      if ((packed & 0x3f) == SQUARE_BRACKET_SPAN && (packed >> 6 & INLINE_LABEL)) {
+        if (size + 3 > length) break;
+        literal_closes |= (uint32_t)(uint8_t)buffer[size++] << 8;
+        literal_closes |= (uint32_t)(uint8_t)buffer[size++] << 16;
+        literal_closes |= (uint32_t)(uint8_t)buffer[size++] << 24;
+      }
       push_inline_flagged(s, (InlineType)(packed & 0x3f), data,
                           (uint8_t)(packed >> 6));
       (*array_back(s->open_inline))->literal_closes = literal_closes;

@@ -1253,7 +1253,18 @@ module.exports = grammar({
     // not swallowed into the language token -- the info string then needs the
     // space the spec requires, and a glued form falls back (matches the impls).
     language: (_) => /[^\r\n\t \{\}=\["]+/,
-    code_block_label: (_) => seq("[", /[^\]\r\n]*/, "]"),
+    code_block_label: ($) =>
+      seq(
+        "[",
+        $._label_mark_begin,
+        optional(
+          choice(
+            $._inline_single_line,
+            alias($._label_start_comment, $.trailing_comment),
+          ),
+        ),
+        alias($._square_bracket_span_end, "]"),
+      ),
     // Quoted "header" on a code fence opener (PART 9 §2). A single token so it
     // lexes cleanly right after the immediate inter-token whitespace.
     // Double-quoted only, matching the carve impls' code-fence header (the
@@ -3004,5 +3015,7 @@ module.exports = grammar({
     // src/scanner.c.
     $.trailing_comment,
     $._empty_list_continuation_marker,
+    $._label_mark_begin,
+    $._label_start_comment,
   ],
 });

@@ -112,7 +112,8 @@ function treeNodes(tree, source) {
 const inside = (n, range) => n.start >= range.start && n.end <= range.end;
 
 /**
- * Ranges whose inline spans the HTML cannot show: image descriptions, which
+ * Ranges whose inline spans the HTML cannot show: code-fence metadata labels,
+ * image descriptions, which
  * render flat into `alt`, and reference links or images that do not resolve,
  * which render as the source the author typed. Whether a reference resolves is
  * a question about the definition table and the headings, not the parse, so it
@@ -129,7 +130,11 @@ function hiddenRanges(nodes, html) {
       if (IMAGES.has(ref.node)) unresolvedImages.push(ref);
     }
   }
-  for (const n of nodes) if (n.node === 'image_description') hidden.push(n);
+  for (const n of nodes) {
+    if (n.node === 'image_description') hidden.push(n);
+    if (n.node === 'code_block_label' && nodes.some((host) =>
+      host.node === 'code_block' && inside(n, host))) hidden.push(n);
+  }
   return { hidden, unresolvedImages };
 }
 
@@ -141,11 +146,11 @@ function hiddenRanges(nodes, html) {
 // only ever appears when the scanner found a line with NOTHING before its
 // `%%` (a line that merely contains a comment beside real content, e.g.
 // `x %% secret`, gets no such child and keeps every character, unchanged).
-// Subtracting exactly the children the tree marks keeps the exception no
-// wider than what the scanner already narrowed it to.
-function verbatimText(n, nodes, buf) {
+// Parsed trailing comments are also removed from non-code spans.
+// Subtracting the marked ranges preserves comment-like text inside code.
+function withoutCommentRanges(n, nodes, buf, commentType) {
   const comments = nodes
-    .filter((c) => c.node === 'comment_line' && c !== n && inside(c, n))
+    .filter((c) => c.node === commentType && c !== n && inside(c, n))
     .sort((a, b) => a.start - b.start);
   if (comments.length === 0) return n.text;
   let out = Buffer.alloc(0);
@@ -183,15 +188,16 @@ export function treeSpans(tree, source, html) {
       continue;
     }
     if (n.node === 'bold_italic') {
-      out.push({ tag: 'strong', text: n.text }, { tag: 'em', text: n.text });
+      const text = withoutCommentRanges(n, nodes, buf, 'trailing_comment');
+      out.push({ tag: 'strong', text }, { tag: 'em', text });
       continue;
     }
     if (n.node === 'verbatim') {
-      out.push({ tag: 'code', text: verbatimText(n, nodes, buf) });
+      out.push({ tag: 'code', text: withoutCommentRanges(n, nodes, buf, 'comment_line') });
       continue;
     }
     const tag = NODE_TAG[n.node];
-    if (tag) out.push({ tag, text: n.text });
+    if (tag) out.push({ tag, text: withoutCommentRanges(n, nodes, buf, 'trailing_comment') });
   }
   return out;
 }
