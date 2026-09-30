@@ -26,6 +26,26 @@ for (const [body, type, html] of cases) for (const ending of ['\n', '\r\n', '\r'
   assert.equal(nodes[0].endIndex, body.length, source);
   assert.equal(nodes[0].text, body, source);
 }
+const tails = [
+  ['/[a](/u "t', 'v")/', null, '/[a](/u “t', 'v”)/'],
+  ['/[a](u/ "t', 'v")/', 7, '<em>[a](u</em> “t', 'v”)/'],
+  ['/[a](x "/u', 'v")/', null, '/[a](x “/u', 'v”)/'],
+  ['/[a](x "u/', 'v")/', 10, '<em>[a](x “u</em>', 'v”)/'],
+];
+for (const [first, last, end, firstHtml, lastHtml] of tails) for (const ending of ['\n', '\r\n', '\r']) {
+  const source = first + ending + ending + last + ending;
+  assert.equal(carveToHtml(source), `<p>${firstHtml}</p>\n<p>${lastHtml}</p>`, source);
+  const root = parser.parse(source).rootNode;
+  assert.equal(root.hasError, false, source);
+  assert.equal(root.descendantsOfType('paragraph').length, 2, source);
+  assert.equal(root.descendantsOfType('inline_link').length, 0, source);
+  const spans = root.descendantsOfType('emphasis');
+  assert.equal(spans.length, end === null ? 0 : 1, source);
+  if (end !== null) {
+    assert.equal(spans[0].startIndex, 0, source);
+    assert.equal(spans[0].endIndex, end, source);
+  }
+}
 const before = '/a /b/\n', after = '/a /b /*c d/\n';
 const old = parser.parse(before);
 old.edit({ startIndex: 5, oldEndIndex: 5, newEndIndex: 11,
@@ -35,4 +55,4 @@ const changed = parser.parse(after);
 changed.edit({ startIndex: 5, oldEndIndex: 11, newEndIndex: 5,
   startPosition: { row: 0, column: 5 }, oldEndPosition: { row: 0, column: 11 }, newEndPosition: { row: 0, column: 5 } });
 assert.equal(parser.parse(before, changed).rootNode.toString(), parser.parse(before).rootNode.toString());
-console.log('Bare spans: 24 engine range controls and two incremental edits pass.');
+console.log('Bare spans: 36 engine range controls and two incremental edits pass.');

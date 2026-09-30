@@ -9055,7 +9055,7 @@ static bool scan_inline_link_tail(Scanner *s, TSLexer *lexer, char bare, bool *c
   while (!lexer->eof(lexer) && !at_line_end(lexer) &&
          lexer->lookahead != ')' && !is_destination_space(lexer->lookahead)) {
     any_dest = true;
-    if (closer && lexer->lookahead == bare && !escaped) *closer = true;
+    bool candidate_closer = closer && lexer->lookahead == bare && !escaped;
     escaped = lexer->lookahead == '\\' && !escaped;
     // `\)` is the one escape the destination token spells; a backslash before
     // anything else is an ordinary destination character.
@@ -9067,6 +9067,7 @@ static bool scan_inline_link_tail(Scanner *s, TSLexer *lexer, char bare, bool *c
       escaped = false;
     }
     advance(s, lexer);
+    if (candidate_closer && !carve_is_alnum_ascii(lexer->lookahead)) *closer = true;
   }
   if (!any_dest) {
     return false;
@@ -9083,6 +9084,7 @@ static bool scan_inline_link_tail(Scanner *s, TSLexer *lexer, char bare, bool *c
     return false;
   }
   advance(s, lexer);
+  int32_t previous = quote;
   while (!lexer->eof(lexer)) {
     if (at_line_end(lexer)) {
       Block *host = peek_block(s);
@@ -9097,6 +9099,7 @@ static bool scan_inline_link_tail(Scanner *s, TSLexer *lexer, char bare, bool *c
         if (boundary) *boundary = true;
         return false;
       }
+      previous = '\n';
       continue;
     }
     if (lexer->lookahead == '\\') {
@@ -9107,15 +9110,20 @@ static bool scan_inline_link_tail(Scanner *s, TSLexer *lexer, char bare, bool *c
       if (at_line_end(lexer)) {
         return false;
       }
+      previous = lexer->lookahead;
       advance(s, lexer);
       continue;
     }
-    if (closer && lexer->lookahead == bare) *closer = true;
+    int32_t current = lexer->lookahead;
+    bool candidate_closer = closer && current == bare && previous != ' ' &&
+                            previous != '\t' && previous != '\n';
     if (lexer->lookahead == quote) {
       advance(s, lexer);
       return lexer->lookahead == ')';
     }
     advance(s, lexer);
+    if (candidate_closer && !carve_is_alnum_ascii(lexer->lookahead)) *closer = true;
+    previous = current;
   }
   return false;
 }
@@ -9452,14 +9460,6 @@ static bool mark_span_begin(Scanner *s, TSLexer *lexer,
     // an open element has and when we try to close an element with
     // open tags then we issue an error (in `parse_span_end`).
     //
-    // The reason we're not immediately issuing an error here
-    // is that spans might be nested, for example:
-    //
-    //      _a _b_ a_
-    //
-    // If we issue an error here at `_b` then we won't find the nested
-    // emphasis. The solution i found was to do the check when closing the
-    // span instead.
     // Counted only within the current scope: a marker inside a nested BRACED
     // span belongs to that span, so it must not stop an outer one closing.
     // `{*a {/b *} d/} e*}` keeps its strong, and `~a{+b~+} c~` its strikethrough.

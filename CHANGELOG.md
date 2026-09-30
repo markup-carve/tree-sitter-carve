@@ -38,6 +38,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   scanner work when malformed openers alternate with brackets, braces, code or
   escapes (#486). Preserve nested delimiter scopes and limit cached results
   to the line and span that were checked (#489).
+- Keep the first bare opener when later markers of the same kind are literal
+  content, including incomplete combined markers (#488).
 - Bound scanner and runtime lexer work for unfinished bracket runs containing
   periods, commas, semicolons or question marks. Preserve links, spans, inline notes,
   line boundaries and incremental edits (#488).
