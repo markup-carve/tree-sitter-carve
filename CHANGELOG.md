@@ -10,6 +10,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Avoid repeated runtime column rescans in malformed combined openers with
+  brackets, braces, verbatim text or escapes. Check linear scanner and lexer
+  work through 16,384 repetitions, and retain table row boundaries (#492).
+
 - A construct on the document's last line completes when that line carries no
   terminator, and the containers holding it close with it. Every line ending used
   to require a real newline, so a fence, a caption, a definition, a thematic break

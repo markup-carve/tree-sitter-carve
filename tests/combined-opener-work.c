@@ -22,7 +22,7 @@ int main(int argc, char **argv) {
     bool scoped = prefix >= 5;
     unsigned bytes = width * n + strlen(tails[tail]) + (scoped ? 4 : 0);
     if (baseline && n > 1024) break;
-    if (prefix > 0 && prefix < 5 && n > 512) break;
+    if (baseline && prefix > 0 && prefix < 5 && n > 512) break;
     if (prefix > 0 && tail > 0) break;
     char *source = malloc(bytes + 1);
     assert(source);
@@ -43,9 +43,18 @@ int main(int argc, char **argv) {
     unsigned rich_count = prefix == 3 || prefix == 4 ? n : 0;
     assert(ts_node_named_child_count(paragraph) == (scoped ? 1 : rich_count + (tail == 6 || tail == 7 ? 1 : 0)));
     if (scoped) assert(strcmp(ts_node_type(ts_node_named_child(paragraph, 0)), prefix == 5 ? "strong" : "emphasis") == 0);
-    if (rich_count) for (unsigned j = 0; j < n; ++j) {
-      assert(strcmp(ts_node_type(ts_node_named_child(paragraph, j)),
-                    prefix == 3 ? "verbatim" : "backslash_escape") == 0);
+    if (rich_count) {
+      TSTreeCursor cursor = ts_tree_cursor_new(paragraph);
+      unsigned seen = 0;
+      if (ts_tree_cursor_goto_first_child(&cursor)) do {
+        TSNode child = ts_tree_cursor_current_node(&cursor);
+        if (!ts_node_is_named(child)) continue;
+        assert(strcmp(ts_node_type(child),
+                      prefix == 3 ? "verbatim" : "backslash_escape") == 0);
+        ++seen;
+      } while (ts_tree_cursor_goto_next_sibling(&cursor));
+      assert(seen == rich_count);
+      ts_tree_cursor_delete(&cursor);
     }
     if (tail == 6) assert(strcmp(ts_node_type(ts_node_named_child(paragraph, 0)), "verbatim") == 0);
     if (tail == 7) assert(strcmp(ts_node_type(ts_node_named_child(paragraph, 0)), "ellipsis") == 0);
@@ -53,10 +62,7 @@ int main(int argc, char **argv) {
     fflush(stdout);
     if (!baseline) {
       assert(carve_scanner_advances <= 32ULL * bytes);
-      if (prefix == 0 || scoped) assert(carve_lexer_advances <= 64ULL * bytes);
-      // Rich tokens retain the runtime's existing quadratic column rescans.
-      // The scanner ceiling above rejects a new quadratic lookahead term.
-      else assert(carve_lexer_advances <= 256ULL * n * n + 64ULL * bytes);
+      assert(carve_lexer_advances <= 64ULL * bytes);
     }
     ts_tree_delete(tree);
     free(source);
