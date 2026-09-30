@@ -8736,13 +8736,22 @@ static bool scan_inline_attribute_body(Scanner *s, TSLexer *lexer) {
 static bool parse_plain_bracket_run(Scanner *s, TSLexer *lexer) {
   unsigned prefix = 0;
   while (lexer->lookahead == '[') {
+    mark_end(s, lexer);
     ++prefix;
     advance(s, lexer);
+    while (lexer->lookahead == ' ' || lexer->lookahead == '\t') advance(s, lexer);
   }
   if (prefix < 2) return false;
-  mark_end(s, lexer);
   unsigned depth = prefix;
-  while (!lexer->eof(lexer) && !at_line_end(lexer)) {
+  while (!lexer->eof(lexer)) {
+    if (at_line_end(lexer)) {
+      int32_t ending = lexer->lookahead;
+      advance(s, lexer);
+      if (ending == '\r' && lexer->lookahead == '\n') advance(s, lexer);
+      while (lexer->lookahead == ' ' || lexer->lookahead == '\t') advance(s, lexer);
+      if (lexer->eof(lexer) || at_line_end(lexer)) return false;
+      continue;
+    }
     int32_t c = lexer->lookahead;
     if (c == '\\') {
       advance(s, lexer);
@@ -8752,14 +8761,15 @@ static bool parse_plain_bracket_run(Scanner *s, TSLexer *lexer) {
     }
     if (c == '[') ++depth;
     if (c == ']') {
-      if (depth == 0) return false;
       --depth;
       advance(s, lexer);
-      if (lexer->lookahead == '(' || lexer->lookahead == '[' ||
-          lexer->lookahead == '{') return false;
+      if (depth < prefix - 1 && (lexer->lookahead == '(' ||
+          lexer->lookahead == '[' || lexer->lookahead == '{')) return false;
       if (depth == 0) {
+        // Leave the innermost opener to the regular lexer: it may start a
+        // footnote, citation, link or attributed span.
         push_inline_flagged(s, LITERAL_BRACKET, 0, 0);
-        peek_inline(s)->literal_closes = prefix;
+        peek_inline(s)->literal_closes = prefix - 1;
         lexer->result_symbol = LITERAL_RUN;
         return true;
       }
@@ -11027,8 +11037,11 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     do {
       advance(s, lexer);
       --remaining;
+      mark_end(s, lexer);
+      if (remaining > 0) {
+        while (lexer->lookahead == ' ' || lexer->lookahead == '\t') advance(s, lexer);
+      }
     } while (remaining > 0 && lexer->lookahead == ']');
-    mark_end(s, lexer);
     if (remaining == 0) remove_inline(s);
     else literal->literal_closes = remaining;
     lexer->result_symbol = LITERAL_RUN;

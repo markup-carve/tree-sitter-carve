@@ -31,7 +31,7 @@ try {
   { encoding: 'utf8', timeout: 120_000 });
   assert.equal(compile.status, 0, compile.stderr || String(compile.error));
   const run = spawnSync(executable, baseline ? ['baseline'] : [], { encoding: 'utf8', timeout: 30_000 });
-  assert.equal(run.status, 0, run.stderr || String(run.error));
+  assert.equal(run.status, 0, run.stdout + run.stderr + String(run.error));
   process.stdout.write(run.stdout);
   console.log(baseline ? `Literal brackets: baseline ${baseline}.` : 'Literal brackets: full-parser scanner work stays within 32 advances per input byte.');
 } finally {

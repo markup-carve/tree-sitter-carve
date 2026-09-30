@@ -8,7 +8,7 @@ const parser = new Parser();
 parser.setLanguage(createRequire(import.meta.url)('../bindings/node'));
 const corpus = new URL('../spec/tests/corpus/', import.meta.url);
 const files = readdirSync(corpus).filter(f => /^\d+-a-link-inside-a-span-s-label-keeps-its-destination(?:-\d+)?\.crv$/.test(f));
-assert.equal(files.length, 9);
+assert.ok(files.length >= 9, 'All recorded attributed-span controls must participate.');
 function links(node) {
   let count = ['link', 'autolink'].includes(node?.type) ? 1 : 0;
   for (const value of Object.values(node ?? {})) {
@@ -45,6 +45,14 @@ for (const ending of ['\n', '\r\n', '\r']) {
     ['[t[z]](/u)', { inline_link: 1, span: 0 }],
     ['[x]: /u', { link_reference_definition: 1 }],
     ['[^x]: note', { footnote: 1 }],
+    ['[[x' + ending + 'y]]', { span: 0 }],
+    ['[[*x' + ending + 'y*]]', { strong: 1 }],
+    ['x [[^1]] y' + ending + ending + '[^1]: note', { footnote_reference: 1 }],
+    ['x *[[^1]]* y' + ending + ending + '[^1]: note', { strong: 1, footnote_reference: 1 }],
+    ['x [[[^1]]] y' + ending + ending + '[^1]: note', { footnote_reference: 1 }],
+    ['x [[@k]] y', { citation_group: 1 }],
+    ['[ [ x ] ]', { span: 0 }],
+    ['[[x](u)]', { inline_link: 1 }],
     ['x ^[a ^[b] /c/]', { inline_note: 1, emphasis: 1 }],
   ]) {
     const root = parser.parse(source + ending).rootNode;
@@ -55,4 +63,4 @@ for (const ending of ['\n', '\r\n', '\r']) {
     }
   }
 }
-console.log('Attributed spans: 9 corpus controls and 10 boundary controls across all line endings.');
+console.log('Attributed spans: 9 corpus controls and 18 boundary controls across all line endings.');
