@@ -496,6 +496,7 @@ typedef struct {
   bool combined_probe;
   bool combined_raw_closer;
   bool combined_raw_strong_closer;
+  bool combined_raw_pair;
   bool combined_raw_line_end;
   int32_t combined_raw_previous;
 } Scanner;
@@ -738,6 +739,9 @@ static void advance(Scanner *s, TSLexer *lexer) {
          previous != '\r' && previous != '\n' && !carve_is_alnum_ascii(lexer->lookahead))) {
       s->combined_raw_closer = true;
     }
+    if (current == '*' && lexer->lookahead == '/' && previous != 0 &&
+        previous != ' ' && previous != '\t' && previous != '\r' && previous != '\n')
+      s->combined_raw_pair = true;
     if (current == '*' && previous != 0 && previous != ' ' && previous != '\t' &&
         previous != '\r' && previous != '\n' && !carve_is_alnum_ascii(lexer->lookahead))
       s->combined_raw_strong_closer = true;
@@ -8945,8 +8949,8 @@ static bool bare_closer_skips_brackets(Scanner *s, TSLexer *lexer, char bare,
           else if (boundary) return false;
         }
         previous = 'x';
-      ++characters;
-      continue;
+        ++characters;
+        continue;
       }
       // No matching `]`: this `[` is content, not an opaque run - fall
       // through and keep searching from right after it.
@@ -9216,9 +9220,12 @@ static bool substitution_arrow_ahead(Scanner *s, TSLexer *lexer, bool *closed) {
   return false;
 }
 
+// Bare emphasis has no intervening strong closer before this cache ends.
+#define NO_STRONG_IN_EMPHASIS (UINT8_MAX - 3)
 #define NO_COMBINED_CLOSER UINT8_MAX
 #define NO_COMBINED_CLOSER_LINE (UINT8_MAX - 1)
-#define HAS_NO_COMBINED_CLOSER(s) ((s)->after_closer_char >= NO_COMBINED_CLOSER_LINE)
+#define HAS_NO_COMBINED_CLOSER(s) ((s)->after_closer_char == NO_STRONG_IN_EMPHASIS || \
+                                 (s)->after_closer_char >= NO_COMBINED_CLOSER_LINE)
 
 static bool is_bare_delim_kind(int32_t c, InlineType *kind);
 
@@ -10020,7 +10027,9 @@ static int parse_literal_run(Scanner *s, TSLexer *lexer,
     Inline *literal_strong = find_inline(s, STRONG);
     Inline *literal_emphasis = find_inline(s, EMPHASIS);
     bool literal_slashes = !literal_emphasis ||
-                          (literal_emphasis->flags & INLINE_COMBINED_FALLBACK);
+                          (literal_emphasis->flags & INLINE_COMBINED_FALLBACK) ||
+                          (s->after_closer_char == NO_STRONG_IN_EMPHASIS &&
+                           !(literal_emphasis->flags & INLINE_BRACED));
     bool literal_stars = literal_slashes && (!literal_strong ||
                          (literal_strong->flags & INLINE_SCOPED_COMBINED_LITERAL));
     bool consumed = false;
@@ -10484,6 +10493,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     s->combined_probe = true;
     s->combined_raw_closer = false;
     s->combined_raw_strong_closer = false;
+    s->combined_raw_pair = false;
     s->combined_raw_line_end = false;
     s->combined_raw_previous = 0;
     int32_t previous = 0;
@@ -10551,8 +10561,9 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
         if (!plain_prefix_end_column) plain_prefix_end_column = line_column(s, lexer);
         advance(s, lexer);
         if (!scan_until_bracket_close(s, lexer, NULL)) {
-          if (scope && scope_type == STRONG && s->combined_raw_strong_closer)
-            enclosing_closer = true;
+          if (scope && scope_type == STRONG && !scope_braced &&
+              s->combined_raw_strong_closer) enclosing_closer = true;
+          else if (s->combined_raw_pair) combined_pair = true;
           break;
         }
         advance(s, lexer);
@@ -10642,8 +10653,8 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     }
     // Cache rejected candidates before leaving the star to nested strong.
     if (!combined_pair && find_inline_in_scope(s, EMPHASIS)) {
-      if (scope && scope_type == EMPHASIS && !strong_closer)
-        scope->flags |= INLINE_COMBINED_FALLBACK;
+      if (scope && scope_type == EMPHASIS && !scope_braced && !strong_closer &&
+          HAS_NO_COMBINED_CLOSER(s)) s->after_closer_char = NO_STRONG_IN_EMPHASIS;
     }
     bool scoped = valid_symbols[BOLD_ITALIC_SCOPED_OPEN_CHECK] && scope &&
                   scope_type == STRONG && enclosing_closer && !combined_pair && !emphasis_closer &&
