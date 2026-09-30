@@ -74,3 +74,14 @@ for (const newline of ['\n', '\r\n', '\r']) {
   assert.equal(tree.descendantsOfType('inline_link').length, 0);
   assert.equal(tree.descendantsOfType('hard_line_break').length, 1);
 }
+
+for (const newline of ['\n', '\r\n', '\r']) {
+  for (const [marker, type] of [['*', 'strong'], ['_', 'underline'], ['~', 'strikethrough'], ['=', 'highlighted']]) {
+    for (const body of [`t${marker} u`, `t${newline}u${marker} v`, `t\\${newline}u${marker} v`]) {
+      const tree = parser.parse(`${marker}[a](/u "${body}${newline}`).rootNode;
+      assert.equal(tree.hasError, false, body);
+      assert.equal(tree.descendantsOfType(type).length, 1, body);
+      assert.equal(tree.descendantsOfType('inline_link').length, 0, body);
+    }
+  }
+}

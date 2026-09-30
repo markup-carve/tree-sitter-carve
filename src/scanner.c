@@ -8422,7 +8422,7 @@ static bool scan_until_bracket_close(Scanner *s, TSLexer *lexer,
 /// live versions with the branch this ticket needs instead
 /// (tree-sitter-carve#436). A `[` with no matching `]` ahead is content, not
 /// an opaque run, so it does not stop the search.
-static bool scan_inline_link_tail(Scanner *s, TSLexer *lexer, bool *wrapped);
+static bool scan_inline_link_tail(Scanner *s, TSLexer *lexer, char bare, bool *closer, bool *boundary);
 
 static bool bare_closer_skips_brackets(Scanner *s, TSLexer *lexer, char bare) {
   while (!lexer->eof(lexer)) {
@@ -8458,9 +8458,11 @@ static bool bare_closer_skips_brackets(Scanner *s, TSLexer *lexer, char bare) {
         advance(s, lexer); // past the matching `]`
         if (lexer->lookahead == '(') {
           advance(s, lexer);
-          bool wrapped = false;
-          if (scan_inline_link_tail(s, lexer, &wrapped)) advance(s, lexer);
-          else if (wrapped) return false;
+          bool closer = false;
+          bool boundary = false;
+          if (scan_inline_link_tail(s, lexer, bare, &closer, &boundary)) advance(s, lexer);
+          else if (closer) return true;
+          else if (boundary) return false;
         }
         continue;
       }
@@ -8500,12 +8502,16 @@ static bool is_destination_space(int32_t c) {
 /// This reader keeps the grammar's own reading of the destination rather than
 /// the ohm's in one place: nested parentheses are NOT balanced here, matching
 /// `_inline_link_url`, so `[t](/a(b)c` / `SECOND)` reads as it always has.
-static bool scan_inline_link_tail(Scanner *s, TSLexer *lexer, bool *wrapped) {
-  if (wrapped) *wrapped = false;
+static bool scan_inline_link_tail(Scanner *s, TSLexer *lexer, char bare, bool *closer, bool *boundary) {
+  if (closer) *closer = false;
+  if (boundary) *boundary = false;
   bool any_dest = false;
+  bool escaped = false;
   while (!lexer->eof(lexer) && !at_line_end(lexer) &&
          lexer->lookahead != ')' && !is_destination_space(lexer->lookahead)) {
     any_dest = true;
+    if (closer && lexer->lookahead == bare && !escaped) *closer = true;
+    escaped = lexer->lookahead == '\\' && !escaped;
     // `\)` is the one escape the destination token spells; a backslash before
     // anything else is an ordinary destination character.
     if (lexer->lookahead == '\\') {
@@ -8513,6 +8519,7 @@ static bool scan_inline_link_tail(Scanner *s, TSLexer *lexer, bool *wrapped) {
       if (lexer->lookahead != ')') {
         continue;
       }
+      escaped = false;
     }
     advance(s, lexer);
   }
@@ -8533,13 +8540,18 @@ static bool scan_inline_link_tail(Scanner *s, TSLexer *lexer, bool *wrapped) {
   advance(s, lexer);
   while (!lexer->eof(lexer)) {
     if (at_line_end(lexer)) {
-      if (wrapped) *wrapped = true;
       Block *host = peek_block(s);
       if ((s->state & STATE_SINGLE_LINE_CAPTION) ||
-          (host && (host->type == HEADING || host->type == TABLE_CAPTION || disallow_newline(host)))) return false;
+          (host && (host->type == HEADING || host->type == TABLE_CAPTION || disallow_newline(host)))) {
+        if (boundary) *boundary = true;
+        return false;
+      }
       consume_line_end(s, lexer);
       consume_whitespace(s, lexer);
-      if (lexer->eof(lexer) || at_line_end(lexer) || close_paragraph(s, lexer)) return false;
+      if (lexer->eof(lexer) || at_line_end(lexer) || close_paragraph(s, lexer)) {
+        if (boundary) *boundary = true;
+        return false;
+      }
       continue;
     }
     if (lexer->lookahead == '\\') {
@@ -8548,12 +8560,12 @@ static bool scan_inline_link_tail(Scanner *s, TSLexer *lexer, bool *wrapped) {
         return false;
       }
       if (at_line_end(lexer)) {
-        if (wrapped) *wrapped = true;
         return false;
       }
       advance(s, lexer);
       continue;
     }
+    if (closer && lexer->lookahead == bare) *closer = true;
     if (lexer->lookahead == quote) {
       advance(s, lexer);
       return lexer->lookahead == ')';
@@ -8595,7 +8607,7 @@ static bool update_square_bracket_lookahead_states(Scanner *s, TSLexer *lexer,
     // a title is no link at all (carve#2070), and marking one here left the
     // branch with nothing to build and an ERROR where the text belongs.
     advance(s, lexer);
-    if (scan_inline_link_tail(s, lexer, NULL)) {
+    if (scan_inline_link_tail(s, lexer, 0, NULL, NULL)) {
       s->state |= STATE_BRACKET_STARTS_INLINE_LINK;
     } else if (at_line_end(lexer)) {
       s->state |= STATE_MULTILINE_IDENTIFIER;
@@ -9045,7 +9057,7 @@ static bool identifier_after_bracket_stays_on_one_line(Scanner *s,
     return true;
   }
   advance(s, lexer);
-  if (closer == ')') return scan_inline_link_tail(s, lexer, NULL);
+  if (closer == ')') return scan_inline_link_tail(s, lexer, 0, NULL, NULL);
 
   bool plain = true;
   while (!lexer->eof(lexer)) {
