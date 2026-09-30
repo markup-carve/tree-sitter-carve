@@ -8847,9 +8847,10 @@ static bool substitution_arrow_ahead(Scanner *s, TSLexer *lexer, bool *closed) {
       // Read by the same function the content token uses, so the two cannot
       // drift apart.
       uint8_t width = consume_chars(s, lexer, '`');
-      if (read_verbatim_run(s, lexer, width, '~',
-                            find_block(s, TABLE_ROW) != NULL) !=
-          VerbatimRunCloses) {
+      VerbatimRunEnd end = read_verbatim_run(s, lexer, width, '~',
+                                              find_block(s, TABLE_ROW) != NULL);
+      if (end != VerbatimRunCloses) {
+        *closed = end == VerbatimRunReachesSpanCloser;
         return false;
       }
       continue;
@@ -8912,13 +8913,12 @@ static bool parse_substitution_or_strikethrough(Scanner *s, TSLexer *lexer,
   // Zero-width, whatever the reader below advances over.
   mark_end(s, lexer);
   bool closed = false;
-  bool bracket = find_inline(s, LITERAL_BRACKET) || find_inline(s, SQUARE_BRACKET_SPAN) || find_inline(s, INLINE_NOTE);
   if (substitution_arrow_ahead(s, lexer, &closed)) {
     push_inline_flagged(s, SUBSTITUTION, 0, INLINE_BRACED);
     lexer->result_symbol = SUBSTITUTION_BEGIN;
     return true;
   }
-  if (bracket && !closed) {
+  if (!closed) {
     if (!valid_symbols[BRACED_FALLBACK]) return false;
     lexer->result_symbol = BRACED_FALLBACK;
     return true;

@@ -64,3 +64,26 @@ for (const newline of ['\n', '\r\n', '\r']) {
     assert.equal(tree.descendantsOfType('substitution').length, count, source);
   }
 }
+
+for (const newline of ['\n', '\r\n', '\r']) {
+  for (const source of ['{~a', 'x {~a']) {
+    const tree = parser.parse(source + newline).rootNode;
+    assert.equal(tree.hasError, false, source);
+    assert.equal(tree.descendantsOfType('strikethrough').length, 0, source);
+  }
+  const nested = parser.parse('{~a {~b~} c~}' + newline).rootNode;
+  assert.equal(nested.hasError, false);
+  assert.deepEqual(nested.descendantsOfType('strikethrough').map(n => n.text), ['{~a {~b~} c~}', '{~b~}']);
+  for (const source of ['[a {*b]*}', '[a' + newline + '{*b]*}']) {
+    const tree = parser.parse(source + newline).rootNode;
+    assert.equal(tree.hasError, false, source);
+    assert.equal(tree.descendantsOfType('strong').length, 0, source);
+  }
+  const verbatim = parser.parse('{*a [x `foo *} bar ]' + newline).rootNode;
+  assert.equal(verbatim.hasError, false);
+  assert.deepEqual(verbatim.descendantsOfType('strong').map(n => n.text), ['{*a [x `foo *}']);
+  assert.deepEqual(verbatim.descendantsOfType('verbatim').map(n => n.text), ['`foo ']);
+  const strikeCode = parser.parse('{~`a~>b~}' + newline).rootNode;
+  assert.equal(strikeCode.hasError, false);
+  assert.equal(strikeCode.descendantsOfType('strikethrough').length, 1);
+}
