@@ -19,6 +19,12 @@
 // landed, 2134 documents parsed with 8 ERROR trees as committed and 235 with the
 // final terminator stripped (#458).
 //
+// THOSE NUMBERS ARE THIS CLI'S READING, NOT THE CLASS. Through the Node binding
+// the same commit and the same strip count 316 rather than 27, because the CLI's
+// core completes a construct that unwinds containers at the end of input and its
+// error report cannot see a MISSING hidden token. `scripts/eof-without-newline.mjs`
+// asks the question through the binding for that reason; keep both.
+//
 // WHY SHAPES AND NOT JUST "NO ERROR". A construct can complete without an ERROR
 // node and still complete WRONGLY - the marker line read as a paragraph, the
 // body swallowed. Comparing the terminated reading against the unterminated one
