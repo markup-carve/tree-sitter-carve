@@ -4372,8 +4372,17 @@
           ]
         },
         {
-          "type": "SYMBOL",
-          "name": "_newline"
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "_newline"
+            },
+            {
+              "type": "SYMBOL",
+              "name": "_eof_or_newline"
+            }
+          ]
         }
       ]
     },

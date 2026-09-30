@@ -33,6 +33,7 @@
     "test:no-error": "node scripts/no-error-sweep.mjs",
     "test:line-terminators": "node scripts/line-terminators.mjs",
     "test:final-terminator": "node scripts/final-terminator.mjs",
+    "test:eof-without-newline": "node scripts/eof-without-newline.mjs",
     "test:highlights": "node scripts/highlight-captures.mjs",
     "test:binding-parity": "node scripts/binding-parity.mjs",
     "test:marker-separators": "node scripts/marker-separators.mjs",

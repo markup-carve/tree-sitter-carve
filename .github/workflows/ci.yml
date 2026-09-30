@@ -89,6 +89,14 @@ jobs:
       - name: A missing final terminator changes no tree
         run: npm run test:final-terminator
 
+      # The same question through the reader an editor uses. The step above
+      # drives the CLI, whose core completes a construct at the end of input
+      # that the core in the Node binding does not, and whose error report
+      # cannot see a MISSING hidden token. It counted 27 of the pinned
+      # documents; the binding counts 316 of the same ones (#458).
+      - name: A document may end without a terminator, through the Node binding
+        run: npm run test:eof-without-newline
+
       # Every check above asks what a tree says; none of them asks whether one
       # arrives. A 14-byte document held four parses at 9.6 GB RSS for four
       # hours before anything noticed, because nothing bounded a parse and

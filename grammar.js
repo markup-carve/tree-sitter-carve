@@ -1595,7 +1595,11 @@ module.exports = grammar({
             field("expansion", alias(/[^\r\n]+/, $.abbreviation_expansion)),
           ),
         ),
-        $._newline,
+        // A definition may be the document's last line with nothing after it.
+        // The pinned CLI completes that reading on its own, so the site looks
+        // inert through it; the node binding inserts `(MISSING _newline)`
+        // instead, which is what a consumer of the package sees (#458).
+        choice($._newline, $._eof_or_newline),
       ),
 
     // Citation group inline: `[@key]`, `[+@key]`, `[-@key]`, `[@a; see @b, p.4]`
