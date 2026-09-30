@@ -13,13 +13,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   closer instead of running past it to the end of the line
   (markup-carve/carve#2170, #431).
 - A construct on the document's last line completes when that line carries no
-  terminator. Thirteen line endings accepted only a real newline, so a fence, a
-  colon fence, a comment line, a thematic break, a caption, a reference or
-  citation definition or a block attribute line at the end of an unterminated
-  document parsed to an ERROR - the state of a buffer between two keystrokes.
-  Over the pinned corpus, documents gaining an ERROR from the missing terminator
-  alone fall from 232 to 26; the remaining 26 need a container unwind at end of
-  input and are tracked on #458 (#464).
+  terminator. A fence, a colon fence, a comment line, a thematic break, a
+  caption, a reference, citation or abbreviation definition and a block
+  attribute line all accepted only a real newline, so each parsed to an error at
+  the end of an unterminated document - the state of a buffer between two
+  keystrokes. How much remains depends on which reader you use: the
+  `tree-sitter` CLI does not report a missing hidden token, so over the pinned
+  corpus it sees 27 documents still failing where the Node binding this package
+  serves sees 316. Both populations are tracked on #458, and
+  `scripts/eof-without-newline.mjs` pins the 316 against the corpus commit and
+  the runtime version it was measured under (#464, #466).
 
 ### Changed
 
