@@ -1,0 +1,174 @@
+{
+  "baselineCommit": "da16872845ecedd20b75533df137c50614032552",
+  "method": "Count every external-scanner advance during a fresh full parse. Source generation and compiler work are excluded. These are operation counts, not elapsed timings.",
+  "rows": [
+    {
+      "reader": "baseline",
+      "body": "x",
+      "depth": 64,
+      "bytes": 130,
+      "scannerAdvances": 47098
+    },
+    {
+      "reader": "baseline",
+      "body": "x",
+      "depth": 256,
+      "bytes": 514,
+      "scannerAdvances": 778042
+    },
+    {
+      "reader": "baseline",
+      "body": "x",
+      "depth": 1024,
+      "bytes": 2050,
+      "scannerAdvances": 12511622
+    },
+    {
+      "reader": "baseline",
+      "body": "*x*",
+      "depth": 64,
+      "bytes": 132,
+      "scannerAdvances": 48628
+    },
+    {
+      "reader": "baseline",
+      "body": "*x*",
+      "depth": 256,
+      "bytes": 516,
+      "scannerAdvances": 784180
+    },
+    {
+      "reader": "baseline",
+      "body": "*x*",
+      "depth": 1024,
+      "bytes": 2052,
+      "scannerAdvances": 12536095
+    },
+    {
+      "reader": "baseline",
+      "body": "/x/",
+      "depth": 64,
+      "bytes": 132,
+      "scannerAdvances": 48628
+    },
+    {
+      "reader": "baseline",
+      "body": "/x/",
+      "depth": 256,
+      "bytes": 516,
+      "scannerAdvances": 784180
+    },
+    {
+      "reader": "baseline",
+      "body": "/x/",
+      "depth": 1024,
+      "bytes": 2052,
+      "scannerAdvances": 12536095
+    },
+    {
+      "reader": "fixed",
+      "body": "x",
+      "depth": 64,
+      "bytes": 130,
+      "scannerAdvances": 707
+    },
+    {
+      "reader": "fixed",
+      "body": "x",
+      "depth": 256,
+      "bytes": 514,
+      "scannerAdvances": 2819
+    },
+    {
+      "reader": "fixed",
+      "body": "x",
+      "depth": 1024,
+      "bytes": 2050,
+      "scannerAdvances": 11267
+    },
+    {
+      "reader": "fixed",
+      "body": "x",
+      "depth": 4096,
+      "bytes": 8194,
+      "scannerAdvances": 45059
+    },
+    {
+      "reader": "fixed",
+      "body": "x",
+      "depth": 16384,
+      "bytes": 32770,
+      "scannerAdvances": 180227
+    },
+    {
+      "reader": "fixed",
+      "body": "*x*",
+      "depth": 64,
+      "bytes": 132,
+      "scannerAdvances": 855
+    },
+    {
+      "reader": "fixed",
+      "body": "*x*",
+      "depth": 256,
+      "bytes": 516,
+      "scannerAdvances": 3351
+    },
+    {
+      "reader": "fixed",
+      "body": "*x*",
+      "depth": 1024,
+      "bytes": 2052,
+      "scannerAdvances": 13335
+    },
+    {
+      "reader": "fixed",
+      "body": "*x*",
+      "depth": 4096,
+      "bytes": 8196,
+      "scannerAdvances": 53271
+    },
+    {
+      "reader": "fixed",
+      "body": "*x*",
+      "depth": 16384,
+      "bytes": 32772,
+      "scannerAdvances": 213015
+    },
+    {
+      "reader": "fixed",
+      "body": "/x/",
+      "depth": 64,
+      "bytes": 132,
+      "scannerAdvances": 855
+    },
+    {
+      "reader": "fixed",
+      "body": "/x/",
+      "depth": 256,
+      "bytes": 516,
+      "scannerAdvances": 3351
+    },
+    {
+      "reader": "fixed",
+      "body": "/x/",
+      "depth": 1024,
+      "bytes": 2052,
+      "scannerAdvances": 13335
+    },
+    {
+      "reader": "fixed",
+      "body": "/x/",
+      "depth": 4096,
+      "bytes": 8196,
+      "scannerAdvances": 53271
+    },
+    {
+      "reader": "fixed",
+      "body": "/x/",
+      "depth": 16384,
+      "bytes": 32772,
+      "scannerAdvances": 213015
+    }
+  ]
+}

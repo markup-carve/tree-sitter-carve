@@ -2336,11 +2336,14 @@ module.exports = grammar({
       ),
 
     image_description: ($) =>
-      seq(
-        $._image_description_begin,
-        $._square_bracket_span_mark_begin,
-        optional($._inline),
-        alias($._square_bracket_span_end, "]"),
+      prec.dynamic(
+        ELEMENT_PRECEDENCE,
+        seq(
+          $._image_description_begin,
+          $._square_bracket_span_mark_begin,
+          optional($._inline),
+          alias($._square_bracket_span_end, "]"),
+        ),
       ),
     _image_description_begin: (_) => "![",
 
@@ -2356,19 +2359,22 @@ module.exports = grammar({
       ),
 
     link_text: ($) =>
-      choice(
-        seq(
-          $._bracketed_text_begin,
-          $._square_bracket_span_mark_begin,
-          $._inline,
-          // Alias to "]" to allow us to highlight it in Neovim.
-          // Maybe some bug, or some undocumented behavior?
-          alias($._square_bracket_span_end, "]"),
+      prec.dynamic(
+        ELEMENT_PRECEDENCE,
+        choice(
+          seq(
+            $._bracketed_text_begin,
+            $._square_bracket_span_mark_begin,
+            $._inline,
+            // Alias to "]" to allow us to highlight it in Neovim.
+            // Maybe some bug, or some undocumented behavior?
+            alias($._square_bracket_span_end, "]"),
+          ),
+          // Required as we track fallback characters between bracketed begin and end,
+          // but when it's empty it skips blocks the inline link destination.
+          // This is an easy workaround for that special case.
+          "[]",
         ),
-        // Required as we track fallback characters between bracketed begin and end,
-        // but when it's empty it skips blocks the inline link destination.
-        // This is an easy workaround for that special case.
-        "[]",
       ),
 
     // An INLINE NOTE, `^[content]`.
@@ -2393,11 +2399,15 @@ module.exports = grammar({
         prec.dynamic(-ELEMENT_PRECEDENCE, alias($._inline_note_end, "]")),
       ),
 
+    _span_begin: ($) =>
+      prec.dynamic(
+        ELEMENT_PRECEDENCE,
+        seq($._bracketed_text_begin, $._attributed_span_mark_begin),
+      ),
     span: ($) =>
       choice(
         seq(
-          $._bracketed_text_begin,
-          $._square_bracket_span_mark_begin,
+          $._span_begin,
           field("content", alias($._inline, $.content)),
           // Prefer span over regular text + inline attribute.
           prec.dynamic(
@@ -3057,5 +3067,6 @@ module.exports = grammar({
     $._table_escaped_cell_end,
     $._table_list_row_check,
     $._table_list_end,
+    $._attributed_span_mark_begin,
   ],
 });

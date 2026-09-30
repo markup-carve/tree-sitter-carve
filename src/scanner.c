@@ -242,6 +242,7 @@ typedef enum {
   TABLE_ESCAPED_CELL_END,
   TABLE_LIST_ROW_CHECK,
   TABLE_LIST_END,
+  ATTRIBUTED_SPAN_MARK_BEGIN,
 } TokenType;
 
 // The different blocks in Carve that we track,
@@ -363,17 +364,6 @@ typedef enum {
   // could no longer close - `parse_span_end` refuses a span with open tags.
   // A separate type keeps the note out of that count, which is right anyway:
   // the note is a construct, not a bracket run.
-  //
-  // WHAT THAT COSTS, stated rather than left to be discovered. Keeping the
-  // note out of the count also keeps it from counting the nested run's DEPTH,
-  // so the note closes on the first `]` nobody else consumed: `x ^[a ^[b] c]`
-  // is a note over `^[a ^[b]` with ` c]` beside it, where the spec makes the
-  // whole of `a ^[b] c` its content (corpus 309). Closing correctly needs the
-  // scanner to be offered the inner `]`, and it is not - a bracket run that
-  // forms no span is consumed by the grammar's text rule, so no depth can be
-  // tracked here. `[^1]{.k}` is unaffected: the span consumes its own `]`.
-  // Pinned by the RECORDED GAP fixture in test/corpus/carve.txt, which fails
-  // when this is repaired.
   INLINE_NOTE,
   // `{~ from ~> to ~}`. Its own type rather than a strikethrough: the two share
   // an opener, and which one a `{~` starts depends on whether a TOP-LEVEL arrow
@@ -3657,7 +3647,7 @@ static bool scan_continuation_row(Scanner *s, TSLexer *lexer);
 
 static bool parse_table_quote_continuation(Scanner *s, TSLexer *lexer,
                                             const bool *valid_symbols) {
-  bool quote_symbols[TABLE_LIST_END + 1];
+  bool quote_symbols[ATTRIBUTED_SPAN_MARK_BEGIN + 1];
   memcpy(quote_symbols, valid_symbols, sizeof(quote_symbols));
   quote_symbols[BLOCK_QUOTE_CONTINUATION] = true;
   if (!parse_block_quote(s, lexer, quote_symbols)) return false;
@@ -8740,6 +8730,46 @@ static bool scan_inline_attribute_body(Scanner *s, TSLexer *lexer) {
   return false;
 }
 
+// Consecutive literal openers share one depth counter instead of looking
+// ahead from every bracket. Emit only the prefix so inline content keeps its
+// structure. Qualifying tails and line boundaries use the regular reader.
+static bool parse_plain_bracket_run(Scanner *s, TSLexer *lexer) {
+  unsigned prefix = 0;
+  while (lexer->lookahead == '[') {
+    ++prefix;
+    advance(s, lexer);
+  }
+  if (prefix < 2) return false;
+  mark_end(s, lexer);
+  unsigned depth = prefix;
+  while (!lexer->eof(lexer) && !at_line_end(lexer)) {
+    int32_t c = lexer->lookahead;
+    if (c == '\\') {
+      advance(s, lexer);
+      if (lexer->eof(lexer) || at_line_end(lexer)) return false;
+      advance(s, lexer);
+      continue;
+    }
+    if (c == '[') ++depth;
+    if (c == ']') {
+      if (depth == 0) return false;
+      --depth;
+      advance(s, lexer);
+      if (lexer->lookahead == '(' || lexer->lookahead == '[' ||
+          lexer->lookahead == '{') return false;
+      if (depth == 0) {
+        push_inline_flagged(s, LITERAL_BRACKET, 0, 0);
+        peek_inline(s)->literal_closes = prefix;
+        lexer->result_symbol = LITERAL_RUN;
+        return true;
+      }
+      continue;
+    }
+    advance(s, lexer);
+  }
+  return false;
+}
+
 // Scan for the `]` that closes the bracket run we are already inside,
 // skipping over any NESTED bracket run on the way.
 //
@@ -9115,6 +9145,41 @@ static bool mark_span_begin(Scanner *s, TSLexer *lexer,
                             const bool *valid_symbols, InlineType inline_type,
                             TokenType token);
 
+// Qualify an attributed span before its content branches merge. The shared
+// bracket mark remains available for links and literal bracket fallback.
+static bool parse_attributed_span_mark_begin(Scanner *s, TSLexer *lexer,
+                                             const bool *valid_symbols) {
+  mark_end(s, lexer);
+  Inline *top = peek_inline(s);
+  bool balanced = update_square_bracket_lookahead_states(s, lexer,
+      top && (top->flags & INLINE_BRACED) && top->type != INLINE_NOTE ? top : NULL);
+  if (balanced && (s->state & STATE_BRACKET_STARTS_SPAN)) {
+    push_inline_flagged(s, SQUARE_BRACKET_SPAN, 0, INLINE_BRACED);
+    lexer->result_symbol = ATTRIBUTED_SPAN_MARK_BEGIN;
+    return true;
+  }
+  if (!valid_symbols[SQUARE_BRACKET_SPAN_MARK_BEGIN]) return false;
+  if (valid_symbols[IN_FALLBACK]) {
+    if (balanced && (s->state & STATE_BRACKET_STARTS_INLINE_LINK)) {
+      push_inline_flagged(s, SQUARE_BRACKET_SPAN, 0, INLINE_BRACED);
+    } else if (balanced) {
+      if (top && top->type == SQUARE_BRACKET_SPAN && (top->flags & INLINE_LABEL)) {
+        if (top->literal_closes < UINT32_MAX) ++top->literal_closes;
+      } else {
+        push_inline_flagged(s, LITERAL_BRACKET, 0, 0);
+      }
+    } else {
+      Inline *open = find_inline_in_scope(s, SQUARE_BRACKET_SPAN);
+      if (open) ++open->data;
+    }
+  } else {
+    if (!balanced) return false;
+    push_inline_flagged(s, SQUARE_BRACKET_SPAN, 0, INLINE_BRACED);
+  }
+  lexer->result_symbol = SQUARE_BRACKET_SPAN_MARK_BEGIN;
+  return true;
+}
+
 /// WHICH RUN A `{~` OPENS, asked zero-width at the character behind it.
 ///
 /// `_substitution_begin` is valid in exactly one place - right there - so the
@@ -9123,7 +9188,7 @@ static bool mark_span_begin(Scanner *s, TSLexer *lexer,
 /// than left to the probes further down: those would read from wherever this
 /// one stopped.
 static bool parse_substitution_or_strikethrough(Scanner *s, TSLexer *lexer,
-                                                const bool *valid_symbols) {
+                                              const bool *valid_symbols) {
   // Zero-width, whatever the reader below advances over.
   mark_end(s, lexer);
   bool closed = false;
@@ -9806,7 +9871,7 @@ static bool zero_width_mark_pending(const bool *valid_symbols) {
       DELETE_MARK_BEGIN,         BOLD_ITALIC_MARK_BEGIN,
       PARENS_SPAN_MARK_BEGIN,    CURLY_BRACKET_SPAN_MARK_BEGIN,
       SQUARE_BRACKET_SPAN_MARK_BEGIN, INLINE_NOTE_MARK_BEGIN,
-      SUBSTITUTION_BEGIN,
+      SUBSTITUTION_BEGIN, ATTRIBUTED_SPAN_MARK_BEGIN,
   };
   for (size_t i = 0; i < sizeof(marks) / sizeof(marks[0]); ++i) {
     if (valid_symbols[marks[i]]) {
@@ -10324,6 +10389,10 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     return true;
   }
 
+  if (valid_symbols[ATTRIBUTED_SPAN_MARK_BEGIN] && !valid_symbols[ERROR]) {
+    return parse_attributed_span_mark_begin(s, lexer, valid_symbols);
+  }
+
   // text and bare delimiters that open and close nothing. It reads
   // forward from the word or the run's first character, so it answers for the
   // whole call the way the two readers above do.
@@ -10812,6 +10881,12 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   int32_t declined_marker = 0;
   switch (lexer->lookahead) {
   case '[':
+    if (valid_symbols[LITERAL_RUN] && !valid_symbols[ERROR] &&
+        !zero_width_mark_pending(valid_symbols) &&
+        !valid_symbols[LINK_REF_DEF_MARK_BEGIN] &&
+        !valid_symbols[FOOTNOTE_MARK_BEGIN]) {
+      return parse_plain_bracket_run(s, lexer);
+    }
     if (parse_open_bracket(s, lexer, valid_symbols)) {
       return true;
     }
@@ -10947,9 +11022,15 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   // `newline` already produce.
   if (lexer->lookahead == ']' && valid_symbols[LITERAL_RUN] &&
       peek_inline(s) && peek_inline(s)->type == LITERAL_BRACKET) {
-    advance(s, lexer);
+    Inline *literal = peek_inline(s);
+    unsigned remaining = literal->literal_closes ? literal->literal_closes : 1;
+    do {
+      advance(s, lexer);
+      --remaining;
+    } while (remaining > 0 && lexer->lookahead == ']');
     mark_end(s, lexer);
-    remove_inline(s);
+    if (remaining == 0) remove_inline(s);
+    else literal->literal_closes = remaining;
     lexer->result_symbol = LITERAL_RUN;
     return true;
   }
@@ -11213,7 +11294,7 @@ unsigned tree_sitter_carve_external_scanner_serialize(void *payload,
   size_t label_bytes = 0;
   for (size_t i = 0; i < s->open_inline->size; ++i) {
     Inline *e = *array_get(s->open_inline, i);
-    if (e->type == SQUARE_BRACKET_SPAN && (e->flags & INLINE_LABEL)) label_bytes += 3;
+    if ((e->type == SQUARE_BRACKET_SPAN && (e->flags & INLINE_LABEL)) || e->type == LITERAL_BRACKET) label_bytes += 3;
   }
   if (s->open_blocks->size > UINT8_MAX ||
       s->open_blocks->size >
@@ -11260,7 +11341,7 @@ unsigned tree_sitter_carve_external_scanner_serialize(void *payload,
     buffer[size++] = (char)((uint8_t)x->type | (uint8_t)(x->flags << 6));
     buffer[size++] = (char)x->data;
     buffer[size++] = (char)x->literal_closes;
-    if (x->type == SQUARE_BRACKET_SPAN && (x->flags & INLINE_LABEL)) {
+    if ((x->type == SQUARE_BRACKET_SPAN && (x->flags & INLINE_LABEL)) || x->type == LITERAL_BRACKET) {
       buffer[size++] = (char)(x->literal_closes >> 8);
       buffer[size++] = (char)(x->literal_closes >> 16);
       buffer[size++] = (char)(x->literal_closes >> 24);
@@ -11307,7 +11388,7 @@ void tree_sitter_carve_external_scanner_deserialize(void *payload, char *buffer,
       uint8_t packed = (uint8_t)buffer[size++];
       uint8_t data = (uint8_t)buffer[size++];
       uint32_t literal_closes = (uint8_t)buffer[size++];
-      if ((packed & 0x3f) == SQUARE_BRACKET_SPAN && (packed >> 6 & INLINE_LABEL)) {
+      if (((packed & 0x3f) == SQUARE_BRACKET_SPAN && (packed >> 6 & INLINE_LABEL)) || (packed & 0x3f) == LITERAL_BRACKET) {
         if (size + 3 > length) break;
         literal_closes |= (uint32_t)(uint8_t)buffer[size++] << 8;
         literal_closes |= (uint32_t)(uint8_t)buffer[size++] << 16;
