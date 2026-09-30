@@ -8,7 +8,7 @@ const require = createRequire(import.meta.url);
 const parser = new Parser();
 parser.setLanguage(require('../bindings/node'));
 const directory = new URL('../spec/tests/corpus/', import.meta.url);
-const files = readdirSync(directory).filter(name => name.startsWith('535-') && name.endsWith('.crv'));
+const files = readdirSync(directory).filter(name => /^\d+-a-marker-line-opaque-quote-keeps-overindented-markers-literal(?:-\d+)?\.crv$/.test(name));
 assert.equal(files.length, 36);
 const compared = new Set(['code_block', 'raw_block', 'paragraph', 'block_quote', 'heading', 'table']);
 function astSummary(node, depth = 0, result = []) {
