@@ -1881,8 +1881,16 @@
           "type": "CHOICE",
           "members": [
             {
-              "type": "SYMBOL",
-              "name": "_block_quote_prefix"
+              "type": "REPEAT1",
+              "content": {
+                "type": "ALIAS",
+                "content": {
+                  "type": "SYMBOL",
+                  "name": "_table_quote_continuation"
+                },
+                "named": true,
+                "value": "block_quote_marker"
+              }
             },
             {
               "type": "BLANK"
@@ -1919,8 +1927,16 @@
           "type": "CHOICE",
           "members": [
             {
-              "type": "SYMBOL",
-              "name": "_block_quote_prefix"
+              "type": "REPEAT1",
+              "content": {
+                "type": "ALIAS",
+                "content": {
+                  "type": "SYMBOL",
+                  "name": "_table_quote_continuation"
+                },
+                "named": true,
+                "value": "block_quote_marker"
+              }
             },
             {
               "type": "BLANK"
@@ -10102,6 +10118,10 @@
     {
       "type": "SYMBOL",
       "name": "_term_comment"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_table_quote_continuation"
     }
   ],
   "inline": [],
