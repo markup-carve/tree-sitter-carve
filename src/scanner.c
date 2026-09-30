@@ -9908,11 +9908,17 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   // is consumed by the row-end-newline token even though it does not start on
   // a newline. The end of input reaches it here for the same reason: `is_newline`
   // is false there, so the branch above never asks (#458).
-  if ((lexer->lookahead == '{' || lexer->lookahead == ' ' ||
-       lexer->lookahead == '\t' || at_eof) &&
-      valid_symbols[TABLE_ROW_END_NEWLINE] &&
-      parse_table_end_newline(s, lexer)) {
-    return true;
+  bool row_padding = lexer->lookahead == ' ' || lexer->lookahead == '\t';
+  if ((lexer->lookahead == '{' || row_padding || at_eof) &&
+      valid_symbols[TABLE_ROW_END_NEWLINE]) {
+    if (parse_table_end_newline(s, lexer)) {
+      return true;
+    }
+    // A declined padding probe consumed whitespace. Let the internal lexer
+    // retry at the original position rather than widening the next marker.
+    if (row_padding) {
+      return false;
+    }
   }
 
   // Needs to be done before indented content spacer and list item continuation

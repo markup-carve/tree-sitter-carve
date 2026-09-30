@@ -115,6 +115,25 @@ if (broken.length) {
     + ' document may simply end. `choice($._newline, $._eof_or_newline)` is the fix.');
   process.exit(1);
 }
+// Padding in a cell is not part of its code marker. A declined row-ending
+// probe must leave the next inline token's source range unchanged.
+for (const prefix of ['| a |', '> | a |']) {
+  for (const padding of [' ', '   ', '\t']) {
+    for (const [ticks, suffix, type] of [['`', '', 'verbatim_marker_begin'],
+      ['``', '', 'verbatim_marker_begin'], ['`', '{=html}', 'raw_inline_marker_begin']]) {
+      const input = `${prefix}${padding}${ticks}c${ticks}${suffix} |`;
+      for (const ending of ['', '\n', '\r\n', '\r']) {
+        const root = parser.parse(input + ending).rootNode;
+        assert.equal(root.hasError, false, input);
+        const markers = root.descendantsOfType(type);
+        assert.equal(markers.length, 1, input);
+        assert.equal(markers[0].text, ticks, input);
+        assert.equal(markers[0].startIndex, input.indexOf(ticks), input);
+      }
+    }
+  }
+}
+
 const corpus = spawnSync('git', ['-C', path.join(repoRoot, 'spec'), 'rev-parse', 'HEAD'], {
   encoding: 'utf8',
 });
