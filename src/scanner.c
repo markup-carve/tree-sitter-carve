@@ -3428,7 +3428,7 @@ static bool parse_block_quote(Scanner *s, TSLexer *lexer,
   if (has_marker && ending_newline && !any_open_inline &&
       valid_symbols[CLOSE_PARAGRAPH]) {
     clear_literal_brackets(s);
-  lexer->result_symbol = CLOSE_PARAGRAPH;
+    lexer->result_symbol = CLOSE_PARAGRAPH;
     return true;
   }
 
@@ -3453,7 +3453,7 @@ static bool parse_block_quote(Scanner *s, TSLexer *lexer,
       !any_open_inline) {
     if (valid_symbols[CLOSE_PARAGRAPH]) {
       clear_literal_brackets(s);
-  lexer->result_symbol = CLOSE_PARAGRAPH;
+      lexer->result_symbol = CLOSE_PARAGRAPH;
       return true;
     }
     if (valid_symbols[BLOCK_CLOSE]) {
@@ -3495,7 +3495,7 @@ static bool parse_block_quote(Scanner *s, TSLexer *lexer,
     // Close the paragraph, but allow lazy continuation (without any `>`).
     if (valid_symbols[CLOSE_PARAGRAPH] && has_marker) {
       clear_literal_brackets(s);
-  lexer->result_symbol = CLOSE_PARAGRAPH;
+      lexer->result_symbol = CLOSE_PARAGRAPH;
       return true;
     }
     if (valid_symbols[BLOCK_CLOSE]) {
