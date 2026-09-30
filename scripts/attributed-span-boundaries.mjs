@@ -53,6 +53,10 @@ for (const ending of ['\n', '\r\n', '\r']) {
     ['x [[@k]] y', { citation_group: 1 }],
     ['[ [ x ] ]', { span: 0 }],
     ['[[x](u)]', { inline_link: 1 }],
+    ['[[x\\' + ending + ending + ']]', { hard_line_break: 1, paragraph: 2 }],
+    ['| [[x |' + ending + '| y]] |', { table: 1, table_row: 2 }],
+    ['- [[x' + ending + '- y]]', { list: 1, list_item: 2 }],
+    ['[[x' + ending + '# heading' + ending + 'y ]]', { heading: 1, paragraph: 2 }],
     ['x ^[a ^[b] /c/]', { inline_note: 1, emphasis: 1 }],
   ]) {
     const root = parser.parse(source + ending).rootNode;
@@ -63,4 +67,4 @@ for (const ending of ['\n', '\r\n', '\r']) {
     }
   }
 }
-console.log('Attributed spans: 9 corpus controls and 18 boundary controls across all line endings.');
+console.log(`Attributed spans: ${files.length} corpus controls and 22 boundary controls across all line endings.`);

@@ -8743,16 +8743,19 @@ static bool parse_plain_bracket_run(Scanner *s, TSLexer *lexer) {
   }
   if (prefix < 2) return false;
   unsigned depth = prefix;
+  bool plain = true;
   while (!lexer->eof(lexer)) {
     if (at_line_end(lexer)) {
       int32_t ending = lexer->lookahead;
       advance(s, lexer);
       if (ending == '\r' && lexer->lookahead == '\n') advance(s, lexer);
       while (lexer->lookahead == ' ' || lexer->lookahead == '\t') advance(s, lexer);
-      if (lexer->eof(lexer) || at_line_end(lexer)) return false;
+      if (lexer->eof(lexer)) break;
+      if (at_line_end(lexer)) return false;
       continue;
     }
     int32_t c = lexer->lookahead;
+    if (!carve_is_alnum_ascii(c) && c != '[' && c != ']' && c != ' ' && c != '\t' && c < 0x80) plain = false;
     if (c == '\\') {
       advance(s, lexer);
       if (lexer->eof(lexer) || at_line_end(lexer)) return false;
@@ -8776,6 +8779,11 @@ static bool parse_plain_bracket_run(Scanner *s, TSLexer *lexer) {
       continue;
     }
     advance(s, lexer);
+  }
+  if (plain) {
+    mark_end(s, lexer);
+    lexer->result_symbol = LITERAL_RUN;
+    return true;
   }
   return false;
 }
