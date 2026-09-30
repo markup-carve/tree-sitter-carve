@@ -43,7 +43,9 @@
     "test:reason-predicates": "node --test tests/reason-predicates.test.mjs",
     "test:version-surfaces": "node scripts/version-surfaces.mjs && node --test tests/version-surfaces.test.mjs",
     "test:inline-reading": "node scripts/inline-reading.mjs && node --test tests/inline-reading.test.mjs",
-    "test:termination": "node scripts/parse-termination.mjs"
+    "test:termination": "node scripts/parse-termination.mjs",
+    "test:editor-queries": "node scripts/editor-queries.mjs",
+    "test:bracket-boundaries": "node scripts/bracket-boundaries.mjs"
   },
   "author": "",
   "license": "MIT",
