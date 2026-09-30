@@ -183,11 +183,7 @@ function symbolFallback($, options) {
     // `bold_italic_begin` gives. A bare one needs its own standalone fallback
     // the way `/` and `*` do - otherwise `/* x/`, where the whitespace check after `/*` fails, has
     // no lexing left at all.
-    seq(
-      "/",
-      $._non_whitespace_check,
-      $._bold_italic_open_decision,
-    ),
+    seq("/", $._non_whitespace_check, $._bold_italic_open_decision),
     "*",
     "_",
     "~",
@@ -201,11 +197,7 @@ function symbolFallback($, options) {
     // unclosed bold-italic could not lose to emphasis at all: the parser
     // commits to `bold_italic_begin` and errors at the end of the line.
     seq(
-      seq(
-        "/",
-        $._non_whitespace_check,
-        $._bold_italic_open_decision,
-      ),
+      seq("/", $._non_whitespace_check, $._bold_italic_open_decision),
       choice($._bold_italic_mark_begin, $._in_fallback),
     ),
     // The BRACED opener needs a fallback branch of its own, exactly as `{*`
@@ -2035,18 +2027,17 @@ module.exports = grammar({
     // nothing. See `parse_bold_italic_star` in `src/scanner.c`.
     // A rejected opener within strong retains the enclosing span reading.
     // Both real and fallback openers share this prefix and its external state.
-    _bold_italic_open_decision: ($) => choice(
-      seq($._bold_italic_open_check, $._bold_italic_star),
-      prec.dynamic(3 * ELEMENT_PRECEDENCE,
-                   seq($._bold_italic_scoped_open_check, $._bold_italic_star)),
-    ),
+    _bold_italic_open_decision: ($) =>
+      choice(
+        seq($._bold_italic_open_check, $._bold_italic_star),
+        prec.dynamic(
+          3 * ELEMENT_PRECEDENCE,
+          seq($._bold_italic_scoped_open_check, $._bold_italic_star),
+        ),
+      ),
 
     bold_italic_begin: ($) =>
-      seq(
-        "/",
-        $._non_whitespace_check,
-        $._bold_italic_open_decision,
-      ),
+      seq("/", $._non_whitespace_check, $._bold_italic_open_decision),
 
     strong: ($) =>
       seq(

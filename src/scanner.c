@@ -495,6 +495,7 @@ typedef struct {
   // Transient raw lookahead facts collected only during a combined-opener probe.
   bool combined_probe;
   bool combined_raw_closer;
+  bool combined_raw_strong_closer;
   bool combined_raw_line_end;
   int32_t combined_raw_previous;
 } Scanner;
@@ -737,6 +738,9 @@ static void advance(Scanner *s, TSLexer *lexer) {
          previous != '\r' && previous != '\n' && !carve_is_alnum_ascii(lexer->lookahead))) {
       s->combined_raw_closer = true;
     }
+    if (current == '*' && previous != 0 && previous != ' ' && previous != '\t' &&
+        previous != '\r' && previous != '\n' && !carve_is_alnum_ascii(lexer->lookahead))
+      s->combined_raw_strong_closer = true;
     if (current == '\r' || current == '\n') s->combined_raw_line_end = true;
     s->combined_raw_previous = current;
   }
@@ -8900,6 +8904,8 @@ static bool bare_closer_skips_brackets(Scanner *s, TSLexer *lexer, char bare,
       if (lexer->eof(lexer) || at_line_end(lexer)) {
         return false;
       }
+      previous = '\n';
+      ++characters;
       continue;
     }
     int32_t c = lexer->lookahead;
@@ -8908,6 +8914,8 @@ static bool bare_closer_skips_brackets(Scanner *s, TSLexer *lexer, char bare,
       if (!lexer->eof(lexer) && !at_line_end(lexer)) {
         advance(s, lexer);
       }
+      previous = 'x';
+      ++characters;
       continue;
     }
     if (c == '`') {
@@ -8915,6 +8923,8 @@ static bool bare_closer_skips_brackets(Scanner *s, TSLexer *lexer, char bare,
       if (read_verbatim_run(s, lexer, width, 0, false) != VerbatimRunCloses) {
         return false;
       }
+      previous = 'x';
+      ++characters;
       continue;
     }
     if (c == ']' && in_bracket) return false;
@@ -8934,10 +8944,14 @@ static bool bare_closer_skips_brackets(Scanner *s, TSLexer *lexer, char bare,
           else if (closer) return true;
           else if (boundary) return false;
         }
-        continue;
+        previous = 'x';
+      ++characters;
+      continue;
       }
       // No matching `]`: this `[` is content, not an opaque run - fall
       // through and keep searching from right after it.
+      previous = 'x';
+      ++characters;
       continue;
     }
     advance(s, lexer);
@@ -9202,7 +9216,6 @@ static bool substitution_arrow_ahead(Scanner *s, TSLexer *lexer, bool *closed) {
   return false;
 }
 
-#define UNPAIRED_LITERAL_SLASH (UINT8_MAX - 3)
 #define NO_COMBINED_CLOSER UINT8_MAX
 #define NO_COMBINED_CLOSER_LINE (UINT8_MAX - 1)
 #define HAS_NO_COMBINED_CLOSER(s) ((s)->after_closer_char >= NO_COMBINED_CLOSER_LINE)
@@ -9301,15 +9314,21 @@ static bool mark_span_begin(Scanner *s, TSLexer *lexer,
                             const bool *valid_symbols, InlineType inline_type,
                             TokenType token) {
   Inline *top = peek_inline(s);
+  Inline *bare_emphasis = find_inline_in_scope(s, EMPHASIS);
+  if (inline_type == BOLD_ITALIC && !valid_symbols[IN_FALLBACK] && bare_emphasis &&
+      !(bare_emphasis->flags & INLINE_BRACED)) return false;
   if (inline_type == BOLD_ITALIC && !valid_symbols[IN_FALLBACK] && top &&
       top->type == STRONG && (top->flags & INLINE_SCOPED_COMBINED_LITERAL)) return false;
   bool combined_fallback = inline_type == EMPHASIS &&
       s->after_closer_char == '*' && s->after_closer_col == line_column(s, lexer);
   bool bare = (s->state & STATE_BARE_SPAN_OPENER) != 0;
   s->state &= ~STATE_BARE_SPAN_OPENER;
-  if (inline_type == STRONG && bare && s->after_closer_char == UNPAIRED_LITERAL_SLASH &&
-      s->after_closer_col + 1 == line_column(s, lexer) &&
-      !find_inline_in_scope(s, EMPHASIS)) return false;
+  if (inline_type == STRONG && bare && top && top->type == STRONG &&
+      (top->flags & INLINE_SCOPED_COMBINED_LITERAL)) {
+    if (!valid_symbols[IN_FALLBACK]) return false;
+    lexer->result_symbol = token;
+    return true;
+  }
   // If IN_FALLBACK is valid then it means we're processing the
   // `_symbol_fallback` branch (see `grammar.js`).
   if (valid_symbols[IN_FALLBACK]) {
@@ -9991,7 +10010,6 @@ static int parse_literal_run(Scanner *s, TSLexer *lexer,
   InlineType kind;
   bool leftover = false;
   uint32_t delims_seen = 0;
-  bool unpaired_slash = false;
 
   if (HAS_NO_COMBINED_CLOSER(s) && carve_is_alnum_ascii(lexer->lookahead) &&
       (s->after_closer_char == NO_COMBINED_CLOSER_LINE ||
@@ -9999,21 +10017,33 @@ static int parse_literal_run(Scanner *s, TSLexer *lexer,
     // Unclosed combined runs are literal. Read their plain words together,
     // retaining other markup and any trailing whitespace for the grammar.
     int32_t previous = 0;
+    Inline *literal_strong = find_inline(s, STRONG);
+    Inline *literal_emphasis = find_inline(s, EMPHASIS);
+    bool literal_slashes = !literal_emphasis ||
+                          (literal_emphasis->flags & INLINE_COMBINED_FALLBACK);
+    bool literal_stars = literal_slashes && (!literal_strong ||
+                         (literal_strong->flags & INLINE_SCOPED_COMBINED_LITERAL));
     bool consumed = false;
     while (!lexer->eof(lexer) && !at_line_end(lexer)) {
       int32_t current = lexer->lookahead;
       bool whitespace = current == ' ' || current == '\t';
       if (!carve_is_alnum_ascii(current) && !whitespace &&
-          !(current == '/' && !find_inline(s, EMPHASIS)) && current != '.' &&
-          !(current == '*' && previous == '/' && !find_inline(s, STRONG) &&
-            !find_inline(s, EMPHASIS))) break;
+          !(current == '/' && literal_slashes) && current != '.' &&
+          !(current == '*' && previous == '/' && literal_stars)) break;
       if (current == '.') {
         advance(s, lexer);
         if (lexer->lookahead == '.') {
           advance(s, lexer);
           if (lexer->lookahead == '.') break;
         }
-      } else advance(s, lexer);
+      } else {
+        advance(s, lexer);
+        if (current == '*' && literal_strong &&
+            !carve_is_alnum_ascii(lexer->lookahead)) break;
+        if (current == '/' && literal_emphasis && previous != 0 &&
+            previous != ' ' && previous != '\t' &&
+            !carve_is_alnum_ascii(lexer->lookahead)) break;
+      }
       if (!whitespace) mark_end(s, lexer);
       previous = current;
       consumed = true;
@@ -10070,8 +10100,7 @@ static int parse_literal_run(Scanner *s, TSLexer *lexer,
       // Right behind a closer of this very marker: nothing of this kind is
       // open any more and the previous character is the marker, so no
       // character of the rest of the run can open or close.
-      unpaired_slash = s->after_closer_char == UNPAIRED_LITERAL_SLASH;
-      prev = unpaired_slash ? '/' : (int32_t)s->after_closer_char;
+      prev = (int32_t)s->after_closer_char;
       prev2 = 'x';
       leftover = true;
     } else if (marker_of_open_inline(s, lexer->lookahead)) {
@@ -10119,7 +10148,6 @@ static int parse_literal_run(Scanner *s, TSLexer *lexer,
     bool path_guard = (c == '/' || c == '_') && (prev == '/' || prev == '_') &&
                       prev2 != 0;
     bool may_open = !carve_is_alnum_ascii(prev) && prev != c &&
-                    !(unpaired_slash && delims_seen == 0) &&
                     prev != '_' && !path_guard &&
                     !next_ws && next != c;
     // The bold-italic opener `/*` may follow a word (`a/*y*/b`), unlike a bare
@@ -10413,12 +10441,6 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   if (valid_symbols[LITERAL_SLASH_BOUNDARY] && !valid_symbols[ERROR]) {
     mark_end(s, lexer);
     if (valid_symbols[NON_WHITESPACE_CHECK] && check_non_whitespace(s, lexer)) return true;
-    InlineType following;
-    if (is_bare_delim_kind(lexer->lookahead, &following) && !HAS_NO_COMBINED_CLOSER(s) &&
-        !find_inline_in_scope(s, EMPHASIS) && !find_inline_in_scope(s, STRONG)) {
-      s->after_closer_char = UNPAIRED_LITERAL_SLASH;
-      s->after_closer_col = line_column(s, lexer);
-    }
     lexer->result_symbol = LITERAL_SLASH_BOUNDARY;
     return true;
   }
@@ -10444,7 +10466,9 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
          opener_column < s->after_closer_col)) {
       Inline *cached_scope = peek_inline(s);
       bool scoped = valid_symbols[BOLD_ITALIC_SCOPED_OPEN_CHECK] && cached_scope &&
-                    cached_scope->type == STRONG && !find_inline_in_scope(s, EMPHASIS);
+                    cached_scope->type == STRONG &&
+                    (cached_scope->flags & INLINE_SCOPED_COMBINED_LITERAL) &&
+                    !find_inline_in_scope(s, EMPHASIS);
       if (!scoped && !valid_symbols[BOLD_ITALIC_OPEN_CHECK]) return false;
       if (scoped) cached_scope->flags |= INLINE_SCOPED_COMBINED_LITERAL;
       lexer->result_symbol = scoped ? BOLD_ITALIC_SCOPED_OPEN_CHECK : BOLD_ITALIC_OPEN_CHECK;
@@ -10459,6 +10483,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     char scope_marker = scope ? inline_marker(scope_type) : 0;
     s->combined_probe = true;
     s->combined_raw_closer = false;
+    s->combined_raw_strong_closer = false;
     s->combined_raw_line_end = false;
     s->combined_raw_previous = 0;
     int32_t previous = 0;
@@ -10525,7 +10550,11 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       if (current == '[') {
         if (!plain_prefix_end_column) plain_prefix_end_column = line_column(s, lexer);
         advance(s, lexer);
-        if (!scan_until_bracket_close(s, lexer, NULL)) break;
+        if (!scan_until_bracket_close(s, lexer, NULL)) {
+          if (scope && scope_type == STRONG && s->combined_raw_strong_closer)
+            enclosing_closer = true;
+          break;
+        }
         advance(s, lexer);
         if (lexer->lookahead == '(') {
           advance(s, lexer);
@@ -10590,9 +10619,6 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       previous = current;
     }
     s->combined_probe = false;
-    // Inside slash emphasis, a rejected combined opener leaves its star
-    // available to the ordinary strong branch.
-    if (!combined_pair && find_inline_in_scope(s, EMPHASIS)) return false;
     if (!combined_pair && emphasis_closer &&
         valid_symbols[EMPHASIS_MARK_BEGIN] && !find_inline_in_scope(s, EMPHASIS)) {
       s->after_closer_char = strong_closer ? 0 : '*';
@@ -10613,6 +10639,11 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
         s->after_closer_char = whole_line ? NO_COMBINED_CLOSER_LINE : NO_COMBINED_CLOSER;
         s->after_closer_col = through;
       }
+    }
+    // Cache rejected candidates before leaving the star to nested strong.
+    if (!combined_pair && find_inline_in_scope(s, EMPHASIS)) {
+      if (scope && scope_type == EMPHASIS && !strong_closer)
+        scope->flags |= INLINE_COMBINED_FALLBACK;
     }
     bool scoped = valid_symbols[BOLD_ITALIC_SCOPED_OPEN_CHECK] && scope &&
                   scope_type == STRONG && enclosing_closer && !combined_pair && !emphasis_closer &&

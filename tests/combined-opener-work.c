@@ -13,20 +13,24 @@ int main(int argc, char **argv) {
   assert(ts_parser_set_language(parser, tree_sitter_carve()));
   const unsigned sizes[] = {128, 256, 512, 1024, 4096, 16384};
   const char *tails[] = {"z\n", "z\r\n", "z\r", "z", "z [x]\n", "z {x}\n", "z `x`\n", "z ...\n", "z.\n"};
-  const char *prefixes[] = {"/*a ", "/*a [x] ", "/*a {x} ", "/*a `x` ", "/*a \\x "};
+  const char *prefixes[] = {"/*a ", "/*a [x] ", "/*a {x} ", "/*a `x` ", "/*a \\x ", "/*a ", "/*a "};
   bool baseline = argc > 1 && strcmp(argv[1], "baseline") == 0;
   for (unsigned prefix = 0; prefix < sizeof(prefixes)/sizeof(prefixes[0]); ++prefix)
   for (unsigned tail = 0; tail < sizeof(tails)/sizeof(tails[0]); ++tail)
   for (unsigned i = 0; i < sizeof(sizes)/sizeof(sizes[0]); ++i) {
     unsigned n = sizes[i], width = strlen(prefixes[prefix]);
-    unsigned bytes = width * n + strlen(tails[tail]);
+    bool scoped = prefix >= 5;
+    unsigned bytes = width * n + strlen(tails[tail]) + (scoped ? 4 : 0);
     if (baseline && n > 1024) break;
-    if (prefix > 0 && n > 512) break;
+    if (prefix > 0 && prefix < 5 && n > 512) break;
     if (prefix > 0 && tail > 0) break;
     char *source = malloc(bytes + 1);
     assert(source);
-    for (unsigned j = 0; j < n; ++j) memcpy(source + width*j, prefixes[prefix], width);
-    memcpy(source + width*n, tails[tail], strlen(tails[tail]));
+    unsigned offset = scoped ? 3 : 0;
+    if (scoped) memcpy(source, prefix == 5 ? "*x " : "/x ", 3);
+    for (unsigned j = 0; j < n; ++j) memcpy(source + offset + width*j, prefixes[prefix], width);
+    if (scoped) memcpy(source + offset + width*n, prefix == 5 ? "z*\n" : "y/\n", 3);
+    else memcpy(source + width*n, tails[tail], strlen(tails[tail]));
     source[bytes] = 0;
     carve_scanner_advances = 0;
     carve_lexer_advances = 0;
@@ -37,7 +41,8 @@ int main(int argc, char **argv) {
     TSNode paragraph = ts_node_named_child(root, 0);
     assert(strcmp(ts_node_type(paragraph), "paragraph") == 0);
     unsigned rich_count = prefix == 3 || prefix == 4 ? n : 0;
-    assert(ts_node_named_child_count(paragraph) == rich_count + (tail == 6 || tail == 7 ? 1 : 0));
+    assert(ts_node_named_child_count(paragraph) == (scoped ? 1 : rich_count + (tail == 6 || tail == 7 ? 1 : 0)));
+    if (scoped) assert(strcmp(ts_node_type(ts_node_named_child(paragraph, 0)), prefix == 5 ? "strong" : "emphasis") == 0);
     if (rich_count) for (unsigned j = 0; j < n; ++j) {
       assert(strcmp(ts_node_type(ts_node_named_child(paragraph, j)),
                     prefix == 3 ? "verbatim" : "backslash_escape") == 0);
@@ -48,7 +53,7 @@ int main(int argc, char **argv) {
     fflush(stdout);
     if (!baseline) {
       assert(carve_scanner_advances <= 32ULL * bytes);
-      if (prefix == 0) assert(carve_lexer_advances <= 64ULL * bytes);
+      if (prefix == 0 || scoped) assert(carve_lexer_advances <= 64ULL * bytes);
       // Rich tokens retain the runtime's existing quadratic column rescans.
       // The scanner ceiling above rejects a new quadratic lookahead term.
       else assert(carve_lexer_advances <= 256ULL * n * n + 64ULL * bytes);
