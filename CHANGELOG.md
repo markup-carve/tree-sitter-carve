@@ -6,26 +6,41 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-### Fixed
-
-- Parse inline runs in container labels and keep closing brackets inside
-  closed code or comments. Bound trailing comments at the label close (#459).
-- Accept a continuation marker with no attached block at EOF or before a
-  sibling item. Preserve nested lists and loose sibling items after the marker
-  (#459).
-- Keep a closed fenced comment inside a definition term across its blank lines.
-  Preserve term text after the comment and respect enclosing container margins
-  (#459).
-- Open fences after quotes at the host content column, on footnote marker lines
-  and in quoted footnote bodies. Close nested notes and lists when a quote ends.
-  Keep bullets in an open description paragraph as text (#459).
-- Measure footnote bodies from their marker column and end them when a line
-  falls below that margin, including notes hosted by a description.
-
 ## [0.1.7] - 2026-09-30
 
 ### Fixed
 
+- Parse inline runs in container labels and keep closing brackets inside
+  closed code or comments. Bound trailing comments at the label close (#477).
+- Accept a continuation marker with no attached block at EOF or before a
+  sibling item. Preserve nested lists and loose sibling items after the marker
+  (#476).
+- Keep a closed fenced comment inside a definition term across its blank lines.
+  Preserve term text after the comment and respect enclosing container margins
+  (#478).
+- Open fences after quotes at the host content column, on footnote marker lines
+  and in quoted footnote bodies. Close nested notes and lists when a quote ends.
+  Keep bullets in an open description paragraph as text (#474).
+- Measure footnote bodies from their marker column and end them when a line
+  falls below that margin, including notes hosted by a description (#474).
+- Keep link brackets and wrapped quoted titles within their enclosing spans
+  and container margins (#475). Stop forced spans at their enclosing bracket
+  and retain links inside nested attributed spans (#479).
+- Preserve opaque quote bands and validate quoted table rows before consuming
+  the next line's prefix (#480).
+- Recognize marker-line tables, thematic breaks, colon fences and numeric
+  admonition kinds. Preserve escaped row-closing pipes and keep code and comment
+  fences within their owning list, description and quote boundaries (#484).
+- Preserve formatting and links inside attributed spans, including spans after
+  literal bracket prefixes. Apply adjacent inline attribute blocks and retain
+  delimiter, mention, tag, caption and image alt text readings (#482, #483).
+- Keep combined bold/italic lookahead inside labels and enclosing spans. Bound
+  scanner work when malformed openers alternate with brackets, braces, code or
+  escapes (#486). Preserve nested delimiter scopes and limit cached results
+  to the line and span that were checked (#489).
+- Bound scanner and runtime lexer work for unfinished bracket runs containing
+  periods, commas, semicolons or question marks. Preserve links, spans, inline notes,
+  line boundaries and incremental edits (#488).
 - A `%%` comment inside a forced span (`{*...*}` and the rest of the braced
   family) or the combined `/*...*/` token now ends at that construct's own
   closer instead of running past it to the end of the line
@@ -60,11 +75,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
-- The spec corpus pin moves through carve 0.1.7 (`551f224`) to `b4f6a1e`, which
-  brings 265 documents in 33 categories the coverage matrix had never seen and
-  then a refresh to 535 categories, and the engine the harness compares against
-  moves to carve-js 0.1.8. Ten grammar gaps arrive with the new documents and are
-  recorded rather than hidden (#459, #469).
+- Move the specification pin through carve 0.1.7 (`551f224`) and `b4f6a1e`
+  to `39076d7`, and compare inline readings against carve-js 0.1.8. The earlier
+  refresh added 265 documents in 33 previously uncovered categories. All 536
+  categories and 2,200 documents are now covered, and all recorded block and
+  inline reading gaps are resolved (#459, #469, #482, #483, #484, #486, #488, #489).
 
 ## [0.1.6] - 2026-09-22
 
