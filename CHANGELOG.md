@@ -41,7 +41,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Malformed input no longer makes the scanner work without bound. Unfinished
   bracket runs, alternating openers and incomplete combined markers are bounded,
   and a cached reading applies only to the line and span it was taken from, so an
-  editor stays responsive while text is half-written (#486, #488, #489).
+  editor stays responsive while text is half-written. Over 1,024 unfinished
+  `[[a. ` fragments, scanner advances fall from 13,124,099 to 10,243 and runtime
+  lexer advances from 23,628,295 to 10,248. Some malformed inputs that interleave
+  rich markup still take quadratic lexer work, so this bounds the tested families
+  rather than every input (#486, #488, #489).
 
 ### Added
 
