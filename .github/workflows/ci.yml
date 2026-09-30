@@ -79,6 +79,16 @@ jobs:
       - name: Line terminators
         run: npm run test:line-terminators
 
+      # The terminator a document HAS is the check above; the one it does not
+      # have is this one. Every corpus file on disk ends with a terminator and
+      # the no-ERROR sweep writes one onto every document it generates, so a
+      # line ending spelled `_newline` where it could be `_eof_or_newline`
+      # broke the last line of every unterminated document with all of them
+      # green - the state of a buffer in an editor between two keystrokes
+      # (#458).
+      - name: A missing final terminator changes no tree
+        run: npm run test:final-terminator
+
       # Every check above asks what a tree says; none of them asks whether one
       # arrives. A 14-byte document held four parses at 9.6 GB RSS for four
       # hours before anything noticed, because nothing bounded a parse and

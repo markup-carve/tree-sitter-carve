@@ -895,11 +895,16 @@ module.exports = grammar({
     div: ($) =>
       seq(
         $._div_marker_begin,
-        $._newline,
+        choice($._newline, $._eof_or_newline),
         field("content", alias(repeat($._block_with_heading), $.content)),
         optional($._block_quote_prefix),
         $._block_close,
-        optional(seq(alias($._div_end, $.div_marker_end), $._newline)),
+        optional(
+          seq(
+            alias($._div_end, $.div_marker_end),
+            choice($._newline, $._eof_or_newline),
+          ),
+        ),
       ),
     _div_marker_begin: ($) =>
       seq(
@@ -1173,7 +1178,7 @@ module.exports = grammar({
         // returns false for ```` ```js<TAB>"T" ````), so at this position such
         // a run can only be trailing whitespace.
         optional(choice($._padding_spaces, $._opener_trailing_tabs)),
-        $._newline,
+        choice($._newline, $._eof_or_newline),
         optional(field("code", $.code)),
         $._block_close,
         optional(
@@ -1192,7 +1197,7 @@ module.exports = grammar({
               // closer test treats a whitespace-only tail as blank (#96), and
               // every engine closes `\u0060\u0060\u0060   ` as a fence.
               $._whitespace,
-              $._newline,
+              choice($._newline, $._eof_or_newline),
             ),
           ),
         ),
@@ -1210,7 +1215,7 @@ module.exports = grammar({
         // ERROR and its body live prose. Both raw spellings reach it -
         // ```` ```=FORMAT ```` and ```` ```raw FORMAT ````.
         optional(choice($._padding_spaces, $._opener_trailing_tabs)),
-        $._newline,
+        choice($._newline, $._eof_or_newline),
         field("content", optional(alias($.code, $.content))),
         $._block_close,
         optional(
@@ -1221,7 +1226,7 @@ module.exports = grammar({
               optional($._block_quote_prefix),
               alias($._code_block_end, $.raw_block_marker_end),
               $._whitespace,
-              $._newline,
+              choice($._newline, $._eof_or_newline),
             ),
           ),
         ),
@@ -1268,7 +1273,7 @@ module.exports = grammar({
           // nothing wrong with `___`.
           $._thematic_break_underscore,
         ),
-        $._newline,
+        choice($._newline, $._eof_or_newline),
       ),
     _thematic_break_underscore: (_) => token(prec(2, /_{3,}[ \t]*/)),
 
@@ -1405,7 +1410,7 @@ module.exports = grammar({
         // definition-shaped line with no destination (corpus 16-reference-link-9)
         // and `[a]: /u` + TAB is still a definition.
         optional($._whitespace1),
-        $._newline,
+        choice($._newline, $._eof_or_newline),
       ),
     link_destination: (_) => /\S+/,
 
@@ -1440,7 +1445,7 @@ module.exports = grammar({
               field("entry", alias(/[^\r\n]+/, $.citation_entry)),
             ),
           ),
-          $._newline,
+          choice($._newline, $._eof_or_newline),
         ),
       ),
     // `@` + Pandoc citation key (first char \w, then \w or internal punctuation).
@@ -1493,7 +1498,7 @@ module.exports = grammar({
         // A caption's content is INLINE: its text renders as a figure caption,
         // so `^ See #data` carries the tag and `^ a *# x* b` the strong.
         field("content", alias($._inline_single_line, $.caption_content)),
-        $._newline,
+        choice($._newline, $._eof_or_newline),
       ),
 
     // THE TERMINATOR IS THE SCANNER'S. `consume_line_end` is where `col_base`
@@ -1503,7 +1508,10 @@ module.exports = grammar({
     // base was stale and an indented construct on the next line was misread,
     // which is what nine of the lone-CR documents on #341 came down to.
     comment_line: ($) =>
-      seq(token(seq(/[ \t]*/, "%%", /[^\r\n]*/)), $._newline),
+      seq(
+        token(seq(/[ \t]*/, "%%", /[^\r\n]*/)),
+        choice($._newline, $._eof_or_newline),
+      ),
 
     // Carve fenced comment block.
     // semantics — opener is N `%` (N >= 3), closer is a run of EXACTLY N `%`,
@@ -1552,7 +1560,7 @@ module.exports = grammar({
       seq(
         alias($._comment_fence_begin, $.comment_fence_marker_begin),
         optional(field("info", alias(/[^\r\n]+/, $.comment_fence_info))),
-        $._newline,
+        choice($._newline, $._eof_or_newline),
         optional(field("content", alias($._comment_fence_content, $.content))),
         $._block_close,
         optional(
@@ -1702,7 +1710,7 @@ module.exports = grammar({
         // Adjacent blocks on one line merge, so the line may carry a run of
         // them (corpus 114-adjacent-attribute-blocks-on-one-line-merge).
         repeat(seq("{", field("args", attributeArgs($)), "}")),
-        $._newline,
+        choice($._newline, $._eof_or_newline),
       ),
     class: ($) => seq(".", alias($.class_name, "class")),
     // `id_attribute = '#', explicit_identifier` (resources/grammar.ebnf), so a
