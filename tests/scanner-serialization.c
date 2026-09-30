@@ -130,6 +130,31 @@ int main(void) {
   tree_sitter_carve_external_scanner_destroy(term_back);
   tree_sitter_carve_external_scanner_destroy(term);
 
+  const BlockType boundary_types[] = {BLOCK_QUOTE, LIST_DASH, CODE_BLOCK};
+  const uint8_t boundary_flags[] = {
+      BLOCK_FLAG_QUOTE_CONTINUATION_PENDING | BLOCK_FLAG_OPAQUE_QUOTE_TAIL,
+      BLOCK_FLAG_COMMENT_RESTORES_LAZY,
+      BLOCK_FLAG_DESCRIPTION_FENCE_HAS_CLOSER | BLOCK_FLAG_LATER_OPAQUE_FENCE,
+  };
+  Scanner *boundaries = tree_sitter_carve_external_scanner_create();
+  for (unsigned i = 0; i < 3; ++i) {
+    Block *block = create_block(boundary_types[i], 3);
+    block->flags = boundary_flags[i];
+    stack_push(boundaries->open_blocks, block);
+  }
+  unsigned boundary_length = tree_sitter_carve_external_scanner_serialize(boundaries, buffer);
+  Scanner *boundaries_back = tree_sitter_carve_external_scanner_create();
+  tree_sitter_carve_external_scanner_deserialize(boundaries_back, buffer, boundary_length);
+  for (unsigned i = 0; i < 3; ++i) {
+    Block *block = *array_get(boundaries_back->open_blocks, i);
+    if (block->type != boundary_types[i] || block->flags != boundary_flags[i]) {
+      fputs("block boundary flags did not survive serialization\n", stderr);
+      return 1;
+    }
+  }
+  tree_sitter_carve_external_scanner_destroy(boundaries_back);
+  tree_sitter_carve_external_scanner_destroy(boundaries);
+
   tree_sitter_carve_external_scanner_destroy(restored);
   tree_sitter_carve_external_scanner_destroy(scanner);
   puts("scanner serialization: 252 blocks round-trip, an inline entry and a "

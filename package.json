@@ -46,7 +46,8 @@
     "test:termination": "node scripts/parse-termination.mjs",
     "test:editor-queries": "node scripts/editor-queries.mjs",
     "test:bracket-boundaries": "node scripts/bracket-boundaries.mjs",
-    "test:opaque-quote-bands": "node scripts/opaque-quote-bands.mjs"
+    "test:opaque-quote-bands": "node scripts/opaque-quote-bands.mjs",
+    "test:block-boundaries": "node scripts/block-boundaries.mjs"
   },
   "author": "",
   "license": "MIT",

@@ -16,30 +16,8 @@
     "admonition": { "documents": 102, "nodes": 311 },
     "directive": { "documents": 5, "nodes": 6 }
   },
-  "reasons": {
-    "a-column-0-opener-does-not-close-an-open-list": "a column-0 block opener does not close an open LIST; it folds into the item as lazy paragraph text. `- a` / `# H` builds no heading, while `> q` / `# H` does - so the block quote closes correctly and only the list does not. Both documents here reach it through a `+` continuation marker, which this grammar opens as an ordinary bullet list, after which the column-0 heading below is swallowed the same way.",
-    "a-tabbed-frontmatter-opener-swallows-the-break-below": "`---` followed by a TAB is not a frontmatter opener, and the grammar agrees that far - it builds no frontmatter. But it then reads the closing `---` three lines down as an `em_dash` inside the still-open paragraph rather than as a thematic break, so the `<hr>` the fixture expects between the paragraph and `body` is not built.",
-    "fence-on-a-marker-line-builds-nothing": "a code fence opened on a list MARKER line: the item closes with an EMPTY code block and the residue re-parses at document level when the body sits BELOW the item's content column (markup-carve/carve#646). This grammar builds no code_block for any of these, and MEASURED against it, the cause is NOT that the fence is committed to the item with no route out - it is that the fence never opens at all. `parse_backtick` refuses an opener when `has_extra_indent` is true, and on a marker line the fence sits past the line's own indent while the item's content column is only established by the marker itself, so `- ` + fence is read as inline verbatim. The heading marker and the colon fence carry the same column-0 guard and fail the same way on a marker line, while a block quote and a table - which do not - open there correctly. The quote half of that was narrower than it reads and is now closed: its MARKER opened, but the quote took no content and the rest of the line was ejected from the list, repaired in tree-sitter-carve#218 by moving the line's content margin to the quote's own content column when it opens on an item's marker line - the same move this entry's openers need at the LIST marker. So the first half is a column question and the second half, closing the item at the boundary, is the container change; the fully-indented example (-3) needs only the first. Tracked in tree-sitter-carve#160.",
-    "marker-line-block-opener-builds-nothing": "a block opener written on a list MARKER line builds nothing. `- # H` gives a list item whose content is a PARAGRAPH, not a heading; `- ---` is read as a document-level thematic break that consumes the marker, so no list is built at all. Verified against the indented spelling, which works: `- a` / `  # H` does build the heading. This is the same shape as the recorded `fence-on-a-marker-line-builds-nothing` - the marker line is one position this grammar does not run block-opener recognition in - now reached by the heading and thematic-break openers too. A TASK checkbox does not change which openers reach it, but it does change what the thematic break degrades INTO, and the sentence above is wrong for that spelling: `- [x] # h` is still a paragraph, while `- [ ] ---` no longer consumes the marker - the list and the item ARE built and `---` becomes an inline `em_dash` inside the item's paragraph. Measured against the neighbour that works, which is what keeps the checkbox out of it: `- [ ] > q` opens its quote with content, so the checkbox does not disturb an opener the marker line already admits. That is why a-task-item-s-checkbox-is-not-decided-by-its-first-block reports `heading: want 1 have 0; thematic_break: want 1 have 0` and no gap for its quote."
-  },
-  "reasonPredicates": {
-    "a-column-0-opener-does-not-close-an-open-list": {
-      "ledger": "underAcceptance",
-      "sourcePattern": "^\\+[ \\t]*\\n#{1,6}[ \\t]"
-    },
-    "a-tabbed-frontmatter-opener-swallows-the-break-below": {
-      "ledger": "underAcceptance",
-      "sourcePattern": "^---\\t"
-    },
-    "fence-on-a-marker-line-builds-nothing": {
-      "ledger": "underAcceptance",
-      "sourcePattern": "^[-*+] (?:`{3,}|~{3,}|:{3,})"
-    },
-    "marker-line-block-opener-builds-nothing": {
-      "ledger": "underAcceptance",
-      "sourcePattern": "^[-*+] (?:\\[[ xX]\\] )?(?:#{1,6}[ \\t]|-{3,}[ \\t]*(?:\\n|$))"
-    }
-  },
+  "reasons": {},
+  "reasonPredicates": {},
   "covered": [
     "a-marker-line-opaque-quote-keeps-overindented-markers-literal",
     "a-bare-closer-does-not-reach-inside-a-braced-inline",
@@ -611,140 +589,7 @@
   },
   "invisibleUnderAcceptance": {},
   "batteryDisagreements": {},
-  "underAcceptance": {
-    "a-bare-colon-opener-in-a-description-body-is-an-opener-2": {
-      "gaps": "div: want 1 have 0",
-      "reason": "a bare `:::` on the description marker's own line (`: :::`) opens an empty div in the reference, the same as `- :::` would on a list marker line; the grammar does not open a block on a description marker line and the definition's content stays empty."
-    },
-    "a-closer-does-not-rescue-a-marker-line-colon-opener-whose-body-folded-in-7": {
-      "gaps": "admonition_type: want 1 have 0",
-      "reason": "ref:fence-on-a-marker-line-builds-nothing"
-    },
-    "a-closer-does-not-rescue-a-marker-line-colon-opener-whose-body-folded-in-8": {
-      "gaps": "admonition_type: want 1 have 0",
-      "reason": "ref:fence-on-a-marker-line-builds-nothing"
-    },
-    "a-form-feed-or-a-no-break-space-is-content-wherever-whitespace-is-tested-9": {
-      "gaps": "thematic_break: want 1 have 0",
-      "reason": "the frontmatter opener's tail check excludes only space/tab from the `language` token and from its own trailing-whitespace scan, so a form feed right after the language word is swallowed into `language` rather than breaking it; `---yaml<FF>` therefore reads as a clean opener and the grammar commits to a frontmatter block, while the reference treats the form feed as content, leaving `---yaml<FF>` as a paragraph and the `---` two lines down as its own thematic_break."
-    },
-    "generic-divs-4": {
-      "gaps": "admonition_type: want 1 have 0",
-      "reason": "the current engine accepts a numeric custom admonition kind in `::: 123`, while the grammar's admonition identifier begins with a letter and leaves the fence as paragraph text. The grammar and its named `admonition_type` token need a deliberate identifier-policy update rather than silently widening during a corpus bump."
-    },
-    "the-continuation-marker-attaches-one-block-in-every-container-4": {
-      "gaps": "block_quote: want 2 have 1",
-      "reason": "a continuation marker inside a block quote attaches another quote, but the grammar builds only the outer marker quote and does not open the attached inner quote."
-    },
-    "an-opener-at-or-past-a-description-body-s-column-closes-its-paragraph-5": {
-      "gaps": "thematic_break: want 1 have 0",
-      "reason": "a thematic break at a description body's block boundary is swallowed by the undivided definition span."
-    },
-    "an-opener-at-or-past-a-description-body-s-column-closes-its-paragraph-6": {
-      "gaps": "table: want 1 have 0",
-      "reason": "a table at a description body's block boundary is swallowed by the undivided definition span."
-    },
-    "an-empty-unterminated-container-ends-at-a-flush-left-line-3": {
-      "gaps": "admonition_type: want 1 have 0",
-      "reason": "an admonition opened on a description marker line is treated as definition text; the marker-line block-opener path does not open the container."
-    },
-    "a-blank-line-before-a-sibling-marker-separates-the-items-whatever-consumed-it": {
-      "gaps": "admonition_type: want 1 have 0",
-      "reason": "ref:fence-on-a-marker-line-builds-nothing"
-    },
-    "a-column-0-line-after-a-container-s-last-block-when-that-block-left-no-paragraph-open-4": {
-      "gaps": "list: want 1 have 0",
-      "reason": "ref:marker-line-block-opener-builds-nothing"
-    },
-    "a-continuation-marker-attaches-one-block-and-the-boundary-is-that-block-s-extent-9": {
-      "gaps": "heading: want 1 have 0",
-      "reason": "ref:a-column-0-opener-does-not-close-an-open-list"
-    },
-    "a-continuation-row-s-open-run-and-an-escaped-closing-pipe-2": {
-      "gaps": "table: want 1 have 0",
-      "reason": "an ESCAPED closing pipe leaves the row unterminated: `| a b \\|` is a paragraph where the fixture expects a table whose one cell holds `a b |`. The row closes on that pipe because the line ends in one, and the escape decides only what the CELL holds - but `scan_table_cell` reads `\\|` as one escape pair and advances over both characters, so the pipe that terminates the row is eaten before the terminator check can see it. Nothing to do with an unclosed run: this document holds no verbatim run at all, which is why it no longer shares a reason with the rest of its category."
-    },
-    "a-frontmatter-opener-takes-exactly-one-space": {
-      "gaps": "thematic_break: want 1 have 0",
-      "reason": "`---<SP><SP>yaml` is no longer read as a frontmatter opener - the opener's `[space]` slot takes exactly one space and the line is prose - but the `---` three lines below it, which the language turns into a thematic break, is folded into that prose instead. A thematic break does not interrupt an open paragraph in this grammar; `paragraph-interruption-3` records the same gap on a document with no frontmatter in it, and the two close together."
-    },
-    "a-tab-after-a-fence-or-a-frontmatter-opener-depends-on-where-it-sits-3": {
-      "gaps": "thematic_break: want 1 have 0",
-      "reason": "ref:a-tabbed-frontmatter-opener-swallows-the-break-below"
-    },
-    "a-task-item-s-checkbox-is-not-decided-by-its-first-block": {
-      "gaps": "thematic_break: want 1 have 0",
-      "reason": "ref:marker-line-block-opener-builds-nothing"
-    },
-    "an-unterminated-container-does-not-extend-the-item-past-a-blank-line": {
-      "gaps": "admonition_type: want 1 have 0",
-      "reason": "ref:fence-on-a-marker-line-builds-nothing"
-    },
-    "an-unterminated-container-does-not-extend-the-item-past-a-blank-line-2": {
-      "gaps": "admonition_type: want 1 have 0",
-      "reason": "ref:fence-on-a-marker-line-builds-nothing"
-    },
-    "an-unterminated-container-does-not-extend-the-item-past-a-blank-line-3": {
-      "gaps": "admonition_type: want 1 have 0",
-      "reason": "ref:fence-on-a-marker-line-builds-nothing"
-    },
-    "an-unterminated-container-does-not-extend-the-item-past-a-blank-line-4": {
-      "gaps": "admonition_type: want 1 have 0",
-      "reason": "ref:fence-on-a-marker-line-builds-nothing"
-    },
-    "fence-opener-with-a-nested-list-body-inside-a-list-item": {
-      "gaps": "admonition_type: want 1 have 0",
-      "reason": "ref:fence-on-a-marker-line-builds-nothing"
-    },
-    "fence-opener-with-a-nested-list-body-inside-a-list-item-2": {
-      "gaps": "admonition_type: want 1 have 0",
-      "reason": "ref:fence-on-a-marker-line-builds-nothing"
-    },
-    "fence-opener-with-a-nested-list-body-inside-a-list-item-3": {
-      "gaps": "admonition_type: want 1 have 0",
-      "reason": "ref:fence-on-a-marker-line-builds-nothing"
-    },
-    "fence-opener-with-a-nested-list-body-inside-a-list-item-4": {
-      "gaps": "admonition_type: want 1 have 0",
-      "reason": "ref:fence-on-a-marker-line-builds-nothing"
-    },
-    "fence-opener-with-a-nested-list-body-inside-a-list-item-7": {
-      "gaps": "admonition_type: want 1 have 0",
-      "reason": "ref:fence-on-a-marker-line-builds-nothing"
-    },
-    "fence-opener-with-a-nested-list-body-inside-a-list-item-5": {
-      "gaps": "admonition_type: want 1 have 0"
-    },
-    "fence-opener-with-a-nested-list-body-inside-a-list-item-6": {
-      "gaps": "admonition_type: want 1 have 0"
-    },
-    "list-lazy-continuation-8": {
-      "gaps": "table: want 1 have 0"
-    },
-    "only-lazy-folding-demotes-a-marker-line-colon-opener": {
-      "gaps": "admonition_type: want 1 have 0",
-      "reason": "ref:fence-on-a-marker-line-builds-nothing"
-    },
-    "paragraph-interruption-3": {
-      "gaps": "thematic_break: want 1 have 0"
-    },
-    "paragraph-interruption-8": {
-      "gaps": "table: want 1 have 0"
-    },
-    "table-as-a-block-opener-in-a-list-item": {
-      "gaps": "table: want 1 have 0"
-    },
-    "table-row-closing-pipe-3": {
-      "gaps": "table: want 1 have 0"
-    },
-    "thematic-break-requires-contiguous-markers": {
-      "gaps": "list: want 2 have 0"
-    },
-    "a-comment-span-opened-below-every-content-column-is-located-there-8": {
-      "gaps": "code_block: want 1 have 0",
-      "reason": "an UNCLOSED fence at a list item's content column, followed by a line at column 0, does not open: the two-line control `- item` / `  ``` ` / `tail` already shows it, so the comment block this document opens above the fence is not part of the cause - a fence after a `%%%` block in the same item opens normally. The fixture reads the lazy `tail` as the block's content."
-    }
-  },
+  "underAcceptance": {},
   "errorFamilies": {
     "\"-\" + \"---\"": {
       "documents": 3,
@@ -755,22 +600,6 @@
     "glued-attribute-blocks-on-an-inline-element-merge-2": {
       "reading": "strong html=0 tree=1",
       "reason": "glued attribute blocks (`{#a .k}{#b k=1}{.k k=2}`) are supposed to merge into one set, the later block winning per key; the grammar attaches only the FIRST block as the element's `inline_attribute` and misreads the rest of the glued run, which is the unimplemented feature this category is named for."
-    },
-    "a-definition-body-s-open-code-fence-ends-at-a-line-below-its-column-3": {
-      "reading": "code html=1 tree=0",
-      "reason": "a fence opened at a definition body's or a nested container's own content column, closed by a run below that column: the reference cuts the code block off right there and reads the short line plus the trailing marker run as separate, literal text past the container, while the grammar keeps reading through both as one code/verbatim span to the LAST closer-shaped line - the same gap `a-closer-below-the-container-s-column-does-not-count-4` records for the block-level AST count."
-    },
-    "a-definition-body-s-open-code-fence-ends-at-a-line-below-its-column-5": {
-      "reading": "code html=2 tree=1, code#1 html=\"by\" tree=\"\"",
-      "reason": "a fence opened at a definition body's or a nested container's own content column, closed by a run below that column: the reference cuts the code block off right there and reads the short line plus the trailing marker run as separate, literal text past the container, while the grammar keeps reading through both as one code/verbatim span to the LAST closer-shaped line - the same gap `a-closer-below-the-container-s-column-does-not-count-4` records for the block-level AST count."
-    },
-    "a-definition-body-s-open-code-fence-ends-at-a-line-below-its-column": {
-      "reading": "code html=1 tree=0",
-      "reason": "a fence opened at a definition body's or a nested container's own content column, closed by a run below that column: the reference cuts the code block off right there and reads the short line plus the trailing marker run as separate, literal text past the container, while the grammar keeps reading through both as one code/verbatim span to the LAST closer-shaped line - the same gap `a-closer-below-the-container-s-column-does-not-count-4` records for the block-level AST count."
-    },
-    "a-bare-colon-opener-in-a-description-body-is-an-opener-7": {
-      "reading": "code html=1 tree=0",
-      "reason": "a fence opened at a definition body's or a nested container's own content column, closed by a run below that column: the reference cuts the code block off right there and reads the short line plus the trailing marker run as separate, literal text past the container, while the grammar keeps reading through both as one code/verbatim span to the LAST closer-shaped line - the same gap `a-closer-below-the-container-s-column-does-not-count-4` records for the block-level AST count."
     },
     "a-delimiter-after-an-underscore-or-slash-opens-only-when-that-one-pairs-2": {
       "reading": "strong html=0 tree=1",
@@ -803,14 +632,6 @@
     "an-unresolved-reference-s-literal-source-is-html-escaped-like-any-other-text": {
       "reading": "alt html=0 tree=1",
       "reason": "an unresolved reference/image renders as its literal typed source with no alt-bearing element at all; the grammar still builds a structural `collapsed_reference_link`/`collapsed_reference_image` node from the bracket shape alone; whether a label resolves is a question for the definition table, not the parse, which is why the pair's inner text is already exempt (see the note above `EXCLUDED` in this script) - the alt-tag COUNT is not."
-    },
-    "a-comment-span-opened-below-every-content-column-is-located-there-8": {
-      "reading": "code html=0 tree=1",
-      "reason": "the inline face of this document's recorded `underAcceptance` gap: the fence degrades to one inline verbatim span, so the tree carries a `code` span the fixture does not have. It goes away with that gap, not separately."
-    },
-    "a-fence-closer-below-a-nested-item-s-column-ends-containers-down-to-its-owner-12": {
-      "reading": "code html=2 tree=1, code#1 html=\"p\" tree=\"\"",
-      "reason": "a fence opened at a nested item's content column and closed by a run below that column: the reference cuts the block there and gives the next sibling item its own empty code span, while the grammar reads through to the LAST closer-shaped line as one span, so it has one span where the reference has two and the first one covers nothing."
     },
     "a-link-inside-a-span-s-label-keeps-its-destination-4": {
       "reading": "em html=1 tree=0",
