@@ -51,7 +51,8 @@
     "test:combined-opener-work": "node scripts/combined-opener-work.mjs",
     "test:opaque-quote-bands": "node scripts/opaque-quote-bands.mjs",
     "test:block-boundaries": "node scripts/block-boundaries.mjs",
-    "test:malformed-brackets": "node scripts/malformed-bracket-boundaries.mjs && node scripts/malformed-bracket-work.mjs"
+    "test:malformed-brackets": "node scripts/malformed-bracket-boundaries.mjs && node scripts/malformed-bracket-work.mjs",
+    "test:bare-span-boundaries": "node scripts/bare-span-boundaries.mjs"
   },
   "author": "",
   "license": "MIT",

@@ -9472,15 +9472,15 @@ static bool mark_span_begin(Scanner *s, TSLexer *lexer,
       }
     }
     Inline *open = find_inline_in_scope(s, inline_type);
-    // A BARE marker inside a braced span of its own kind is content (corpus
-    // 471), not a competing opener, so it must not stop that span closing.
+    // A bare marker of an already-open kind is literal in that scope.
+    // It must not block the first opener from closing.
     if (balanced_bracket) {
       if (top && top->type == SQUARE_BRACKET_SPAN && (top->flags & INLINE_LABEL)) {
         if (top->literal_closes < UINT32_MAX) ++top->literal_closes;
       } else {
         push_inline_flagged(s, LITERAL_BRACKET, 0, 0);
       }
-    } else if (open != NULL && !(bare && (open->flags & INLINE_BRACED)) &&
+    } else if (open != NULL && !bare &&
                !(inline_type == EMPHASIS &&
                  (open->flags & INLINE_COMBINED_FALLBACK))) {
       ++open->data;
