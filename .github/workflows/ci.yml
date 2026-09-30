@@ -49,6 +49,8 @@ jobs:
       # categories were in that state when this was added.
       - name: Inline readings match the fixtures
         run: npm run test:inline-reading
+      - name: Check bracket boundaries including superscript and subscript
+        run: npm run test:bracket-boundaries
 
       # The shape-level counterpart to corpus conformance. The corpus checks
       # whole documents the spec ships; the battery checks the one-line forms
@@ -111,6 +113,8 @@ jobs:
       # one node with nobody deciding which wins, left every check green.
       - name: Highlight captures resolve the way an editor resolves them
         run: npm run test:highlights
+      - name: Check editor query ranges
+        run: npm run test:editor-queries
 
       # WHERE A MARKER ENDS AND ITS CONTENT BEGINS. Every check above reads the
       # SHAPE of the tree - which nodes, in what order, with or without an

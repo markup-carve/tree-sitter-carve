@@ -9,7 +9,7 @@
     "list": { "documents": 645, "nodes": 807 },
     "definition_list": { "documents": 229, "nodes": 242 },
     "line_block": { "documents": 38, "nodes": 38 },
-    "div": { "documents": 65, "nodes": 68 },
+    "div": { "documents": 70, "nodes": 73 },
     "raw_block": { "documents": 36, "nodes": 36 },
     "figure_group": { "documents": 10, "nodes": 10 },
     "citation_definition": { "documents": 0, "nodes": 0 },
@@ -602,7 +602,10 @@
     "a-trailing-comment-takes-a-tab-a-run-start-and-its-whole-separator",
     "a-verbatim-line-keeps-what-sits-past-its-fence-opener-not-past-its-container",
     "a-zero-line-and-a-one-blank-raw-payload-are-not-the-same-block",
-    "comment-columns-and-surviving-list-items"
+    "comment-columns-and-surviving-list-items",
+    "a-braced-span-cannot-close-beyond-its-bracket-run",
+    "a-container-label-preserves-closed-inline-constructs-before-cutting-a-comment",
+    "quoted-values-and-titles-retain-a-non-punctuation-backslash"
   ],
   "skip": {
     "a-continuation-marker-attaches-one-block-and-the-boundary-is-that-block-s-extent-5": "a `+` continuation marker that attaches NOTHING - the line after it opens a sibling item rather than a block to attach - leaves the first item unclosed and the whole document parses to one top-level ERROR. `- a` / `+` / `- x` / `- y` is three flat items in the fixture. The category's other eight examples, where the marker does attach a block, parse cleanly.",
@@ -1014,6 +1017,50 @@
     "a-link-inside-a-span-s-label-keeps-its-destination-4": {
       "reading": "em html=1 tree=0",
       "reason": "emphasis inside a span's label is lost once that label also holds a link: `[/[t](/v)/]{.c}` builds the span, the link and the attribute but no emphasis, while `[/t/]{.c}` builds it. The neighbourhood of the `a-link-inside-a-span-s-label-keeps-its-destination-8` skip entry, which is the same pairing failing hard enough to ERROR. Tracked in tree-sitter-carve#459."
+    },
+    "a-container-label-preserves-closed-inline-constructs-before-cutting-a-comment-2": {
+      "reading": "del html=1 tree=0",
+      "reason": "Container labels are opaque code_block_label tokens rather than inline content. The source range parses cleanly but has no matching inline node."
+    },
+    "a-container-label-preserves-closed-inline-constructs-before-cutting-a-comment-5": {
+      "reading": "code html=1 tree=0",
+      "reason": "Container labels are opaque code_block_label tokens rather than inline content. The source range parses cleanly but has no matching inline node."
+    },
+    "a-container-label-preserves-closed-inline-constructs-before-cutting-a-comment": {
+      "reading": "ins html=1 tree=0",
+      "reason": "Container labels are opaque code_block_label tokens rather than inline content. The source range parses cleanly but has no matching inline node."
+    },
+    "a-braced-span-cannot-close-beyond-its-bracket-run-10": {
+      "reading": "ins html=0 tree=1, del html=0 tree=1",
+      "reason": "The bracket run does not bound braced delimiter pairing in the scanner."
+    },
+    "a-braced-span-cannot-close-beyond-its-bracket-run-3": {
+      "reading": "strong html=0 tree=1",
+      "reason": "The bracket run does not bound braced delimiter pairing in the scanner."
+    },
+    "a-braced-span-cannot-close-beyond-its-bracket-run-4": {
+      "reading": "em html=0 tree=1",
+      "reason": "The bracket run does not bound braced delimiter pairing in the scanner."
+    },
+    "a-braced-span-cannot-close-beyond-its-bracket-run-5": {
+      "reading": "ins html=0 tree=1",
+      "reason": "The bracket run does not bound braced delimiter pairing in the scanner."
+    },
+    "a-braced-span-cannot-close-beyond-its-bracket-run-6": {
+      "reading": "del html=0 tree=1",
+      "reason": "The bracket run does not bound braced delimiter pairing in the scanner."
+    },
+    "a-braced-span-cannot-close-beyond-its-bracket-run-7": {
+      "reading": "s html=0 tree=1",
+      "reason": "The bracket run does not bound braced delimiter pairing in the scanner."
+    },
+    "a-braced-span-cannot-close-beyond-its-bracket-run-8": {
+      "reading": "u html=0 tree=1",
+      "reason": "The bracket run does not bound braced delimiter pairing in the scanner."
+    },
+    "a-braced-span-cannot-close-beyond-its-bracket-run-9": {
+      "reading": "mark html=0 tree=1",
+      "reason": "The bracket run does not bound braced delimiter pairing in the scanner."
     }
   },
   "lineTerminatorGaps": {

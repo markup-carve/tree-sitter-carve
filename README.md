@@ -61,4 +61,6 @@ example above uses the 0.27.0 API.
 ## Development
 
 Contributor setup, corpus checks, generated-artifact hygiene, and maintenance
-notes are in the [development guide](docs/development.md).
+notes are in the [development guide](docs/development.md). The
+[September 30 audit](docs/spec-engine-audit-20260930.md) records remaining syntax
+gaps and the added editor queries.

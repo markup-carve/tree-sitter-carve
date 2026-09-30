@@ -4,6 +4,16 @@ All notable changes to tree-sitter-carve are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+
+- Fold captures for blockquotes, definition lists, tables, footnotes, frontmatter
+  and fenced comments. Add definition, extension and comment text objects, and
+  container context captures.
+- Native query-capture checks and an exact bracket-boundary gap ledger against
+  the latest specification corpus.
+
 ## [0.1.7] - 2026-09-30
 
 ### Fixed

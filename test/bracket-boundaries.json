@@ -1,0 +1,12 @@
+{
+  "a-braced-span-cannot-close-beyond-its-bracket-run": "sup html=0 tree=1",
+  "a-braced-span-cannot-close-beyond-its-bracket-run-10": "ins html=0 tree=1, del html=0 tree=1",
+  "a-braced-span-cannot-close-beyond-its-bracket-run-2": "sub html=0 tree=1",
+  "a-braced-span-cannot-close-beyond-its-bracket-run-3": "strong html=0 tree=1",
+  "a-braced-span-cannot-close-beyond-its-bracket-run-4": "em html=0 tree=1",
+  "a-braced-span-cannot-close-beyond-its-bracket-run-5": "ins html=0 tree=1",
+  "a-braced-span-cannot-close-beyond-its-bracket-run-6": "del html=0 tree=1",
+  "a-braced-span-cannot-close-beyond-its-bracket-run-7": "s html=0 tree=1",
+  "a-braced-span-cannot-close-beyond-its-bracket-run-8": "u html=0 tree=1",
+  "a-braced-span-cannot-close-beyond-its-bracket-run-9": "mark html=0 tree=1"
+}

@@ -125,3 +125,24 @@
 ; Comments
 (comment
   (content) @comment.inner) @comment.outer
+
+(definition_list
+  (list_item) @function.inner) @function.outer
+
+(list_item
+  (term) @block.inner) @block.outer
+
+(list_item
+  (definition) @block.inner) @block.outer
+
+(extension_inline
+  (content) @attribute.inner) @attribute.outer
+
+(braced_comment
+  (content) @comment.inner) @comment.outer
+
+(editorial_comment
+  (content) @comment.inner) @comment.outer
+
+(fenced_comment_block
+  (content) @comment.inner) @comment.outer
