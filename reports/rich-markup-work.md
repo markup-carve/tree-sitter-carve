@@ -85,3 +85,9 @@ raw-splitting differences without claiming their cell counts are fixed.
 
 These reader checks do not remove the quadratic full-parser costs recorded
 above. The archived measurements describe the source from #494.
+
+The follow-up [table-cell work report](table-cell-work.md) records the removal
+of column rescans for ordinary attributed cells. Its 42 full-parser checks
+extend the linear table families through 16,384 repetitions. Opaque and escaped
+multi-cell rows retain conservative column lookups; paragraph comments and
+other scoped markup still have the costs described above.
