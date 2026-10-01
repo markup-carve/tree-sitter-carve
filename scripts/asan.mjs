@@ -19,6 +19,19 @@ try {
     ['quote-400.crv', '> '.repeat(400) + 'x\n'],
     ['list-400.crv', '- '.repeat(400) + 'x\n'],
   ];
+  generated.push(
+    ["qualification-0.crv", "[s `a]b`]{.k}\n"],
+    ["qualification-1.crv", "| [a _b [c | d] e_]{.k} | f |\n"],
+    ["qualification-2.crv", "| [x]{title=\"a|b\"} |\n"],
+    ["qualification-3.crv", "[s [t](/a`b) c]{.k}\n"],
+    ["qualification-4.crv", "[s [b]{title=\"a`b\"} c]{.k}\n"],
+    ["qualification-5.crv", "[s {% a`b %} c]{.k}\n"],
+    ["qualification-6.crv", "[s {% a\nc]{.k}\n"],
+    ["qualification-7.crv", "| [a `b |\n+ c`]{.k} |\n"],
+    ["qualification-8.crv", "| {% a`b %} [x|y]{.k} |\n"],
+    ["qualification-9.crv", "| [a]{title=\"`\"} [x|y]{.k} |\n"],
+    ["qualification-10.crv", "| {% ` %} x |\n+ [b | c]{.k} |\n"]
+  );
   for (const [name, source] of generated) writeFileSync(path.join(build, name), source);
   const documents = readdirSync(corpus)
     .filter((name) => name.endsWith('.crv'))

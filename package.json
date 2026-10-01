@@ -53,6 +53,7 @@
     "test:block-boundaries": "node scripts/block-boundaries.mjs",
     "test:malformed-brackets": "node scripts/malformed-bracket-boundaries.mjs && node scripts/malformed-bracket-work.mjs",
     "test:bare-span-boundaries": "node scripts/bare-span-boundaries.mjs",
+    "test:bracket-qualification": "node scripts/bracket-qualification.mjs && node scripts/bracket-qualification-work.mjs",
     "test:rich-markup": "node scripts/rich-markup-boundaries.mjs && node scripts/rich-markup-work.mjs",
     "test:rich-inline-columns": "node scripts/rich-inline-column-boundaries.mjs"
   },

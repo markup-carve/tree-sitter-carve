@@ -1,0 +1,74 @@
+======================================================================
+A code bracket does not close an attributed span
+======================================================================
+[s `a]b`]{.k}
+
+----------------------------------------------------------------------
+
+(document (paragraph (span (content (verbatim (verbatim_marker_begin) (content) (verbatim_marker_end))) (inline_attribute (args (class))))))
+
+======================================================================
+Nested brackets cannot qualify a span across table cells
+======================================================================
+| [a _b [c | d] e_]{.k} | f |
+
+----------------------------------------------------------------------
+
+(document (table (table_row (table_cell) (table_cell) (table_cell))))
+
+======================================================================
+A quoted attribute pipe still splits table cells
+======================================================================
+| [x]{title="a|b"} |
+
+----------------------------------------------------------------------
+
+(document (table (table_row (table_cell) (table_cell (quotation_marks)))))
+
+======================================================================
+An unmatched destination backtick leaves outer brackets literal
+======================================================================
+[s [t](/a`b) c]{.k}
+
+----------------------------------------------------------------------
+
+(document (paragraph (inline_link (link_text) (inline_link_destination))))
+
+======================================================================
+An unmatched attribute backtick leaves outer brackets literal
+======================================================================
+[s [b]{title="a`b"} c]{.k}
+
+----------------------------------------------------------------------
+
+(document (paragraph (span (content) (inline_attribute (args (key_value (key) (value)))))))
+
+======================================================================
+A closed comment keeps its unmatched backtick opaque
+======================================================================
+[s {% a`b %} c]{.k}
+
+----------------------------------------------------------------------
+
+(document (paragraph (span (content (braced_comment (content))) (inline_attribute (args (class))))))
+
+======================================================================
+An unclosed comment remains literal span content
+======================================================================
+[s {% a
+c]{.k}
+
+----------------------------------------------------------------------
+
+(document (paragraph (span (content) (inline_attribute (args (class))))))
+
+======================================================================
+Attributed code retains a valid table continuation
+======================================================================
+| [a `b |
++ c`]{.k} |
+
+----------------------------------------------------------------------
+
+(document (table (table_row (table_cell (span (content (verbatim (verbatim_marker_begin) (content) (verbatim_marker_end))) (inline_attribute (args (class))))))))
+

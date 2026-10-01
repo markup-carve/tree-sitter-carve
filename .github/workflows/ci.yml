@@ -56,6 +56,8 @@ jobs:
       - name: Bound scanner work for malformed combined openers
         run: npm run test:combined-opener-work && npm run test:rich-inline-columns
 
+      - name: Check bracket qualification and lookahead work
+        run: npm run test:bracket-qualification
       - name: Check nested, scoped and multiline rich markup
         run: npm run test:rich-markup
       - name: Check opaque quote and table boundaries
