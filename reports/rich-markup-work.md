@@ -65,7 +65,7 @@ qualification, and unmatched backticks in nested destinations or attributes
 leave the outer brackets literal. Closed comments containing backticks remain
 opaque; unclosed comments remain text.
 
-The regression suite checks 414 engine comparisons and 1,800 incremental
+The regression suite checks 426 engine comparisons and 1,860 incremental
 edits, including LF, CRLF, CR, missing final terminators and excluded source
 ranges. Raw-row boundaries preserve tick context from earlier comments,
 attributes, destinations and escapes. Eight corpus fixtures also run through native and WASM tests, and the
@@ -73,6 +73,14 @@ sanitizer receives those sources and three raw-row context controls. Separate re
 through 4,096 repetitions, with limits of six scanner advances per byte, one
 host advance per byte and one column lookup per probe. Cached bracket matches
 and failed comment searches prevent repeated suffix scans during fallback.
+
+Eighteen additional full-parser checks cover repeated closed comments,
+attributed comments, escaped pipes and short cells. Unqualified cell boundaries
+retain linear work through 128 cells. The comment and attributed-row controls
+retain their quadratic baseline budgets through 512 repetitions. Their runtime
+advance counts match `6a3b0b3`; qualification adds no column lookup at comment
+starts. Rows without brackets skip speculative cell reads, preserving the
+runtime's cached column.
 
 These reader checks do not remove the quadratic full-parser costs recorded
 above. The archived measurements describe the source from #494.
