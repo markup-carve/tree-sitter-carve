@@ -142,4 +142,15 @@ for (const head of ['| [s ', '| {% ` %} [s ']) for (const ending of ['\n', '\r\n
   assert.equal(tree.rootNode.descendantsOfType('span')[0].childForFieldName('attribute').text, '{.k}');
   ++controls;
 }
+// These existing raw-splitting differences must not shift qualification's boundary.
+for (const body of ['| a\\\\| [s | t]{.k} |', '| a \\` | [s | t]{.k} ` |',
+  '| a\\\\| [s `a|b`]{.k} |']) for (const ending of ['\n', '\r\n', '\r'])
+  for (const terminated of [true, false]) {
+    const source = body + (terminated ? ending : '');
+    const root = parser.parse(source).rootNode;
+    assert.equal(root.hasError, false, source);
+    assert.equal(root.descendantsOfType('span').length,
+      [...carveToHtml(source).matchAll(/<span(?:>|\s)/g)].length, source);
+    ++controls;
+  }
 console.log(`Bracket qualification: ${controls} engine controls and ${edits} incremental edits pass.`);

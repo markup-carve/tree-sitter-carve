@@ -319,6 +319,7 @@ typedef struct {
   uint8_t content_col;
   uint32_t cell_boundary_col;
   uint32_t cell_carry_ticks;
+  uint32_t bracket_cell_col;
   // Per-block-type bits with no shared meaning across types, the way
   // `Inline::flags` already works. Only `BLOCK_FLAG_LINE_BLOCK` exists today.
   uint8_t flags;
@@ -336,7 +337,6 @@ static const uint8_t BLOCK_FLAG_LINE_BLOCK = 1 << 0;
 // position for whatever reads that `|` next. See
 // `parse_table_row_continuation_seam` (tree-sitter-carve#437).
 static const uint8_t BLOCK_FLAG_TABLE_ROW_CONTINUES = 1 << 1;
-static const uint8_t BLOCK_FLAG_TABLE_ROW_BRACKETS = 1 << 0;
 // Definition terms and description bodies use the same block type. Keep the
 // current item kind so nested terms and folded continuation lines stay scoped.
 static const uint8_t BLOCK_FLAG_DEFINITION_TERM = 1 << 2;
@@ -497,7 +497,7 @@ typedef struct {
 
   // Transient raw-row facts collected by the existing row validation pass.
   bool row_capture;
-  bool row_capture_brackets;
+  uint32_t row_bracket_cell_col, row_cell_start_col;
   uint32_t row_capture_col, row_boundary_col;
   uint32_t row_raw_ticks, row_raw_pending, row_carry_ticks, row_carry_pending;
   int32_t row_previous;
@@ -742,10 +742,12 @@ static void mark_end(Scanner *s, TSLexer *lexer) {
 static void advance(Scanner *s, TSLexer *lexer) {
   int32_t current = lexer->lookahead;
   if (s->row_capture && (current == '\r' || current == '\n')) s->row_capture = false;
-  if (s->row_capture && current == '[') s->row_capture_brackets = true;
-  if (s->row_capture && current == '|' && s->row_previous != '\\' &&
-      !s->row_raw_ticks && s->row_boundary_col == UINT32_MAX)
-    s->row_boundary_col = s->row_capture_col;
+  if (s->row_capture && current == '[' && s->row_bracket_cell_col == UINT32_MAX)
+    s->row_bracket_cell_col = s->row_cell_start_col;
+  if (s->row_capture && current == '|' && s->row_previous != '\\' && !s->row_raw_ticks) {
+    if (s->row_boundary_col == UINT32_MAX) s->row_boundary_col = s->row_capture_col;
+    s->row_cell_start_col = s->row_capture_col + 1;
+  }
   lexer->advance(lexer, false);
   if (s->row_capture) {
     if (current == '`') ++s->row_raw_pending;
@@ -919,6 +921,7 @@ static Block *create_block(BlockType type, uint8_t data) {
   b->content_col = 0;
   b->flags = 0;
   b->cell_boundary_col = b->cell_carry_ticks = 0;
+  b->bracket_cell_col = UINT32_MAX;
   return b;
 }
 
@@ -6207,7 +6210,8 @@ static bool scan_valid_inline_attribute(Scanner *s, TSLexer *lexer);
 static void begin_row_capture(Scanner *s, TSLexer *lexer, uint32_t carried,
                               uint32_t column) {
   s->row_capture = true;
-  s->row_capture_brackets = false;
+  s->row_bracket_cell_col = UINT32_MAX;
+  s->row_cell_start_col = column;
   s->row_capture_col = column;
   s->row_boundary_col = UINT32_MAX;
   s->row_raw_ticks = s->row_carry_ticks = carried;
@@ -6221,15 +6225,18 @@ static void capture_remaining_cell(Scanner *s, TSLexer *lexer, Block *row,
   if (at_line_end(lexer) || lexer->eof(lexer)) {
     row->cell_boundary_col = UINT32_MAX;
     row->cell_carry_ticks = carried;
+    row->bracket_cell_col = UINT32_MAX;
     return;
   }
   if (column == UINT32_MAX) column = lexer->get_column(lexer);
   begin_row_capture(s, lexer, carried, column);
   while (!at_line_end(lexer) && !lexer->eof(lexer) &&
-         s->row_boundary_col == UINT32_MAX) advance(s, lexer);
+         (s->row_boundary_col == UINT32_MAX ||
+          s->row_bracket_cell_col == UINT32_MAX)) advance(s, lexer);
   s->row_capture = false;
   row->cell_boundary_col = s->row_boundary_col;
   row->cell_carry_ticks = s->row_carry_ticks;
+  row->bracket_cell_col = s->row_bracket_cell_col;
 }
 
 static bool parse_table_begin(Scanner *s, TSLexer *lexer,
@@ -6257,8 +6264,7 @@ static bool parse_table_begin(Scanner *s, TSLexer *lexer,
   push_block(s, TABLE_ROW, 0);
   peek_block(s)->cell_boundary_col = s->row_boundary_col;
   peek_block(s)->cell_carry_ticks = s->row_carry_ticks;
-  if (s->row_capture_brackets || one_cell_continues)
-    peek_block(s)->flags |= BLOCK_FLAG_TABLE_ROW_BRACKETS;
+  peek_block(s)->bracket_cell_col = s->row_bracket_cell_col;
   if (one_cell_continues) {
     peek_block(s)->flags |= BLOCK_FLAG_TABLE_ROW_CONTINUES;
   }
@@ -6464,12 +6470,22 @@ static bool parse_table_cell_end(Scanner *s, TSLexer *lexer) {
     }
   }
   --top->data;
-  if (top->flags & BLOCK_FLAG_TABLE_ROW_BRACKETS) {
-    capture_remaining_cell(s, lexer, top, 0,
-        top->cell_boundary_col == UINT32_MAX ? UINT32_MAX : top->cell_boundary_col + 1);
-  } else {
-    top->cell_boundary_col = UINT32_MAX;
+  if (top->bracket_cell_col == UINT32_MAX) {
+    top->cell_boundary_col = 0;
     top->cell_carry_ticks = 0;
+  } else {
+    uint32_t column = lexer->get_column(lexer);
+    // A parser cell end can precede the raw splitter's boundary after an
+    // escaped backslash or tick. Keep the raw context until its own boundary.
+    if (column && (top->cell_boundary_col == 0 ||
+                   column - 1 >= top->cell_boundary_col)) {
+      if (column < top->bracket_cell_col) {
+        top->cell_boundary_col = 0;
+        top->cell_carry_ticks = 0;
+      } else {
+        capture_remaining_cell(s, lexer, top, 0, column);
+      }
+    }
   }
   lexer->result_symbol = escaped ? TABLE_ESCAPED_CELL_END : TABLE_CELL_END;
   return true;
@@ -12206,7 +12222,7 @@ unsigned tree_sitter_carve_external_scanner_serialize(void *payload,
   const size_t inline_bytes = 3;
   size_t row_bytes = 0;
   for (size_t i = 0; i < s->open_blocks->size; ++i)
-    if ((*array_get(s->open_blocks, i))->type == TABLE_ROW) row_bytes += 8;
+    if ((*array_get(s->open_blocks, i))->type == TABLE_ROW) row_bytes += 12;
   size_t label_bytes = 0;
   for (size_t i = 0; i < s->open_inline->size; ++i) {
     Inline *e = *array_get(s->open_inline, i);
@@ -12254,6 +12270,8 @@ unsigned tree_sitter_carve_external_scanner_serialize(void *payload,
         buffer[size++] = (char)(b->cell_boundary_col >> shift);
       for (unsigned shift = 0; shift < 32; shift += 8)
         buffer[size++] = (char)(b->cell_carry_ticks >> shift);
+      for (unsigned shift = 0; shift < 32; shift += 8)
+        buffer[size++] = (char)(b->bracket_cell_col >> shift);
     }
   }
 
@@ -12305,11 +12323,14 @@ void tree_sitter_carve_external_scanner_deserialize(void *payload, char *buffer,
       b->content_col = content_col;
       b->flags = flags;
       if (type == TABLE_ROW) {
-        if (size + 8 > length) { ts_free(b); return; }
+        if (size + 12 > length) { ts_free(b); return; }
         for (unsigned shift = 0; shift < 32; shift += 8)
           b->cell_boundary_col |= (uint32_t)(uint8_t)buffer[size++] << shift;
         for (unsigned shift = 0; shift < 32; shift += 8)
           b->cell_carry_ticks |= (uint32_t)(uint8_t)buffer[size++] << shift;
+        b->bracket_cell_col = 0;
+        for (unsigned shift = 0; shift < 32; shift += 8)
+          b->bracket_cell_col |= (uint32_t)(uint8_t)buffer[size++] << shift;
       }
       stack_push(s->open_blocks, b);
     }
