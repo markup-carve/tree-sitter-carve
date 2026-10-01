@@ -8,6 +8,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Pair brackets around code and closed comments when qualifying links and
+  attributed spans. Stop qualification at table-cell separators, including
+  pipes in attribute values, and leave outer brackets literal when a nested
+  destination or attribute contains an unmatched backtick (#495).
+
 - Preserve literal nested braces inside attributed spans. Keep bare formatting
   within its owning bracket and retain table-cell limits and continuation rows.
 

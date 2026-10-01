@@ -58,18 +58,30 @@ linear work through 16,384 repetitions.
 
 ## Boundary gaps found during the extension
 
-Five additional reproductions, tracked in [#495](https://github.com/markup-carve/tree-sitter-carve/issues/495),
-still disagree with the pinned engine. Their
-readings match the baseline and are outside the performance matrix:
+The five baseline qualification gaps found here are fixed by
+[#495](https://github.com/markup-carve/tree-sitter-carve/issues/495): brackets
+inside code now stay inside their attributed span, table-cell pipes bound
+qualification, and unmatched backticks in nested destinations or attributes
+leave the outer brackets literal. Closed comments containing backticks remain
+opaque; unclosed comments remain text.
 
-- ``[s `a]b`]{.k}`` loses its enclosing attributed span.
-- `| [a _b [c | d] e_]{.k} | f |` produces two cells and a span; the
-  engine produces three cells and literal text.
-- `| [x]{title="a|b"} |` produces one cell and a span; the engine splits
-  at the pipe and produces two literal cells.
-- ``[s [t](/a`b) c]{.k}`` adds an outer span that the engine leaves literal.
-- ``[s [b]{title="a`b"} c]{.k}`` also adds an outer span.
+The regression suite checks 444 engine comparisons and 1,860 incremental
+edits, including LF, CRLF, CR, missing final terminators and excluded source
+ranges. Raw-row boundaries preserve tick context from earlier comments,
+attributes, destinations and escapes. Eight corpus fixtures also run through native and WASM tests, and the
+sanitizer receives those sources and three raw-row context controls. Separate reader checks cover 63 probes
+through 4,096 repetitions, with limits of six scanner advances per byte, one
+host advance per byte and one column lookup per probe. Cached bracket matches
+and failed comment searches prevent repeated suffix scans during fallback.
 
-Qualification needs to account for opaque regions and cell splitting together.
-A change that treats every backtick as code breaks valid braced and editorial
-comments containing backticks; the new positive controls cover those cases.
+Twenty-one additional full-parser checks cover repeated closed comments,
+attributed comments, escaped pipes and short cells. Raw cell boundaries and plain cells before a late attributed span
+retain linear work through 128 cells. The comment and attributed-row controls
+retain their quadratic baseline budgets through 512 repetitions. Their runtime
+advance counts match `6a3b0b3`; qualification adds no column lookup at comment
+starts. Cells before the next bracket skip speculative reads, preserving the
+runtime's cached column. Eighteen qualification-only controls cover existing
+raw-splitting differences without claiming their cell counts are fixed.
+
+These reader checks do not remove the quadratic full-parser costs recorded
+above. The archived measurements describe the source from #494.
