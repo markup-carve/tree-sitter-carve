@@ -14,7 +14,7 @@
   "types": "bindings/node",
   "scripts": {
     "generate": "tree-sitter generate",
-    "test": "tree-sitter test",
+    "test": "tree-sitter test && node scripts/heading-caption-comments.mjs",
     "test:coverage": "node scripts/coverage-matrix.mjs",
     "test:conformance": "node scripts/corpus-conformance.mjs",
     "test:corpus": "node scripts/coverage-matrix.mjs && node scripts/corpus-conformance.mjs",
