@@ -337,6 +337,7 @@ static const uint8_t BLOCK_FLAG_LINE_BLOCK = 1 << 0;
 // position for whatever reads that `|` next. See
 // `parse_table_row_continuation_seam` (tree-sitter-carve#437).
 static const uint8_t BLOCK_FLAG_TABLE_ROW_CONTINUES = 1 << 1;
+static const uint8_t BLOCK_FLAG_TABLE_ROW_BOUNDARY_SAFE = 1 << 2;
 // Definition terms and description bodies use the same block type. Keep the
 // current item kind so nested terms and folded continuation lines stay scoped.
 static const uint8_t BLOCK_FLAG_DEFINITION_TERM = 1 << 2;
@@ -497,6 +498,9 @@ typedef struct {
 
   // Transient raw-row facts collected by the existing row validation pass.
   bool row_capture;
+  bool row_boundary_safe;
+  uint32_t row_capture_braces;
+  int32_t row_capture_quote;
   uint32_t row_bracket_cell_col, row_cell_start_col;
   uint32_t row_capture_col, row_boundary_col;
   uint32_t row_raw_ticks, row_raw_pending, row_carry_ticks, row_carry_pending;
@@ -742,6 +746,25 @@ static void mark_end(Scanner *s, TSLexer *lexer) {
 static void advance(Scanner *s, TSLexer *lexer) {
   int32_t current = lexer->lookahead;
   if (s->row_capture && (current == '\r' || current == '\n')) s->row_capture = false;
+  // Escapes and opaque runs can hide a pipe from one of the two readers.
+  // Reuse a raw boundary column only when their cell ends must agree.
+  if (s->row_capture && s->row_boundary_col == UINT32_MAX) {
+    if (current == '`' || current == '\\' ||
+        (current == '[' && s->row_previous == ']') ||
+        (!s->row_capture_quote && (current == '(' || current == '<' || current == '^')) ||
+        (s->row_previous == '{' && (current == '%' || current == '#')))
+      s->row_boundary_safe = false;
+    if (s->row_capture_quote) {
+      if (current == s->row_capture_quote) s->row_capture_quote = 0;
+    } else if (s->row_capture_braces && (current == '\'' || current == '"')) {
+      s->row_capture_quote = current;
+    } else if (current == '{') {
+      ++s->row_capture_braces;
+    } else if (current == '}' && s->row_capture_braces) {
+      --s->row_capture_braces;
+    }
+    if (current == '|' && s->row_capture_braces) s->row_boundary_safe = false;
+  }
   if (s->row_capture && current == '[' && s->row_bracket_cell_col == UINT32_MAX)
     s->row_bracket_cell_col = s->row_cell_start_col;
   if (s->row_capture && current == '|' && s->row_previous != '\\' && !s->row_raw_ticks) {
@@ -767,8 +790,10 @@ static void advance(Scanner *s, TSLexer *lexer) {
     }
     s->row_previous = current;
     ++s->row_capture_col;
-    if (lexer->is_at_included_range_start(lexer))
+    if (lexer->is_at_included_range_start(lexer)) {
+      s->row_boundary_safe = false;
       s->row_capture_col = lexer->get_column(lexer);
+    }
   }
   s->advances++;
   if (s->combined_probe) {
@@ -6032,7 +6057,7 @@ static bool scan_continuation_row(Scanner *s, TSLexer *lexer) {
 }
 
 static bool scan_separator_row(Scanner *s, TSLexer *lexer) {
-  uint8_t cell_count = 0;
+  uint32_t cell_count = 0;
   bool any_content = false;
   bool curr_separator;
   bool curr_empty;
@@ -6079,7 +6104,7 @@ static bool scan_table_row(Scanner *s, TSLexer *lexer, TokenType *row_type,
     return true;
   }
 
-  uint8_t cell_count = 0;
+  uint32_t cell_count = 0;
   bool all_separators = true;
   bool any_content = false;
   bool unterminated = false;
@@ -6210,6 +6235,9 @@ static bool scan_valid_inline_attribute(Scanner *s, TSLexer *lexer);
 static void begin_row_capture(Scanner *s, TSLexer *lexer, uint32_t carried,
                               uint32_t column) {
   s->row_capture = true;
+  s->row_boundary_safe = true;
+  s->row_capture_braces = 0;
+  s->row_capture_quote = 0;
   s->row_bracket_cell_col = UINT32_MAX;
   s->row_cell_start_col = column;
   s->row_capture_col = column;
@@ -6237,6 +6265,8 @@ static void capture_remaining_cell(Scanner *s, TSLexer *lexer, Block *row,
   row->cell_boundary_col = s->row_boundary_col;
   row->cell_carry_ticks = s->row_carry_ticks;
   row->bracket_cell_col = s->row_bracket_cell_col;
+  if (s->row_boundary_safe) row->flags |= BLOCK_FLAG_TABLE_ROW_BOUNDARY_SAFE;
+  else row->flags &= (uint8_t)~BLOCK_FLAG_TABLE_ROW_BOUNDARY_SAFE;
 }
 
 static bool parse_table_begin(Scanner *s, TSLexer *lexer,
@@ -6265,6 +6295,7 @@ static bool parse_table_begin(Scanner *s, TSLexer *lexer,
   peek_block(s)->cell_boundary_col = s->row_boundary_col;
   peek_block(s)->cell_carry_ticks = s->row_carry_ticks;
   peek_block(s)->bracket_cell_col = s->row_bracket_cell_col;
+  if (s->row_boundary_safe) peek_block(s)->flags |= BLOCK_FLAG_TABLE_ROW_BOUNDARY_SAFE;
   if (one_cell_continues) {
     peek_block(s)->flags |= BLOCK_FLAG_TABLE_ROW_CONTINUES;
   }
@@ -6474,7 +6505,10 @@ static bool parse_table_cell_end(Scanner *s, TSLexer *lexer) {
     top->cell_boundary_col = 0;
     top->cell_carry_ticks = 0;
   } else {
-    uint32_t column = lexer->get_column(lexer);
+    uint32_t column = top->cell_boundary_col &&
+                      top->cell_boundary_col != UINT32_MAX &&
+                      (top->flags & BLOCK_FLAG_TABLE_ROW_BOUNDARY_SAFE)
+        ? top->cell_boundary_col + 1 : lexer->get_column(lexer);
     // A parser cell end can precede the raw splitter's boundary after an
     // escaped backslash or tick. Keep the raw context until its own boundary.
     if (column && (top->cell_boundary_col == 0 ||
@@ -11356,7 +11390,10 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   mark_end(s, lexer);
   // A whole-line negative proof starts after a combined opener and admits no
   // nested token that crosses the line end. Its remaining tokens are midline.
+  // A row opens after its leading pipe. Its end and continuation tokens
+  // consume the line boundary before ordinary inline scanning resumes.
   bool at_line_start = s->after_closer_char != NO_COMBINED_CLOSER_LINE &&
+                       (valid_symbols[ERROR] || !find_block(s, TABLE_ROW)) &&
                        line_column(s, lexer) == 0;
   if (at_line_start) {
     s->indent = consume_whitespace(s, lexer);

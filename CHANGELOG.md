@@ -8,6 +8,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Avoid repeated column rescans in attributed table cells. Check linear scanner
+  and lexer work through 16,384 cells, and recognize rows and separators with
+  256 or more cells. See [the table work report](reports/table-cell-work.md).
+
 - Pair brackets around code and closed comments when qualifying links and
   attributed spans. Stop qualification at table-cell separators, including
   pipes in attribute values, and leave outer brackets literal when a nested

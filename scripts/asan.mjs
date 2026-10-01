@@ -18,6 +18,8 @@ try {
     ['div-400.crv', ':::: note\n'.repeat(400) + 'x\n'],
     ['quote-400.crv', '> '.repeat(400) + 'x\n'],
     ['list-400.crv', '- '.repeat(400) + 'x\n'],
+    ['table-spans-512.crv', '|' + '[x]{.k}|'.repeat(512) + '\n'],
+    ['table-header-512.crv', '|' + 'x|'.repeat(512) + '\n|' + '-|'.repeat(512) + '\n'],
   ];
   generated.push(
     ["qualification-0.crv", "[s `a]b`]{.k}\n"],

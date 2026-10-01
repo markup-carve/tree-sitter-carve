@@ -83,13 +83,15 @@ int main(void) {
   peek_block(row_state)->cell_boundary_col = 0x12345678;
   peek_block(row_state)->cell_carry_ticks = 257;
   peek_block(row_state)->bracket_cell_col = 0x23456789;
+  peek_block(row_state)->flags = BLOCK_FLAG_TABLE_ROW_BOUNDARY_SAFE;
   unsigned row_length = tree_sitter_carve_external_scanner_serialize(row_state, buffer);
   Scanner *row_back = tree_sitter_carve_external_scanner_create();
   tree_sitter_carve_external_scanner_deserialize(row_back, buffer, row_length);
   Block *restored_row = peek_block(row_back);
   if (!restored_row || restored_row->type != TABLE_ROW || row_length != 32 ||
       restored_row->cell_boundary_col != 0x12345678 || restored_row->cell_carry_ticks != 257 ||
-      restored_row->bracket_cell_col != 0x23456789) {
+      restored_row->bracket_cell_col != 0x23456789 ||
+      restored_row->flags != BLOCK_FLAG_TABLE_ROW_BOUNDARY_SAFE) {
     fputs("raw cell boundary did not survive serialization\n", stderr);
     return 1;
   }

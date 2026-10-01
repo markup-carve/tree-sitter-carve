@@ -41,7 +41,7 @@ try {
   const run = spawnSync(executable, baseline ? ['baseline'] : [], { encoding: 'utf8', timeout: 120_000 });
   assert.equal(run.status, 0, (run.stderr || String(run.error)) + '\n' + run.stdout);
   process.stdout.write(run.stdout);
-  console.log(baseline ? `Bracket qualification parser work: baseline ${baseline}.` : "Bracket qualification parser work: raw cell boundaries stay linear; comment and scoped-row work retain their baseline budgets.");
+  console.log(baseline ? `Bracket qualification parser work: baseline ${baseline}.` : "Bracket qualification parser work: table-cell qualification stays linear; paragraph comments retain their baseline budgets.");
   
 } finally {
   rmSync(build, { recursive: true, force: true });
