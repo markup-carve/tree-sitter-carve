@@ -32,10 +32,14 @@ on:
   # version.
   workflow_dispatch:
 
+# Every job declares timeout-minutes. Without one GitHub applies a 360-minute
+# default, roughly 900x the median job in this org, so a hung step burns hours
+# of runner time before anything stops it.
 jobs:
   guard:
     name: The tag matches every version surface
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
         with:
@@ -134,6 +138,7 @@ jobs:
   release-notes:
     name: A release draft for this tag exists and has notes
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       # `write`, not `read`: a DRAFT release is invisible to a caller without
       # push access, so under `contents: read` the listing comes back empty and
@@ -175,6 +180,7 @@ jobs:
   prebuild:
     name: Prebuild (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     needs: [guard]
     strategy:
       fail-fast: false
@@ -220,6 +226,7 @@ jobs:
   build-wasm:
     name: Build and test the WASM grammar
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     needs: [guard]
     env:
       XDG_CACHE_HOME: ${{ github.workspace }}/tmp/tree-sitter-cache
@@ -252,6 +259,7 @@ jobs:
   upload-wasm-release:
     name: Add WASM files to the release draft
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     needs: [guard, release-notes, build-wasm]
     permissions:
       contents: write
@@ -293,6 +301,7 @@ jobs:
   corpus-gate:
     name: Run the corpus through the packed tarball
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     needs: [guard]
     steps:
       - uses: actions/checkout@v4
@@ -339,6 +348,7 @@ jobs:
   publish-npm:
     name: Publish to npm
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     environment: release
     needs:
       [
@@ -421,6 +431,7 @@ jobs:
   publish-crates:
     name: Publish to crates.io
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     environment: release
     # AFTER npm, not beside it. npm is the only leg that can fail for a reason
     # the rehearsal cannot reach: `npm publish --dry-run --provenance` silently
@@ -479,6 +490,7 @@ jobs:
   build-python:
     name: Python wheels (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     needs: [guard]
     strategy:
       fail-fast: false
@@ -498,6 +510,7 @@ jobs:
   build-python-sdist:
     name: Python sdist
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     needs: [guard]
     steps:
       - uses: actions/checkout@v4
@@ -535,6 +548,7 @@ jobs:
   publish-pypi:
     name: Publish to PyPI
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     environment: release
     needs:
       [
@@ -582,6 +596,7 @@ jobs:
   publish-release-notes:
     name: Publish the release notes
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     needs: [publish-npm, publish-crates, publish-pypi]
     permissions:
       contents: write
