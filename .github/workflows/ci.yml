@@ -82,6 +82,11 @@ jobs:
       - name: Under-acceptance
         run: npm run test:under-acceptance
 
+      # The step above trusts carve-js as its oracle, so a ruling the pinned
+      # engine and the grammar both lag stays invisible there (#499).
+      - name: The oracle renders the corpus goldens
+        run: npm run test:oracle-goldens
+
       - name: No-ERROR sweep
         run: npm run test:no-error
 

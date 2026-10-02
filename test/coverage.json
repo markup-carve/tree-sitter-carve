@@ -34,8 +34,8 @@
       "nodes": 38
     },
     "div": {
-      "documents": 71,
-      "nodes": 75
+      "documents": 70,
+      "nodes": 73
     },
     "raw_block": {
       "documents": 44,
@@ -50,16 +50,23 @@
       "nodes": 0
     },
     "admonition": {
-      "documents": 103,
-      "nodes": 312
+      "documents": 108,
+      "nodes": 319
     },
     "directive": {
       "documents": 5,
       "nodes": 6
     }
   },
-  "reasons": {},
-  "reasonPredicates": {},
+  "reasons": {
+    "named-container-invalid-metadata": "tree-sitter-carve#499: once a colon fence and its space-separated kind word identify a container, invalid remaining metadata is dropped and the body still parses as the container (markup-carve/carve#2693). The grammar does not apply that ruling yet and reads the opener as a paragraph; carve-js reached it at b7bb16b."
+  },
+  "reasonPredicates": {
+    "named-container-invalid-metadata": {
+      "ledger": "underAcceptance",
+      "sourcePattern": "^:{3,} [A-Za-z][\\w-]*[ \\t]"
+    }
+  },
   "covered": [
     "a-marker-line-opaque-quote-keeps-overindented-markers-literal",
     "a-bare-closer-does-not-reach-inside-a-braced-inline",
@@ -631,7 +638,33 @@
   "invisibleOverAcceptance": {},
   "invisibleUnderAcceptance": {},
   "batteryDisagreements": {},
-  "underAcceptance": {},
+  "underAcceptance": {
+    "colon-fence-metadata-slots-must-be-a-space-too": {
+      "gaps": "admonition_type: want 1 have 0",
+      "reason": "ref:named-container-invalid-metadata"
+    },
+    "colon-fence-metadata-slots-must-be-a-space-too-2": {
+      "gaps": "admonition_type: want 1 have 0",
+      "reason": "ref:named-container-invalid-metadata"
+    },
+    "colon-fence-metadata-slots-must-be-a-space-too-3": {
+      "gaps": "admonition_type: want 1 have 0",
+      "reason": "ref:named-container-invalid-metadata"
+    },
+    "colon-fence-metadata-slots-must-be-a-space-too-4": {
+      "gaps": "admonition_type: want 1 have 0",
+      "reason": "ref:named-container-invalid-metadata"
+    },
+    "invalid-named-container-metadata-keeps-the-subtree": {
+      "gaps": "admonition_type: want 2 have 1",
+      "reason": "ref:named-container-invalid-metadata"
+    },
+    "invalid-named-container-metadata-keeps-the-subtree-2": {
+      "gaps": "admonition_type: want 2 have 0",
+      "reason": "ref:named-container-invalid-metadata"
+    }
+  },
+  "oracleGoldenDisagreements": {},
   "errorFamilies": {
     "\"-\" + \"---\"": {
       "documents": 3,
