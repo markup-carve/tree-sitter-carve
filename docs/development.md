@@ -30,6 +30,20 @@ category (after bumping the submodule) fails `test:coverage` until it is
 classified, which is intentional: it forces a decision rather than silently
 dropping coverage.
 
+### The oracle against the goldens
+
+`test:under-acceptance` and the boundary checks compare the grammar with
+carve-js, pinned in `package.json`. They can only report where the two disagree,
+so a ruling that both lag reads as conformance (#499).
+`npm run test:oracle-goldens` closes that gap: it renders every corpus document
+with the pinned carve-js and requires the HTML to equal the golden, trimmed, as
+the spec's own corpus test does. A known disagreement is recorded in
+`oracleGoldenDisagreements` in `test/coverage.json` with a reason. An
+unrecorded one fails, and so does a recorded one that no longer happens.
+
+When it fails after a spec bump, move the carve-js pin forward before touching
+the grammar, then re-run `test:under-acceptance` against the new pin.
+
 ## Measuring a change
 
 A reading taken from a stale artifact is the most common wrong answer here.
