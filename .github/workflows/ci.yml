@@ -6,9 +6,13 @@ on:
   pull_request:
     branches: [main]
 
+# Every job declares timeout-minutes. Without one GitHub applies a 360-minute
+# default, roughly 900x the median job in this org, so a hung step burns hours
+# of runner time before anything stops it.
 jobs:
   tree-sitter:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
         with:
@@ -164,6 +168,7 @@ jobs:
 
   wasm:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     env:
       XDG_CACHE_HOME: ${{ github.workspace }}/tmp/tree-sitter-cache
     steps:
@@ -186,6 +191,7 @@ jobs:
 
   address-sanitizer:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -206,6 +212,7 @@ jobs:
 
   rust:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
