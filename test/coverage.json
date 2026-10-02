@@ -14,16 +14,16 @@
       "nodes": 148
     },
     "heading": {
-      "documents": 153,
-      "nodes": 186
+      "documents": 154,
+      "nodes": 187
     },
     "code_block": {
       "documents": 156,
       "nodes": 164
     },
     "list": {
-      "documents": 684,
-      "nodes": 846
+      "documents": 685,
+      "nodes": 847
     },
     "definition_list": {
       "documents": 230,
@@ -34,8 +34,8 @@
       "nodes": 38
     },
     "div": {
-      "documents": 70,
-      "nodes": 73
+      "documents": 71,
+      "nodes": 75
     },
     "raw_block": {
       "documents": 44,
@@ -50,8 +50,8 @@
       "nodes": 0
     },
     "admonition": {
-      "documents": 102,
-      "nodes": 311
+      "documents": 103,
+      "nodes": 312
     },
     "directive": {
       "documents": 5,
@@ -596,7 +596,9 @@
     "comment-columns-and-surviving-list-items",
     "a-braced-span-cannot-close-beyond-its-bracket-run",
     "a-container-label-preserves-closed-inline-constructs-before-cutting-a-comment",
-    "quoted-values-and-titles-retain-a-non-punctuation-backslash"
+    "quoted-values-and-titles-retain-a-non-punctuation-backslash",
+    "a-denied-destination-takes-one-render-loss-row-per-sink",
+    "invalid-named-container-metadata-keeps-the-subtree"
   ],
   "skip": {},
   "overAcceptance": {
