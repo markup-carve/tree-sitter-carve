@@ -183,7 +183,7 @@ function symbolFallback($, options) {
     // `bold_italic_begin` gives. A bare one needs its own standalone fallback
     // the way `/` and `*` do - otherwise `/* x/`, where the whitespace check after `/*` fails, has
     // no lexing left at all.
-    seq("/", $._non_whitespace_check, $._bold_italic_open_decision),
+    seq("/", $._non_whitespace_check, $._bold_italic_literal_open_decision),
     "*",
     "_",
     "~",
@@ -197,7 +197,7 @@ function symbolFallback($, options) {
     // unclosed bold-italic could not lose to emphasis at all: the parser
     // commits to `bold_italic_begin` and errors at the end of the line.
     seq(
-      seq("/", $._non_whitespace_check, $._bold_italic_open_decision),
+      seq("/", $._non_whitespace_check, $._bold_italic_literal_open_decision),
       choice($._bold_italic_mark_begin, $._in_fallback),
     ),
     // The BRACED opener needs a fallback branch of its own, exactly as `{*`
@@ -236,12 +236,8 @@ function symbolFallback($, options) {
     ),
     // Not sensitive to whitespace
     seq("{^", $._braced_fallback),
-    seq("^", choice($._superscript_mark_begin, $._in_fallback)),
+    "^",
     seq("{,", $._braced_fallback),
-    seq(
-      seq(",", $._non_whitespace_check),
-      choice($._subscript_mark_begin, $._in_fallback),
-    ),
     seq("{=", $._braced_fallback),
     seq(
       seq("=", $._highlighted_open_check),
@@ -294,8 +290,6 @@ module.exports = grammar({
   extras: (_) => ["\r"],
 
   conflicts: ($) => [
-    [$.bold_italic_begin, $._symbol_fallback],
-    [$.bold_italic_begin, $._note_symbol_fallback],
     // After a quoted fence's `_block_close`, a `>` is either the closer's own
     // marker or the enclosing quote's; only the end marker after it decides.
     [$.code_block],
@@ -1030,24 +1024,21 @@ module.exports = grammar({
             // malformed opener as a real container. A glued [label] is a
             // different case and stays valid below: `:::[First]` does open.
             //
-            // The `"title"` and `[label]` slots below are the OTHER role: the
-            // type word has already decided the block, so they are PADDING. The
-            // ROLES differ, the terminal does not - a padding slot sits after
-            // the first non-whitespace character of the line, where a tab is not
-            // syntax - so all three slots are spelled `space` and only the
-            // cardinality differs: `space` at the separator, `space+` here
-            // (`::: note` + two spaces + `"T"` opens). carve#907 settled it;
-            // corpus category 255 carries the four tab cases.
-            //
-            // Whether the line OPENS at all is `colon_fence_named_tail_is_modeled`
-            // in `src/scanner.c`, because a slot that rejects its separator has
-            // to leave the line as PROSE and a rule here can only fail into an
-            // ERROR. These tokens are the same rule at the shape level.
+            // Titles and labels require spaces. Invalid metadata is retained as
+            // one inert node; the kind and container body still parse (corpus 537).
             seq(
               field("type", $.admonition_type),
-              optional(seq($._padding_spaces, field("title", $.div_title))),
-              optional(
-                seq($._padding_spaces, field("label", $.code_block_label)),
+              choice(
+                field(
+                  "invalid_metadata",
+                  alias($._container_invalid_metadata, $.invalid_metadata),
+                ),
+                seq(
+                  optional(seq($._padding_spaces, field("title", $.div_title))),
+                  optional(
+                    seq($._padding_spaces, field("label", $.code_block_label)),
+                  ),
+                ),
               ),
             ),
             // Bare [label] with no type word (a typeless tab member); it may
@@ -2006,7 +1997,10 @@ module.exports = grammar({
     emphasis: ($) =>
       seq(
         field("begin_marker", $.emphasis_begin),
-        $._emphasis_mark_begin,
+        choice(
+          $._emphasis_mark_begin,
+          prec.dynamic(-1, $._emphasis_combined_mark_begin),
+        ),
         field("content", alias($._braced_span_content, $.content)),
         field("end_marker", $.emphasis_end),
       ),
@@ -2026,23 +2020,28 @@ module.exports = grammar({
     // scored, so that reading was never offered and the document built
     // nothing. See `parse_bold_italic_star` in `src/scanner.c`.
     // A rejected opener within strong retains the enclosing span reading.
-    // Both real and fallback openers share this prefix and its external state.
+    // Separate checks let the scanner retain only the reading its closer permits.
     _bold_italic_open_decision: ($) =>
+      seq($._bold_italic_open_check, $._bold_italic_star),
+    _bold_italic_literal_open_decision: ($) =>
       choice(
-        seq($._bold_italic_open_check, $._bold_italic_star),
+        seq($._bold_italic_literal_open_check, $._bold_italic_literal_star),
         prec.dynamic(
           3 * ELEMENT_PRECEDENCE,
-          seq($._bold_italic_scoped_open_check, $._bold_italic_star),
+          seq($._bold_italic_scoped_open_check, $._bold_italic_literal_star),
         ),
       ),
 
     bold_italic_begin: ($) =>
-      seq("/", $._non_whitespace_check, $._bold_italic_open_decision),
+      prec.dynamic(
+        ELEMENT_PRECEDENCE,
+        seq("/", $._non_whitespace_check, $._bold_italic_open_decision),
+      ),
 
     strong: ($) =>
       seq(
         field("begin_marker", $.strong_begin),
-        $._strong_mark_begin,
+        choice($._strong_qualified_mark_begin, $._strong_mark_begin),
         field("content", alias($._braced_span_content, $.content)),
         field("end_marker", $.strong_end),
       ),
@@ -3097,6 +3096,11 @@ module.exports = grammar({
     $._inline_attribute_continue,
     $._bold_italic_open_check,
     $._bold_italic_scoped_open_check,
+    $._bold_italic_literal_open_check,
+    $._emphasis_combined_mark_begin,
+    $._container_invalid_metadata,
+    $._strong_qualified_mark_begin,
+    $._bold_italic_literal_star,
     $._literal_slash_boundary,
   ],
 });

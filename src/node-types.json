@@ -1450,6 +1450,16 @@
           }
         ]
       },
+      "invalid_metadata": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "invalid_metadata",
+            "named": true
+          }
+        ]
+      },
       "label": {
         "multiple": false,
         "required": false,
@@ -4829,6 +4839,10 @@
   },
   {
     "type": "insert_end",
+    "named": true
+  },
+  {
+    "type": "invalid_metadata",
     "named": true
   },
   {
