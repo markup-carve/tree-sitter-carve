@@ -14,7 +14,7 @@
   "types": "bindings/node",
   "scripts": {
     "generate": "tree-sitter generate",
-    "test": "tree-sitter test && node scripts/heading-caption-comments.mjs",
+    "test": "tree-sitter test && node scripts/heading-caption-comments.mjs && node scripts/inline-span-audit.mjs && node scripts/container-metadata-recovery.mjs",
     "test:coverage": "node scripts/coverage-matrix.mjs",
     "test:conformance": "node scripts/corpus-conformance.mjs",
     "test:corpus": "node scripts/coverage-matrix.mjs && node scripts/corpus-conformance.mjs",
@@ -43,6 +43,7 @@
     "test:asan": "node scripts/asan.mjs",
     "test:reason-predicates": "node --test tests/reason-predicates.test.mjs",
     "test:version-surfaces": "node scripts/version-surfaces.mjs && node --test tests/version-surfaces.test.mjs",
+    "test:inline-span-audit": "node scripts/inline-span-audit.mjs",
     "test:inline-reading": "node scripts/inline-reading.mjs && node --test tests/inline-reading.test.mjs && node scripts/inline-link-tails.mjs && node scripts/inline-reading-boundaries.mjs",
     "test:termination": "node scripts/parse-termination.mjs",
     "test:editor-queries": "node scripts/editor-queries.mjs",

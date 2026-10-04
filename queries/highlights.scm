@@ -506,3 +506,5 @@
 
 (full_reference_image
   (link_label) @nospell)
+
+(invalid_metadata) @error
