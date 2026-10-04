@@ -6746,6 +6746,10 @@ static bool scan_braced_comment_to_close(Scanner *s, TSLexer *lexer) {
       continue;
     }
     if (at_line_end(lexer)) {
+      Block *host = peek_block(s);
+      if ((s->state & STATE_SINGLE_LINE_CAPTION) ||
+          (host && (host->type == HEADING || host->type == TABLE_CAPTION || disallow_newline(host))))
+        return false;
       consume_line_end(s, lexer);
       consume_whitespace(s, lexer);
       if (at_line_end(lexer) || lexer->eof(lexer)) {
@@ -6791,6 +6795,10 @@ static bool finish_editorial_comment(Scanner *s, TSLexer *lexer,
       continue;
     }
     if (at_line_end(lexer)) {
+      Block *host = peek_block(s);
+      if ((s->state & STATE_SINGLE_LINE_CAPTION) ||
+          (host && (host->type == HEADING || host->type == TABLE_CAPTION || disallow_newline(host))))
+        return false;
       consume_line_end(s, lexer);
       consume_whitespace(s, lexer);
       if (at_line_end(lexer) || lexer->eof(lexer)) {
@@ -9403,6 +9411,7 @@ static bool probe_bare_closer_skips_brackets(Scanner *s, BracketProbe *probe, ch
   // A slash emphasis may start with either a literal star or a real strong
   // span. Decide that on its own branch, before its slash closer.
   bool saw_strong_closer = false;
+  uint8_t unclosed_comments = 0;
   int32_t previous = 0;
   uint32_t characters = 0;
   if (combined_literal) *combined_literal = false;
@@ -9449,10 +9458,15 @@ static bool probe_bare_closer_skips_brackets(Scanner *s, BracketProbe *probe, ch
       uint32_t comment_restart = probe->position;
       uint32_t comment_base = s->col_base;
       int32_t comment = lexer->lookahead;
-      if (comment == '%' || comment == '#') {
+      uint8_t comment_bit = comment == '%' ? 1 : comment == '#' ? 2 : 0;
+      if (comment_bit && !(unclosed_comments & comment_bit)) {
         advance(s, lexer);
         bool closed = false;
-        while (!lexer->eof(lexer) && !at_line_end(lexer)) {
+        while (!lexer->eof(lexer)) {
+          Block *host = peek_block(s);
+          if (at_line_end(lexer) && ((s->state & STATE_SINGLE_LINE_CAPTION) ||
+              (host && (host->type == HEADING || host->type == TABLE_CAPTION || disallow_newline(host)))))
+            break;
           int32_t current = lexer->lookahead;
           advance(s, lexer);
           if (current == comment && lexer->lookahead == '}') {
@@ -9462,6 +9476,7 @@ static bool probe_bare_closer_skips_brackets(Scanner *s, BracketProbe *probe, ch
           }
         }
         if (!closed) {
+          unclosed_comments |= comment_bit;
           bracket_probe_rewind(probe, comment_restart);
           s->col_base = comment_base;
           previous = '{';

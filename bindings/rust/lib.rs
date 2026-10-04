@@ -567,36 +567,10 @@ mod tests {
         }
     }
 
-    /// A PADDING slot on the admonition opener takes a space, and no tab.
-    ///
-    /// `resources/grammar.ebnf` PART 7, MARKER SEPARATORS AND PADDING SLOTS,
-    /// splits the opener line into two roles. The whitespace right after `:::`
-    /// is a MARKER SEPARATOR, because the token after it selects which of the
-    /// four blocks the line opens. Once `admonition_type` has been read the
-    /// block is DECIDED, so the `"title"` and `[label]` slots are ordinary
-    /// padding. THE ROLES DIFFER, THE TERMINAL DOES NOT: a padding slot sits
-    /// after the first non-whitespace character of the line, where a tab is not
-    /// syntax, so `admonition_open = colon_fence:open, space, admonition_type,
-    /// [space+, quoted_title], [space+, label]` spells all three with `space`
-    /// and only the cardinality differs.
-    ///
-    /// This test asserted the OPPOSITE until markup-carve/tree-sitter-carve#160,
-    /// and called itself the mutation guard for keeping it that way: carve#886
-    /// had left the padding slots admitting a tab, and this grammar was written
-    /// to that reading. carve#907 settled it the other way, corpus category 255
-    /// carries the four cases, and a test defending the older answer is how a
-    /// grammar rule stays deliberately looser than the language it models.
-    ///
-    /// THE DIRECTION THAT STILL NEEDS GUARDING IS CARDINALITY. The padding slot
-    /// takes `space+`, a RUN, while the fence's own `[space]` slot takes exactly
-    /// one - narrow the padding slot to one space and the last case here fails
-    /// while every tab case above it keeps passing.
-    ///
-    /// It lives here rather than in `test/corpus/carve.txt` because the run case
-    /// rots SILENTLY in a fixture: two spaces degrading to one builds the same
-    /// tree, so the fixture would keep passing while testing nothing.
+    /// Invalid title or label padding preserves the kind and container body.
+    /// Valid padding still accepts a run of literal spaces.
     #[test]
-    fn a_padding_slot_takes_a_space_and_a_tab_makes_the_line_prose() {
+    fn invalid_padding_preserves_the_named_container() {
         let mut parser = tree_sitter::Parser::new();
         parser
             .set_language(&super::language())
@@ -611,11 +585,15 @@ mod tests {
             let root = tree.root_node();
             assert!(!root.has_error(), "unexpected ERROR for {source:?}");
             let block = root.child(0).expect("document has no child");
-            // A tab at either padding slot leaves the WHOLE line as prose - the
-            // block never opens, which is the outcome PART 7 promises for a slot
-            // that does not match. An ERROR here would be the other failure and
-            // is asserted against above.
-            assert_eq!(block.kind(), "paragraph", "for {source:?}");
+            assert_eq!(block.kind(), "div", "for {source:?}");
+            let metadata = block
+                .child_by_field_name("invalid_metadata")
+                .expect("invalid metadata was not retained");
+            assert_eq!(metadata.kind(), "invalid_metadata");
+            assert_eq!(metadata.named_child_count(), 0);
+            assert!(block.child_by_field_name("type").is_some());
+            assert!(block.child_by_field_name("title").is_none());
+            assert!(block.child_by_field_name("label").is_none());
         }
 
         // The run, and the one-space control beside it.
