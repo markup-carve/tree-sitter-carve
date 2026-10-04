@@ -47,7 +47,12 @@ const controls = ['*`x`*', '_`x`_', '/{% x %}/', '*{x}*', '*{# x #}*', '*{% x %}
   '[/*]/', 'x/*\n|/|', '/*a{*/', '/*{a*/', '*{//a/', '__{{_', '*{_}_',
   '*a/*a/**', '/a *//*/', '/**{*', 'a/**{*', '/*a_{_', '{*/**}', '[a *b`c` d*]', '[a *`b*`]', 'a/*\n /*c/', 'a/*b* c/',
   '[/*a* b]/', '/*a {/b/}*', '/*a {/b/} c*', '/*a {*b*} c*/',
-  '/*a {/b/} c*/', '*[](`*', '[/*]*/', 'x /** b*', 'a /*** b* c', '/a/*`*/', '/*{/a', '/{_/_}', '{~a {~b~} c~}', '{*a {*b*} c*}', '{/a {/b/} c/}', '{_a {_b_} c_}'];
+  '/*a {/b/} c*/', '*[](`*', '[/*]*/', 'x /** b*', 'a /*** b* c', '/a/*`*/', '/*{/a', '/{_/_}', '{~a {~b~} c~}', '{*a {*b*} c*}', '{/a {/b/} c/}', '{_a {_b_} c_}',
+  '#a/*/', '@a/*/', '#a/{/', '#a*{*', '/~~a~', '~~**~', '/*a__a_', '/a/**a*',
+  '=/=/+', '={*=*', '/**{*}/', '*/{/*/}', '/*a{*/}', '/*{_*}/', '{/*[*',
+  '/*{[}/', '/**/{[', '*{{_ _}', '#a-*b*', '@a-/*/', '#a_/*a*/', '#a.-*b*',
+  '*a\\ %% b*', '*a\\ * b', '/a\\ / b', '_a\\ _ b', '~a\\ ~ b', 'a#a*{*', 'a#a/*/', 'a#a/{/', '/*{a#a', 'x@a/*/',
+  'x#a-*b*', 'x@a_/*a*/'];
 const hosts = [s => `${s}\n`, s => `# ${s}\n`, s => `- ${s}\n`,
   s => `> ${s}\n`, s => `::: note\n${s}\n:::\n`];
 let boundaries = 0;
@@ -90,9 +95,14 @@ for (const body of controls) for (const ending of ['\n', '\r\n', '\r']) {
     compareEdit(shorter, source);
   }
 }
-for (const source of ['| *b * |\n', '| *a {*b |\n', '| {*b * |\n', '| *a\\ * b |\n', '| /a\\ / b |\n', '| _a\\ _ b |\n', '| ~a\\ ~ b |\n']) check(source);
+for (const source of ['| *b * |\n', '| *a {*b |\n', '| {*b * |\n', '| *a\\ * b |\n', '| /a\\ / b |\n', '| _a\\ _ b |\n', '| ~a\\ ~ b |\n', '| *a /b* c/ |\n', '| /a *b/ c* |\n', '| */a*/ |\n', '| /**/* |\n', '| /{*/* |\n', '| /* */* |\n']) check(source);
 for (const body of controls) {
   compareEdit(body + '\n', 'x' + body + '\n');
   compareEdit('x' + body + '\n', body + '\n');
+  compareEdit('a\n' + body + '\n', 'xa\n' + body + '\n');
+  compareEdit('xa\n' + body + '\n', 'a\n' + body + '\n');
 }
+compareEdit('/a\n *\n', '/a *\n');
+compareEdit('/a\n /a\n', '/a /a\n');
+compareEdit('a\n/**/\n', 'xa\n/**/\n');
 console.log(`Inline span audit: ${generated} generated inputs, ${boundaries} block controls and ${edits} incremental edits pass.`);

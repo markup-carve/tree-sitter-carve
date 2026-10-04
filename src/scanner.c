@@ -253,6 +253,10 @@ typedef enum {
   STRONG_QUALIFIED_MARK_BEGIN,
   BOLD_ITALIC_LITERAL_STAR,
   EMPHASIS_QUALIFIED_MARK_BEGIN,
+  WORD_END,
+  HIGHLIGHTED_QUALIFIED_MARK_BEGIN,
+  LITERAL_STAR,
+  LITERAL_SLASH,
   LITERAL_SLASH_BOUNDARY,
 } TokenType;
 
@@ -6841,7 +6845,15 @@ static bool parse_open_curly_bracket(Scanner *s, TSLexer *lexer,
   advance(s, lexer);
   mark_end(s, lexer);
   *literal_curly = false;
-  if (lexer->lookahead == '{' || (lexer->lookahead == '=' && !kind_open_in_scope(s, HIGHLIGHTED))) {
+  if (lexer->lookahead == '{') {
+    advance(s, lexer);
+    if (lexer->lookahead != ' ' && lexer->lookahead != '\t' && valid_symbols[LITERAL_RUN]) {
+      lexer->result_symbol = LITERAL_RUN;
+      return true;
+    }
+    return false;
+  }
+  if (lexer->lookahead == '=' && !kind_open_in_scope(s, HIGHLIGHTED)) {
     *literal_curly = false;
     return false;
   }
@@ -6852,7 +6864,9 @@ static bool parse_open_curly_bracket(Scanner *s, TSLexer *lexer,
   if (lexer->lookahead == ',') { brace_kind = SUBSCRIPT; brace_marker = true; }
   if (lexer->lookahead == '+') { brace_kind = INSERT; brace_marker = true; }
   if (lexer->lookahead == '-') { brace_kind = DELETE; brace_marker = true; }
-  if (valid_symbols[LITERAL_RUN] && brace_marker) {
+  if (valid_symbols[LITERAL_RUN] && brace_marker &&
+      (peek_inline(s) || (s->after_closer_char != 0 &&
+       s->after_closer_col + 1 == line_column(s, lexer)))) {
     char marker = (char)lexer->lookahead;
     bool same = kind_open_in_scope(s, brace_kind);
     advance(s, lexer);
@@ -8585,6 +8599,17 @@ static bool bare_closer_in_scope(Scanner *s, TSLexer *lexer, char bare,
       continue;
     }
     int32_t c = lexer->lookahead;
+    Inline *parent = peek_inline(s);
+    if (parent && !(parent->flags & INLINE_BRACED) &&
+        (parent->type == STRONG || parent->type == EMPHASIS ||
+         parent->type == UNDERLINE || parent->type == STRIKETHROUGH || parent->type == HIGHLIGHTED) &&
+        c != bare && c == inline_marker(parent->type) &&
+        previous != ' ' && previous != '\t' && previous != '\n') {
+      advance(s, lexer);
+      if (!carve_is_alnum_ascii(lexer->lookahead)) return false;
+      previous = c;
+      continue;
+    }
     if (c == '\\') {
       advance(s, lexer);
       previous = '\\';
@@ -10094,10 +10119,10 @@ static bool mark_span_begin(Scanner *s, TSLexer *lexer,
     // span belongs to that span, so it must not stop an outer one closing.
     // `{*a {/b *} d/} e*}` keeps its strong, and `~a{+b~+} c~` its strikethrough.
     // A literal opener leaves its left boundary for the adjacent delimiter.
-    if (bare && (inline_type == UNDERLINE || inline_type == EMPHASIS)) {
+    if (bare && inline_type != BOLD_ITALIC) {
       InlineType following;
       if (is_bare_delim_kind(lexer->lookahead, &following)) {
-        s->after_closer_char = inline_type == UNDERLINE ? '_' : '/';
+        s->after_closer_char = (uint8_t)inline_marker(inline_type);
         s->after_closer_col = line_column(s, lexer);
       }
     }
@@ -10703,6 +10728,7 @@ static bool zero_width_mark_pending(const bool *valid_symbols) {
 static int parse_literal_run(Scanner *s, TSLexer *lexer,
                              const bool *valid_symbols, int32_t replay_marker,
                              uint8_t replay_count, int32_t seed_prev) {
+  uint32_t literal_start_advances = s->advances;
   // `prev` is the character behind the lexer, 0 while it is unknown. Unknown
   // reads as a clean left boundary, which is what the grammar assumed before
   // this pass existed.
@@ -10716,7 +10742,7 @@ static int parse_literal_run(Scanner *s, TSLexer *lexer,
     if (s->advances == before) advance(s, lexer);
     mark_end(s, lexer);
     if (lexer->lookahead != '*') s->after_literal_star = false;
-    lexer->result_symbol = LITERAL_RUN;
+    lexer->result_symbol = valid_symbols[LITERAL_STAR] ? LITERAL_STAR : LITERAL_RUN;
     return 1;
   }
   int32_t prev = 0;
@@ -10741,16 +10767,21 @@ static int parse_literal_run(Scanner *s, TSLexer *lexer,
     bool literal_stars = literal_slashes && (!literal_strong ||
                          (literal_strong->flags & INLINE_SCOPED_COMBINED_LITERAL));
     bool consumed = false;
+    bool glued_name = false;
     while (!lexer->eof(lexer) && !at_line_end(lexer)) {
       int32_t current = lexer->lookahead;
       bool whitespace = current == ' ' || current == '\t';
       InlineType word_kind;
-      bool word_marker = carve_is_alnum_ascii(previous) &&
+      bool glued_marker = (current == '@' || current == '#') && carve_is_alnum_ascii(previous);
+      bool name_separator = glued_name && (current == '-' || current == '_');
+      bool word_marker = (carve_is_alnum_ascii(previous) || previous == current) &&
                          is_bare_delim_kind(current, &word_kind) &&
                          !find_inline_in_scope(s, word_kind);
-      if (!carve_is_alnum_ascii(current) && !whitespace && !word_marker &&
+      if (!carve_is_alnum_ascii(current) && !whitespace && !word_marker && !glued_marker && !name_separator &&
           !(current == '/' && literal_slashes) && current != '.' &&
           !(current == '*' && previous == '/' && literal_stars)) break;
+      if (glued_marker) glued_name = true;
+      if (whitespace) glued_name = false;
       if (current == '.') {
         advance(s, lexer);
         if (lexer->lookahead == '.') {
@@ -10813,6 +10844,13 @@ static int parse_literal_run(Scanner *s, TSLexer *lexer,
       prev2 = prev;
       prev = replay_marker;
       delims_seen++;
+    }
+    if (replay_count == 1 && replay_marker == '*' && valid_symbols[LITERAL_STAR]) {
+      mark_end(s, lexer);
+      s->after_closer_char = '*';
+      s->after_closer_col = line_column(s, lexer);
+      lexer->result_symbol = LITERAL_STAR;
+      return 1;
     }
   } else if (is_bare_delim_kind(lexer->lookahead, &kind)) {
     if (s->after_closer_char != 0 && !HAS_NO_COMBINED_CLOSER(s) &&
@@ -10891,6 +10929,14 @@ static int parse_literal_run(Scanner *s, TSLexer *lexer,
       break;
     }
     mark_end(s, lexer);
+    TokenType literal_token = c == '*' ? LITERAL_STAR : LITERAL_SLASH;
+    if ((c == '*' || c == '/') && seed_prev == 0 &&
+        s->advances == literal_start_advances + 1 && valid_symbols[literal_token]) {
+      s->after_closer_char = (uint8_t)c;
+      s->after_closer_col = line_column(s, lexer);
+      lexer->result_symbol = literal_token;
+      return 1;
+    }
     delims++;
     prev2 = prev;
     prev = c;
@@ -11188,6 +11234,33 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     mark_end(s, lexer);
     return check_non_whitespace(s, lexer);
   }
+  if (valid_symbols[HIGHLIGHTED_OPEN_CHECK] && !valid_symbols[ERROR]) {
+    mark_end(s, lexer);
+    return check_highlighted_open(s, lexer);
+  }
+  if (valid_symbols[WORD_END] && !valid_symbols[ERROR]) {
+    mark_end(s, lexer);
+    s->after_closer_char = 'a';
+    s->after_closer_col = line_column(s, lexer);
+    lexer->result_symbol = WORD_END;
+    return true;
+  }
+  if (valid_symbols[HIGHLIGHTED_QUALIFIED_MARK_BEGIN] && !valid_symbols[ERROR] &&
+      (s->state & STATE_BARE_SPAN_OPENER)) {
+    uint32_t content_column = line_column(s, lexer);
+    mark_end(s, lexer);
+    bool real_symbols[LITERAL_SLASH_BOUNDARY + 1];
+    memcpy(real_symbols, valid_symbols, sizeof(real_symbols));
+    real_symbols[IN_FALLBACK] = false;
+    if (mark_span_begin(s, lexer, real_symbols, HIGHLIGHTED, HIGHLIGHTED_QUALIFIED_MARK_BEGIN))
+      return true;
+    s->state &= ~STATE_BARE_SPAN_OPENER;
+    if (!valid_symbols[IN_FALLBACK]) return false;
+    s->after_closer_char = '=';
+    s->after_closer_col = content_column;
+    lexer->result_symbol = IN_FALLBACK;
+    return true;
+  }
   if (valid_symbols[EMPHASIS_QUALIFIED_MARK_BEGIN] && !valid_symbols[ERROR] &&
       (s->state & STATE_BARE_SPAN_OPENER) && lexer->lookahead != '*') {
     uint32_t content_column = line_column(s, lexer);
@@ -11206,6 +11279,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   }
   if (valid_symbols[STRONG_QUALIFIED_MARK_BEGIN] && !valid_symbols[ERROR] &&
       (s->state & STATE_BARE_SPAN_OPENER)) {
+    uint32_t content_column = line_column(s, lexer);
     mark_end(s, lexer);
     bool real_symbols[LITERAL_SLASH_BOUNDARY + 1];
     memcpy(real_symbols, valid_symbols, sizeof(real_symbols));
@@ -11214,8 +11288,10 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
         mark_span_begin(s, lexer, real_symbols, STRONG, STRONG_QUALIFIED_MARK_BEGIN))
       return true;
     s->state &= ~STATE_BARE_SPAN_OPENER;
-    if (!valid_symbols[STRONG_MARK_BEGIN]) return false;
-    lexer->result_symbol = STRONG_MARK_BEGIN;
+    if (!valid_symbols[IN_FALLBACK]) return false;
+    s->after_closer_char = '*';
+    s->after_closer_col = content_column;
+    lexer->result_symbol = IN_FALLBACK;
     return true;
   }
 
@@ -11392,10 +11468,22 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       if (current == '[') {
         if (!plain_prefix_end_column) plain_prefix_end_column = line_column(s, lexer);
         advance(s, lexer);
+        uint32_t bracket_restart = decision_probe.position;
+        uint32_t bracket_base = s->col_base;
+        s->combined_raw_pair = false;
+        s->combined_raw_strong_closer = false;
+        s->combined_raw_previous = 0;
         if (!scan_until_bracket_close(s, lexer, NULL)) {
           if (scope && scope_type == STRONG && !scope_braced &&
               s->combined_raw_strong_closer) enclosing_closer = true;
           else if (s->combined_raw_pair) combined_pair = true;
+          else {
+            bracket_probe_rewind(&decision_probe, bracket_restart);
+            s->col_base = bracket_base;
+            previous = '[';
+            ++characters;
+            continue;
+          }
           break;
         }
         advance(s, lexer);
@@ -11414,10 +11502,26 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
         advance(s, lexer);
         uint32_t brace_restart = decision_probe.position;
         uint32_t brace_base = s->col_base;
-        if (lexer->lookahead != '*' && lexer->lookahead != '/' && lexer->lookahead != '_' &&
+        if (lexer->lookahead == '*' || lexer->lookahead == '/' ||
+            (lexer->lookahead != '_' &&
             lexer->lookahead != '~' && lexer->lookahead != '=' && lexer->lookahead != '^' &&
             lexer->lookahead != ',' && lexer->lookahead != '+' && lexer->lookahead != '-' &&
-            lexer->lookahead != '%' && lexer->lookahead != '#') {
+            lexer->lookahead != '%' && lexer->lookahead != '#')) {
+          previous = '{';
+          ++characters;
+          continue;
+        }
+        if (lexer->lookahead != '%' && lexer->lookahead != '#') {
+          char marker = (char)lexer->lookahead;
+          advance(s, lexer);
+          if (braced_closer_ahead(s, lexer, marker)) {
+            advance(s, lexer);
+            previous = 'x';
+            ++characters;
+            continue;
+          }
+          bracket_probe_rewind(&decision_probe, brace_restart);
+          s->col_base = brace_base;
           previous = '{';
           ++characters;
           continue;
