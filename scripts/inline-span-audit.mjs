@@ -120,7 +120,7 @@ for (const marker of ['*', '/', '_', '~', '=']) {
   compareEdit(bareBefore, bareAfter);
   compareEdit(bareAfter, bareBefore);
 }
-for (const source of ['# *a\n\nb] *c*\n', '# =a\n\nb] =c=\n', '# *a [b\nb]*\n', '# :x[a\nb]\n', '| h |\n^ *a\n`c` d*\n', '- | h |\n  ^ *a\n  b*\n']) check(source);
+for (const source of ['| h |\n^ *a\nb*\n', '- | h |\n  ^ :x[a\n  b]\n', '> | h |\n> ^ :x[a\n> b]\n', '- | h |\n  ^ {# a\n  b #}\n', '# *a\n\nb] *c*\n', '# =a\n\nb] =c=\n', '# *a [b\nb]*\n', '# :x[a\nb]\n', '| h |\n^ *a\n`c` d*\n', '- | h |\n  ^ *a\n  b*\n']) check(source);
 for (const prefix of ['# ', '## ', '- # ']) for (const marker of ['*', '/', '=']) for (const ending of ['\n', '\r\n', '\r']) {
   const source = prefix + marker + 'a' + ending + marker + 'b' + marker + ending;
   check(source);

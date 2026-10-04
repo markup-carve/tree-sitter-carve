@@ -6779,8 +6779,7 @@ static bool scan_braced_comment_to_close(Scanner *s, TSLexer *lexer) {
     }
     if (at_line_end(lexer)) {
       Block *host = peek_block(s);
-      if ((s->state & STATE_SINGLE_LINE_CAPTION) ||
-          (host && (host->type == HEADING || disallow_newline(host))))
+      if (host && (host->type == HEADING || disallow_newline(host)))
         return false;
       consume_line_end(s, lexer);
       consume_whitespace(s, lexer);
@@ -6828,8 +6827,7 @@ static bool finish_editorial_comment(Scanner *s, TSLexer *lexer,
     }
     if (at_line_end(lexer)) {
       Block *host = peek_block(s);
-      if ((s->state & STATE_SINGLE_LINE_CAPTION) ||
-          (host && (host->type == HEADING || disallow_newline(host))))
+      if (host && (host->type == HEADING || disallow_newline(host)))
         return false;
       consume_line_end(s, lexer);
       consume_whitespace(s, lexer);
@@ -8005,7 +8003,7 @@ static bool emit_newline_inline(Scanner *s, TSLexer *lexer,
 
   // Need an extra check so we don't emit a NEWLINE_INLINE at the end
   // of a table caption if there's a mismatched indent.
-  if (top && top->type == TABLE_CAPTION && next_line_whitespace < top->data) {
+  if (top && top->type == TABLE_CAPTION && !has_open_span(s) && next_line_whitespace < top->data) {
     return false;
   }
 
@@ -8982,8 +8980,7 @@ static bool parse_plain_bracket_run(Scanner *s, TSLexer *lexer) {
   while (!lexer->eof(lexer)) {
     if (at_line_end(lexer)) {
       Block *host = peek_block(s);
-      if ((s->state & STATE_SINGLE_LINE_CAPTION) ||
-          (host && (host->type == HEADING || disallow_newline(host)))) return false;
+      if (host && (host->type == HEADING || disallow_newline(host))) return false;
       if (plain && punctuation && !continued) {
         remainder_column = line_column(s, lexer) - (s->advances - remainder_advances);
         have_remainder_column = true;
@@ -9265,8 +9262,7 @@ static bool bracket_probe_verbatim(Scanner *s, BracketProbe *probe, uint8_t widt
       if (!bracket_probe_pipe(s, probe, true)) return false;
     } else if (at_line_end(lexer)) {
       Block *host = peek_block(s);
-      if (in_row || (s->state & STATE_SINGLE_LINE_CAPTION) ||
-          (host && (host->type == HEADING || disallow_newline(host)))) return false;
+      if (in_row || (host && (host->type == HEADING || disallow_newline(host)))) return false;
       consume_line_end(s, lexer);
       consume_whitespace(s, lexer);
       if (at_line_end(lexer)) return false;
@@ -9368,8 +9364,7 @@ static bool scan_qualified_bracket_close(Scanner *s, BracketProbe *probe, Inline
       if (!bracket_probe_pipe(s, probe, current->row_ticks || current->escaped_pipe)) goto failed;
     } else if (at_line_end(lexer)) {
       Block *host = peek_block(s);
-      if (in_row || (s->state & STATE_SINGLE_LINE_CAPTION) ||
-          (host && (host->type == HEADING || disallow_newline(host)))) goto failed;
+      if (in_row || (host && (host->type == HEADING || disallow_newline(host)))) goto failed;
       consume_line_end(s, lexer);
       consume_whitespace(s, lexer);
       if (at_line_end(lexer)) goto failed;
@@ -9501,8 +9496,7 @@ static bool probe_bare_closer_skips_brackets(Scanner *s, BracketProbe *probe, ch
         bool closed = false;
         while (!lexer->eof(lexer)) {
           Block *host = peek_block(s);
-          if (at_line_end(lexer) && ((s->state & STATE_SINGLE_LINE_CAPTION) ||
-              (host && (host->type == HEADING || disallow_newline(host)))))
+          if (at_line_end(lexer) && ((host && (host->type == HEADING || disallow_newline(host)))))
             break;
           int32_t current = lexer->lookahead;
           advance(s, lexer);
@@ -9684,8 +9678,7 @@ static bool scan_inline_link_tail(Scanner *s, TSLexer *lexer, char bare, bool *c
   while (!lexer->eof(lexer)) {
     if (at_line_end(lexer)) {
       Block *host = peek_block(s);
-      if ((s->state & STATE_SINGLE_LINE_CAPTION) ||
-          (host && (host->type == HEADING || disallow_newline(host)))) {
+      if ((s->state & STATE_SINGLE_LINE_CAPTION) || (host && (host->type == HEADING || disallow_newline(host)))) {
         if (boundary) *boundary = true;
         return false;
       }
