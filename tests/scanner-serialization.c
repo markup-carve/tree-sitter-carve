@@ -34,7 +34,7 @@ int main(void) {
     ts_free(last);
   }
   unsigned length = tree_sitter_carve_external_scanner_serialize(scanner, buffer);
-  if (length != 1021 || (uint8_t)buffer[15] != 251) {
+  if (length != 1022 || (uint8_t)buffer[15] != 251) {
     fprintf(stderr, "251 blocks encoded as %u bytes with count %u\n", length,
             (uint8_t)buffer[15]);
     return 1;
@@ -55,13 +55,14 @@ int main(void) {
   push_inline_flagged(spans, STRONG, 0, INLINE_BRACED);
   push_inline_flagged(spans, VERBATIM, 2, INLINE_STOPS_AT_SPAN_CLOSER);
   spans->after_literal_star = true;
+  spans->missing_closers = (1 << 0) | (1 << 13);
   spans->state |= STATE_LITERAL_QUOTE_BAND;
   unsigned inline_length =
       tree_sitter_carve_external_scanner_serialize(spans, buffer);
   Scanner *spans_back = tree_sitter_carve_external_scanner_create();
   tree_sitter_carve_external_scanner_deserialize(spans_back, buffer,
                                                  inline_length);
-  if (!spans_back->after_literal_star || !(spans_back->state & STATE_LITERAL_QUOTE_BAND) ||
+  if (spans_back->missing_closers != spans->missing_closers || !spans_back->after_literal_star || !(spans_back->state & STATE_LITERAL_QUOTE_BAND) ||
       spans_back->open_inline->size != 2) {
     fprintf(stderr, "restored %u inline entries, wanted 2\n",
             spans_back->open_inline->size);
@@ -91,7 +92,7 @@ int main(void) {
   Scanner *row_back = tree_sitter_carve_external_scanner_create();
   tree_sitter_carve_external_scanner_deserialize(row_back, buffer, row_length);
   Block *restored_row = peek_block(row_back);
-  if (!restored_row || restored_row->type != TABLE_ROW || row_length != 33 ||
+  if (!restored_row || restored_row->type != TABLE_ROW || row_length != 34 ||
       restored_row->cell_boundary_col != 0x12345678 || restored_row->cell_carry_ticks != 257 ||
       restored_row->bracket_cell_col != 0x23456789 ||
       restored_row->flags != BLOCK_FLAG_TABLE_ROW_BOUNDARY_SAFE) {
@@ -109,7 +110,7 @@ int main(void) {
   tree_sitter_carve_external_scanner_deserialize(label_back, buffer, label_length);
   Inline *restored_label = peek_inline(label_back);
   if (!restored_label || restored_label->flags != INLINE_LABEL ||
-      restored_label->literal_closes != 0x12345678 || label_length != 23) {
+      restored_label->literal_closes != 0x12345678 || label_length != 24) {
     fputs("wide label bracket depth did not survive serialization\n", stderr);
     return 1;
   }
@@ -122,7 +123,7 @@ int main(void) {
   unsigned literal_length = tree_sitter_carve_external_scanner_serialize(literal_state, buffer);
   Scanner *literal_back = tree_sitter_carve_external_scanner_create();
   tree_sitter_carve_external_scanner_deserialize(literal_back, buffer, literal_length);
-  if (peek_inline(literal_back)->literal_closes != 16384 || literal_length != 23) {
+  if (peek_inline(literal_back)->literal_closes != 16384 || literal_length != 24) {
     fputs("literal bracket depth did not survive serialization\n", stderr);
     return 1;
   }
