@@ -45,7 +45,9 @@ const controls = ['*`x`*', '_`x`_', '/{% x %}/', '*{x}*', '*{# x #}*', '*{% x %}
   '/***`', '/*`*/', '/*a`*/', '*a{*', '/a{/', '_/{_', '/{_a_', '/{*a*',
   '_*_*', '_a *_*', '_}*_*', '_*/_*/', '/***', '*a*/***', 'x *%%*', '*_/*_*',
   '[/*]/', 'x/*\n|/|', '/*a{*/', '/*{a*/', '*{//a/', '__{{_', '*{_}_',
-  '*a/*a/**', '/a *//*/', '/**{*', 'a/**{*', '/*a_{_'];
+  '*a/*a/**', '/a *//*/', '/**{*', 'a/**{*', '/*a_{_', '{*/**}', '[a *b`c` d*]', '[a *`b*`]', 'a/*\n /*c/', 'a/*b* c/',
+  '[/*a* b]/', '/*a {/b/}*', '/*a {/b/} c*', '/*a {*b*} c*/',
+  '/*a {/b/} c*/', '*[](`*', '[/*]*/', 'x /** b*', 'a /*** b* c', '/a/*`*/', '/*{/a', '/{_/_}', '{~a {~b~} c~}', '{*a {*b*} c*}', '{/a {/b/} c/}', '{_a {_b_} c_}'];
 const hosts = [s => `${s}\n`, s => `# ${s}\n`, s => `- ${s}\n`,
   s => `> ${s}\n`, s => `::: note\n${s}\n:::\n`];
 let boundaries = 0;
@@ -87,5 +89,10 @@ for (const body of controls) for (const ending of ['\n', '\r\n', '\r']) {
     compareEdit(source, shorter);
     compareEdit(shorter, source);
   }
+}
+for (const source of ['| *b * |\n', '| *a {*b |\n', '| {*b * |\n']) check(source);
+for (const body of controls) {
+  compareEdit(body + '\n', 'x' + body + '\n');
+  compareEdit('x' + body + '\n', body + '\n');
 }
 console.log(`Inline span audit: ${generated} generated inputs, ${boundaries} block controls and ${edits} incremental edits pass.`);

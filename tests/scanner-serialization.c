@@ -27,22 +27,22 @@ int main(void) {
   }
 
   // A block now serializes as 4 bytes (type, data, content_col, flags), so
-  // the largest count that still fits the fixed buffer is 252, not the
+  // the largest count that still fits the fixed buffer is 251, not the
   // count byte's own UINT8_MAX=255 - the buffer-size guard binds first.
-  for (unsigned i = 0; i < 4; ++i) {
+  for (unsigned i = 0; i < 5; ++i) {
     Block *last = array_pop(scanner->open_blocks);
     ts_free(last);
   }
   unsigned length = tree_sitter_carve_external_scanner_serialize(scanner, buffer);
-  if (length != 1024 || (uint8_t)buffer[15] != 252) {
-    fprintf(stderr, "252 blocks encoded as %u bytes with count %u\n", length,
+  if (length != 1021 || (uint8_t)buffer[15] != 251) {
+    fprintf(stderr, "251 blocks encoded as %u bytes with count %u\n", length,
             (uint8_t)buffer[15]);
     return 1;
   }
 
   Scanner *restored = tree_sitter_carve_external_scanner_create();
   tree_sitter_carve_external_scanner_deserialize(restored, buffer, length);
-  if (restored->open_blocks->size != 252 || restored->open_inline->size != 0) {
+  if (restored->open_blocks->size != 251 || restored->open_inline->size != 0) {
     fprintf(stderr, "restored %u blocks and %u inline entries\n",
             restored->open_blocks->size, restored->open_inline->size);
     return 1;
@@ -54,12 +54,15 @@ int main(void) {
   Scanner *spans = tree_sitter_carve_external_scanner_create();
   push_inline_flagged(spans, STRONG, 0, INLINE_BRACED);
   push_inline_flagged(spans, VERBATIM, 2, INLINE_STOPS_AT_SPAN_CLOSER);
+  spans->after_literal_star = true;
+  spans->state |= STATE_LITERAL_QUOTE_BAND;
   unsigned inline_length =
       tree_sitter_carve_external_scanner_serialize(spans, buffer);
   Scanner *spans_back = tree_sitter_carve_external_scanner_create();
   tree_sitter_carve_external_scanner_deserialize(spans_back, buffer,
                                                  inline_length);
-  if (spans_back->open_inline->size != 2) {
+  if (!spans_back->after_literal_star || !(spans_back->state & STATE_LITERAL_QUOTE_BAND) ||
+      spans_back->open_inline->size != 2) {
     fprintf(stderr, "restored %u inline entries, wanted 2\n",
             spans_back->open_inline->size);
     return 1;
@@ -88,7 +91,7 @@ int main(void) {
   Scanner *row_back = tree_sitter_carve_external_scanner_create();
   tree_sitter_carve_external_scanner_deserialize(row_back, buffer, row_length);
   Block *restored_row = peek_block(row_back);
-  if (!restored_row || restored_row->type != TABLE_ROW || row_length != 32 ||
+  if (!restored_row || restored_row->type != TABLE_ROW || row_length != 33 ||
       restored_row->cell_boundary_col != 0x12345678 || restored_row->cell_carry_ticks != 257 ||
       restored_row->bracket_cell_col != 0x23456789 ||
       restored_row->flags != BLOCK_FLAG_TABLE_ROW_BOUNDARY_SAFE) {
@@ -106,7 +109,7 @@ int main(void) {
   tree_sitter_carve_external_scanner_deserialize(label_back, buffer, label_length);
   Inline *restored_label = peek_inline(label_back);
   if (!restored_label || restored_label->flags != INLINE_LABEL ||
-      restored_label->literal_closes != 0x12345678 || label_length != 22) {
+      restored_label->literal_closes != 0x12345678 || label_length != 23) {
     fputs("wide label bracket depth did not survive serialization\n", stderr);
     return 1;
   }
@@ -119,7 +122,7 @@ int main(void) {
   unsigned literal_length = tree_sitter_carve_external_scanner_serialize(literal_state, buffer);
   Scanner *literal_back = tree_sitter_carve_external_scanner_create();
   tree_sitter_carve_external_scanner_deserialize(literal_back, buffer, literal_length);
-  if (peek_inline(literal_back)->literal_closes != 16384 || literal_length != 22) {
+  if (peek_inline(literal_back)->literal_closes != 16384 || literal_length != 23) {
     fputs("literal bracket depth did not survive serialization\n", stderr);
     return 1;
   }
@@ -190,7 +193,7 @@ int main(void) {
 
   tree_sitter_carve_external_scanner_destroy(restored);
   tree_sitter_carve_external_scanner_destroy(scanner);
-  puts("scanner serialization: 252 blocks round-trip, an inline entry and a "
+  puts("scanner serialization: 251 blocks round-trip, an inline entry and a "
        "block's own flags keep them, and 256 blocks are refused cleanly.");
   return 0;
 }

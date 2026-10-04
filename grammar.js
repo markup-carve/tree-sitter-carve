@@ -1998,6 +1998,7 @@ module.exports = grammar({
       seq(
         field("begin_marker", $.emphasis_begin),
         choice(
+          $._emphasis_qualified_mark_begin,
           $._emphasis_mark_begin,
           prec.dynamic(-1, $._emphasis_combined_mark_begin),
         ),
@@ -3107,6 +3108,7 @@ module.exports = grammar({
     $._container_invalid_metadata,
     $._strong_qualified_mark_begin,
     $._bold_italic_literal_star,
+    $._emphasis_qualified_mark_begin,
     $._literal_slash_boundary,
   ],
 });

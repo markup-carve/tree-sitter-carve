@@ -6351,6 +6351,10 @@
           "members": [
             {
               "type": "SYMBOL",
+              "name": "_emphasis_qualified_mark_begin"
+            },
+            {
+              "type": "SYMBOL",
               "name": "_emphasis_mark_begin"
             },
             {
@@ -10405,6 +10409,10 @@
     {
       "type": "SYMBOL",
       "name": "_bold_italic_literal_star"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_emphasis_qualified_mark_begin"
     },
     {
       "type": "SYMBOL",
