@@ -6470,8 +6470,13 @@
               "name": "_bold_italic_literal_open_check"
             },
             {
-              "type": "SYMBOL",
-              "name": "_bold_italic_literal_star"
+              "type": "ALIAS",
+              "content": {
+                "type": "SYMBOL",
+                "name": "_bold_italic_literal_star"
+              },
+              "named": false,
+              "value": "*"
             }
           ]
         },
@@ -6486,8 +6491,13 @@
                 "name": "_bold_italic_scoped_open_check"
               },
               {
-                "type": "SYMBOL",
-                "name": "_bold_italic_literal_star"
+                "type": "ALIAS",
+                "content": {
+                  "type": "SYMBOL",
+                  "name": "_bold_italic_literal_star"
+                },
+                "named": false,
+                "value": "*"
               }
             ]
           }

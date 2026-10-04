@@ -2025,10 +2025,16 @@ module.exports = grammar({
       seq($._bold_italic_open_check, $._bold_italic_star),
     _bold_italic_literal_open_decision: ($) =>
       choice(
-        seq($._bold_italic_literal_open_check, $._bold_italic_literal_star),
+        seq(
+          $._bold_italic_literal_open_check,
+          alias($._bold_italic_literal_star, "*"),
+        ),
         prec.dynamic(
           3 * ELEMENT_PRECEDENCE,
-          seq($._bold_italic_scoped_open_check, $._bold_italic_literal_star),
+          seq(
+            $._bold_italic_scoped_open_check,
+            alias($._bold_italic_literal_star, "*"),
+          ),
         ),
       ),
 
