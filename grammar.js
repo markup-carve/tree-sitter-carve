@@ -58,6 +58,7 @@ function inlineElement($, options) {
         // external scanner because no character class can match it.
         $._nul_byte,
         $._include_open_fallback,
+        seq($._extension_marker, $._extension_literal_check),
         // Word runs that ABSORB a glued mention / tag / symbol, which is
         // how the leading word-boundary guard is enforced without
         // lookbehind (see _glued_* below).
@@ -1978,14 +1979,13 @@ module.exports = grammar({
     // The bracket holds INLINE content: `:code[*b*]` renders the strong inside
     // its span. The opener stays one token so a malformed run - no bracket, no
     // name - falls back to text rather than committing to an ERROR.
+    _extension_marker: (_) => token(seq(":", /[a-zA-Z][a-zA-Z0-9_-]*/, "[")),
     extension_inline: ($) =>
       seq(
-        alias(
-          token(seq(":", /[a-zA-Z][a-zA-Z0-9_-]*/, "[")),
-          $.extension_marker_begin,
-        ),
+        alias($._extension_marker, $.extension_marker_begin),
+        $._extension_content_begin,
         optional(field("content", alias($._extension_content, $.content))),
-        "]",
+        alias($._extension_end, "]"),
       ),
     // A soft line break is content: `:span[a` / `b]` is one extension
     // (corpus 351-a-bracketed-construct-spanning-a-line-boundary-7).
@@ -3143,6 +3143,9 @@ module.exports = grammar({
     $._highlighted_qualified_mark_begin,
     $._literal_star,
     $._literal_slash,
+    $._extension_content_begin,
+    $._extension_literal_check,
+    $._extension_end,
     $._literal_slash_boundary,
   ],
 });
