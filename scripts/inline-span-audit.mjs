@@ -90,7 +90,7 @@ for (const body of controls) for (const ending of ['\n', '\r\n', '\r']) {
     compareEdit(shorter, source);
   }
 }
-for (const source of ['| *b * |\n', '| *a {*b |\n', '| {*b * |\n']) check(source);
+for (const source of ['| *b * |\n', '| *a {*b |\n', '| {*b * |\n', '| *a\\ * b |\n', '| /a\\ / b |\n', '| _a\\ _ b |\n', '| ~a\\ ~ b |\n']) check(source);
 for (const body of controls) {
   compareEdit(body + '\n', 'x' + body + '\n');
   compareEdit('x' + body + '\n', body + '\n');

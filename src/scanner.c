@@ -8587,10 +8587,11 @@ static bool bare_closer_in_scope(Scanner *s, TSLexer *lexer, char bare,
     int32_t c = lexer->lookahead;
     if (c == '\\') {
       advance(s, lexer);
+      previous = '\\';
       if (!lexer->eof(lexer) && !at_line_end(lexer)) {
+        previous = lexer->lookahead;
         advance(s, lexer);
       }
-      previous = 'x';
       continue;
     }
     if (c == '`') {
@@ -9493,10 +9494,11 @@ static bool probe_bare_closer_skips_brackets(Scanner *s, BracketProbe *probe, ch
     }
     if (c == '\\') {
       advance(s, lexer);
+      previous = '\\';
       if (!lexer->eof(lexer) && !at_line_end(lexer)) {
+        previous = lexer->lookahead;
         advance(s, lexer);
       }
-      previous = 'x';
       ++characters;
       continue;
     }
