@@ -9430,7 +9430,7 @@ static bool probe_bare_closer_skips_brackets(Scanner *s, BracketProbe *probe, ch
       }
       uint32_t row_restart = probe->position;
       uint32_t row_base = s->col_base;
-      if ((!host || host->type != TABLE_CAPTION) && close_paragraph(s, lexer)) return false;
+      if (close_paragraph(s, lexer)) return false;
       bracket_probe_rewind(probe, row_restart);
       s->col_base = row_base;
       previous = '\n';
