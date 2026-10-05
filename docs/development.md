@@ -44,6 +44,26 @@ unrecorded one fails, and so does a recorded one that no longer happens.
 When it fails after a spec bump, move the carve-js pin forward before touching
 the grammar, then re-run `test:under-acceptance` against the new pin.
 
+`test:oracle-goldens` reads HTML and `test:under-acceptance` compares the grammar
+against the oracle, so a ruling that moves the AST without moving a rendered
+element passes both. Corpus `108-security-hardening-8` and `-10` already have
+that shape: `{onclick="steal()"}` and `{srcdoc="<script>"}` render the same
+`<p>A <span>danger</span> span.</p>`, because the renderer drops the refused
+attribute and the AST keeps it.
+
+`npm run test:oracle-ast-shapes` holds the oracle's AST to `test/ast-shapes.json`
+the way the goldens hold its rendering. Per document it records each
+`parent>type` and each `type@attribute-slot` with its count, which is what HTML
+can drop: a re-parented node, an attribute on a different node, a node kind with
+no element behind it. Positions and text values are left out, the first because
+it carries no ruling and the second because it reaches the reader and is already
+`test:oracle-goldens`' subject.
+
+After a pin bump, run `node scripts/oracle-ast-shapes.mjs --write`, read the diff
+document by document, and commit it with the bump. The diff is the list of AST
+rulings the new engine brought in, so re-recording without reading it gives up
+what the check is for.
+
 ## Measuring a change
 
 A reading taken from a stale artifact is the most common wrong answer here.
