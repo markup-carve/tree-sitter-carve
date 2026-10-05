@@ -18,16 +18,16 @@
       "nodes": 191
     },
     "code_block": {
-      "documents": 156,
-      "nodes": 164
+      "documents": 159,
+      "nodes": 168
     },
     "list": {
-      "documents": 685,
-      "nodes": 847
+      "documents": 688,
+      "nodes": 850
     },
     "definition_list": {
-      "documents": 230,
-      "nodes": 243
+      "documents": 233,
+      "nodes": 246
     },
     "line_block": {
       "documents": 38,
@@ -607,7 +607,8 @@
     "a-head-and-foot-consuming-all-rows-leave-no-implicit-body",
     "explicit-body-counts-include-native-header-cells",
     "an-unreferenced-footnote-definition-takes-its-links-out-of-the-render",
-    "every-name-lookup-compares-case-exactly"
+    "every-name-lookup-compares-case-exactly",
+    "an-info-string-does-not-change-how-a-flush-left-fence-folds-into-a-description-body"
   ],
   "skip": {},
   "overAcceptance": {
@@ -648,7 +649,16 @@
       "reason": "a `---` after a content-less marker errors; carve-js renders a paragraph then a thematic break (tree-sitter-carve#96)"
     }
   },
-  "inlineReadingGaps": {},
+  "inlineReadingGaps": {
+    "an-info-string-does-not-change-how-a-flush-left-fence-folds-into-a-description-body": {
+      "reading": "code html=1 tree=0",
+      "reason": "a flush-left unterminated fence folds into a description body after prose but not after a CLOSED nested fence: the inner code_block ends, and the flush-left line opens a fresh document-level code_block instead of staying the body's lazy content. carve#2741 ruled the info string decides nothing there, so the oracle reads paragraph>code inside the dd and the tree builds no span at all. Block ownership rather than an inline defect, and the margin walk it touches is wider than a pin bump (tree-sitter-carve#514)"
+    },
+    "an-info-string-does-not-change-how-a-flush-left-fence-folds-into-a-description-body-2": {
+      "reading": "code html=1 tree=0",
+      "reason": "a flush-left unterminated fence folds into a description body after prose but not after a CLOSED nested fence: the inner code_block ends, and the flush-left line opens a fresh document-level code_block instead of staying the body's lazy content. carve#2741 ruled the info string decides nothing there, so the oracle reads paragraph>code inside the dd and the tree builds no span at all. Block ownership rather than an inline defect, and the margin walk it touches is wider than a pin bump (tree-sitter-carve#514)"
+    }
+  },
   "lineTerminatorGaps": {},
   "parseTimeouts": {}
 }
