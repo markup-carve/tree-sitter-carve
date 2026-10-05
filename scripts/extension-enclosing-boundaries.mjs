@@ -79,6 +79,10 @@ for (const marker of ['*', '/', '_', '~', '=', '^', ',', '+', '-']) {
     [wrap(`a ${marker}}`), wrap(`a \\${marker}}`)],
     [wrap(`a \`b${marker}} c`), wrap(`a \`b${marker}} c\``)],
     [wrap(`${marker}}`), wrap('a')]);
+  pairs.push([wrap(`a \`b\\${marker}} c\``), wrap(`a \\${marker}} b`)]);
+  if (marker !== '+' && marker !== '-') pairs.push(
+    [wrap(`a \`b\\${marker}} c`), wrap(`a \`b\\${marker}} c\``)],
+    [wrap(`a \`b\n\\${marker}} c`), wrap(`a \`b\n\\${marker}} c\``)]);
   if (marker !== '/') pairs.push([wrap('a {/b ' + marker + '} c/}'), wrap('a b')]);
 }
 for (const [first, second] of pairs) for (const ending of ['\n', '\r\n', '\r']) {
