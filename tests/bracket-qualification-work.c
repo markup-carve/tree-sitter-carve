@@ -83,5 +83,32 @@ int main(void) {
     free(source);
     ++cases;
   }
+  const char *payloads[] = {"a `b*} c` d] ", "a \\*} b] ", "a {*b c*}] ", "a \\`b\\*} c] "};
+  for (unsigned shape = 0; shape < sizeof(payloads) / sizeof(payloads[0]); ++shape)
+  for (unsigned i = 0; i < sizeof(sizes) / sizeof(sizes[0]); ++i) {
+    unsigned n = sizes[i], width = strlen(payloads[shape]);
+    char *source = malloc(width + 2 * n + 4);
+    assert(source);
+    memcpy(source, payloads[shape], width);
+    for (unsigned k = 0; k < n; ++k) memcpy(source + width + 2 * k, "z ", 2);
+    strcpy(source + width + 2 * n, "*}\n");
+    Input input = {0};
+    input.source = source;
+    input.lexer = (TSLexer){source[0], 0, input_advance, input_mark,
+      input_column, input_range, input_eof};
+    Scanner *scanner = tree_sitter_carve_external_scanner_create();
+    push_inline_flagged(scanner, STRONG, 0, INLINE_BRACED);
+    uint32_t remaining;
+    bool changes_scope, opaque_cut;
+    assert(extension_payload_closed(scanner, &input.lexer, &remaining, &changes_scope, &opaque_cut) == (shape != 2));
+    assert(scanner->advances <= 4 * width);
+    assert(input.advances <= width);
+    assert(input.columns <= 1);
+    printf("extension=%u n=%u scanner=%u host=%u columns=%u\n",
+      shape, n, scanner->advances, input.advances, input.columns);
+    tree_sitter_carve_external_scanner_destroy(scanner);
+    free(source);
+    ++cases;
+  }
   printf("Bracket qualification work: %u probes retain linear work.\n", cases);
 }
