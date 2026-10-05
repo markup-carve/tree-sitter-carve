@@ -82,6 +82,58 @@ int main(void) {
   tree_sitter_carve_external_scanner_destroy(spans_back);
   tree_sitter_carve_external_scanner_destroy(spans);
 
+  Scanner *cut_label = tree_sitter_carve_external_scanner_create();
+  push_inline_flagged(cut_label, SQUARE_BRACKET_SPAN, 0,
+                      INLINE_BRACED | INLINE_EXTENSION_CUT);
+  peek_inline(cut_label)->literal_closes = INLINE_CUT_CODE | 300;
+  unsigned cut_label_length = tree_sitter_carve_external_scanner_serialize(cut_label, buffer);
+  Scanner *cut_label_back = tree_sitter_carve_external_scanner_create();
+  tree_sitter_carve_external_scanner_deserialize(cut_label_back, buffer, cut_label_length);
+  if (!peek_inline(cut_label_back) || square_literal_closes(peek_inline(cut_label_back)) != 300 ||
+      span_verbatim_stop_marker(peek_inline(cut_label_back)) != 2) {
+    fputs("extension code boundary did not survive label serialization\n", stderr);
+    return 1;
+  }
+  peek_inline(cut_label)->literal_closes = 0;
+  peek_inline(cut_label)->flags &= ~INLINE_EXTENSION_CUT;
+  cut_label_length = tree_sitter_carve_external_scanner_serialize(cut_label, buffer);
+  tree_sitter_carve_external_scanner_deserialize(cut_label_back, buffer, cut_label_length);
+  if (!peek_inline(cut_label_back) || peek_inline(cut_label_back)->flags != INLINE_BRACED ||
+      peek_inline(cut_label_back)->literal_closes || span_verbatim_stop_marker(peek_inline(cut_label_back))) {
+    fputs("cleared extension label state did not survive serialization\n", stderr);
+    return 1;
+  }
+  tree_sitter_carve_external_scanner_destroy(cut_label_back);
+  tree_sitter_carve_external_scanner_destroy(cut_label);
+
+  const uint32_t cuts[] = {254, 255, 256, 16384, UINT32_MAX};
+  for (unsigned i = 0; i < sizeof(cuts) / sizeof(cuts[0]); ++i) {
+    Scanner *cut = tree_sitter_carve_external_scanner_create();
+    push_inline_flagged(cut, STRONG, 0, 0);
+    peek_inline(cut)->literal_closes = cuts[i];
+    unsigned cut_length = tree_sitter_carve_external_scanner_serialize(cut, buffer);
+    Scanner *cut_back = tree_sitter_carve_external_scanner_create();
+    tree_sitter_carve_external_scanner_deserialize(cut_back, buffer, cut_length);
+    if (!peek_inline(cut_back) || peek_inline(cut_back)->literal_closes != cuts[i]) {
+      fputs("extension residual depth did not survive serialization\n", stderr);
+      return 1;
+    }
+    tree_sitter_carve_external_scanner_destroy(cut_back);
+    for (unsigned j = 0; j < 250; ++j) push_block(cut, DIV, 0);
+    if (cuts[i] >= UINT8_MAX) {
+      memset(buffer, 0x5a, sizeof(buffer));
+      if (tree_sitter_carve_external_scanner_serialize(cut, buffer) != 0) {
+        fputs("wide extension state exceeded the fixed buffer\n", stderr);
+        return 1;
+      }
+      for (unsigned j = 0; j < sizeof(buffer); ++j) if ((unsigned char)buffer[j] != 0x5a) {
+        fputs("refused extension state wrote a partial serialization\n", stderr);
+        return 1;
+      }
+    }
+    tree_sitter_carve_external_scanner_destroy(cut);
+  }
+
   Scanner *row_state = tree_sitter_carve_external_scanner_create();
   push_block(row_state, TABLE_ROW, 0);
   peek_block(row_state)->cell_boundary_col = 0x12345678;

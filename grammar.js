@@ -1982,7 +1982,9 @@ module.exports = grammar({
 
     // `extension = ":" extName "[" extContent "]"` (resources/carve-core.ohm).
     // The bracket holds INLINE content: `:code[*b*]` renders the strong inside
-    // its span. The opener stays one token so a malformed run - no bracket, no
+    // its span. The first raw `]` cuts the payload before inline parsing,
+    // including when it follows an escape or sits inside code or a comment.
+    // The opener stays one token so a malformed run - no bracket, no
     // name - falls back to text rather than committing to an ERROR.
     _extension_marker: (_) => token(seq(":", /[a-zA-Z][a-zA-Z0-9_-]*/, "[")),
     extension_inline: ($) =>
