@@ -16,7 +16,7 @@ const hosts = [s => `${s}\n`, s => `# ${s}\n`, s => `| h |\n^ ${s}\n`,
   s => `{*a ${s} b*}\n`, s => `/*a ${s} b*/\n`,
   s => `{/a ${s} b/}\n`, s => `[a ${s} b](u)\n`,
   s => `[a ${s} b]{.c}\n`, s => `| h |\n^ *a ${s} b*\n`];
-const bodies = ['a :x[b] c', 'a `b] c` d', 'a ``b] c`` d', 'a !`b] c` d',
+const bodies = ['a :x[b] c', 'a `b] c` d', 'a ``b] c`` d', 'a ```b] c``` d', 'a ````b] c```` d', 'a !`b] c` d',
   'a $`b] c` d', 'a `] c`', 'a \\] c', 'a \\] c\\] d', 'a [b] c',
   'a [[b] c]', 'a [@k] c', 'a [^n] c', 'a ^[b] c', 'a ![b](u) c',
   'a [b](u) c', 'a [b]{.c} d', 'a {% c ] %} d', 'a {# c ] #} d',
@@ -90,7 +90,7 @@ for (const body of bodies) for (const host of hosts.slice(0, 10)) for (const end
   }
   if (edits % 120 === 0) await new Promise(setImmediate);
 }
-for (const body of ['a :x[b] c', 'a `b] c` d', 'a ``b] c`` d', 'a \\] c',
+for (const body of ['a :x[b] c', 'a `b] c` d', 'a ``b] c`` d', 'a ```b] c``` d', 'a ````b] c```` d', 'a \\] c',
   'a [b] c', 'a [[b] c]', 'a [b](u) c', 'a [b]{.c} d',
   'a <http://b]c> d', 'a {{ p] q }} d', 'a *b*{key="c]d"} e']) {
   for (const host of hosts.slice(10)) for (const ending of ['\n', '\r\n', '\r']) {

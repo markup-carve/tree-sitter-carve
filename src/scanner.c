@@ -3621,7 +3621,12 @@ static bool parse_code_fence(Scanner *s, TSLexer *lexer,
     // For ticks >= 3 the end is already pinned above; re-mark here for the
     // 1-2 tick inline-verbatim case where no fence validation ran.
     uint8_t flags = 0;
-    if (width < 3) {
+    bool after_extension_cut = top &&
+        ((top->type >= EMPHASIS && top->type <= BOLD_ITALIC && top->literal_closes) ||
+         (top->type == SQUARE_BRACKET_SPAN &&
+          (top->flags & (INLINE_BRACED | INLINE_EXTENSION_CUT)) ==
+              (INLINE_BRACED | INLINE_EXTENSION_CUT)));
+    if (width < 3 || (after_extension_cut && !valid_symbols[CODE_BLOCK_BEGIN])) {
       mark_end(s, lexer);
       // Only here is the lexer known to stand right after the ticks: the
       // three-tick path let `try_begin_code_block` read the info string first.
@@ -11634,7 +11639,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     bool balanced = extension_payload_closed(s, lexer, &remaining);
     if (balanced && valid_symbols[EXTENSION_CONTENT_BEGIN]) {
       Inline *parent = peek_inline(s);
-      if (parent && !(parent->flags & INLINE_BRACED) && parent->type >= EMPHASIS && parent->type <= HIGHLIGHTED)
+      if (parent && parent->type >= EMPHASIS && parent->type <= BOLD_ITALIC)
         parent->literal_closes = 1;
       Inline *bracket = find_inline(s, SQUARE_BRACKET_SPAN);
       if (bracket && (bracket->flags & INLINE_BRACED)) {
