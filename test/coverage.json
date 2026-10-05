@@ -18,16 +18,16 @@
       "nodes": 191
     },
     "code_block": {
-      "documents": 156,
-      "nodes": 164
+      "documents": 159,
+      "nodes": 168
     },
     "list": {
-      "documents": 685,
-      "nodes": 847
+      "documents": 688,
+      "nodes": 850
     },
     "definition_list": {
-      "documents": 230,
-      "nodes": 243
+      "documents": 233,
+      "nodes": 246
     },
     "line_block": {
       "documents": 38,
@@ -607,7 +607,8 @@
     "a-head-and-foot-consuming-all-rows-leave-no-implicit-body",
     "explicit-body-counts-include-native-header-cells",
     "an-unreferenced-footnote-definition-takes-its-links-out-of-the-render",
-    "every-name-lookup-compares-case-exactly"
+    "every-name-lookup-compares-case-exactly",
+    "an-info-string-does-not-change-how-a-flush-left-fence-folds-into-a-description-body"
   ],
   "skip": {},
   "overAcceptance": {
