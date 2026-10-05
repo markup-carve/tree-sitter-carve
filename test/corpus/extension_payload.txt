@@ -1,0 +1,53 @@
+=========================
+Nested extension marker stays literal before the first closing bracket
+=========================
+:x[a :x[b] c]
+
+---
+
+(document
+  (paragraph
+    (extension_inline
+      (extension_marker_begin)
+      (content))))
+
+=========================
+The extension cut implicitly closes code inside its payload
+=========================
+:x[a `b] c` d]
+
+---
+
+(document
+  (paragraph
+    (extension_inline
+      (extension_marker_begin)
+      (content
+        (verbatim
+          (verbatim_marker_begin)
+          (content)
+          (verbatim_marker_end))))
+    (verbatim
+      (verbatim_marker_begin)
+      (content)
+      (verbatim_marker_end))))
+
+=========================
+A table caption uses the same extension payload cut
+=========================
+| h |
+^ :x[a
+b :x[z]]
+
+---
+
+(document
+  (table
+    (table_row
+      (table_cell))
+    (table_caption
+      (marker)
+      (content
+        (extension_inline
+          (extension_marker_begin)
+          (content))))))
