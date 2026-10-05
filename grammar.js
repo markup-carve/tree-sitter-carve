@@ -525,7 +525,20 @@ module.exports = grammar({
             field("definition", alias($._paragraph_content, $.definition)),
             choice($._eof_or_newline, $._close_paragraph),
           ),
-          choice($.heading, $._nonparagraph_block),
+          seq(
+            choice($.heading, $._nonparagraph_block),
+            // A fence-shaped run with no closer ahead below the body is the
+            // body's own content rather than a block (carve#2741). The scanner
+            // emits the zero-width token ONLY there, so no other line can
+            // reach this branch and fold into the description.
+            optional(
+              seq(
+                $._lazy_description_fence,
+                field("definition", alias($._paragraph_content, $.definition)),
+                choice($._eof_or_newline, $._close_paragraph),
+              ),
+            ),
+          ),
         ),
         // A description holds BLOCKS, not just the line it starts on: corpus
         // 25-definition-lists-2 continues one into a second paragraph, and a
@@ -3154,5 +3167,10 @@ module.exports = grammar({
     $._extension_literal_check,
     $._extension_end,
     $._literal_slash_boundary,
+
+    // Zero-width, emitted only where a fence-shaped run with no closer ahead
+    // stands below an open description body. Appended last for the same index
+    // reason as the tokens above it.
+    $._lazy_description_fence,
   ],
 });

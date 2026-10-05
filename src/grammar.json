@@ -748,15 +748,63 @@
               ]
             },
             {
-              "type": "CHOICE",
+              "type": "SEQ",
               "members": [
                 {
-                  "type": "SYMBOL",
-                  "name": "heading"
+                  "type": "CHOICE",
+                  "members": [
+                    {
+                      "type": "SYMBOL",
+                      "name": "heading"
+                    },
+                    {
+                      "type": "SYMBOL",
+                      "name": "_nonparagraph_block"
+                    }
+                  ]
                 },
                 {
-                  "type": "SYMBOL",
-                  "name": "_nonparagraph_block"
+                  "type": "CHOICE",
+                  "members": [
+                    {
+                      "type": "SEQ",
+                      "members": [
+                        {
+                          "type": "SYMBOL",
+                          "name": "_lazy_description_fence"
+                        },
+                        {
+                          "type": "FIELD",
+                          "name": "definition",
+                          "content": {
+                            "type": "ALIAS",
+                            "content": {
+                              "type": "SYMBOL",
+                              "name": "_paragraph_content"
+                            },
+                            "named": true,
+                            "value": "definition"
+                          }
+                        },
+                        {
+                          "type": "CHOICE",
+                          "members": [
+                            {
+                              "type": "SYMBOL",
+                              "name": "_eof_or_newline"
+                            },
+                            {
+                              "type": "SYMBOL",
+                              "name": "_close_paragraph"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "BLANK"
+                    }
+                  ]
                 }
               ]
             }
@@ -10712,6 +10760,10 @@
     {
       "type": "SYMBOL",
       "name": "_literal_slash_boundary"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_lazy_description_fence"
     }
   ],
   "inline": [],

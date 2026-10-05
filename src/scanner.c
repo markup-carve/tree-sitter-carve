@@ -261,6 +261,12 @@ typedef enum {
   EXTENSION_LITERAL_CHECK,
   EXTENSION_END,
   LITERAL_SLASH_BOUNDARY,
+
+  // Zero-width, emitted where a fence-shaped run with no closer ahead stands
+  // below an open description body: the run is the body's content rather than a
+  // block of its own, so the item must not end on it. Appended last for the
+  // same index reason as the tokens above it.
+  LAZY_DESCRIPTION_FENCE,
 } TokenType;
 
 // The different blocks in Carve that we track,
@@ -359,6 +365,17 @@ static const uint8_t BLOCK_FLAG_LATER_OPAQUE_FENCE = 1 << 4;
 static const uint8_t BLOCK_FLAG_QUOTE_CONTINUATION_PENDING = 1 << 5;
 static const uint8_t BLOCK_FLAG_COMMENT_RESTORES_LAZY = 1 << 6;
 static const uint8_t BLOCK_FLAG_DESCRIPTION_FENCE_HAS_CLOSER = 1 << 7;
+
+/// On a LIST_DEFINITION: a code fence stood as this description body's OWN
+/// block, rather than inside a nested item of it, so the body is the fence's
+/// and ends where the fence does. Recorded on the item because by the time the
+/// item boundary is reached the fence has been popped, and the two shapes are
+/// indistinguishable then - the same reason the fence scanner cannot answer
+/// #514 itself.
+///
+/// Shares bit 0 with `BLOCK_FLAG_LINE_BLOCK`, which is only ever set on and
+/// read from a DIV or a FIGURE_GROUP.
+static const uint8_t BLOCK_FLAG_BODY_OWNED_BY_FENCE = 1 << 0;
 
 typedef enum {
   VERBATIM,
@@ -2839,6 +2856,14 @@ static bool try_begin_code_block(Scanner *s, TSLexer *lexer, uint8_t width,
   if (later) peek_block(s)->flags |= BLOCK_FLAG_LATER_OPAQUE_FENCE;
   if (description_has_closer) peek_block(s)->flags |= BLOCK_FLAG_DESCRIPTION_FENCE_HAS_CLOSER;
   peek_block(s)->content_col = (uint8_t)column;
+  // A fence the description body holds DIRECTLY is the body's own block, and
+  // the body ends where it does. Recorded on the item: by the time the item
+  // boundary is reached this fence has been popped, and a body whose fence was
+  // its own block is then indistinguishable from one holding a nested item
+  // whose fence closed - which is the whole of #514.
+  if (list && list->type == LIST_DEFINITION) {
+    list->flags |= BLOCK_FLAG_BODY_OWNED_BY_FENCE;
+  }
   if (owns_body) {
     s->state |= STATE_FENCE_OWNS_BODY;
   } else {
@@ -4158,7 +4183,7 @@ static bool scan_continuation_row(Scanner *s, TSLexer *lexer);
 
 static bool parse_table_quote_continuation(Scanner *s, TSLexer *lexer,
                                             const bool *valid_symbols) {
-  bool quote_symbols[LITERAL_SLASH_BOUNDARY + 1];
+  bool quote_symbols[LAZY_DESCRIPTION_FENCE + 1];
   memcpy(quote_symbols, valid_symbols, sizeof(quote_symbols));
   quote_symbols[BLOCK_QUOTE_CONTINUATION] = true;
   if (!parse_block_quote(s, lexer, quote_symbols)) return false;
@@ -5622,6 +5647,55 @@ static bool parse_star(Scanner *s, TSLexer *lexer, const bool *valid_symbols,
                                              THEMATIC_BREAK_STAR, declined_run);
 }
 
+/// A fence-shaped run with no closer ahead is the description body's content,
+/// not a block of its own, so the item does not end on it (carve#2741).
+///
+/// `scan_code_fence_at_paragraph_end` already says such a run does not
+/// interrupt an open PARAGRAPH, which is why `:: t` / `:  body` / a flush-left
+/// fence folds the fence into the body as an inline run. The clause does not
+/// turn on whether a paragraph happens to be open, and after a CLOSED nested
+/// fence none is, so the boundary has to ask the same question.
+///
+/// Asked HERE because this is the last point at which the body is still on the
+/// stack. By the time the fence scanner runs the item and its content column
+/// are gone, and the terminated and unterminated halves of the clause arrive
+/// in identical state (tree-sitter-carve#514).
+///
+/// The CHEAP tests come first and move nothing: only once they all hold does
+/// this advance, and the caller then answers from here rather than falling
+/// through with a moved lexer.
+static bool description_fence_line_is_body_content(Scanner *s,
+                                                   TSLexer *lexer) {
+  uint32_t column = line_column(s, lexer);
+  int32_t fence_char = lexer->lookahead;
+  uint8_t width = consume_chars(s, lexer, (char)fence_char);
+  if (width < 3) {
+    return false;
+  }
+  // An info string the grammar cannot model is not a fence at all, the same
+  // test the opener and the paragraph peek both apply.
+  if (!code_fence_info_is_modeled(s, lexer)) {
+    return false;
+  }
+  return !code_fence_has_closer_ahead(s, lexer, fence_char, width, column);
+}
+
+/// The no-advance half of the test above: is this line even a candidate?
+static bool description_body_may_keep_line(Scanner *s, TSLexer *lexer,
+                                           Block *list) {
+  return list->type == LIST_DEFINITION && list->content_col != 0 &&
+         // A body a fence OWNED ends where that fence does, and what the line
+         // after it reads as is a separate question nobody has ruled: the
+         // oracle puts it in a document-level paragraph together with the
+         // fence's last body line, which no engine here builds
+         // (markup-carve/carve#2747). Left exactly as it was.
+         !(list->flags & BLOCK_FLAG_BODY_OWNED_BY_FENCE) &&
+         !(s->state & (STATE_AFTER_BLANK_LINE | STATE_LIST_CONTINUATION)) &&
+         count_blocks(s, BLOCK_QUOTE) == 0 &&
+         (lexer->lookahead == '`' || lexer->lookahead == '~') &&
+         line_column(s, lexer) < list->content_col;
+}
+
 static bool parse_list_item_end(Scanner *s, TSLexer *lexer,
                                 const bool *valid_symbols, bool at_eof) {
   // Captured before the block-quote / list-marker scans below advance the
@@ -5656,6 +5730,24 @@ static bool parse_list_item_end(Scanner *s, TSLexer *lexer,
   // We're still inside the list, don't end it yet.
   if (s->indent >= list_item_margin(s, list)) {
     return false;
+  }
+
+  // A line short of a description body, shaped like a fence and closing
+  // nothing, stays the body's content (carve#2741). Nothing else can reach the
+  // final fall-through from this state, so both outcomes are answered here
+  // rather than falling through with the lexer moved by the lookahead.
+  if (valid_symbols[LAZY_DESCRIPTION_FENCE] &&
+      description_body_may_keep_line(s, lexer, list)) {
+    mark_end(s, lexer);
+    if (description_fence_line_is_body_content(s, lexer)) {
+      lexer->result_symbol = LAZY_DESCRIPTION_FENCE;
+      return true;
+    }
+    // A terminated fence at that column ends the body, the other half of the
+    // clause: exactly what the fall-through below would have done.
+    lexer->result_symbol = LIST_ITEM_END;
+    s->blocks_to_close = 1;
+    return true;
   }
 
   // Scanning the block prefix markers are necessary so we can
@@ -11810,7 +11902,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       (s->state & STATE_BARE_SPAN_OPENER)) {
     uint32_t content_column = line_column(s, lexer);
     mark_end(s, lexer);
-    bool real_symbols[LITERAL_SLASH_BOUNDARY + 1];
+    bool real_symbols[LAZY_DESCRIPTION_FENCE + 1];
     memcpy(real_symbols, valid_symbols, sizeof(real_symbols));
     real_symbols[IN_FALLBACK] = false;
     bool same_marker_before = (s->after_closer_char == '=' || s->after_closer_char == '_') &&
@@ -11828,7 +11920,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       (s->state & STATE_BARE_SPAN_OPENER) && lexer->lookahead != '*') {
     uint32_t content_column = line_column(s, lexer);
     mark_end(s, lexer);
-    bool real_symbols[LITERAL_SLASH_BOUNDARY + 1];
+    bool real_symbols[LAZY_DESCRIPTION_FENCE + 1];
     memcpy(real_symbols, valid_symbols, sizeof(real_symbols));
     real_symbols[IN_FALLBACK] = false;
     if (lexer->lookahead != '/' && mark_span_begin(s, lexer, real_symbols, EMPHASIS, EMPHASIS_QUALIFIED_MARK_BEGIN))
@@ -11844,7 +11936,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       (s->state & STATE_BARE_SPAN_OPENER)) {
     uint32_t content_column = line_column(s, lexer);
     mark_end(s, lexer);
-    bool real_symbols[LITERAL_SLASH_BOUNDARY + 1];
+    bool real_symbols[LAZY_DESCRIPTION_FENCE + 1];
     memcpy(real_symbols, valid_symbols, sizeof(real_symbols));
     real_symbols[IN_FALLBACK] = false;
     if (lexer->lookahead != '*' &&
