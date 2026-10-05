@@ -6,26 +6,23 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-### Fixed
+## [0.1.8] - 2026-10-05
 
-- Avoid repeated column rescans in attributed table cells. Check linear scanner
-  and lexer work through 16,384 cells, and recognize rows and separators with
-  256 or more cells. See [the table work report](reports/table-cell-work.md).
+This release fixes formatting boundaries and incremental parsing, recovers named containers with invalid metadata, and updates the spec corpus and engine oracle together.
 
-- Pair brackets around code and closed comments when qualifying links and
-  attributed spans. Stop qualification at table-cell separators, including
-  pipes in attribute values, and leave outer brackets literal when a nested
-  destination or attribute contains an unmatched backtick (#495).
+### Fixes
 
-- Preserve literal nested braces inside attributed spans. Keep bare formatting
-  within its owning bracket and retain table-cell limits and continuation rows.
+- Keep formatting inside its bracket, extension, table cell or heading. Literal combined markers produce consistent trees after edits; caption spans can continue onto another line (#503, #504).
+- Recover named containers when their remaining metadata is invalid, preserving their children. Task checkboxes respect their item indentation (#503).
+- Pair brackets around code and closed comments when qualifying links and attributed spans. Preserve nested literal braces and table continuation boundaries (#496).
+- Avoid repeated column rescans in attributed table cells and malformed combined openers. Rows and separators support 256 or more cells (#498, #492).
+- Read unquoted attribute values using the spec exclusion class, including commas, dots, colons, slashes and opening braces. Update the spec to `05794807` and the engine oracle to `4f6a81f8` (#502, #493).
 
-### Added
+### Validation and documentation
 
-- Measure nested, scoped and multiline rich markup across 35 families and all
-  three line endings. Check 420 full-parser work cases, 168 engine comparisons
-  and 552 incremental edits. Record remaining quadratic paths in
-  [the work report](reports/rich-markup-work.md) (#494).
+- Check the engine against corpus HTML goldens so shared engine and grammar errors cannot silently pass the oracle gate (#501).
+- Add heading and caption percent-comment checks, rich-markup boundary and parser-work measurements, and CI job timeouts (#497, #494, #500).
+- Clarify the README description of the grammar's coverage (#491).
 
 ## [0.1.7] - 2026-09-30
 
