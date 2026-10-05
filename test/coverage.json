@@ -10,8 +10,8 @@
       "nodes": 370
     },
     "table": {
-      "documents": 146,
-      "nodes": 148
+      "documents": 158,
+      "nodes": 160
     },
     "heading": {
       "documents": 154,
@@ -605,7 +605,14 @@
     "a-container-label-preserves-closed-inline-constructs-before-cutting-a-comment",
     "quoted-values-and-titles-retain-a-non-punctuation-backslash",
     "a-denied-destination-takes-one-render-loss-row-per-sink",
-    "invalid-named-container-metadata-keeps-the-subtree"
+    "invalid-named-container-metadata-keeps-the-subtree",
+    "multiple-table-bodies-have-positional-source-metadata",
+    "empty-table-bodies-keep-their-source-boundaries",
+    "a-table-with-no-bodies-keeps-its-head-and-foot",
+    "invalid-table-body-metadata-stays-ordinary",
+    "a-span-across-bodies-keeps-their-header-semantics",
+    "a-head-and-foot-consuming-all-rows-leave-no-implicit-body",
+    "explicit-body-counts-include-native-header-cells"
   ],
   "skip": {},
   "overAcceptance": {
