@@ -87,6 +87,14 @@ jobs:
       - name: The oracle renders the corpus goldens
         run: npm run test:oracle-goldens
 
+      # The step above reads HTML and the one before it compares grammar against
+      # oracle, so a ruling that moves the AST without moving a rendered element
+      # is invisible to both: the golden still matches and the two lagging trees
+      # still agree. Corpus `108-security-hardening-8` and `-10` are that shape
+      # already, rendering the same HTML from different attribute slots (#499).
+      - name: The oracle's AST matches its recorded shape
+        run: npm run test:oracle-ast-shapes
+
       - name: No-ERROR sweep
         run: npm run test:no-error
 
