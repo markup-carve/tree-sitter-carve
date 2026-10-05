@@ -14,8 +14,8 @@
       "nodes": 160
     },
     "heading": {
-      "documents": 154,
-      "nodes": 187
+      "documents": 157,
+      "nodes": 191
     },
     "code_block": {
       "documents": 156,
@@ -605,7 +605,9 @@
     "invalid-table-body-metadata-stays-ordinary",
     "a-span-across-bodies-keeps-their-header-semantics",
     "a-head-and-foot-consuming-all-rows-leave-no-implicit-body",
-    "explicit-body-counts-include-native-header-cells"
+    "explicit-body-counts-include-native-header-cells",
+    "an-unreferenced-footnote-definition-takes-its-links-out-of-the-render",
+    "every-name-lookup-compares-case-exactly"
   ],
   "skip": {},
   "overAcceptance": {
