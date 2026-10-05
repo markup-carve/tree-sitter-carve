@@ -44,12 +44,22 @@ function check(source) {
   const ast = parse(source);
   const offsets = [0];
   for (const character of source) offsets.push(offsets.at(-1) + character.length);
-  const wanted = nodes(ast, 'inline_extension').map(n =>
-    [offsets[n.pos.startOffset], offsets[n.pos.endOffset]]);
   const attributes = root.descendantsOfType('inline_attribute');
-  const actual = root.descendantsOfType('extension_inline').map(n =>
-    [n.startIndex, attributes.find(a => a.startIndex === n.endIndex)?.endIndex ?? n.endIndex]);
-  assert.deepEqual(actual, wanted, `${JSON.stringify(source)}: extension extents\n${root}`);
+  for (const [native, engine] of [['extension_inline', 'inline_extension'],
+    ['verbatim', 'code'], ['inline_link', 'link'], ['inline_literal', 'literal_inline'], ['math', 'math']]) {
+    const wanted = nodes(ast, engine).map(n => [offsets[n.pos.startOffset], offsets[n.pos.endOffset]]);
+    const actual = root.descendantsOfType(native).map(n => {
+      let end = attributes.find(a => a.startIndex === n.endIndex)?.endIndex ?? n.endIndex;
+      const marker = n.childForFieldName('end_marker');
+      if (native === 'verbatim' && marker && marker.startIndex === marker.endIndex) {
+        let host = n.parent;
+        while (host && host.type !== 'table_cell') host = host.parent;
+        if (host) while (end > n.startIndex && /[ \t]/.test(source[end - 1])) --end;
+      }
+      return [n.startIndex, end];
+    });
+    assert.deepEqual(actual, wanted, `${JSON.stringify(source)}: ${native} extents\n${root}`);
+  }
   for (const [native, engine] of [['verbatim', 'code'], ['strong', 'strong'],
     ['emphasis', 'emphasis'], ['substitution', 'substitution'],
     ['editorial_comment', 'critic_comment'], ['hard_line_break', 'hard_break']]) {
@@ -105,12 +115,21 @@ for (const body of ['a :x[b] c', 'a `b] c` d', 'a ``b] c`` d', 'a ```b] c``` d',
 }
 for (const source of ['*a :x[b] `c* d` e*', '[a :x[b] `c] d` e](u)',
   '*a :x[a [b] c] `d* e` f*', '[a :x[a [b] c] `d] e` f](u)',
-  '*a :x[a `b] c` d] b* zz`']) {
+  '*a :x[a `b] c` d] b* zz`', '*a :x[b\\] `c* d` e*',
+  '*a :x[a [b] `c* d` e] f*', '[a :x[a [b] `c] d` e] f](u)',
+  '[*a :x[a [b] c] d*](u)', '*a :x[a [b] `c] * d` e] f*',
+  '[*a :x[a `b] c` d] b*](u)']) {
   for (const ending of ['\n', '\r\n', '\r']) {
     const before = `${source}${ending}`;
     check(before);
     const after = before.replace(':x[b]', ':x[a :x[b] c]');
     check(after); edit(before, after); edit(after, before);
   }
+}
+for (const depth of [254, 255, 256, 300]) for (const ending of ['\n', '\r\n', '\r']) {
+  const before = `*a :x[a ${'['.repeat(depth)}\`b] c\` ${']'.repeat(50)}x* y${']'.repeat(depth - 49)}z*${ending}`;
+  check(before);
+  const after = before.replace('x* y', 'x y');
+  check(after); edit(before, after); edit(after, before);
 }
 console.log(`Extension payloads: ${cases} engine comparisons, ${edits} incremental edits`);

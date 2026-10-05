@@ -445,9 +445,20 @@ typedef struct {
   uint8_t flags;
   // Square-bracket spans only: how many `]` ahead close a balanced pair of
   // literal brackets inside this one (`[t[z]](/u)`) rather than this span.
-  // A bare formatting span uses 1 after an extension cut to retain its closer.
+  // Formatting spans store residual extension closes plus 1; zero means no cut.
   uint32_t literal_closes;
 } Inline;
+
+static const uint32_t INLINE_CUT_CODE = UINT32_C(1) << 31;
+
+static uint32_t square_literal_closes(const Inline *inline_span) {
+  if (inline_span->type == SQUARE_BRACKET_SPAN &&
+      (inline_span->flags & (INLINE_BRACED | INLINE_EXTENSION_CUT)) ==
+          (INLINE_BRACED | INLINE_EXTENSION_CUT))
+    return inline_span->literal_closes & ~INLINE_CUT_CODE;
+  return inline_span->literal_closes;
+}
+
 
 typedef struct {
   // Open blocks is a stack of the blocks that haven't been closed.
@@ -2108,7 +2119,8 @@ static char span_verbatim_stop_marker(const Inline *e) {
   if (e->type == BOLD_ITALIC) return 1;
   if (e->type == SQUARE_BRACKET_SPAN &&
       (e->flags & (INLINE_BRACED | INLINE_EXTENSION_CUT)) ==
-          (INLINE_BRACED | INLINE_EXTENSION_CUT)) return 2;
+          (INLINE_BRACED | INLINE_EXTENSION_CUT) &&
+      (e->literal_closes & INLINE_CUT_CODE)) return 2;
   if (e->type == SUBSTITUTION) {
     return '~';
   }
@@ -2326,9 +2338,20 @@ static bool parse_verbatim_content(Scanner *s, TSLexer *lexer, bool end_valid,
     int32_t current = lexer->lookahead;
     if (lexer->lookahead == ']') {
       if (extension_payload) break;
+      if (stop_marker == 3 && parent && parent->literal_closes > 1) {
+        --parent->literal_closes;
+        Inline *bracket = find_inline(s, SQUARE_BRACKET_SPAN);
+        if (bracket && square_literal_closes(bracket)) {
+          --bracket->literal_closes;
+          if (!square_literal_closes(bracket)) {
+            bracket->literal_closes = 0;
+            bracket->flags &= ~INLINE_EXTENSION_CUT;
+          }
+        }
+      }
       if (stop_marker == 2) {
         Inline *bracket = find_inline(s, SQUARE_BRACKET_SPAN);
-        if (!bracket || !bracket->literal_closes) break;
+        if (!bracket || !square_literal_closes(bracket)) break;
         --bracket->literal_closes;
       }
     }
@@ -2404,7 +2427,7 @@ static bool parse_verbatim_content(Scanner *s, TSLexer *lexer, bool end_valid,
     } else if (bare_stop && lexer->lookahead == bare_stop) {
       mark_end(s, lexer);
       advance(s, lexer);
-      if (previous && previous != ' ' && previous != '\t' && previous != '\r' && previous != '\n' &&
+      if (parent && parent->literal_closes == 1 && previous && previous != ' ' && previous != '\t' && previous != '\r' && previous != '\n' &&
           !carve_is_alnum_ascii(lexer->lookahead)) break;
       marked_at_pipe = false;
       mark_end(s, lexer);
@@ -3343,10 +3366,11 @@ static VerbatimRunEnd probe_verbatim_run(Scanner *s, TSLexer *lexer,
   // and the scan carries on rather than answering there.
   bool saw_closer = false;
   Inline *bracket = marker == 2 ? find_inline(s, SQUARE_BRACKET_SPAN) : NULL;
-  uint32_t literal_closes = bracket ? bracket->literal_closes : 0;
+  uint32_t literal_closes = bracket ? square_literal_closes(bracket) : 0;
   int32_t previous = marker == 1 ? '`' : 0;
   Inline *bare_parent = marker == 3 ? peek_inline(s) : NULL;
   char bare_marker = bare_parent ? inline_marker(bare_parent->type) : 0;
+  uint32_t bare_closes = bare_parent && bare_parent->literal_closes ? bare_parent->literal_closes - 1 : 0;
   Inline *outer = marker == 1 && s->combined_probe ? peek_inline(s) : NULL;
   char outer_marker = outer ? inline_marker(outer->type) : 0;
   bool row_closing_pipe_candidate = false;
@@ -3379,9 +3403,14 @@ static VerbatimRunEnd probe_verbatim_run(Scanner *s, TSLexer *lexer,
       row_closing_pipe_candidate = false;
       continue;
     }
+    if (bare_marker && bare_closes && lexer->lookahead == ']') {
+      --bare_closes;
+      advance(s, lexer);
+      continue;
+    }
     if (bare_marker && lexer->lookahead == bare_marker) {
       advance(s, lexer);
-      if (previous && previous != ' ' && previous != '\t' && previous != '\r' && previous != '\n' &&
+      if (!bare_closes && previous && previous != ' ' && previous != '\t' && previous != '\r' && previous != '\n' &&
           !carve_is_alnum_ascii(lexer->lookahead)) return VerbatimRunReachesSpanCloser;
       previous = bare_marker;
       continue;
@@ -9697,9 +9726,10 @@ static bool qualified_bracket_balanced(Scanner *s, TSLexer *lexer) {
 
 // Extension payloads are cut at the first raw closing bracket before their
 // inline markup is parsed. Code, comments and escapes cannot hide that cut.
-static bool extension_payload_closed(Scanner *s, TSLexer *host, uint32_t *remaining, bool *changes_scope) {
+static bool extension_payload_closed(Scanner *s, TSLexer *host, uint32_t *remaining, bool *changes_scope, bool *opaque_cut) {
   *remaining = 0;
   *changes_scope = false;
+  *opaque_cut = false;
   if (find_inline(s, EXTENSION)) return false;
   BracketProbe probe = bracket_probe_new(s, host);
   TSLexer *lexer = &probe.lexer;
@@ -9725,7 +9755,15 @@ static bool extension_payload_closed(Scanner *s, TSLexer *host, uint32_t *remain
     bracket_probe_rewind(&probe, 0);
     s->col_base = base;
     bool paired = scan_qualified_bracket_close(s, &probe, NULL);
-    *changes_scope = !paired || probe.position != cut;
+    bool matched_cut = paired && probe.position == cut;
+    for (uint32_t i = 0; i < cut; ++i) {
+      BracketProbeCharacter *character = &probe.characters.contents[i];
+      if (character->character == '[' && character->bracket_known && character->bracket_close == cut)
+        matched_cut = true;
+    }
+    *opaque_cut = probe.characters.contents[cut].row_ticks != 0 ||
+        (!matched_cut && (!cut || probe.characters.contents[cut - 1].character != '\\'));
+    *changes_scope = paired ? probe.position > cut : *opaque_cut;
     if (paired) {
       if (probe.position > cut) ++*remaining;
       for (uint32_t i = 0; i < cut; ++i) {
@@ -11537,10 +11575,23 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   // that call.
   const uint32_t advances_at_entry = s->advances;
   Inline *cut_parent = peek_inline(s);
+  Inline *cut_bracket = find_inline(s, SQUARE_BRACKET_SPAN);
+  bool bracket_remainder = cut_bracket &&
+      (cut_bracket->flags & (INLINE_BRACED | INLINE_EXTENSION_CUT)) ==
+          (INLINE_BRACED | INLINE_EXTENSION_CUT) && square_literal_closes(cut_bracket);
   if (!valid_symbols[ERROR] && valid_symbols[LITERAL_RUN] && lexer->lookahead == ']' &&
       cut_parent && cut_parent->type >= EMPHASIS && cut_parent->type <= BOLD_ITALIC &&
-      cut_parent->literal_closes) {
-    cut_parent->literal_closes = 0;
+      !find_inline(s, EXTENSION) && (cut_parent->literal_closes || bracket_remainder)) {
+    if (cut_parent->literal_closes > 1) --cut_parent->literal_closes;
+    if (cut_parent->literal_closes == 1) cut_parent->literal_closes = 0;
+    Inline *bracket = find_inline(s, SQUARE_BRACKET_SPAN);
+    if (bracket && (bracket->flags & INLINE_BRACED) && square_literal_closes(bracket)) {
+      --bracket->literal_closes;
+      if (!square_literal_closes(bracket)) {
+        bracket->literal_closes = 0;
+        bracket->flags &= ~INLINE_EXTENSION_CUT;
+      }
+    }
     advance(s, lexer);
     mark_end(s, lexer);
     lexer->result_symbol = LITERAL_RUN;
@@ -11650,16 +11701,17 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   if (!valid_symbols[ERROR] && (valid_symbols[EXTENSION_CONTENT_BEGIN] || valid_symbols[EXTENSION_LITERAL_CHECK])) {
     mark_end(s, lexer);
     uint32_t remaining;
-    bool changes_scope;
-    bool balanced = extension_payload_closed(s, lexer, &remaining, &changes_scope);
+    bool changes_scope, opaque_cut;
+    bool balanced = extension_payload_closed(s, lexer, &remaining, &changes_scope, &opaque_cut);
     if (balanced && valid_symbols[EXTENSION_CONTENT_BEGIN]) {
       Inline *parent = peek_inline(s);
-      if (changes_scope && parent && parent->type >= EMPHASIS && parent->type <= BOLD_ITALIC)
-        parent->literal_closes = 1;
+      if (opaque_cut && parent && parent->type >= EMPHASIS && parent->type <= BOLD_ITALIC)
+        parent->literal_closes = remaining + 1;
       Inline *bracket = find_inline(s, SQUARE_BRACKET_SPAN);
       if (changes_scope && bracket && (bracket->flags & INLINE_BRACED)) {
         bracket->flags |= INLINE_EXTENSION_CUT;
         bracket->literal_closes += remaining;
+        if (opaque_cut) bracket->literal_closes |= INLINE_CUT_CODE;
       }
       push_inline_flagged(s, EXTENSION, 0, INLINE_BRACED);
       lexer->result_symbol = EXTENSION_CONTENT_BEGIN;
@@ -12949,14 +13001,17 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     Inline *bracket = peek_inline(s);
     // The `]` of a balanced literal pair inside the span is text (#422).
     if (bracket && bracket->type == SQUARE_BRACKET_SPAN &&
-        bracket->literal_closes > 0) {
+        square_literal_closes(bracket) > 0) {
       if (!valid_symbols[LITERAL_RUN]) {
         return false;
       }
       advance(s, lexer);
       mark_end(s, lexer);
       --bracket->literal_closes;
-      if (!bracket->literal_closes) bracket->flags &= ~INLINE_EXTENSION_CUT;
+      if (!square_literal_closes(bracket)) {
+        bracket->literal_closes = 0;
+        bracket->flags &= ~INLINE_EXTENSION_CUT;
+      }
       lexer->result_symbol = LITERAL_RUN;
       return true;
     }
@@ -13219,6 +13274,7 @@ unsigned tree_sitter_carve_external_scanner_serialize(void *payload,
   for (size_t i = 0; i < s->open_inline->size; ++i) {
     Inline *e = *array_get(s->open_inline, i);
     if ((e->type == SQUARE_BRACKET_SPAN && (e->flags & INLINE_LABEL)) || e->type == LITERAL_BRACKET) label_bytes += 3;
+    else if (e->type >= EMPHASIS && e->type <= BOLD_ITALIC && e->literal_closes >= UINT8_MAX) label_bytes += 4;
   }
   if (s->open_blocks->size > UINT8_MAX ||
       s->open_blocks->size >
@@ -13272,11 +13328,15 @@ unsigned tree_sitter_carve_external_scanner_serialize(void *payload,
     // Inline types fit in the low six bits; the top two carry the flags.
     buffer[size++] = (char)((uint8_t)x->type | (uint8_t)(x->flags << 6));
     buffer[size++] = (char)x->data;
-    buffer[size++] = (char)x->literal_closes;
+    bool wide_format = x->type >= EMPHASIS && x->type <= BOLD_ITALIC && x->literal_closes >= UINT8_MAX;
+    buffer[size++] = wide_format ? (char)UINT8_MAX : (char)x->literal_closes;
     if ((x->type == SQUARE_BRACKET_SPAN && (x->flags & INLINE_LABEL)) || x->type == LITERAL_BRACKET) {
       buffer[size++] = (char)(x->literal_closes >> 8);
       buffer[size++] = (char)(x->literal_closes >> 16);
       buffer[size++] = (char)(x->literal_closes >> 24);
+    } else if (wide_format) {
+      for (unsigned shift = 0; shift < 32; shift += 8)
+        buffer[size++] = (char)(x->literal_closes >> shift);
     }
   }
 
@@ -13336,13 +13396,20 @@ void tree_sitter_carve_external_scanner_deserialize(void *payload, char *buffer,
       uint8_t packed = (uint8_t)buffer[size++];
       uint8_t data = (uint8_t)buffer[size++];
       uint32_t literal_closes = (uint8_t)buffer[size++];
+      InlineType inline_type = (InlineType)(packed & 0x3f);
       if (((packed & 0x3f) == SQUARE_BRACKET_SPAN && (packed >> 6 & INLINE_LABEL)) || (packed & 0x3f) == LITERAL_BRACKET) {
         if (size + 3 > length) break;
         literal_closes |= (uint32_t)(uint8_t)buffer[size++] << 8;
         literal_closes |= (uint32_t)(uint8_t)buffer[size++] << 16;
         literal_closes |= (uint32_t)(uint8_t)buffer[size++] << 24;
       }
-      push_inline_flagged(s, (InlineType)(packed & 0x3f), data,
+      else if (inline_type >= EMPHASIS && inline_type <= BOLD_ITALIC && literal_closes == UINT8_MAX) {
+        if (size + 4 > length) break;
+        literal_closes = 0;
+        for (unsigned shift = 0; shift < 32; shift += 8)
+          literal_closes |= (uint32_t)(uint8_t)buffer[size++] << shift;
+      }
+      push_inline_flagged(s, inline_type, data,
                           (uint8_t)(packed >> 6));
       (*array_back(s->open_inline))->literal_closes = literal_closes;
     }
