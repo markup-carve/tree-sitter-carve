@@ -3245,6 +3245,11 @@
     }
   },
   {
+    "type": "mention",
+    "named": true,
+    "fields": {}
+  },
+  {
     "type": "note",
     "named": true,
     "fields": {}
@@ -4239,6 +4244,11 @@
     }
   },
   {
+    "type": "tag",
+    "named": true,
+    "fields": {}
+  },
+  {
     "type": "term",
     "named": true,
     "fields": {
@@ -4986,10 +4996,6 @@
     "named": true
   },
   {
-    "type": "mention",
-    "named": true
-  },
-  {
     "type": "quotation_marks",
     "named": true
   },
@@ -5035,10 +5041,6 @@
   },
   {
     "type": "table_cell_attributes",
-    "named": true
-  },
-  {
-    "type": "tag",
     "named": true
   },
   {

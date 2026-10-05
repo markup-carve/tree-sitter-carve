@@ -2,6 +2,8 @@ const ELEMENT_PRECEDENCE = 100;
 
 // A mention's or a tag's name, `tagName` in resources/carve-core.ohm.
 const NAME = /[a-zA-Z0-9_-]+(\.[a-zA-Z0-9_-]+)*/;
+const NAME_WORD_END = /(?:[a-zA-Z0-9_-]+\.)*[a-zA-Z0-9_-]*[a-zA-Z0-9_]/;
+const NAME_DASH_END = /(?:[a-zA-Z0-9_-]+\.)*[a-zA-Z0-9_-]*-/;
 
 // A table cell's leading marker run: the kind marker, the alignment run and the
 // attribute block, ending at the one space `cell_padding` spells
@@ -56,6 +58,7 @@ function inlineElement($, options) {
         // external scanner because no character class can match it.
         $._nul_byte,
         $._include_open_fallback,
+        seq($._extension_marker, $._extension_literal_check),
         // Word runs that ABSORB a glued mention / tag / symbol, which is
         // how the leading word-boundary guard is enforced without
         // lookbehind (see _glued_* below).
@@ -185,6 +188,8 @@ function symbolFallback($, options) {
     // no lexing left at all.
     seq("/", $._non_whitespace_check, $._bold_italic_literal_open_decision),
     "*",
+    alias($._literal_star, "*"),
+    alias($._literal_slash, "/"),
     "_",
     "~",
     // Single-char highlight/subscript markers also need a standalone
@@ -1958,22 +1963,29 @@ module.exports = grammar({
     // with `tagDot = "." &tagChar` (resources/carve-core.ohm), so `@john.doe`
     // and `#release-1.0` are one name each and the sentence-ending dot of
     // `Reach @john.` is not.
-    mention: (_) => token(seq("@", NAME)),
+    mention: ($) =>
+      choice(
+        seq(token(seq("@", NAME_WORD_END)), $._word_end),
+        token(seq("@", NAME_DASH_END)),
+      ),
 
-    tag: (_) => token(seq("#", NAME)),
+    tag: ($) =>
+      choice(
+        seq(token(seq("#", NAME_WORD_END)), $._word_end),
+        token(seq("#", NAME_DASH_END)),
+      ),
 
     // `extension = ":" extName "[" extContent "]"` (resources/carve-core.ohm).
     // The bracket holds INLINE content: `:code[*b*]` renders the strong inside
     // its span. The opener stays one token so a malformed run - no bracket, no
     // name - falls back to text rather than committing to an ERROR.
+    _extension_marker: (_) => token(seq(":", /[a-zA-Z][a-zA-Z0-9_-]*/, "[")),
     extension_inline: ($) =>
       seq(
-        alias(
-          token(seq(":", /[a-zA-Z][a-zA-Z0-9_-]*/, "[")),
-          $.extension_marker_begin,
-        ),
+        alias($._extension_marker, $.extension_marker_begin),
+        $._extension_content_begin,
         optional(field("content", alias($._extension_content, $.content))),
-        "]",
+        alias($._extension_end, "]"),
       ),
     // A soft line break is content: `:span[a` / `b]` is one extension
     // (corpus 351-a-bracketed-construct-spanning-a-line-boundary-7).
@@ -1998,6 +2010,7 @@ module.exports = grammar({
       seq(
         field("begin_marker", $.emphasis_begin),
         choice(
+          $._emphasis_qualified_mark_begin,
           $._emphasis_mark_begin,
           prec.dynamic(-1, $._emphasis_combined_mark_begin),
         ),
@@ -2025,10 +2038,16 @@ module.exports = grammar({
       seq($._bold_italic_open_check, $._bold_italic_star),
     _bold_italic_literal_open_decision: ($) =>
       choice(
-        seq($._bold_italic_literal_open_check, $._bold_italic_literal_star),
+        seq(
+          $._bold_italic_literal_open_check,
+          alias($._bold_italic_literal_star, "*"),
+        ),
         prec.dynamic(
           3 * ELEMENT_PRECEDENCE,
-          seq($._bold_italic_scoped_open_check, $._bold_italic_literal_star),
+          seq(
+            $._bold_italic_scoped_open_check,
+            alias($._bold_italic_literal_star, "*"),
+          ),
         ),
       ),
 
@@ -2090,7 +2109,7 @@ module.exports = grammar({
     highlighted: ($) =>
       seq(
         field("begin_marker", $.highlighted_begin),
-        $._highlighted_mark_begin,
+        choice($._highlighted_qualified_mark_begin, $._highlighted_mark_begin),
         field("content", alias($._inline, $.content)),
         field("end_marker", $.highlighted_end),
       ),
@@ -2760,8 +2779,22 @@ module.exports = grammar({
     // Leading word-boundary guard for mention / tag / symbol (PART 9 §7): a
     // word run glued to one of them swallows it, so it stays literal text.
     // `me@example.com`, `a#b`, `a:b:c`, `10:30:` and `x:rocket:` are text.
-    _glued_mention: (_) => token(prec(1, seq(/[A-Za-z0-9_]+/, "@", NAME))),
-    _glued_tag: (_) => token(prec(1, seq(/[A-Za-z0-9_]+/, "#", NAME))),
+    _glued_mention: ($) =>
+      choice(
+        seq(
+          token(prec(1, seq(/[A-Za-z0-9_]+/, "@", NAME_WORD_END))),
+          $._word_end,
+        ),
+        token(prec(1, seq(/[A-Za-z0-9_]+/, "@", NAME_DASH_END))),
+      ),
+    _glued_tag: ($) =>
+      choice(
+        seq(
+          token(prec(1, seq(/[A-Za-z0-9_]+/, "#", NAME_WORD_END))),
+          $._word_end,
+        ),
+        token(prec(1, seq(/[A-Za-z0-9_]+/, "#", NAME_DASH_END))),
+      ),
     // The closing `:` is required, so an inline extension still fires intraword
     // (`foo:kbd[Ctrl]`): `:kbd[` carries no closing colon and is not absorbed.
     _glued_symbol: (_) =>
@@ -2770,7 +2803,11 @@ module.exports = grammar({
     // `gluedMarker = ("@" | "#") tagName` (resources/carve-core.ohm): a marker
     // glued to the END of a name opens nothing, so `#i#j` is one tag and `#j`
     // is text. It outranks `mention` and `tag`, which match the same run.
-    _glued_marker: (_) => token.immediate(prec(1, seq(/[@#]/, NAME))),
+    _glued_marker: ($) =>
+      choice(
+        seq(token.immediate(prec(1, seq(/[@#]/, NAME_WORD_END))), $._word_end),
+        token.immediate(prec(1, seq(/[@#]/, NAME_DASH_END))),
+      ),
 
     _text: (_) => repeat1(/[^ \t\r\n]/),
   },
@@ -3101,6 +3138,14 @@ module.exports = grammar({
     $._container_invalid_metadata,
     $._strong_qualified_mark_begin,
     $._bold_italic_literal_star,
+    $._emphasis_qualified_mark_begin,
+    $._word_end,
+    $._highlighted_qualified_mark_begin,
+    $._literal_star,
+    $._literal_slash,
+    $._extension_content_begin,
+    $._extension_literal_check,
+    $._extension_end,
     $._literal_slash_boundary,
   ],
 });
