@@ -16,6 +16,8 @@ This release fixes formatting boundaries and incremental parsing, recovers named
 
 ### Fixed
 
+- Preserve literal nested braces inside attributed spans and keep bare formatting within its owning bracket (#494).
+
 - Keep formatting inside its bracket, extension, table cell or heading. Literal combined markers produce consistent trees after edits; caption spans can continue onto another line (#503, #504).
 - Recover named containers when their remaining metadata is invalid, preserving their children. Task checkboxes respect their item indentation (#503).
 - Pair brackets around code and closed comments when qualifying links and attributed spans. Preserve nested literal braces and table continuation boundaries (#496).
