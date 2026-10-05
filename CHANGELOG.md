@@ -6,34 +6,27 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.1.8] - 2026-10-05
+
+This release fixes formatting boundaries and incremental parsing, recovers named containers with invalid metadata, and updates the spec corpus and engine oracle together.
+
+### Changed
+
+- Move the spec pin from `39076d7d` to `05794807` and the engine oracle from `23204e89` to `4f6a81f8`. Validation covers 2,215 documents in 545 categories. This untagged spec revision includes table-body positional metadata (#493, #502).
+
 ### Fixed
 
-- Avoid repeated column rescans in attributed table cells. Check linear scanner
-  and lexer work through 16,384 cells, and recognize rows and separators with
-  256 or more cells. See [the table work report](reports/table-cell-work.md).
+- Preserve literal nested braces inside attributed spans and keep bare formatting within its owning bracket (#494).
 
-- Pair brackets around code and closed comments when qualifying links and
-  attributed spans. Stop qualification at table-cell separators, including
-  pipes in attribute values, and leave outer brackets literal when a nested
-  destination or attribute contains an unmatched backtick (#495).
-
-- Preserve literal nested braces inside attributed spans. Keep bare formatting
-  within its owning bracket and retain table-cell limits and continuation rows.
-
-### Added
-
-- Measure nested, scoped and multiline rich markup across 35 families and all
-  three line endings. Check 420 full-parser work cases, 168 engine comparisons
-  and 552 incremental edits. Record remaining quadratic paths in
-  [the work report](reports/rich-markup-work.md) (#494).
+- Keep formatting inside its bracket, extension, table cell or heading. Literal combined markers produce consistent trees after edits; caption spans can continue onto another line (#503, #504).
+- Recover named containers when their remaining metadata is invalid, preserving their children. Task checkboxes respect their item indentation (#503).
+- Pair brackets around code and closed comments when qualifying links and attributed spans. Preserve nested literal braces and table continuation boundaries (#496).
+- Avoid repeated column rescans in attributed table cells and malformed combined openers. Rows and separators support 256 or more cells. Malformed runs with brackets, braces, verbatim text or escapes retain table boundaries. Scanner and lexer work are checked through 16,384 repetitions (#498, #492).
+- Read unquoted attribute values using the spec exclusion class, including commas, dots, colons, slashes and opening braces (#502).
 
 ## [0.1.7] - 2026-09-30
 
 ### Fixed
-
-- Avoid repeated runtime column rescans in malformed combined openers with
-  brackets, braces, verbatim text or escapes. Check linear scanner and lexer
-  work through 16,384 repetitions, and retain table row boundaries (#492).
 
 - A construct on the document's last line completes when that line carries no
   terminator, and the containers holding it close with it. Every line ending used
