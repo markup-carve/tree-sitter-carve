@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import Parser from 'tree-sitter';
 import { createRequire } from 'node:module';
+import { carveToHtml } from '@markup-carve/carve';
 
 const require = createRequire(import.meta.url);
 const parser = new Parser();
@@ -68,10 +69,13 @@ for (const newline of ['\n', '\r\n', '\r']) {
       assert.equal(tree.descendantsOfType(type).length, 0, source);
     }
   }
-  for (const source of [`# [a](/u "t${newline}- u")${newline}`, `p${newline}^ [a](/u "t${newline}u")${newline}`]) {
+  for (const [source, expected] of [[`# [a](/u "t${newline}- u")${newline}`, 0],
+    [`p${newline}^ [a](/u "t${newline}u")${newline}`, 1]]) {
     const tree = parser.parse(source).rootNode;
     assert.equal(tree.hasError, false, source);
-    assert.equal(tree.descendantsOfType('inline_link').length, 0, source);
+    const expectedLinks = [...carveToHtml(source).matchAll(/<a(?:>|\s)/g)].length;
+    assert.equal(expectedLinks, expected, source);
+    assert.equal(tree.descendantsOfType('inline_link').length, expected, source);
   }
   const quoted = parser.parse(`> [a](/u "t${newline}> u")${newline}`).rootNode;
   assert.equal(quoted.hasError, false);

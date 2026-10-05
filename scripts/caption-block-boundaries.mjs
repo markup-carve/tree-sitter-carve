@@ -125,4 +125,9 @@ for (const [open, close] of spans) for (const ending of ['\n', '\r\n', '\r']) {
   for (const spaces of [' ', '  ', '   ']) check(hosts[1](open + 'a\n' + spaces + '^ b' + close).replaceAll('\n', ending));
   check(`[^n]: | h |\n  ^ ${open}a\n b${close}\n\nSee[^n].\n`.replaceAll('\n', ending));
 }
+for (const [open, close] of spans) for (const ending of ['\n', '\r\n', '\r']) {
+  for (const noise of ['', '> child\n\n', '::: child\nx\n:::\n', '[^z]: note\n\n', '| c |\n\n']) {
+    check(`- item\n+\n::: note\n${noise}| h |\n^ ${open}a\n  ^ b${close}\n:::\n`.replaceAll('\n', ending));
+  }
+}
 console.log(`Caption boundaries: ${cases} engine controls and ${edits} incremental edits pass.`);
