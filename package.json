@@ -14,7 +14,7 @@
   "types": "bindings/node",
   "scripts": {
     "generate": "tree-sitter generate",
-    "test": "tree-sitter test && node scripts/heading-caption-comments.mjs && node scripts/caption-block-boundaries.mjs && node scripts/extension-payload-boundaries.mjs && node scripts/inline-span-audit.mjs && node scripts/container-metadata-recovery.mjs",
+    "test": "tree-sitter test && node scripts/heading-caption-comments.mjs && node scripts/caption-block-boundaries.mjs && node scripts/extension-payload-boundaries.mjs && node scripts/extension-enclosing-boundaries.mjs && node scripts/inline-span-audit.mjs && node scripts/container-metadata-recovery.mjs",
     "test:coverage": "node scripts/coverage-matrix.mjs",
     "test:conformance": "node scripts/corpus-conformance.mjs",
     "test:corpus": "node scripts/coverage-matrix.mjs && node scripts/corpus-conformance.mjs",
@@ -60,6 +60,7 @@
     "test:rich-markup": "node scripts/rich-markup-boundaries.mjs && node scripts/rich-markup-work.mjs",
     "test:rich-inline-columns": "node scripts/rich-inline-column-boundaries.mjs",
     "test:extension-payloads": "node scripts/extension-payload-boundaries.mjs",
+    "test:extension-scopes": "node scripts/extension-enclosing-boundaries.mjs",
     "test:caption-boundaries": "node scripts/caption-block-boundaries.mjs"
   },
   "author": "",

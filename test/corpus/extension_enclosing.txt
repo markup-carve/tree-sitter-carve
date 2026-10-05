@@ -1,0 +1,50 @@
+=========================
+An extension cannot cross a sibling list item
+=========================
+- :x[a
+- b]
+
+---
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph)))
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph)))))
+
+=========================
+An extension cannot hide the first enclosing forced closer
+=========================
+{*a :x[a {*b c*}] b*}
+
+---
+
+(document
+  (paragraph
+    (strong
+      (strong_begin)
+      (content)
+      (strong_end))))
+
+=========================
+An extension cannot cross a blank quote line
+=========================
+> :x[a
+>
+> b]
+
+---
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (paragraph)
+      (block_quote_marker)
+      (block_quote_marker)
+      (paragraph))))
