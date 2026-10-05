@@ -3388,6 +3388,69 @@ A TERMINATED flush-left fence ends the body at that column
     (code_block_marker_end)))
 
 ==================
+A marker-shaped line in the flush-left fence's body is fence body, not a sibling
+==================
+:: t
+:  - ```
+     ```
+```rust
+- x
+```
+
+---
+
+(document
+  (definition_list
+    (list_item
+      marker: (list_marker_definition)
+      term: (term))
+    (list_item
+      marker: (list_marker_description)
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (code_block
+              (code_block_marker_begin)
+              (code_block_marker_end)))))))
+  (code_block
+    (code_block_marker_begin)
+    language: (language)
+    code: (code)
+    (code_block_marker_end)))
+
+==================
+The same run with no closer folds in and keeps both its lines
+==================
+:: t
+:  - ```
+     ```
+```rust
+- x
+
+---
+
+(document
+  (definition_list
+    (list_item
+      marker: (list_marker_definition)
+      term: (term))
+    (list_item
+      marker: (list_marker_description)
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (code_block
+              (code_block_marker_begin)
+              (code_block_marker_end)))))
+      definition: (definition
+        (verbatim
+          begin_marker: (verbatim_marker_begin)
+          content: (content)
+          end_marker: (verbatim_marker_end))))))
+
+==================
 A nested-lead fence owns its body only up to the next entry
 ==================
 :: t

@@ -2182,7 +2182,8 @@ static char open_verbatim_stop_marker(Scanner *s) {
 // Try to close an open verbatim implicitly
 // (should happen on a newline).
 static bool code_fence_has_closer_ahead(Scanner *s, TSLexer *lexer, int32_t c,
-                                        uint8_t width, uint32_t column);
+                                        uint8_t width, uint32_t column,
+                                        bool ignore_host_list);
 static bool code_fence_info_is_modeled(Scanner *s, TSLexer *lexer);
 
 /// Does the line after this newline continue the unclosed run, or end it with
@@ -2209,7 +2210,7 @@ static bool verbatim_line_continues(Scanner *s, TSLexer *lexer) {
     // A fence interrupts only with a closer ahead (I4), and that reading wins
     // over the run's own closer; without one the content token reads the run.
     return !code_fence_info_is_modeled(s, lexer) ||
-           !code_fence_has_closer_ahead(s, lexer, '`', run, line_indent);
+           !code_fence_has_closer_ahead(s, lexer, '`', run, line_indent, false);
   }
   // A comment-only line (the block-level `comment_line` shape, `%%` with
   // nothing before it on the line) inside a line block does not end the run:
@@ -2830,7 +2831,8 @@ static bool try_begin_code_block(Scanner *s, TSLexer *lexer, uint8_t width,
     uint8_t level = s->block_quote_level;
     uint16_t state = s->state;
     uint32_t col_base = s->col_base;
-    bool has_closer = code_fence_has_closer_ahead(s, lexer, fence_char, width, column);
+    bool has_closer =
+        code_fence_has_closer_ahead(s, lexer, fence_char, width, column, false);
     s->indent = indent;
     s->block_quote_level = level;
     s->state = state;
@@ -5677,7 +5679,13 @@ static bool description_fence_line_is_body_content(Scanner *s,
   if (!code_fence_info_is_modeled(s, lexer)) {
     return false;
   }
-  return !code_fence_has_closer_ahead(s, lexer, fence_char, width, column);
+  // Asked WITHOUT the body's list scope. This candidate stands below the
+  // body's content column, so if it opens a block at all that block is the
+  // document's: a `- x` among its body lines is fence body, not a sibling
+  // marker ending an item. With the scope left on, a TERMINATED fence whose
+  // body holds a marker-shaped line read as unterminated and folded in, where
+  // the reference keeps it at document level.
+  return !code_fence_has_closer_ahead(s, lexer, fence_char, width, column, true);
 }
 
 /// The no-advance half of the test above: is this line even a candidate?
@@ -8030,7 +8038,8 @@ static bool scan_heading_at_paragraph_end(Scanner *s, TSLexer *lexer) {
 /// ``` ``` ``` at column 0 opened a `code_block` with no end marker where
 /// carve-js builds no block at all.
 static bool code_fence_has_closer_ahead(Scanner *s, TSLexer *lexer, int32_t c,
-                                        uint8_t width, uint32_t column) {
+                                        uint8_t width, uint32_t column,
+                                        bool ignore_host_list) {
   // An opener outside a preceding quote does not require that quote's
   // markers on its own body and closer lines.
   uint8_t quotes = 0;
@@ -8040,7 +8049,12 @@ static bool code_fence_has_closer_ahead(Scanner *s, TSLexer *lexer, int32_t c,
       ++quotes;
     }
   }
-  Block *host_list = (s->state & STATE_LIST_CONTINUATION) ? NULL : find_list(s);
+  // A candidate that would sit OUTSIDE the enclosing list gets no list scope:
+  // its body lines are the document's, so a sibling-marker-shaped line among
+  // them is fence body and must not end the search.
+  Block *host_list = (ignore_host_list || (s->state & STATE_LIST_CONTINUATION))
+                         ? NULL
+                         : find_list(s);
   bool after_blank = false;
   for (;;) {
     // Skip the rest of the current line (the opener's info string, or a body
@@ -8130,7 +8144,7 @@ static bool scan_code_fence_at_paragraph_end(Scanner *s, TSLexer *lexer,
   if (!code_fence_info_is_modeled(s, lexer)) {
     return false;
   }
-  return code_fence_has_closer_ahead(s, lexer, fence_char, width, column);
+  return code_fence_has_closer_ahead(s, lexer, fence_char, width, column, false);
 }
 
 /// A block quote that goes DEEPER than the one we are in interrupts an open
