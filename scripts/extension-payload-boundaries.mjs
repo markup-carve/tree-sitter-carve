@@ -118,7 +118,10 @@ for (const source of ['*a :x[b] `c* d` e*', '[a :x[b] `c] d` e](u)',
   '*a :x[a `b] c` d] b* zz`', '*a :x[b\\] `c* d` e*',
   '*a :x[a [b] `c* d` e] f*', '[a :x[a [b] `c] d` e] f](u)',
   '[*a :x[a [b] c] d*](u)', '*a :x[a [b] `c] * d` e] f*',
-  '[*a :x[a `b] c` d] b*](u)']) {
+  '[*a :x[a `b] c` d] b*](u)',
+  '*a :x[{# ] #} `d* e` f*', '*a :x[{% ] %} `d* e` f*',
+  '[a :x[{# ] #} `d] e` f](u)', ':x[{{ a *b* c]',
+  '[a [b] c [d] e]{.c}', '[a [b] c %% d]{.c}']) {
   for (const ending of ['\n', '\r\n', '\r']) {
     const before = `${source}${ending}`;
     check(before);

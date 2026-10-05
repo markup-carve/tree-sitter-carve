@@ -459,7 +459,6 @@ static uint32_t square_literal_closes(const Inline *inline_span) {
   return inline_span->literal_closes;
 }
 
-
 typedef struct {
   // Open blocks is a stack of the blocks that haven't been closed.
   // Used to match closing markers or for implicitly closing blocks.
@@ -2341,11 +2340,11 @@ static bool parse_verbatim_content(Scanner *s, TSLexer *lexer, bool end_valid,
       if (stop_marker == 3 && parent && parent->literal_closes > 1) {
         --parent->literal_closes;
         Inline *bracket = find_inline(s, SQUARE_BRACKET_SPAN);
-        if (bracket && square_literal_closes(bracket)) {
+        if (bracket && (bracket->flags & INLINE_BRACED) && square_literal_closes(bracket)) {
           --bracket->literal_closes;
           if (!square_literal_closes(bracket)) {
             bracket->literal_closes = 0;
-            bracket->flags &= ~INLINE_EXTENSION_CUT;
+            if (bracket->flags & INLINE_BRACED) bracket->flags &= ~INLINE_EXTENSION_CUT;
           }
         }
       }
@@ -9761,9 +9760,10 @@ static bool extension_payload_closed(Scanner *s, TSLexer *host, uint32_t *remain
       if (character->character == '[' && character->bracket_known && character->bracket_close == cut)
         matched_cut = true;
     }
-    *opaque_cut = probe.characters.contents[cut].row_ticks != 0 ||
-        (!matched_cut && (!cut || probe.characters.contents[cut - 1].character != '\\'));
-    *changes_scope = paired ? probe.position > cut : *opaque_cut;
+    *opaque_cut = probe.characters.contents[cut].row_ticks != 0;
+    bool unmatched_cut = !matched_cut &&
+        (!cut || probe.characters.contents[cut - 1].character != '\\');
+    *changes_scope = paired ? probe.position > cut : (*opaque_cut || unmatched_cut);
     if (paired) {
       if (probe.position > cut) ++*remaining;
       for (uint32_t i = 0; i < cut; ++i) {
@@ -9774,6 +9774,7 @@ static bool extension_payload_closed(Scanner *s, TSLexer *host, uint32_t *remain
       }
     }
   }
+  s->col_base = base;
   array_delete(&probe.characters);
   return closed;
 }
@@ -11589,7 +11590,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       --bracket->literal_closes;
       if (!square_literal_closes(bracket)) {
         bracket->literal_closes = 0;
-        bracket->flags &= ~INLINE_EXTENSION_CUT;
+        if (bracket->flags & INLINE_BRACED) bracket->flags &= ~INLINE_EXTENSION_CUT;
       }
     }
     advance(s, lexer);
@@ -13010,7 +13011,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       --bracket->literal_closes;
       if (!square_literal_closes(bracket)) {
         bracket->literal_closes = 0;
-        bracket->flags &= ~INLINE_EXTENSION_CUT;
+        if (bracket->flags & INLINE_BRACED) bracket->flags &= ~INLINE_EXTENSION_CUT;
       }
       lexer->result_symbol = LITERAL_RUN;
       return true;
