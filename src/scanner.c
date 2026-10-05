@@ -9027,7 +9027,7 @@ static bool continuation_row_ahead(Scanner *s, TSLexer *lexer) {
   return true;
 }
 
-static bool probe_braced_closer_ahead(Scanner *s, TSLexer *lexer, char marker, BracketProbe *probe) {
+static bool probe_braced_closer_ahead(Scanner *s, TSLexer *lexer, char marker, BracketProbe *probe, uint32_t *close_position, uint32_t before) {
   // An EMPTY braced span is not a span (carve#1447): `{--}` is the en dash.
   if (lexer->lookahead == marker) {
     advance(s, lexer);
@@ -9043,7 +9043,7 @@ static bool probe_braced_closer_ahead(Scanner *s, TSLexer *lexer, char marker, B
   bool in_row = find_block(s, TABLE_ROW) != NULL;
   char nested[16];
   uint8_t depth = 0;
-  while (!lexer->eof(lexer)) {
+  while (!lexer->eof(lexer) && (!probe || probe->position < before)) {
     if (at_line_end(lexer)) {
       if (in_row) {
         if (continuation_row_ahead(s, lexer)) {
@@ -9080,10 +9080,20 @@ static bool probe_braced_closer_ahead(Scanner *s, TSLexer *lexer, char marker, B
       // Read the run the way the content token reads it, or the two disagree
       // about where this span ends: an unterminated run inside it stops at its
       // closer (corpus 472), and a matching run wins from anywhere in the block.
+      uint32_t run_start = probe ? probe->position : 0;
       uint8_t width = consume_chars(s, lexer, '`');
       VerbatimRunEnd end =
           read_verbatim_run(s, lexer, width, depth == 0 ? marker : 0, in_row);
       if (end == VerbatimRunReachesSpanCloser) {
+        if (close_position && probe) {
+          for (uint32_t i = run_start; i + 1 < probe->characters.size; ++i) {
+            if (probe->characters.contents[i].character == marker &&
+                probe->characters.contents[i + 1].character == '}') {
+              *close_position = i;
+              break;
+            }
+          }
+        }
         return true;
       }
       if (end == VerbatimRunReachesBlockEnd) {
@@ -9122,6 +9132,7 @@ static bool probe_braced_closer_ahead(Scanner *s, TSLexer *lexer, char marker, B
           continue;
         }
         if (depth == 0) {
+          if (close_position && probe) *close_position = probe->position - 1;
           return true;
         }
       }
@@ -9134,11 +9145,11 @@ static bool probe_braced_closer_ahead(Scanner *s, TSLexer *lexer, char marker, B
 
 
 static bool braced_closer_ahead(Scanner *s, TSLexer *lexer, char marker) {
-  if (!in_caption(s) && !find_inline(s, EXTENSION)) return probe_braced_closer_ahead(s, lexer, marker, NULL);
+  if (!in_caption(s) && !find_inline(s, EXTENSION)) return probe_braced_closer_ahead(s, lexer, marker, NULL, NULL, UINT32_MAX);
   if (lexer->advance == bracket_probe_advance)
-    return probe_braced_closer_ahead(s, lexer, marker, (BracketProbe *)lexer);
+    return probe_braced_closer_ahead(s, lexer, marker, (BracketProbe *)lexer, NULL, UINT32_MAX);
   BracketProbe probe = bracket_probe_new(s, lexer);
-  bool closer = probe_braced_closer_ahead(s, &probe.lexer, marker, &probe);
+  bool closer = probe_braced_closer_ahead(s, &probe.lexer, marker, &probe, NULL, UINT32_MAX);
   array_delete(&probe.characters);
   return closer;
 }
@@ -9723,6 +9734,24 @@ static bool qualified_bracket_balanced(Scanner *s, TSLexer *lexer) {
   return balanced;
 }
 
+// Read a possible paragraph boundary without committing its marker state.
+static bool extension_line_ends_block(Scanner *s, BracketProbe *probe, uint8_t indent) {
+  if (in_caption(s)) return caption_line_ends_block(s, probe, indent);
+  uint32_t restart = probe->position;
+  uint32_t base = s->col_base;
+  uint32_t marker_end_col = s->marker_end_col;
+  uint8_t marker_attribute_width = s->marker_attribute_width;
+  bool combined_probe = s->combined_probe;
+  s->combined_probe = false;
+  bool ends = verbatim_line_ends_paragraph(s, &probe->lexer, indent);
+  bracket_probe_rewind(probe, restart);
+  s->col_base = base;
+  s->marker_end_col = marker_end_col;
+  s->marker_attribute_width = marker_attribute_width;
+  s->combined_probe = combined_probe;
+  return ends;
+}
+
 // Extension payloads are cut at the first raw closing bracket before their
 // inline markup is parsed. Code, comments and escapes cannot hide that cut.
 static bool extension_payload_closed(Scanner *s, TSLexer *host, uint32_t *remaining, bool *changes_scope, bool *opaque_cut) {
@@ -9733,18 +9762,52 @@ static bool extension_payload_closed(Scanner *s, TSLexer *host, uint32_t *remain
   BracketProbe probe = bracket_probe_new(s, host);
   TSLexer *lexer = &probe.lexer;
   bool closed = false;
+  char enclosing_marker = 0;
+  for (int i = s->open_inline->size - 1; i >= 0; --i) {
+    Inline *span = *array_get(s->open_inline, i);
+    if ((span->flags & INLINE_BRACED) &&
+        ((span->type >= EMPHASIS && span->type <= DELETE) || span->type == SUBSTITUTION)) {
+      enclosing_marker = inline_marker(span->type);
+      break;
+    }
+  }
+  bool possible_scope_end = false;
+  bool previous_scope_marker = false;
+  bool escaped = false;
   uint32_t base = s->col_base;
   while (!lexer->eof(lexer)) {
     if (lexer->lookahead == ']') { closed = true; break; }
+    if (previous_scope_marker && lexer->lookahead == '}') possible_scope_end = true;
+    previous_scope_marker = enclosing_marker && lexer->lookahead == enclosing_marker &&
+        (!escaped || probe.characters.contents[probe.position].row_ticks);
+    escaped = lexer->lookahead == '\\' && !escaped;
     if (at_line_end(lexer)) {
       Block *block = peek_block(s);
       if (block && (block->type == HEADING || disallow_newline(block))) break;
       consume_line_end(s, lexer);
       uint8_t indent = consume_whitespace(s, lexer);
-      if (at_line_end(lexer) || caption_line_ends_block(s, &probe, indent)) break;
+      if (at_line_end(lexer) || extension_line_ends_block(s, &probe, indent)) break;
     } else if (find_block(s, TABLE_ROW) && lexer->lookahead == '|') {
       if (!bracket_probe_pipe(s, &probe, false)) break;
     } else advance(s, lexer);
+  }
+  if (closed && possible_scope_end) {
+    uint32_t cut = probe.position;
+    bracket_probe_rewind(&probe, 0);
+    s->col_base = base;
+    bool scope_end = false;
+    if (lexer->lookahead == enclosing_marker) {
+      advance(s, lexer);
+      scope_end = lexer->lookahead == '}';
+      bracket_probe_rewind(&probe, 0);
+      s->col_base = base;
+    }
+    uint32_t close_position = UINT32_MAX;
+    if (!scope_end && probe_braced_closer_ahead(s, lexer, enclosing_marker, &probe, &close_position, cut))
+      scope_end = close_position < cut;
+    closed = !scope_end;
+    bracket_probe_rewind(&probe, cut);
+    s->col_base = base;
   }
   // The enclosing bracket map still pairs the original source. Keep closes
   // left behind by the shorter extension literal in that enclosing scope.
