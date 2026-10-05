@@ -83,7 +83,7 @@ int main(void) {
     free(source);
     ++cases;
   }
-  const char *payloads[] = {"a `b*} c` d] ", "a \\*} b] ", "a {*b c*}] "};
+  const char *payloads[] = {"a `b*} c` d] ", "a \\*} b] ", "a {*b c*}] ", "a \\`b\\*} c] "};
   for (unsigned shape = 0; shape < sizeof(payloads) / sizeof(payloads[0]); ++shape)
   for (unsigned i = 0; i < sizeof(sizes) / sizeof(sizes[0]); ++i) {
     unsigned n = sizes[i], width = strlen(payloads[shape]);

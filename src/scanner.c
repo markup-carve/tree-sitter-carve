@@ -9774,12 +9774,15 @@ static bool extension_payload_closed(Scanner *s, TSLexer *host, uint32_t *remain
   bool possible_scope_end = false;
   bool previous_scope_marker = false;
   bool escaped = false;
+  // The bounded span probe resolves escapes and code after any tick is seen.
+  bool saw_tick = false;
   uint32_t base = s->col_base;
   while (!lexer->eof(lexer)) {
     if (lexer->lookahead == ']') { closed = true; break; }
     if (previous_scope_marker && lexer->lookahead == '}') possible_scope_end = true;
+    if (lexer->lookahead == '`') saw_tick = true;
     previous_scope_marker = enclosing_marker && lexer->lookahead == enclosing_marker &&
-        (!escaped || probe.characters.contents[probe.position].row_ticks);
+        (!escaped || saw_tick);
     escaped = lexer->lookahead == '\\' && !escaped;
     if (at_line_end(lexer)) {
       Block *block = peek_block(s);
