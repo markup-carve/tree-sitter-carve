@@ -10,23 +10,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 This release fixes formatting boundaries and incremental parsing, recovers named containers with invalid metadata, and updates the spec corpus and engine oracle together.
 
+### Changed
+
+- Move the spec pin from `39076d7d` to `05794807` and the engine oracle from `23204e89` to `4f6a81f8`. Validation covers 2,215 documents in 545 categories. This untagged spec revision includes table-body positional metadata (#493, #502).
+
 ### Fixed
 
 - Keep formatting inside its bracket, extension, table cell or heading. Literal combined markers produce consistent trees after edits; caption spans can continue onto another line (#503, #504).
 - Recover named containers when their remaining metadata is invalid, preserving their children. Task checkboxes respect their item indentation (#503).
 - Pair brackets around code and closed comments when qualifying links and attributed spans. Preserve nested literal braces and table continuation boundaries (#496).
-- Avoid repeated column rescans in attributed table cells and malformed combined openers. Rows and separators support 256 or more cells. Malformed runs with brackets, braces, verbatim text or escapes retain table boundaries and bounded work through 16,384 repetitions (#498, #492).
-- Read unquoted attribute values using the spec exclusion class, including commas, dots, colons, slashes and opening braces. (#502).
-
-### Added
-
-- Check the engine against corpus HTML goldens so shared engine and grammar errors cannot silently pass the oracle gate (#501).
-- Add heading and caption percent-comment checks, rich-markup boundary and parser-work measurements, and CI job timeouts (#497, #494, #500).
-- Clarify the README description of the grammar's coverage (#491).
-
-### Changed
-
-- Move the spec pin from `39076d7d` to `05794807` and the engine oracle from `23204e89` to `4f6a81f8`. Validation covers 2,215 documents in 545 categories. This untagged spec revision includes table-body positional metadata (#493, #502).
+- Avoid repeated column rescans in attributed table cells and malformed combined openers. Rows and separators support 256 or more cells. Malformed runs with brackets, braces, verbatim text or escapes retain table boundaries. Scanner and lexer work are checked through 16,384 repetitions (#498, #492).
+- Read unquoted attribute values using the spec exclusion class, including commas, dots, colons, slashes and opening braces (#502).
 
 ## [0.1.7] - 2026-09-30
 
