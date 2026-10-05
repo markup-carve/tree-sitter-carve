@@ -1784,7 +1784,12 @@ module.exports = grammar({
         seq('"', /([^"\\\r\n]|\\[^\r\n])*/, '"'),
         // Single-quoted: same, with `'` as the delimiter.
         seq("'", /([^'\\\r\n]|\\[^\r\n])*/, "'"),
-        /\w+/,
+        // Unquoted: PART 8 defines this as an EXCLUSION class, not a
+        // whitelist. Only what would end or restructure the block is
+        // barred, so `widths=33.3,66.7`, `xml:lang` and `v1.2` need no
+        // quoting. `\w+` rejected all three and the line fell back to a
+        // paragraph with no ERROR.
+        /[^}|"'\\ \t\r\n]+/,
       ),
 
     // Paragraphs are a bit special parsing wise as it's the "fallback"

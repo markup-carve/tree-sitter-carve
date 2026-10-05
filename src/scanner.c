@@ -6725,6 +6725,36 @@ static bool scan_comment(Scanner *s, TSLexer *lexer, uint8_t indent,
   return false;
 }
 
+/// An UNQUOTED attribute value.
+///
+/// PART 8 spells this as an EXCLUSION class, not a whitelist:
+/// `unquoted_value = ( character - '}' - '|' - '"' - "'" - backslash - ' '
+/// - tab - newline )+`. The exclusions are what would end or restructure the
+/// block; everything else needs no quoting.
+///
+/// This used `scan_identifier`, which admits only alphanumerics, `-` and `_`.
+/// Every bare value the production's own comment cites was refused - `v1.2`,
+/// `xml:lang`, `w-1/2` and `widths=33.3,66.7` - and a refusal here does not
+/// raise an ERROR: the brace line fails to qualify and falls back to a
+/// paragraph with a clean tree, so no shape or no-ERROR gate could see it.
+///
+/// The grammar's `value` token must hold the same class, or this qualifies a
+/// line the parser cannot tokenize and the attribute becomes an ERROR instead
+/// of a paragraph. The two are changed together for that reason.
+static bool scan_unquoted_value(Scanner *s, TSLexer *lexer) {
+  bool any_scanned = false;
+  while (!lexer->eof(lexer) && !at_line_end(lexer)) {
+    int32_t c = lexer->lookahead;
+    if (c == '}' || c == '|' || c == '"' || c == '\'' || c == '\\' ||
+        c == ' ' || c == '\t') {
+      break;
+    }
+    any_scanned = true;
+    advance(s, lexer);
+  }
+  return any_scanned;
+}
+
 static bool scan_value(Scanner *s, TSLexer *lexer) {
   if (lexer->lookahead == '"' || lexer->lookahead == '\'') {
     char quote = (char)lexer->lookahead;
@@ -6747,7 +6777,7 @@ static bool scan_value(Scanner *s, TSLexer *lexer) {
     }
     return false;
   } else {
-    return scan_identifier(s, lexer);
+    return scan_unquoted_value(s, lexer);
   }
 }
 
