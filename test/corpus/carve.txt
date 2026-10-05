@@ -1021,7 +1021,7 @@ body
   (paragraph))
 
 ===============================================================================
-A tab in a colon fence metadata slot is not a fence
+A tab in named metadata preserves the container
 ===============================================================================
 ::: note	"T"
 x
@@ -1030,10 +1030,16 @@ x
 -------------------------------------------------------------------------------
 
 (document
-  (paragraph))
+  (div
+    (div_marker_begin)
+    (admonition_type)
+    (invalid_metadata)
+    (content
+      (paragraph))
+    (div_marker_end)))
 
 ===============================================================================
-A colon fence opener ends at its last modeled token
+Invalid named metadata is an inert leaf
 ===============================================================================
 ::: note zzz
 x
@@ -1042,7 +1048,13 @@ x
 -------------------------------------------------------------------------------
 
 (document
-  (paragraph))
+  (div
+    (div_marker_begin)
+    (admonition_type)
+    (invalid_metadata)
+    (content
+      (paragraph))
+    (div_marker_end)))
 
 ===============================================================================
 A line block opener takes its bar and nothing else
@@ -1158,7 +1170,7 @@ A glued brace is part of a reference definition's destination
       text: (link_text))))
 
 ===============================================================================
-A colon fence label slot closes its line
+Trailing text after a named label preserves the container
 ===============================================================================
 ::: note [L] zzz
 x
@@ -1167,7 +1179,13 @@ x
 -------------------------------------------------------------------------------
 
 (document
-  (paragraph))
+  (div
+    (div_marker_begin)
+    (admonition_type)
+    (invalid_metadata)
+    (content
+      (paragraph))
+    (div_marker_end)))
 
 ===============================================================================
 A glued colon fence label closes its line too

@@ -2,6 +2,8 @@ const ELEMENT_PRECEDENCE = 100;
 
 // A mention's or a tag's name, `tagName` in resources/carve-core.ohm.
 const NAME = /[a-zA-Z0-9_-]+(\.[a-zA-Z0-9_-]+)*/;
+const NAME_WORD_END = /(?:[a-zA-Z0-9_-]+\.)*[a-zA-Z0-9_-]*[a-zA-Z0-9_]/;
+const NAME_DASH_END = /(?:[a-zA-Z0-9_-]+\.)*[a-zA-Z0-9_-]*-/;
 
 // A table cell's leading marker run: the kind marker, the alignment run and the
 // attribute block, ending at the one space `cell_padding` spells
@@ -56,6 +58,7 @@ function inlineElement($, options) {
         // external scanner because no character class can match it.
         $._nul_byte,
         $._include_open_fallback,
+        seq($._extension_marker, $._extension_literal_check),
         // Word runs that ABSORB a glued mention / tag / symbol, which is
         // how the leading word-boundary guard is enforced without
         // lookbehind (see _glued_* below).
@@ -183,8 +186,10 @@ function symbolFallback($, options) {
     // `bold_italic_begin` gives. A bare one needs its own standalone fallback
     // the way `/` and `*` do - otherwise `/* x/`, where the whitespace check after `/*` fails, has
     // no lexing left at all.
-    seq("/", $._non_whitespace_check, $._bold_italic_open_decision),
+    seq("/", $._non_whitespace_check, $._bold_italic_literal_open_decision),
     "*",
+    alias($._literal_star, "*"),
+    alias($._literal_slash, "/"),
     "_",
     "~",
     // Single-char highlight/subscript markers also need a standalone
@@ -197,7 +202,7 @@ function symbolFallback($, options) {
     // unclosed bold-italic could not lose to emphasis at all: the parser
     // commits to `bold_italic_begin` and errors at the end of the line.
     seq(
-      seq("/", $._non_whitespace_check, $._bold_italic_open_decision),
+      seq("/", $._non_whitespace_check, $._bold_italic_literal_open_decision),
       choice($._bold_italic_mark_begin, $._in_fallback),
     ),
     // The BRACED opener needs a fallback branch of its own, exactly as `{*`
@@ -236,12 +241,8 @@ function symbolFallback($, options) {
     ),
     // Not sensitive to whitespace
     seq("{^", $._braced_fallback),
-    seq("^", choice($._superscript_mark_begin, $._in_fallback)),
+    "^",
     seq("{,", $._braced_fallback),
-    seq(
-      seq(",", $._non_whitespace_check),
-      choice($._subscript_mark_begin, $._in_fallback),
-    ),
     seq("{=", $._braced_fallback),
     seq(
       seq("=", $._highlighted_open_check),
@@ -294,8 +295,6 @@ module.exports = grammar({
   extras: (_) => ["\r"],
 
   conflicts: ($) => [
-    [$.bold_italic_begin, $._symbol_fallback],
-    [$.bold_italic_begin, $._note_symbol_fallback],
     // After a quoted fence's `_block_close`, a `>` is either the closer's own
     // marker or the enclosing quote's; only the end marker after it decides.
     [$.code_block],
@@ -1030,24 +1029,21 @@ module.exports = grammar({
             // malformed opener as a real container. A glued [label] is a
             // different case and stays valid below: `:::[First]` does open.
             //
-            // The `"title"` and `[label]` slots below are the OTHER role: the
-            // type word has already decided the block, so they are PADDING. The
-            // ROLES differ, the terminal does not - a padding slot sits after
-            // the first non-whitespace character of the line, where a tab is not
-            // syntax - so all three slots are spelled `space` and only the
-            // cardinality differs: `space` at the separator, `space+` here
-            // (`::: note` + two spaces + `"T"` opens). carve#907 settled it;
-            // corpus category 255 carries the four tab cases.
-            //
-            // Whether the line OPENS at all is `colon_fence_named_tail_is_modeled`
-            // in `src/scanner.c`, because a slot that rejects its separator has
-            // to leave the line as PROSE and a rule here can only fail into an
-            // ERROR. These tokens are the same rule at the shape level.
+            // Titles and labels require spaces. Invalid metadata is retained as
+            // one inert node; the kind and container body still parse (corpus 537).
             seq(
               field("type", $.admonition_type),
-              optional(seq($._padding_spaces, field("title", $.div_title))),
-              optional(
-                seq($._padding_spaces, field("label", $.code_block_label)),
+              choice(
+                field(
+                  "invalid_metadata",
+                  alias($._container_invalid_metadata, $.invalid_metadata),
+                ),
+                seq(
+                  optional(seq($._padding_spaces, field("title", $.div_title))),
+                  optional(
+                    seq($._padding_spaces, field("label", $.code_block_label)),
+                  ),
+                ),
               ),
             ),
             // Bare [label] with no type word (a typeless tab member); it may
@@ -1972,22 +1968,29 @@ module.exports = grammar({
     // with `tagDot = "." &tagChar` (resources/carve-core.ohm), so `@john.doe`
     // and `#release-1.0` are one name each and the sentence-ending dot of
     // `Reach @john.` is not.
-    mention: (_) => token(seq("@", NAME)),
+    mention: ($) =>
+      choice(
+        seq(token(seq("@", NAME_WORD_END)), $._word_end),
+        token(seq("@", NAME_DASH_END)),
+      ),
 
-    tag: (_) => token(seq("#", NAME)),
+    tag: ($) =>
+      choice(
+        seq(token(seq("#", NAME_WORD_END)), $._word_end),
+        token(seq("#", NAME_DASH_END)),
+      ),
 
     // `extension = ":" extName "[" extContent "]"` (resources/carve-core.ohm).
     // The bracket holds INLINE content: `:code[*b*]` renders the strong inside
     // its span. The opener stays one token so a malformed run - no bracket, no
     // name - falls back to text rather than committing to an ERROR.
+    _extension_marker: (_) => token(seq(":", /[a-zA-Z][a-zA-Z0-9_-]*/, "[")),
     extension_inline: ($) =>
       seq(
-        alias(
-          token(seq(":", /[a-zA-Z][a-zA-Z0-9_-]*/, "[")),
-          $.extension_marker_begin,
-        ),
+        alias($._extension_marker, $.extension_marker_begin),
+        $._extension_content_begin,
         optional(field("content", alias($._extension_content, $.content))),
-        "]",
+        alias($._extension_end, "]"),
       ),
     // A soft line break is content: `:span[a` / `b]` is one extension
     // (corpus 351-a-bracketed-construct-spanning-a-line-boundary-7).
@@ -2011,7 +2014,11 @@ module.exports = grammar({
     emphasis: ($) =>
       seq(
         field("begin_marker", $.emphasis_begin),
-        $._emphasis_mark_begin,
+        choice(
+          $._emphasis_qualified_mark_begin,
+          $._emphasis_mark_begin,
+          prec.dynamic(-1, $._emphasis_combined_mark_begin),
+        ),
         field("content", alias($._braced_span_content, $.content)),
         field("end_marker", $.emphasis_end),
       ),
@@ -2031,23 +2038,34 @@ module.exports = grammar({
     // scored, so that reading was never offered and the document built
     // nothing. See `parse_bold_italic_star` in `src/scanner.c`.
     // A rejected opener within strong retains the enclosing span reading.
-    // Both real and fallback openers share this prefix and its external state.
+    // Separate checks let the scanner retain only the reading its closer permits.
     _bold_italic_open_decision: ($) =>
+      seq($._bold_italic_open_check, $._bold_italic_star),
+    _bold_italic_literal_open_decision: ($) =>
       choice(
-        seq($._bold_italic_open_check, $._bold_italic_star),
+        seq(
+          $._bold_italic_literal_open_check,
+          alias($._bold_italic_literal_star, "*"),
+        ),
         prec.dynamic(
           3 * ELEMENT_PRECEDENCE,
-          seq($._bold_italic_scoped_open_check, $._bold_italic_star),
+          seq(
+            $._bold_italic_scoped_open_check,
+            alias($._bold_italic_literal_star, "*"),
+          ),
         ),
       ),
 
     bold_italic_begin: ($) =>
-      seq("/", $._non_whitespace_check, $._bold_italic_open_decision),
+      prec.dynamic(
+        ELEMENT_PRECEDENCE,
+        seq("/", $._non_whitespace_check, $._bold_italic_open_decision),
+      ),
 
     strong: ($) =>
       seq(
         field("begin_marker", $.strong_begin),
-        $._strong_mark_begin,
+        choice($._strong_qualified_mark_begin, $._strong_mark_begin),
         field("content", alias($._braced_span_content, $.content)),
         field("end_marker", $.strong_end),
       ),
@@ -2096,7 +2114,7 @@ module.exports = grammar({
     highlighted: ($) =>
       seq(
         field("begin_marker", $.highlighted_begin),
-        $._highlighted_mark_begin,
+        choice($._highlighted_qualified_mark_begin, $._highlighted_mark_begin),
         field("content", alias($._inline, $.content)),
         field("end_marker", $.highlighted_end),
       ),
@@ -2766,8 +2784,22 @@ module.exports = grammar({
     // Leading word-boundary guard for mention / tag / symbol (PART 9 §7): a
     // word run glued to one of them swallows it, so it stays literal text.
     // `me@example.com`, `a#b`, `a:b:c`, `10:30:` and `x:rocket:` are text.
-    _glued_mention: (_) => token(prec(1, seq(/[A-Za-z0-9_]+/, "@", NAME))),
-    _glued_tag: (_) => token(prec(1, seq(/[A-Za-z0-9_]+/, "#", NAME))),
+    _glued_mention: ($) =>
+      choice(
+        seq(
+          token(prec(1, seq(/[A-Za-z0-9_]+/, "@", NAME_WORD_END))),
+          $._word_end,
+        ),
+        token(prec(1, seq(/[A-Za-z0-9_]+/, "@", NAME_DASH_END))),
+      ),
+    _glued_tag: ($) =>
+      choice(
+        seq(
+          token(prec(1, seq(/[A-Za-z0-9_]+/, "#", NAME_WORD_END))),
+          $._word_end,
+        ),
+        token(prec(1, seq(/[A-Za-z0-9_]+/, "#", NAME_DASH_END))),
+      ),
     // The closing `:` is required, so an inline extension still fires intraword
     // (`foo:kbd[Ctrl]`): `:kbd[` carries no closing colon and is not absorbed.
     _glued_symbol: (_) =>
@@ -2776,7 +2808,11 @@ module.exports = grammar({
     // `gluedMarker = ("@" | "#") tagName` (resources/carve-core.ohm): a marker
     // glued to the END of a name opens nothing, so `#i#j` is one tag and `#j`
     // is text. It outranks `mention` and `tag`, which match the same run.
-    _glued_marker: (_) => token.immediate(prec(1, seq(/[@#]/, NAME))),
+    _glued_marker: ($) =>
+      choice(
+        seq(token.immediate(prec(1, seq(/[@#]/, NAME_WORD_END))), $._word_end),
+        token.immediate(prec(1, seq(/[@#]/, NAME_DASH_END))),
+      ),
 
     _text: (_) => repeat1(/[^ \t\r\n]/),
   },
@@ -3102,6 +3138,19 @@ module.exports = grammar({
     $._inline_attribute_continue,
     $._bold_italic_open_check,
     $._bold_italic_scoped_open_check,
+    $._bold_italic_literal_open_check,
+    $._emphasis_combined_mark_begin,
+    $._container_invalid_metadata,
+    $._strong_qualified_mark_begin,
+    $._bold_italic_literal_star,
+    $._emphasis_qualified_mark_begin,
+    $._word_end,
+    $._highlighted_qualified_mark_begin,
+    $._literal_star,
+    $._literal_slash,
+    $._extension_content_begin,
+    $._extension_literal_check,
+    $._extension_end,
     $._literal_slash_boundary,
   ],
 });

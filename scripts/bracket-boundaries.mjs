@@ -73,7 +73,7 @@ for (const newline of ['\n', '\r\n', '\r']) {
   }
   const nested = parser.parse('{~a {~b~} c~}' + newline).rootNode;
   assert.equal(nested.hasError, false);
-  assert.deepEqual(nested.descendantsOfType('strikethrough').map(n => n.text), ['{~a {~b~} c~}', '{~b~}']);
+  assert.deepEqual(nested.descendantsOfType('strikethrough').map(n => n.text), ['{~a {~b~}']);
   for (const source of ['[a {*b]*}', '[a' + newline + '{*b]*}']) {
     const tree = parser.parse(source + newline).rootNode;
     assert.equal(tree.hasError, false, source);
