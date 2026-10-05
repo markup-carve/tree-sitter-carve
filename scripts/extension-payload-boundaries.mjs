@@ -103,4 +103,14 @@ for (const body of ['a :x[b] c', 'a `b] c` d', 'a ``b] c`` d', 'a ```b] c``` d',
     if (edits % 126 === 0) await new Promise(setImmediate);
   }
 }
+for (const source of ['*a :x[b] `c* d` e*', '[a :x[b] `c] d` e](u)',
+  '*a :x[a [b] c] `d* e` f*', '[a :x[a [b] c] `d] e` f](u)',
+  '*a :x[a `b] c` d] b* zz`']) {
+  for (const ending of ['\n', '\r\n', '\r']) {
+    const before = `${source}${ending}`;
+    check(before);
+    const after = before.replace(':x[b]', ':x[a :x[b] c]');
+    check(after); edit(before, after); edit(after, before);
+  }
+}
 console.log(`Extension payloads: ${cases} engine comparisons, ${edits} incremental edits`);

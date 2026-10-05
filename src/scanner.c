@@ -9697,8 +9697,9 @@ static bool qualified_bracket_balanced(Scanner *s, TSLexer *lexer) {
 
 // Extension payloads are cut at the first raw closing bracket before their
 // inline markup is parsed. Code, comments and escapes cannot hide that cut.
-static bool extension_payload_closed(Scanner *s, TSLexer *host, uint32_t *remaining) {
+static bool extension_payload_closed(Scanner *s, TSLexer *host, uint32_t *remaining, bool *changes_scope) {
   *remaining = 0;
+  *changes_scope = false;
   if (find_inline(s, EXTENSION)) return false;
   BracketProbe probe = bracket_probe_new(s, host);
   TSLexer *lexer = &probe.lexer;
@@ -9718,11 +9719,14 @@ static bool extension_payload_closed(Scanner *s, TSLexer *host, uint32_t *remain
   }
   // The enclosing bracket map still pairs the original source. Keep closes
   // left behind by the shorter extension literal in that enclosing scope.
-  if (closed && find_inline(s, SQUARE_BRACKET_SPAN)) {
+  Inline *parent = peek_inline(s);
+  if (closed && parent && parent->type != EXTENSION) {
     uint32_t cut = probe.position;
     bracket_probe_rewind(&probe, 0);
     s->col_base = base;
-    if (scan_qualified_bracket_close(s, &probe, NULL)) {
+    bool paired = scan_qualified_bracket_close(s, &probe, NULL);
+    *changes_scope = !paired || probe.position != cut;
+    if (paired) {
       if (probe.position > cut) ++*remaining;
       for (uint32_t i = 0; i < cut; ++i) {
         BracketProbeCharacter *character = &probe.characters.contents[i];
@@ -11532,6 +11536,16 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   // earlier probe's own declined scratch-read left the lexer. See the note at
   // that call.
   const uint32_t advances_at_entry = s->advances;
+  Inline *cut_parent = peek_inline(s);
+  if (!valid_symbols[ERROR] && valid_symbols[LITERAL_RUN] && lexer->lookahead == ']' &&
+      cut_parent && cut_parent->type >= EMPHASIS && cut_parent->type <= BOLD_ITALIC &&
+      cut_parent->literal_closes) {
+    cut_parent->literal_closes = 0;
+    advance(s, lexer);
+    mark_end(s, lexer);
+    lexer->result_symbol = LITERAL_RUN;
+    return true;
+  }
   if (!valid_symbols[ERROR] && find_inline(s, EXTENSION)) {
     Inline *top = peek_inline(s);
     if (lexer->lookahead == ']' && top && top->type == VERBATIM) {
@@ -11636,13 +11650,14 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   if (!valid_symbols[ERROR] && (valid_symbols[EXTENSION_CONTENT_BEGIN] || valid_symbols[EXTENSION_LITERAL_CHECK])) {
     mark_end(s, lexer);
     uint32_t remaining;
-    bool balanced = extension_payload_closed(s, lexer, &remaining);
+    bool changes_scope;
+    bool balanced = extension_payload_closed(s, lexer, &remaining, &changes_scope);
     if (balanced && valid_symbols[EXTENSION_CONTENT_BEGIN]) {
       Inline *parent = peek_inline(s);
-      if (parent && parent->type >= EMPHASIS && parent->type <= BOLD_ITALIC)
+      if (changes_scope && parent && parent->type >= EMPHASIS && parent->type <= BOLD_ITALIC)
         parent->literal_closes = 1;
       Inline *bracket = find_inline(s, SQUARE_BRACKET_SPAN);
-      if (bracket && (bracket->flags & INLINE_BRACED)) {
+      if (changes_scope && bracket && (bracket->flags & INLINE_BRACED)) {
         bracket->flags |= INLINE_EXTENSION_CUT;
         bracket->literal_closes += remaining;
       }
@@ -12941,6 +12956,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       advance(s, lexer);
       mark_end(s, lexer);
       --bracket->literal_closes;
+      if (!bracket->literal_closes) bracket->flags &= ~INLINE_EXTENSION_CUT;
       lexer->result_symbol = LITERAL_RUN;
       return true;
     }
