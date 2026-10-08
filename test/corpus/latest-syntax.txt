@@ -5115,6 +5115,64 @@ An option butts straight onto a selector
       (include_close))))
 
 ==================
+An option butts straight onto a quoted path
+==================
+
+{{ "my ch.crv"@shift:1 }}
+
+---
+
+(document
+  (paragraph
+    (include_directive
+      (include_open)
+      path: (include_path)
+      option: (include_option
+        name: (include_option_name)
+        (include_option_separator)
+        value: (include_option_value))
+      (include_close))))
+
+==================
+An option butts straight onto a digit-leading selector
+==================
+
+{{ ch.crv #2024-plan@shift:1 }}
+
+---
+
+(document
+  (paragraph
+    (include_directive
+      (include_open)
+      path: (include_path)
+      section: (include_section)
+      option: (include_option
+        name: (include_option_name)
+        (include_option_separator)
+        value: (include_option_value))
+      (include_close))))
+
+==================
+An unquoted option value runs on through a following at sign
+==================
+
+{{ ch.crv@shift:1@lines:1-2 }}
+
+---
+
+(document
+  (paragraph
+    (include_directive
+      (include_open)
+      path: (include_path)
+      option: (include_option
+        name: (include_option_name)
+        (include_option_separator)
+        value: (include_option_value))
+      (include_close))))
+
+==================
 A directive still needs its padding run on each side
 ==================
 
