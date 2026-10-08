@@ -2349,8 +2349,12 @@ module.exports = grammar({
     // The regex surfaces pay for this and this one does not: their quoted run
     // has to be matched to its closing quote before the closer is searched for,
     // which is the shape that backtracks (markup-carve/carve-grammars#417).
+    //
+    // The unquoted run also stops at `@` (`include_unquoted_value`,
+    // markup-carve/carve#2780), so `@shift:1@lines:1-2` is two options. A
+    // quoted value still holds `@`.
     include_option_value: (_) =>
-      token(choice(/"(?:\\.|[^"\\\n])*"/, /'(?:\\.|[^'\\\n])*'/, /[^\s}]+/)),
+      token(choice(/"(?:\\.|[^"\\\n])*"/, /'(?:\\.|[^'\\\n])*'/, /[^\s}@]+/)),
 
     _empty_braced_pair: (_) =>
       token(

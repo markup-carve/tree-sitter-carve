@@ -5154,7 +5154,7 @@ An option butts straight onto a digit-leading selector
       (include_close))))
 
 ==================
-An unquoted option value runs on through a following at sign
+Two glued option markers are two options
 ==================
 
 {{ ch.crv@shift:1@lines:1-2 }}
@@ -5166,6 +5166,56 @@ An unquoted option value runs on through a following at sign
     (include_directive
       (include_open)
       path: (include_path)
+      option: (include_option
+        name: (include_option_name)
+        (include_option_separator)
+        value: (include_option_value))
+      option: (include_option
+        name: (include_option_name)
+        (include_option_separator)
+        value: (include_option_value))
+      (include_close))))
+
+==================
+Two padded option markers are two options
+==================
+
+{{ ch.crv @shift:1 @lines:1-2 }}
+
+---
+
+(document
+  (paragraph
+    (include_directive
+      (include_open)
+      path: (include_path)
+      option: (include_option
+        name: (include_option_name)
+        (include_option_separator)
+        value: (include_option_value))
+      option: (include_option
+        name: (include_option_name)
+        (include_option_separator)
+        value: (include_option_value))
+      (include_close))))
+
+==================
+A quoted option value holds an at sign
+==================
+
+{{ ch.crv @k:"a@b"@lines:1-2 }}
+
+---
+
+(document
+  (paragraph
+    (include_directive
+      (include_open)
+      path: (include_path)
+      option: (include_option
+        name: (include_option_name)
+        (include_option_separator)
+        value: (include_option_value))
       option: (include_option
         name: (include_option_name)
         (include_option_separator)
