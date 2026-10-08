@@ -18,16 +18,16 @@
       "nodes": 191
     },
     "code_block": {
-      "documents": 159,
-      "nodes": 168
+      "documents": 160,
+      "nodes": 169
     },
     "list": {
       "documents": 688,
       "nodes": 850
     },
     "definition_list": {
-      "documents": 233,
-      "nodes": 246
+      "documents": 234,
+      "nodes": 247
     },
     "line_block": {
       "documents": 38,
@@ -650,7 +650,12 @@
       "reason": "a `---` after a content-less marker errors; carve-js renders a paragraph then a thematic break (tree-sitter-carve#96)"
     }
   },
-  "inlineReadingGaps": {},
+  "inlineReadingGaps": {
+    "a-description-body-whose-own-block-is-a-fence-keeps-no-line-below-its-column": {
+      "reading": "code html=1 tree=0",
+      "reason": "the flush-left `code` line and the closing fence row below the description body belong to the document, not to the body's fence: the reference reading ends the body's fence empty and reads the two leftover rows as a paragraph whose backtick run is an empty code span. The grammar instead keeps `code` as the body fence's content and opens a second code block on the backtick row, so it reads no inline code span at all."
+    }
+  },
   "lineTerminatorGaps": {},
   "parseTimeouts": {}
 }
