@@ -1487,8 +1487,8 @@ static bool scan_name_no_digit_start(Scanner *s, TSLexer *lexer) {
   return scan_identifier(s, lexer);
 }
 
-// `explicit_identifier`: a class name may also start with a digit (`.2024`),
-// but not with a hyphen.
+// `explicit_identifier`, the name of an id or class: it may start with a digit
+// (`.2024`) but not with a hyphen (`#-a`).
 static bool scan_explicit_identifier(Scanner *s, TSLexer *lexer) {
   int32_t c = lexer->lookahead;
   if (!carve_is_alnum_ascii(c) && c != '_') {
