@@ -7471,7 +7471,7 @@ static bool parse_open_curly_bracket(Scanner *s, TSLexer *lexer,
       // comment reading is left.
       return finish_editorial_comment(s, lexer, false);
     }
-    if (!scan_identifier(s, lexer)) {
+    if (!scan_explicit_identifier(s, lexer)) {
       // Not an identifier either, so `{#id}` is off the table as well.
       return finish_editorial_comment(s, lexer, false);
     }
@@ -7577,7 +7577,7 @@ static bool parse_open_curly_bracket(Scanner *s, TSLexer *lexer,
     case '#':
       can_be_braced_comment = false;
       advance(s, lexer);
-      if (!scan_identifier(s, lexer) || !at_attribute_boundary(lexer)) {
+      if (!scan_explicit_identifier(s, lexer) || !at_attribute_boundary(lexer)) {
         // The `#` is consumed; on `{#myid#}` it is the first half of the
         // closer, so say so rather than letting the comment scan look past it.
         last_was_hash = true;
@@ -8256,7 +8256,7 @@ static bool scan_block_attribute_at_paragraph_end(Scanner *s, TSLexer *lexer) {
       break;
     case '#':
       advance(s, lexer);
-      if (!scan_identifier(s, lexer) || !at_attribute_boundary(lexer)) {
+      if (!scan_explicit_identifier(s, lexer) || !at_attribute_boundary(lexer)) {
         return false;
       }
       break;
@@ -9452,7 +9452,7 @@ static bool scan_inline_attribute_body(Scanner *s, TSLexer *lexer) {
       break;
     case '#':
       advance(s, lexer);
-      if (!scan_identifier(s, lexer) || !at_attribute_boundary(lexer)) {
+      if (!scan_explicit_identifier(s, lexer) || !at_attribute_boundary(lexer)) {
         return false;
       }
       break;
