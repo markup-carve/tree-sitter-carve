@@ -3143,7 +3143,7 @@
     },
     "class_name": {
       "type": "SYMBOL",
-      "name": "_id_no_digit_start"
+      "name": "_explicit_identifier"
     },
     "div_title": {
       "type": "CHOICE",
@@ -7555,6 +7555,10 @@
     "_id_no_digit_start": {
       "type": "PATTERN",
       "value": "[A-Za-z_][\\w_-]*"
+    },
+    "_explicit_identifier": {
+      "type": "PATTERN",
+      "value": "[A-Za-z0-9_][\\w_-]*"
     },
     "_image": {
       "type": "CHOICE",

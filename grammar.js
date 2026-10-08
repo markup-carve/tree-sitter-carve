@@ -1118,7 +1118,8 @@ module.exports = grammar({
     // (markup-carve/carve-grammars#284). `class_name` stays, for the attribute
     // it is actually about.
     admonition_type: ($) => $._id,
-    class_name: ($) => $._id_no_digit_start,
+    // `class_attribute = '.', explicit_identifier`: `.2024` is a class.
+    class_name: ($) => $._explicit_identifier,
     // An admonition title is INLINE: `::: note "Install *now* via `npm`"`
     // renders the strong and the code span in the title paragraph.
     div_title: ($) =>
@@ -2363,12 +2364,11 @@ module.exports = grammar({
 
     reference_label: ($) => $._id,
     _id: (_) => /[\w_-]+/,
-    // An identifier that must start with a letter or underscore (a leading
-    // `_` is valid, e.g. the `_box` div class). Used for class names and
-    // attribute keys: a digit- or hyphen-leading token (`.123`, `12=v`,
-    // `-foo`) is not a valid attribute (and `::: 123` is not a div), so it
-    // falls back to literal text.
+    // An identifier that must start with a letter or underscore. Used for
+    // attribute keys: a digit- or hyphen-leading key (`12=v`, `-foo`) is not
+    // an attribute, so it falls back to literal text.
     _id_no_digit_start: (_) => /[A-Za-z_][\w_-]*/,
+    _explicit_identifier: (_) => /[A-Za-z0-9_][\w_-]*/,
 
     _image: ($) =>
       choice(

@@ -4762,3 +4762,131 @@ Quoted blank lines stay inside a term comment (#459)
 ---
 
 (document (block_quote (block_quote_marker) (content (definition_list (list_item (list_marker_definition) (term (block_quote_marker) (fenced_comment_block) (block_quote_marker)))))))
+
+==================
+An inline class may start with a digit
+==================
+
+[x]{.2024}
+
+---
+
+(document
+  (paragraph
+    (span
+      content: (content)
+      attribute: (inline_attribute
+        (args
+          (class))))))
+
+==================
+An inline id may start with a digit
+==================
+
+[x]{#2024-plan}
+
+---
+
+(document
+  (paragraph
+    (span
+      content: (content)
+      attribute: (inline_attribute
+        (args
+          (identifier))))))
+
+==================
+A digit-leading class may follow a letter-leading one
+==================
+
+[x]{.ok .1}
+
+---
+
+(document
+  (paragraph
+    (span
+      content: (content)
+      attribute: (inline_attribute
+        (args
+          (class)
+          (class))))))
+
+==================
+A digit-leading class attaches to inline markup
+==================
+
+*strong*{.2024}
+
+---
+
+(document
+  (paragraph
+    (strong
+      begin_marker: (strong_begin)
+      content: (content)
+      end_marker: (strong_end))
+    attribute: (inline_attribute
+      (args
+        (class)))))
+
+==================
+A block attribute class may start with a digit
+==================
+
+{.2024}
+para
+
+---
+
+(document
+  (block_attribute
+    args: (args
+      (class)))
+  (paragraph))
+
+==================
+A block attribute id may start with a digit
+==================
+
+{#2024-plan}
+para
+
+---
+
+(document
+  (block_attribute
+    args: (args
+      (identifier)))
+  (paragraph))
+
+==================
+A table cell class may start with a digit
+==================
+
+| a |
+|---|
+|{.2024} b |
+
+---
+
+(document
+  (table
+    (table_header
+      (table_cell))
+    (table_separator
+      (table_cell_alignment))
+    (table_row
+      (table_cell
+        (table_cell_attributes)))))
+
+==================
+A digit-leading attribute key stays literal
+==================
+
+[z]{12=v}
+
+---
+
+(document
+  (paragraph))
