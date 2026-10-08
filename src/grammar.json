@@ -7272,29 +7272,22 @@
           }
         },
         {
-          "type": "CHOICE",
-          "members": [
-            {
-              "type": "FIELD",
-              "name": "section",
-              "content": {
-                "type": "SYMBOL",
-                "name": "include_section"
-              }
-            },
-            {
-              "type": "BLANK"
-            }
-          ]
-        },
-        {
           "type": "REPEAT",
           "content": {
-            "type": "SEQ",
+            "type": "CHOICE",
             "members": [
               {
-                "type": "SYMBOL",
-                "name": "_include_pad"
+                "type": "SEQ",
+                "members": [
+                  {
+                    "type": "SYMBOL",
+                    "name": "_include_pad"
+                  },
+                  {
+                    "type": "SYMBOL",
+                    "name": "_include_part"
+                  }
+                ]
               },
               {
                 "type": "SYMBOL",

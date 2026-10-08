@@ -2257,8 +2257,19 @@ module.exports = grammar({
         alias("{{", $.include_open),
         $._include_pad,
         field("path", $.include_path),
-        optional(field("section", $.include_section)),
-        repeat(seq($._include_pad, $._include_part)),
+        // The section is NOT a slot of its own here. It was, and with the pad
+        // between parts no longer mandatory that spelling is ambiguous with the
+        // `section` arm of `_include_part`: after `path include_section`
+        // nothing decides which of the two produced it, and `tree-sitter
+        // generate` refuses the grammar. One arm carries it, and it keeps the
+        // same `section` field, so `src/node-types.json` does not move.
+        //
+        // SPELLED AS AN EXPLICIT CHOICE, not `optional($._include_pad)`. Under
+        // the pinned tree-sitter-cli 0.22.6 the `optional` form generates a
+        // parser that rejects `{{ c.crv@shift:1 }}` outright, with `generate`
+        // exiting 0 and warning nothing; 0.26.8 accepts the same grammar. Do
+        // not fold this back while 0.22.6 is the pin.
+        repeat(choice(seq($._include_pad, $._include_part), $._include_part)),
         $._include_pad,
         alias("}}", $.include_close),
       ),
@@ -2290,7 +2301,10 @@ module.exports = grammar({
 
     // Whitespace is not an `extra` in this grammar - it is content almost
     // everywhere - so the directive's padding is spelled. A RUN, and required
-    // on both sides: `{{path}}` is ordinary text (grammar PART 6).
+    // on both sides: `{{path}}` is ordinary text (grammar PART 6). BETWEEN the
+    // parts it is optional, because `include_path` stops at `#` and `@` and
+    // neither identifier class holds one, so `{{ c.crv@shift:1 }}` is well
+    // formed (grammar PART 6 `include_options`).
     _include_pad: (_) => token.immediate(/[ \t]+/),
 
     // The PARTS, not one opaque run. Highlighting only needs the directive not
