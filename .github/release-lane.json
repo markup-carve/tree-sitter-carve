@@ -1,0 +1,38 @@
+{
+  "workflow": ".github/workflows/release.yml",
+  "publisher": ".github/workflows/release-build.yml",
+  "publisher_environments": [
+    "release"
+  ],
+  "registries": {
+    "npm": "tree-sitter-carve",
+    "pypi": "tree-sitter-carve",
+    "crates": "tree-sitter-carve"
+  },
+  "assets": [
+    "tree-sitter-carve.wasm",
+    "tree-sitter-carve.wasm.sha256"
+  ],
+  "versions": [
+    {
+      "path": "package.json",
+      "field": [
+        "version"
+      ]
+    },
+    {
+      "path": "pyproject.toml",
+      "field": [
+        "project",
+        "version"
+      ]
+    },
+    {
+      "path": "Cargo.toml",
+      "field": [
+        "package",
+        "version"
+      ]
+    }
+  ]
+}

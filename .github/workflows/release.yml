@@ -1,743 +1,164 @@
-# This repo was tagged three times - 0.1.0, 0.1.1, 0.1.2 - and published to
-# nothing. The tags exist, the GitHub releases exist, and no registry has ever
-# served the package. This workflow is the missing half.
-#
-# THE GATE RUNS BEFORE PUBLISH, AND PUBLISH SITS BEHIND IT VIA `needs:`, not by
-# step order. On 2026-08-18 carve-py's release put a corpus check in front of a
-# publish step in the same job; the check failed, the step was skipped, the job
-# went green, and PyPI served a vulnerable version while the release page said
-# otherwise. A separate job with `needs:` is what makes the publish unreachable
-# rather than merely later.
-#
-# THE GATE MEASURES THE PACKED TARBALL, not the source tree. A source tree that
-# agrees with the CLI says nothing about what npm shipped: vscode-carve was
-# found running two different engines at once because nobody hashed the
-# installed tree.
-#
-# The spec corpus here comes from the `spec` SUBMODULE, so this repo cannot make
-# the mistake its sibling bindings made - aiming a release gate at spec `main`
-# holds an artifact to a corpus newer than the release it gates, which becomes
-# unpassable the moment the spec moves after a tag. The gitlink IS the pin.
 name: Release
-
 on:
-  push:
-    tags:
-      - "[0-9]+.[0-9]+.[0-9]+"
-  # A rehearsal. Everything runs - the version guard, the three-platform
-  # prebuild matrix, the corpus gate over the packed tarball, and every
-  # packaging check - and the three publish steps become --dry-run. The point is
-  # that the first time this workflow runs should not be the moment a tag makes
-  # it irreversible: npm, crates.io and PyPI all refuse to replace a published
-  # version.
   workflow_dispatch:
-
-# Every job declares timeout-minutes. Without one GitHub applies a 360-minute
-# default, roughly 900x the median job in this org, so a hung step burns hours
-# of runner time before anything stops it.
+    inputs:
+      version:
+        description: Stable version to check or publish, without v
+        required: true
+        type: string
+      publish:
+        description: Publish after checks and one approval
+        required: true
+        default: false
+        type: boolean
+permissions:
+  contents: write
+  actions: read
+  id-token: write
+concurrency:
+  group: release-${{ github.repository }}-${{ inputs.version }}
+  cancel-in-progress: false
 jobs:
-  guard:
-    name: The tag matches every version surface
+  candidate:
+    name: Check exact commit, CI and prepared notes
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 15
+    outputs:
+      sha: ${{ steps.candidate.outputs.sha }}
+      tag: ${{ steps.candidate.outputs.tag }}
+      version: ${{ steps.candidate.outputs.version }}
+      release_id: ${{ steps.candidate.outputs.release_id }}
+      body: ${{ steps.candidate.outputs.body }}
+      notes_digest: ${{ steps.candidate.outputs.notes_digest }}
     steps:
       - uses: actions/checkout@v4
         with:
-          # The completeness gate below walks every merge back to the previous
-          # tag, so it needs the tags and the history behind them.
+          ref: ${{ github.sha }}
           fetch-depth: 0
-
-      # Every surface the release moves, read by scripts/version-surfaces.mjs:
-      # seven version fields in six files, package-lock.json carrying it twice.
-      # The script also fails on any tracked file that declares the version
-      # without a reader, so a new manifest cannot slip past as the Makefile
-      # and package-lock.json once did. The Makefile counts: its VERSION drives
-      # SONAME_MAJOR and SONAME_MINOR, so a stale value ships a wrongly
-      # labelled library rather than failing the build.
-      - name: Every manifest agrees with the tag
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            # No tag exists in a rehearsal, so package.json stands in for it and
-            # the check becomes "do all surfaces agree".
-            node scripts/version-surfaces.mjs
-          else
-            node scripts/version-surfaces.mjs "${GITHUB_REF_NAME}"
-          fi
-
-      - name: The changelog describes this version
-        run: |
-          v="${GITHUB_REF_NAME}"
-          [ "${{ github.event_name }}" = "workflow_dispatch" ] && v="$(node -p 'require("./package.json").version')"
-          grep -qE "^## \[?${v}\]? - " CHANGELOG.md \
-            || { echo "::error::CHANGELOG.md has no section for ${v}"; exit 1; }
-
-      # ...and it describes ALL of it. The step above passes on a section
-      # covering three merges out of twenty-four, which is how the 0.1.6
-      # section came to sit over eighteen further merges until #447
-      # reconciled it. Runs in the guard job, before anything publishes, and
-      # names every missing pull request at once.
-      - name: The changelog section accounts for every merge in this release
+      - id: candidate
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            node scripts/changelog-completeness.mjs
-          else
-            node scripts/changelog-completeness.mjs "${GITHUB_REF_NAME}"
-          fi
-
-      # npm only. An earlier version of this step also called crates.io's
-      # /api/v1/me and failed the 0.1.3 release with HTTP 403 - not because the
-      # token was bad, but because a least-privilege crates.io token (scoped to
-      # publish-new / publish-update) is not permitted to read the user
-      # endpoint. crates.io answers 401 for a malformed token and 403 for "this
-      # action requires authentication", so the check punished exactly the
-      # token shape it should encourage. There is no crates.io endpoint that
-      # validates a publish-scoped token without publishing, so that leg is
-      # deliberately unchecked rather than checked wrongly.
-      #
-      # PyPI likewise has no whoami endpoint - a token there can only be proven
-      # by uploading.
-      # npm refuses a --provenance publish whose package.json repository.url
-      # does not match the repository the attestation was signed for. The 0.1.3
-      # tag reached that check live and got
-      #   422 ... "repository.url" is "", expected to match
-      #   "https://github.com/markup-carve/tree-sitter-carve" from provenance
-      # after every prebuild and the corpus gate had already run. No rehearsal
-      # can reach it: `npm publish --dry-run --provenance` skips provenance
-      # entirely, so the registry never sees the bundle. Comparing the two
-      # strings here costs nothing and is the only pre-publish form this check
-      # can take.
-      - name: package.json points at this repository
-        run: |
-          want="https://github.com/${{ github.repository }}"
-          got="$(node -p 'require("./package.json").repository?.url ?? ""')"
-          norm="$(printf %s "$got" | sed -e 's|^git+||' -e 's|\.git$||')"
-          [ "$norm" = "$want" ] \
-            || { echo "::error::package.json repository.url is '$got', which normalizes to '$norm'; npm provenance requires '$want'"; exit 1; }
-          echo "repository.url matches $want"
-
-      - name: The npm credential actually authenticates
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          code="$(curl -sS -o /tmp/npm-who.json -w '%{http_code}' \
-            -H "Authorization: Bearer $NPM_TOKEN" \
-            https://registry.npmjs.org/-/whoami)"
-          [ "$code" = "200" ] \
-            || { echo "::error::NPM_TOKEN does not authenticate (HTTP $code)"; exit 1; }
-          # .json extension matters: require() on an extensionless path parses
-          # the file as JavaScript and yields an empty module, which is how the
-          # 0.1.3 run printed "authenticated as" with no name.
-          echo "npm: authenticated as $(node -p 'require("/tmp/npm-who.json").username')"
-
-  # BEFORE EVERY PUBLISH. This check used to be a step of the PyPI job, which
-  # runs after npm: a tag with no draft published npm and crates.io and then
-  # failed on PyPI, leaving a half-released version no registry lets you take
-  # back. Every publish job now `needs:` this one.
-  release-notes:
-    name: A release draft for this tag exists and has notes
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    permissions:
-      # `write`, not `read`: a DRAFT release is invisible to a caller without
-      # push access, so under `contents: read` the listing comes back empty and
-      # the gate reports "no release" for a draft that is sitting right there
-      # with notes in it. See markup-carve/carve-wasm#80.
-      contents: write
-    steps:
-      # GATE: the notes are not the workflow's to write. A CHANGELOG entry is
-      # deliberately one or two lines for a contributor, which makes poor
-      # release notes for a reader deciding whether to upgrade. A human writes
-      # the draft first and this refuses to publish without one.
-      #
-      # Found by listing rather than `gh release view <tag>`: a draft's tag is
-      # not a git ref, so addressing one by tag can match nothing, change
-      # nothing and still exit 0.
-      - name: The draft exists and has notes
-        if: github.event_name != 'workflow_dispatch'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          release="$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate \
-            --jq "[.[] | select(.tag_name == \"$GITHUB_REF_NAME\")] | first")"
-          if [ -z "$release" ]; then
-            echo "::error::no release for $GITHUB_REF_NAME. Write the notes first:" \
-                 "gh release create $GITHUB_REF_NAME --draft --notes-file NOTES.md"
-            echo "::error::if a draft DOES exist, this job could not see it -" \
-                 "check that the job still declares contents: write"
-            exit 1
-          fi
-          body="$(printf '%s' "$release" | jq -r '.body // ""' | tr -d '[:space:]')"
-          [ -n "$body" ] \
-            || { echo "::error::the release for $GITHUB_REF_NAME has no notes"; exit 1; }
-          printf '%s' "$release" | jq -r '"draft=\(.draft) tag=\(.tag_name)"'
-
-      - name: Rehearsal notice
-        if: github.event_name == 'workflow_dispatch'
-        run: echo "::notice::rehearsal - no release draft is required"
-
-  prebuild:
-    name: Prebuild (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
-    needs: [guard]
-    strategy:
-      fail-fast: false
-      matrix:
-        # windows-latest again. It was pinned to windows-2022 on 2026-08-18,
-        # when the rehearsal failed with "could not find a version of Visual
-        # Studio 2017 or newer" on image windows-2025-vs2026 using
-        # node-gyp@10.1.0. The runner's bundled node-gyp later moved to 12.4.0
-        # and the failure disappeared (#231, probe run 32239736653).
-        #
-        # The probe also disproved the diagnosis in that ticket, which is worth
-        # keeping: a NEWER node-gyp was not the fix. Installed globally on Node
-        # 20, node-gyp 10.1.0, 10.3.1, 11.0.0 and latest (13.0.1) ALL failed on
-        # this image, while the bundled 12.4.0 succeeded. The 0.1.4 release
-        # found setup-node's Node 20 distribution back on bundled node-gyp
-        # 10.1.0, recreating the exact failure. npm 11.19.1 is pinned because
-        # it supports Node 20 and bundles the measured node-gyp 12.4.0; Node 24
-        # is not an alternative because tree-sitter 0.25.0 does not compile
-        # against its V8 headers. The same node-gyp version passes bundled and
-        # fails standalone, so the variable is how npm invokes it, not which
-        # version it is. Anyone tempted to "fix" a future recurrence by pinning
-        # node-gyp should read that result first.
-        os: [ubuntu-latest, macos-latest, windows-latest]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-      - run: npm install --global npm@11.19.1
-      - run: npm ci
-      - run: npm run prebuildify
-      - name: The prebuild exists and is not empty
-        shell: bash
-        run: |
-          found="$(find prebuilds -type f -name '*.node' | wc -l)"
-          [ "$found" -gt 0 ] || { echo "::error::prebuildify produced no .node for ${{ matrix.os }}"; exit 1; }
-          find prebuilds -type f -name '*.node' -exec ls -l {} +
-      - uses: actions/upload-artifact@v4
-        with:
-          name: prebuilds-${{ matrix.os }}
-          path: prebuilds/
-
-  build-wasm:
-    name: Build and test the WASM grammar
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    needs: [guard]
-    env:
-      XDG_CACHE_HOME: ${{ github.workspace }}/tmp/tree-sitter-cache
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-      - run: npm ci
-      - name: Build the WASM grammar
-        run: |
-          npm run build-wasm
-          test -s tree-sitter-carve.wasm
-      - name: Run the corpus and browser smoke tests
-        run: |
-          npx tree-sitter test --wasm
-          npm run test:wasm
-      - name: Create the release checksum
-        run: sha256sum tree-sitter-carve.wasm > tree-sitter-carve.wasm.sha256
-      - uses: actions/upload-artifact@v4
-        with:
-          name: wasm
-          path: |
-            tree-sitter-carve.wasm
-            tree-sitter-carve.wasm.sha256
-
-  upload-wasm-release:
-    name: Add WASM files to the release draft
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    needs: [guard, release-notes, build-wasm]
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: wasm
-      - name: Upload by release id
-        if: github.event_name != 'workflow_dispatch'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          release_id="$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate \
-            --jq "[.[] | select(.tag_name == \"$GITHUB_REF_NAME\")] | first | .id // empty")"
-          [ -n "$release_id" ] \
-            || { echo "::error::no release id found for $GITHUB_REF_NAME"; exit 1; }
-          for name in tree-sitter-carve.wasm tree-sitter-carve.wasm.sha256; do
-            gh api "repos/$GITHUB_REPOSITORY/releases/$release_id/assets" --paginate \
-              --jq ".[] | select(.name == \"$name\") | .id" \
-              | while read -r asset_id; do
-                  gh api --method DELETE "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id"
-                done
-          done
-          gh api --method POST -H "Content-Type: application/wasm" \
-            "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$release_id/assets?name=tree-sitter-carve.wasm" \
-            --input tree-sitter-carve.wasm
-          gh api --method POST -H "Content-Type: text/plain" \
-            "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$release_id/assets?name=tree-sitter-carve.wasm.sha256" \
-            --input tree-sitter-carve.wasm.sha256
-      - name: Rehearsal notice
-        if: github.event_name == 'workflow_dispatch'
-        run: echo "::notice::rehearsal - no release assets were uploaded"
-
-  # Deliberately does NOT depend on `prebuild`. This is a correctness check on
-  # the grammar, and coupling it to npm packaging would let a Windows prebuild
-  # failure block the crates.io and PyPI publishes, which carry no prebuilds at
-  # all. Installing without them makes node-gyp-build compile from source, which
-  # is slower and measures the same parser.
-  corpus-gate:
-    name: Run the corpus through the packed tarball
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    needs: [guard]
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - run: npm ci
-
-      # Pack, then install into a directory that shares nothing with the
-      # checkout, so what gets measured is what a consumer would receive.
-      - name: Pack and install the tarball
-        id: pack
-        run: |
-          tarball="$(npm pack --silent)"
-          echo "tarball=$tarball" >> "$GITHUB_OUTPUT"
-          mkdir -p /tmp/consumer && cd /tmp/consumer
-          npm init -y >/dev/null
-          npm install --no-audit --no-fund "$GITHUB_WORKSPACE/$tarball" tree-sitter
-
-      - name: What the tarball actually carries
-        run: |
-          tar -tzf "${{ steps.pack.outputs.tarball }}" | sed 's/^package\///' | sort
-          echo "---"
-          # No prebuild assertion here on purpose - publish-npm owns that, and
-          # this job is about whether the grammar is right.
-          echo "(prebuild presence is asserted by publish-npm, not here)"
-
-      # Both checks against the INSTALLED binding. binding-parity compares the
-      # node addon to the CLI over the corpus (the two have disagreed before -
-      # see #216), and the no-ERROR sweep is the one check that can look outside
-      # the corpus, because no Carve input may parse to ERROR.
-      - name: The installed binding agrees with the CLI over the corpus
-        env:
-          CARVE_TS_BINDING: /tmp/consumer/node_modules/tree-sitter-carve
-        run: npm run test:binding-parity
-
-      - name: No input parses to ERROR
-        run: npm run test:no-error
-
-  npm-credential:
-    name: The npm credential can publish this package
+          RELEASE_TAG: ${{ inputs.version }}
+          RELEASE_SHA: ${{ github.sha }}
+          RELEASE_PUBLISH: ${{ inputs.publish }}
+        run: python .github/scripts/release-lane.py metadata
+  preflight:
+    name: Build and validate before approval
+    needs: candidate
+    uses: ./.github/workflows/release-build.yml
+    with:
+      publish: false
+      tag: ${{ needs.candidate.outputs.tag }}
+      version: ${{ needs.candidate.outputs.version }}
+      release_tag: ${{ needs.candidate.outputs.tag }}
+      source_sha: ${{ needs.candidate.outputs.sha }}
+      release_id: ${{ needs.candidate.outputs.release_id }}
+      release_body: ${{ needs.candidate.outputs.body }}
+      notes_digest: ${{ needs.candidate.outputs.notes_digest }}
+    secrets: inherit
+  approve:
+    name: Approve once and tag the checked commit
+    if: ${{ inputs.publish }}
+    needs:
+      - candidate
+      - preflight
+    environment: release-approval
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
         with:
-          node-version: 22
-          registry-url: https://registry.npmjs.org
-
-      # GATE, and a separate job on purpose. The first irreversible act in this
-      # workflow is `npm publish` itself, so the publish job has to depend on a
-      # job it cannot reach past. Written as a step inside the publish job it
-      # would be skippable while the job still reported green, which is the
-      # shape that shipped a vulnerable carve-py in this organization.
-      #
-      # WHY IT EXISTS. carve-grammars v0.1.13, 2026-10-08: every gate passed,
-      # the release was approved, the tag was created, Packagist served it
-      # within two minutes, and then `npm publish` answered
-      # "404 Not Found - PUT" on the package URL. npm answers 404 rather than
-      # 403 for a scoped package so it does not leak existence, so that is an
-      # authorization failure and not a missing package: 0.1.11 was serving at
-      # the time. The result was a version on Packagist that npm did not have.
-      # A credential is checkable without publishing anything, and it was the
-      # one precondition no gate checked.
-      #
-      # Nothing below publishes, changes or deprecates anything.
-      - name: The token is live and can write this package
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          set -uo pipefail
-
-          if [ -z "${NODE_AUTH_TOKEN:-}" ]; then
-            echo "::error::NPM_TOKEN is not readable from this repository, so the publish cannot authenticate at all."
-            exit 1
-          fi
-
-          # FATAL. An expired, revoked or malformed token fails here with
-          # 401 / ENEEDAUTH, and this is the one probe below whose failure is
-          # unambiguous.
-          if ! who="$(npm whoami 2>&1)"; then
-            echo "::error::npm rejected the credential: ${who}"
-            echo "::error::rotate NPM_TOKEN before releasing. A 404 on PUT is an auth failure, not a missing package."
-            exit 1
-          fi
-          echo "authenticated as ${who}"
-
-          pkg="$(node -p "require('./package.json').name")"
-          echo "package under release: ${pkg}"
-
-          # REPORTED, NOT FATAL, and measured rather than assumed. This is the
-          # organization endpoint /-/org/<scope>/package, an org read and not a
-          # package write. On carve-wasm run 32156381782 this organization's
-          # NPM_TOKEN answered 403 "You may not perform that action with these
-          # credentials" here, while an anonymous GET of the same URL returned
-          # the whole scope. A credential with fewer rights than a stranger on
-          # an org endpoint is the signature of a granular access token, which
-          # says nothing about whether it can publish. Made fatal, as the first
-          # draft of this gate had it, this would refuse every release in this
-          # organization.
-          echo "== packages this credential can see in the scope"
-          if ! npm access list packages 2>&1; then
-            echo "  REFUSED on the org endpoint. An anonymous reader is not refused here, so this"
-            echo "  is about the credential's kind, not about the scope being unreachable."
-          fi
-
-          # The discriminator, and the reason the two probes above are not
-          # enough. A classic automation token can read this endpoint and a
-          # granular one cannot. A classic token carries its owner's publish
-          # rights, so with a read-write grant below the publish is as proven
-          # as it gets without publishing. A granular token's package grants
-          # are fixed when it is created and are not readable from here at all,
-          # which is the residual risk this gate cannot close.
-          echo "== the kind of credential"
-          if npm token list >/dev/null 2>&1; then
-            echo "  classic automation token: it carries the owner's publish rights."
-          else
-            echo "  granular access token: its package grants are fixed at creation and cannot be"
-            echo "  read from here. If this package is not among them the publish fails with E404"
-            echo "  and no change in this repository can fix it. Check the token at npmjs.com."
-          fi
-
-          # FATAL ONLY ON A DEFINITE NEGATIVE. Note what this is and is not:
-          # the collaborators endpoint is a PUBLIC read, so it reports the npm
-          # USER's grant on the package and not the token's. A read-only grant
-          # therefore means the publish cannot succeed whatever the token is,
-          # which is worth stopping for; read-write does not prove the token
-          # inherits it, which is why it is not reported as a pass.
-          echo "== the account's grant on the package"
-          if grants="$(npm access list collaborators "${pkg}" --json 2>/dev/null)"; then
-            mine="$(printf '%s' "${grants}" | jq -r --arg u "${who}" '.[$u] // "not listed"')"
-            echo "  ${who}: ${mine}"
-            if [ "${mine}" = "read-only" ]; then
-              echo "::error::${who} holds read-only access to ${pkg}, so the publish cannot succeed."
-              echo "::error::grant write access or rotate NPM_TOKEN before releasing."
-              exit 1
-            fi
-          else
-            echo "  the endpoint did not answer, which does not distinguish 'no permission' from"
-            echo "  'no such package', so it is not treated as a verdict."
-          fi
-
-  publish-npm:
-    name: Publish to npm
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    environment: release
+          ref: ${{ needs.candidate.outputs.sha }}
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.candidate.outputs.tag }}
+          RELEASE_SHA: ${{ needs.candidate.outputs.sha }}
+          RELEASE_NOTES_DIGEST: ${{ needs.candidate.outputs.notes_digest }}
+        run: python .github/scripts/release-lane.py approve
+  publish:
+    name: Publish checked packages and assets
     needs:
-      [
-        guard,
-        release-notes,
-        prebuild,
-        build-wasm,
-        upload-wasm-release,
-        corpus-gate,
-        npm-credential,
-      ]
-    # `npm publish --provenance` signs an attestation binding the tarball to
-    # this commit, and that needs an OIDC token. `id-token` is never granted
-    # implicitly - not even when the repo default is read-write - so omitting
-    # this block does not weaken provenance, it makes the publish FAIL. The
-    # rehearsal could not catch it while the dry run left `--provenance` off,
-    # which is why the flags below are now identical on both paths.
-    permissions:
-      contents: read
-      id-token: write
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          registry-url: https://registry.npmjs.org
-      - run: npm ci
-
-      # The gate deliberately does not measure prebuilds - it checks the
-      # grammar, and coupling it to packaging would let a Windows build block
-      # two registries that carry none. So this job owns the packaging half:
-      # collect every platform's prebuild and refuse below three, because a
-      # tarball missing one silently makes that platform compile from source.
-      - uses: actions/download-artifact@v4
-        with:
-          pattern: prebuilds-*
-          path: prebuilds-staging
-      - name: Collect the prebuilds
-        run: |
-          mkdir -p prebuilds
-          find prebuilds-staging -mindepth 2 -maxdepth 2 -type d -exec cp -r {} prebuilds/ \;
-          find prebuilds -type f -name '*.node' | sort
-      - name: Refuse to publish without prebuilds
-        run: |
-          n="$(find prebuilds -type f -name '*.node' | wc -l)"
-          [ "$n" -ge 3 ] || { echo "::error::only $n prebuild(s) present; expected one per platform"; exit 1; }
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: wasm
-          path: wasm-staging
-      - name: Refuse to publish without the WASM grammar
-        run: |
-          cp wasm-staging/tree-sitter-carve.wasm .
-          test -s tree-sitter-carve.wasm \
-            || { echo "::error::the WASM grammar is missing or empty"; exit 1; }
-          tarball="$(npm pack --silent)"
-          tar -tzf "$tarball" | grep -qx 'package/tree-sitter-carve.wasm' \
-            || { echo "::error::the npm tarball does not contain tree-sitter-carve.wasm"; exit 1; }
-
-      # A missing credential FAILS rather than skipping. A skipped publish that
-      # leaves the job green is what half-released carve-py.
-      - name: The npm credential is present
-        run: |
-          [ -n "${{ secrets.NPM_TOKEN }}" ] \
-            || { echo "::error::NPM_TOKEN is not available to this repository"; exit 1; }
-
-      - name: Publish to npm
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            npm publish --dry-run --provenance --access public
-            echo "::notice::rehearsal - nothing was published to npm"
-          else
-            npm publish --provenance --access public
-          fi
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-  publish-crates:
-    name: Publish to crates.io
+      - candidate
+      - approve
+    uses: ./.github/workflows/release-build.yml
+    with:
+      publish: true
+      tag: ${{ needs.candidate.outputs.tag }}
+      version: ${{ needs.candidate.outputs.version }}
+      release_tag: ${{ needs.candidate.outputs.tag }}
+      source_sha: ${{ needs.candidate.outputs.sha }}
+      release_id: ${{ needs.candidate.outputs.release_id }}
+      release_body: ${{ needs.candidate.outputs.body }}
+      notes_digest: ${{ needs.candidate.outputs.notes_digest }}
+    secrets: inherit
+  finalize:
+    name: Verify availability and publish release notes
+    needs:
+      - candidate
+      - publish
+      - publish-pypi
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    environment: release
-    # AFTER npm, not beside it. npm is the only leg that can fail for a reason
-    # the rehearsal cannot reach: `npm publish --dry-run --provenance` silently
-    # ignores the flag - measured on run 32170740059, where the word
-    # "provenance" appears in the log only as the script echoing itself - so
-    # provenance is first exercised by the tag itself. Running the three
-    # publishes in parallel meant a provenance failure could land after
-    # crates.io and PyPI had already shipped, and no registry lets a version be
-    # reused, forcing a re-cut of two good releases. Serialized, a failed npm
-    # publish uploads nothing and stops the run with every registry untouched.
-    needs: [guard, release-notes, corpus-gate, publish-npm]
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
         with:
-          submodules: recursive
-      - uses: dtolnay/rust-toolchain@stable
-
-      # A missing credential FAILS rather than skipping, for the same reason as
-      # the npm job: a skipped publish that leaves the job green is what
-      # half-released carve-py.
-      - name: The crates.io credential is present
-        run: |
-          [ -n "${{ secrets.CARGO_REGISTRY_TOKEN }}" ] \
-            || { echo "::error::CARGO_REGISTRY_TOKEN is not available to this repository"; exit 1; }
-
-      # Cargo.toml's `include` is what decides whether the crate carries the
-      # generated parser at all - bindings/rust, grammar.js, queries and src.
-      # A crate published without src/parser.c compiles for nobody, and the
-      # dry-run is the only place that shows the file list before it is
-      # immutable on the registry.
-      - name: What the crate would carry
-        run: |
-          v="${GITHUB_REF_NAME}"
-          [ "${{ github.event_name }}" = "workflow_dispatch" ] && v="$(grep -m1 '^version = ' Cargo.toml | cut -d'"' -f2)"
-          echo "CRATE_VERSION=$v" >> "$GITHUB_ENV"
-          cargo package --list --allow-dirty | sort
-          cargo package --allow-dirty
-          test -f "target/package/tree-sitter-carve-${v}.crate" \
-            || { echo "::error::cargo package produced no crate"; exit 1; }
-
-      - name: The packaged crate carries the generated parser
-        run: |
-          tar -tzf "target/package/tree-sitter-carve-${CRATE_VERSION}.crate" \
-            | grep -q 'src/parser\.c$' \
-            || { echo "::error::the crate has no src/parser.c - it would compile for nobody"; exit 1; }
-
-      - name: Publish to crates.io
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            cargo publish --dry-run --allow-dirty
-            echo "::notice::rehearsal - nothing was published to crates.io"
-          else
-            cargo publish --token "${{ secrets.CARGO_REGISTRY_TOKEN }}"
-          fi
-
-  build-python:
-    name: Python wheels (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
-    needs: [guard]
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-    steps:
-      - uses: actions/checkout@v4
-      # pyproject.toml already carries [tool.cibuildwheel] with build = "cp38-*",
-      # so the wheel matrix is the configuration's own intent rather than a
-      # choice made here.
-      - uses: pypa/cibuildwheel@v2.21
-      - uses: actions/upload-artifact@v4
-        with:
-          name: python-wheels-${{ matrix.os }}
-          path: wheelhouse/*.whl
-
-  build-python-sdist:
-    name: Python sdist
+          ref: ${{ needs.candidate.outputs.sha }}
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.candidate.outputs.tag }}
+          RELEASE_SHA: ${{ needs.candidate.outputs.sha }}
+          RELEASE_NOTES_DIGEST: ${{ needs.candidate.outputs.notes_digest }}
+        run: python .github/scripts/release-lane.py finalize
+  report:
+    name: Report publication status even on failure
+    if: ${{ always() && inputs.publish && needs.approve.result == 'success' }}
+    needs:
+      - candidate
+      - approve
+      - publish
+      - finalize
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    needs: [guard]
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
-      - run: pipx run build --sdist
-      # setup.py names src/parser.c and src/scanner.c in ext_modules, and
-      # setuptools carries ext_modules sources into an sdist on its own. It does
-      # NOT carry HEADERS, and this extension compiles with include_dirs=["src"],
-      # so it needs src/tree_sitter/*.h too. The npm tarball has them only
-      # because package.json lists "src/**" in files; nothing grants the sdist
-      # the same, and there is no MANIFEST.in. An sdist missing a header builds
-      # for nobody while looking complete, so check every input the compile
-      # actually reads rather than only the one that is easy to name.
-      - name: The sdist carries everything the extension compiles from
-        run: |
-          f="$(ls dist/*.tar.gz)"
-          listing="$(tar -tzf "$f")"
-          missing=0
-          for want in src/parser.c src/scanner.c src/tree_sitter/parser.h \
-                      src/tree_sitter/array.h src/tree_sitter/alloc.h \
-                      bindings/python/tree_sitter_carve/binding.c; do
-            printf "%s\n" "$listing" | grep -q "/$want" || { echo "::error::sdist is missing $want"; missing=1; }
-          done
-          if [ "$missing" -ne 0 ]; then
-            echo "::error::add a MANIFEST.in that grafts src/, or the published sdist cannot be built"
-            exit 1
-          fi
-      - uses: actions/upload-artifact@v4
-        with:
-          name: python-sdist
-          path: dist/*.tar.gz
-
+          ref: ${{ needs.candidate.outputs.sha }}
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.candidate.outputs.tag }}
+          RELEASE_SHA: ${{ needs.candidate.outputs.sha }}
+          RELEASE_NOTES_DIGEST: ${{ needs.candidate.outputs.notes_digest }}
+        run: python .github/scripts/release-lane.py report
   publish-pypi:
-    name: Publish to PyPI
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    environment: release
+    name: Publish verified Python distributions
     needs:
-      [
-        guard,
-        release-notes,
-        corpus-gate,
-        build-python,
-        build-python-sdist,
-        publish-npm,
-      ]
-    permissions:
-      contents: read
-    steps:
-      - name: The PyPI credential is present
-        run: |
-          [ -n "${{ secrets.PYPI_API_TOKEN }}" ] \
-            || { echo "::error::PYPI_API_TOKEN is not available to this repository"; exit 1; }
-      - uses: actions/download-artifact@v4
-        with:
-          pattern: python-*
-          path: staging
-      - name: Collect the distributions
-        run: |
-          mkdir -p dist
-          find staging -type f \( -name '*.whl' -o -name '*.tar.gz' \) -exec mv {} dist/ \;
-          ls -l dist
-          n="$(ls dist/*.whl 2>/dev/null | wc -l)"
-          [ "$n" -ge 3 ] || { echo "::error::only $n wheel(s); expected one per platform"; exit 1; }
-      # twine check validates the metadata the upload would send, which is the
-      # dry run PyPI itself does not offer.
-      - name: Validate the distributions
-        run: pipx run twine check dist/*
-      - uses: pypa/gh-action-pypi-publish@release/v1
-        if: github.event_name != 'workflow_dispatch'
-        with:
-          password: ${{ secrets.PYPI_API_TOKEN }}
-      - name: Rehearsal notice
-        if: github.event_name == 'workflow_dispatch'
-        run: echo "::notice::rehearsal - nothing was published to PyPI"
-
-  # A separate job rather than a step of one publish job, for the same reason
-  # the gates are: this repo ships to three registries, and crates.io and PyPI
-  # run beside each other, so no single job is last. `needs:` all three and the
-  # notes cannot go out while one of them failed.
-  publish-release-notes:
-    name: Publish the release notes
+      - candidate
+      - publish
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    needs: [publish-npm, publish-crates, publish-pypi]
+    timeout-minutes: 20
     permissions:
       contents: write
+      actions: read
+      id-token: write
+      packages: write
+      attestations: write
     steps:
-      # A registry publish is not finished until the release page exists. The
-      # tag is pushed, CI publishes, the registry answers 200, and "released"
-      # feels done - while `/releases` still shows a draft, so a reader has no
-      # notes and no changelog for the version they just installed. Doing it
-      # here rather than by hand also means the draft stops being a thing
-      # someone has to remember to publish at the right moment.
-      #
-      # Last, deliberately: a draft that stays a draft is recoverable, and one
-      # published beside a failed publish is not.
-      - name: Publish the release notes
-        if: github.event_name != 'workflow_dispatch'
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.candidate.outputs.sha }}
+      - name: Verify approval and checked tag
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          id="$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate \
-            --jq "[.[] | select(.tag_name == \"$GITHUB_REF_NAME\" and .draft)] | first | .id // empty")"
-          if [ -z "$id" ]; then
-            echo "No draft release for $GITHUB_REF_NAME; nothing to publish."
-            exit 0
-          fi
-          # `tag_name` goes with every PATCH of a release. Omit it on a DRAFT
-          # and GitHub replaces the tag with a generated `untagged-*`
-          # placeholder, because a draft's tag is a string on the object rather
-          # than a git ref - so the field has nothing to fall back to.
-          # `-F` (not `-f`) for draft, so it is sent as a boolean.
-          gh api "repos/$GITHUB_REPOSITORY/releases/$id" -X PATCH \
-            -f tag_name="$GITHUB_REF_NAME" -F draft=false --jq '"published \(.tag_name)"'
-          # Read it back: exit status does not tell you whether the tag survived.
-          gh api "repos/$GITHUB_REPOSITORY/releases/$id" \
-            --jq '"draft=\(.draft) tag=\(.tag_name)"'
-
-      - name: Rehearsal notice
-        if: github.event_name == 'workflow_dispatch'
-        run: echo "::notice::rehearsal - no release notes were published"
+          RELEASE_TAG: ${{ needs.candidate.outputs.tag }}
+          RELEASE_SHA: ${{ needs.candidate.outputs.sha }}
+          RELEASE_NOTES_DIGEST: ${{ needs.candidate.outputs.notes_digest }}
+        run: python .github/scripts/release-lane.py permit
+      - uses: actions/download-artifact@v4
+        with:
+          name: pypi-checked-distributions-publish
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          password: ${{ secrets.PYPI_API_TOKEN }}
+        if: ${{ inputs.publish }}
+    environment: release
