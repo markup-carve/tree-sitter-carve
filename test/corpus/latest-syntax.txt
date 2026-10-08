@@ -156,6 +156,38 @@ An unrecognized part does not break the directive
       (include_close))))
 
 ==================
+A spaced selector may start with a digit
+==================
+
+{{ chapter.crv #2024-plan }}
+
+---
+
+(document
+  (paragraph
+    (include_directive
+      (include_open)
+      path: (include_path)
+      section: (include_section)
+      (include_close))))
+
+==================
+An adjacent selector may start with a digit
+==================
+
+{{ chapter.crv#2024-plan }}
+
+---
+
+(document
+  (paragraph
+    (include_directive
+      (include_open)
+      path: (include_path)
+      section: (include_section)
+      (include_close))))
+
+==================
 A double-quoted option value holding a space is one value
 ==================
 
