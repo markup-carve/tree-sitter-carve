@@ -2305,7 +2305,8 @@ module.exports = grammar({
     // Higher token precedence than `include_extra`, which matches the same
     // characters: without it the tolerant catch-all wins the tie and a valid
     // selector is reported as "something else".
-    include_section: (_) => token(prec(1, seq("#", /[A-Za-z0-9_][A-Za-z0-9_-]*/))),
+    include_section: (_) =>
+      token(prec(1, seq("#", /[A-Za-z0-9_][A-Za-z0-9_-]*/))),
     include_option: ($) =>
       seq(
         field("name", $.include_option_name),
