@@ -4979,3 +4979,82 @@ para
 
 (document
   (paragraph))
+
+==================
+A block id glued to a language attribute is paragraph text
+==================
+
+{#a:b}
+para
+
+---
+
+(document
+  (paragraph
+    (tag)))
+
+==================
+A block id glued to a class is paragraph text
+==================
+
+{#a.c}
+para
+
+---
+
+(document
+  (paragraph
+    (tag)))
+
+==================
+A block id glued to another id is paragraph text
+==================
+
+{#a#b}
+para
+
+---
+
+(document
+  (paragraph
+    (tag)))
+
+==================
+An inline id glued to a language attribute stays literal
+==================
+
+[x]{#a:b}
+
+---
+
+(document
+  (paragraph
+    (tag)))
+
+==================
+A block id and a language attribute apart are an attribute block
+==================
+
+{#a :b}
+para
+
+---
+
+(document
+  (block_attribute
+    args: (args
+      (identifier)
+      (language_attribute)))
+  (paragraph))
+
+==================
+A block class glued to a language attribute is paragraph text
+==================
+
+{.a:b}
+para
+
+---
+
+(document
+  (paragraph))

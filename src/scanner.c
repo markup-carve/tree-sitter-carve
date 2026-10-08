@@ -7475,6 +7475,11 @@ static bool parse_open_curly_bracket(Scanner *s, TSLexer *lexer,
       // Not an identifier either, so `{#id}` is off the table as well.
       return finish_editorial_comment(s, lexer, false);
     }
+    // The boundary every other item gets in the loop below: `{#a:b}` and
+    // `{#a.c}` are not an id followed by a second item.
+    if (!at_attribute_boundary(lexer)) {
+      return finish_editorial_comment(s, lexer, false);
+    }
     // Both readings are still alive. Fall through to the attribute loop, which
     // takes `{#myid}` and `{#myid .c}`; everything it refuses lands in the
     // comment scan at `no_attribute` below.
