@@ -1473,16 +1473,25 @@ static bool scan_identifier(Scanner *s, TSLexer *lexer) {
   return any_scanned;
 }
 
-// Like `scan_identifier`, but the first character must be a letter or `_` (a
-// leading `_` is valid, e.g. the `_box` div class). Carve class names and
-// attribute keys are identifiers in this sense: a digit- or hyphen-leading
-// token (`.123`, `12=v`, `-foo`) is not a valid attribute, matching the
-// grammar's `_id_no_digit_start`. Admonition kinds use a separate identifier rule.
+// Like `scan_identifier`, but the first character must be a letter or `_`.
+// Attribute keys are identifiers in this sense: a digit- or hyphen-leading key
+// (`12=v`, `-foo`) is not an attribute, matching the grammar's
+// `_id_no_digit_start`.
 static bool scan_name_no_digit_start(Scanner *s, TSLexer *lexer) {
   int32_t c = lexer->lookahead;
   bool valid_first =
       (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '_';
   if (!valid_first) {
+    return false;
+  }
+  return scan_identifier(s, lexer);
+}
+
+// `explicit_identifier`: a class name may also start with a digit (`.2024`),
+// but not with a hyphen.
+static bool scan_explicit_identifier(Scanner *s, TSLexer *lexer) {
+  int32_t c = lexer->lookahead;
+  if (!carve_is_alnum_ascii(c) && c != '_') {
     return false;
   }
   return scan_identifier(s, lexer);
@@ -7556,8 +7565,7 @@ static bool parse_open_curly_bracket(Scanner *s, TSLexer *lexer,
     case '.':
       can_be_braced_comment = false;
       advance(s, lexer);
-      // Class names may not start with a digit (`.123` is not a class).
-      if (!scan_name_no_digit_start(s, lexer)) {
+      if (!scan_explicit_identifier(s, lexer)) {
         goto no_attribute;
       }
       // Same boundary the inline payload applies; see
@@ -8242,7 +8250,7 @@ static bool scan_block_attribute_at_paragraph_end(Scanner *s, TSLexer *lexer) {
       return at_line_end(lexer) || lexer->eof(lexer);
     case '.':
       advance(s, lexer);
-      if (!scan_name_no_digit_start(s, lexer) || !at_attribute_boundary(lexer)) {
+      if (!scan_explicit_identifier(s, lexer) || !at_attribute_boundary(lexer)) {
         return false;
       }
       break;
@@ -9431,8 +9439,7 @@ static bool scan_inline_attribute_body(Scanner *s, TSLexer *lexer) {
       break;
     case '.':
       advance(s, lexer);
-      // A class name must not start with a digit (`.123` is not a class).
-      if (!scan_name_no_digit_start(s, lexer)) {
+      if (!scan_explicit_identifier(s, lexer)) {
         return false;
       }
       // AN ITEM ENDS AT A BOUNDARY, the rule the language tag below already

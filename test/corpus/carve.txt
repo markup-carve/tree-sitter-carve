@@ -2265,14 +2265,19 @@ Inline attribute value may contain escaped quotes and braces
             value: (value)))))))
 
 ===============================================================================
-A digit-leading class or key is not a valid attribute and stays literal
+A digit-leading class is an attribute, a digit-leading key stays literal
 ===============================================================================
 [x]{.123} and [y]{12=v}
 
 -------------------------------------------------------------------------------
 
 (document
-  (paragraph))
+  (paragraph
+    (span
+      content: (content)
+      attribute: (inline_attribute
+        (args
+          (class))))))
 
 ================================================================================
 Fenced code with a quoted header
