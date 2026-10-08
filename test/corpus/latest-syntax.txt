@@ -4890,3 +4890,92 @@ A digit-leading attribute key stays literal
 
 (document
   (paragraph))
+
+==================
+A hyphen-leading inline id stays literal
+==================
+
+[x]{#-a}
+
+---
+
+(document
+  (paragraph
+    (tag)))
+
+==================
+A hyphen-leading inline id after a space stays literal
+==================
+
+[x]{ #-a}
+
+---
+
+(document
+  (paragraph
+    (tag)))
+
+==================
+A hyphen-leading id after inline markup stays literal
+==================
+
+*s*{#-a}
+
+---
+
+(document
+  (paragraph
+    (strong
+      begin_marker: (strong_begin)
+      content: (content)
+      end_marker: (strong_end))
+    (tag)))
+
+==================
+A hyphen-leading block id stays literal
+==================
+
+{#-a}
+para
+
+---
+
+(document
+  (paragraph
+    (tag)))
+
+==================
+A hyphen-leading block id after a space stays literal
+==================
+
+{ #-a}
+para
+
+---
+
+(document
+  (paragraph
+    (tag)))
+
+==================
+A hyphen-leading inline class stays literal
+==================
+
+[x]{.-a}
+
+---
+
+(document
+  (paragraph))
+
+==================
+A hyphen-leading block class stays literal
+==================
+
+{.-a}
+para
+
+---
+
+(document
+  (paragraph))
