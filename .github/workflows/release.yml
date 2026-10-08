@@ -261,6 +261,11 @@ jobs:
             tree-sitter-carve.wasm
             tree-sitter-carve.wasm.sha256
 
+  # Deliberately does NOT depend on `prebuild`. This is a correctness check on
+  # the grammar, and coupling it to npm packaging would let a Windows prebuild
+  # failure block the crates.io and PyPI publishes, which carry no prebuilds at
+  # all. Installing without them makes node-gyp-build compile from source, which
+  # is slower and measures the same parser.
   corpus-gate:
     name: Run the corpus through the packed tarball
     runs-on: ubuntu-latest
@@ -577,11 +582,6 @@ jobs:
         if: (github.event_name == 'workflow_dispatch' && inputs.version == '')
         run: echo "::notice::rehearsal - no release assets were uploaded"
 
-  # Deliberately does NOT depend on `prebuild`. This is a correctness check on
-  # the grammar, and coupling it to npm packaging would let a Windows prebuild
-  # failure block the crates.io and PyPI publishes, which carry no prebuilds at
-  # all. Installing without them makes node-gyp-build compile from source, which
-  # is slower and measures the same parser.
       - name: Publish to npm
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -z "$RELEASE_VERSION" ]; then
@@ -610,10 +610,6 @@ jobs:
         if: (github.event_name == 'workflow_dispatch' && inputs.version == '')
         run: echo "::notice::rehearsal - nothing was published to PyPI"
 
-  # A separate job rather than a step of one publish job, for the same reason
-  # the gates are: this repo ships to three registries, and crates.io and PyPI
-  # run beside each other, so no single job is last. `needs:` all three and the
-  # notes cannot go out while one of them failed.
   build-python:
     name: Python wheels (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
