@@ -16,14 +16,20 @@ This release fixes formatting boundaries and incremental parsing, recovers named
 
 ### Fixed
 
-- End caption markup before a following block opener, including closers hidden in code or comments. Keep indented lookalikes as caption content and reparse literal markers when edits remove the opener.
-- Reject a table-looking line with an unfinished code run after its final pipe.
+- End caption markup before a following block opener, including closers hidden in code or comments. Keep indented lookalikes as caption content and reparse literal markers when edits remove the opener (#508).
+- Reject a table-looking line with an unfinished code run after its final pipe (#508).
 - Preserve literal nested braces inside attributed spans and keep bare formatting within its owning bracket (#494).
 - Keep formatting inside its bracket, extension, table cell or heading. Literal combined markers produce consistent trees after edits; caption spans can continue onto another line (#503, #504).
 - Recover named containers when their remaining metadata is invalid, preserving their children. Task checkboxes respect their item indentation (#503).
 - Pair brackets around code and closed comments when qualifying links and attributed spans. Preserve nested literal braces and table continuation boundaries (#496).
 - Avoid repeated column rescans in attributed table cells and malformed combined openers. Rows and separators support 256 or more cells. Malformed runs with brackets, braces, verbatim text or escapes retain table boundaries. Scanner and lexer work are checked through 16,384 repetitions (#498, #492).
 - Read unquoted attribute values using the spec exclusion class, including commas, dots, colons, slashes and opening braces (#502).
+- End an inline extension payload at the first raw `]`, including brackets inside nested extension markers, code, comments, escapes and attributes (#510).
+- Stop an inline extension qualifying across sibling list items, blank quote lines or an enclosing forced-span closer; a missing `]` leaves the marker literal (#512).
+- Fold a flush-left fence run with no closer into a description body, including below a closed nested fence (#515).
+- Let a class shorthand and an include section selector start with a digit, in both the spaced and adjacent spellings (#518, #520).
+- Keep an id shorthand literal when it starts with a hyphen or runs into another item with no attribute boundary, so it reads as paragraph text instead of an attribute block or an error (#522, #524).
+- Read an include option that butts directly onto the path or the section selector (#525).
 
 ## [0.1.7] - 2026-09-30
 
