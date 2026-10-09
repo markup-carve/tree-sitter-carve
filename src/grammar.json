@@ -7333,6 +7333,15 @@
         {
           "type": "SYMBOL",
           "name": "include_extra"
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_include_option_without_value"
+          },
+          "named": true,
+          "value": "include_extra"
         }
       ]
     },
@@ -7341,6 +7350,48 @@
       "content": {
         "type": "PATTERN",
         "value": "[^\\s}]+"
+      }
+    },
+    "_include_option_without_value": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "SYMBOL",
+            "name": "include_option_name"
+          },
+          "named": false,
+          "value": "@"
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "ALIAS",
+              "content": {
+                "type": "SYMBOL",
+                "name": "_include_option_colon"
+              },
+              "named": false,
+              "value": ":"
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        }
+      ]
+    },
+    "_include_option_colon": {
+      "type": "TOKEN",
+      "content": {
+        "type": "PREC",
+        "value": 2,
+        "content": {
+          "type": "STRING",
+          "value": ":"
+        }
       }
     },
     "_include_open_fallback": {
@@ -7407,8 +7458,8 @@
         {
           "type": "ALIAS",
           "content": {
-            "type": "STRING",
-            "value": ":"
+            "type": "SYMBOL",
+            "name": "_include_option_colon"
           },
           "named": true,
           "value": "include_option_separator"
@@ -7446,21 +7497,25 @@
     "include_option_value": {
       "type": "TOKEN",
       "content": {
-        "type": "CHOICE",
-        "members": [
-          {
-            "type": "PATTERN",
-            "value": "\"(?:\\\\.|[^\"\\\\\\n])*\""
-          },
-          {
-            "type": "PATTERN",
-            "value": "'(?:\\\\.|[^'\\\\\\n])*'"
-          },
-          {
-            "type": "PATTERN",
-            "value": "[^\\s}@]+"
-          }
-        ]
+        "type": "PREC",
+        "value": 2,
+        "content": {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "PATTERN",
+              "value": "\"(?:\\\\.|[^\"\\\\\\n])*\""
+            },
+            {
+              "type": "PATTERN",
+              "value": "'(?:\\\\.|[^'\\\\\\n])*'"
+            },
+            {
+              "type": "PATTERN",
+              "value": "[^\\s}@]+"
+            }
+          ]
+        }
       }
     },
     "_empty_braced_pair": {

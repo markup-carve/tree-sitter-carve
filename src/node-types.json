@@ -2345,6 +2345,11 @@
     }
   },
   {
+    "type": "include_extra",
+    "named": true,
+    "fields": {}
+  },
+  {
     "type": "include_option",
     "named": true,
     "fields": {
@@ -4648,6 +4653,10 @@
     "named": false
   },
   {
+    "type": "@",
+    "named": false
+  },
+  {
     "type": "INFO",
     "named": false
   },
@@ -4817,10 +4826,6 @@
   },
   {
     "type": "include_close",
-    "named": true
-  },
-  {
-    "type": "include_extra",
     "named": true
   },
   {
