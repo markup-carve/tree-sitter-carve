@@ -2287,8 +2287,20 @@ module.exports = grammar({
         field("section", $.include_section),
         field("option", $.include_option),
         $.include_extra,
+        alias($._include_option_without_value, $.include_extra),
       ),
     include_extra: (_) => token(/[^\s}]+/),
+    // `@k:` and `@k` with nothing after them. The `include_extra` token cannot
+    // take these: `include_option_name` outranks it at the `@`, so without
+    // this arm the directive fails and `@k` reads as a mention.
+    _include_option_without_value: ($) =>
+      seq(
+        alias($.include_option_name, "@"),
+        optional(alias($._include_option_colon, ":")),
+      ),
+    // Outranks `include_extra`, which is valid glued after a bare name and
+    // would otherwise take `:v` whole on length.
+    _include_option_colon: (_) => token(prec(2, ":")),
 
     // An UNTERMINATED `{{` is ordinary text (I1), and a grammar that reports it
     // as an ERROR is worse than one that mis-highlights: the no-error sweep
@@ -2325,7 +2337,7 @@ module.exports = grammar({
     include_option: ($) =>
       seq(
         field("name", $.include_option_name),
-        alias(":", $.include_option_separator),
+        alias($._include_option_colon, $.include_option_separator),
         field("value", $.include_option_value),
       ),
     include_option_name: (_) =>
@@ -2353,8 +2365,16 @@ module.exports = grammar({
     // The unquoted run also stops at `@` (`include_unquoted_value`,
     // markup-carve/carve#2780), so `@shift:1@lines:1-2` is two options. A
     // quoted value still holds `@`.
+    //
+    // Precedence 2 so it beats `include_extra` (valid there since a bare
+    // `@k:` is tolerated) and `include_section` on the same characters.
     include_option_value: (_) =>
-      token(choice(/"(?:\\.|[^"\\\n])*"/, /'(?:\\.|[^'\\\n])*'/, /[^\s}@]+/)),
+      token(
+        prec(
+          2,
+          choice(/"(?:\\.|[^"\\\n])*"/, /'(?:\\.|[^'\\\n])*'/, /[^\s}@]+/),
+        ),
+      ),
 
     _empty_braced_pair: (_) =>
       token(
