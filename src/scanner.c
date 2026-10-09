@@ -819,13 +819,14 @@ static void advance(Scanner *s, TSLexer *lexer) {
   }
   if (s->row_capture && current == '[' && s->row_bracket_cell_col == UINT32_MAX)
     s->row_bracket_cell_col = s->row_cell_start_col;
-  if (s->row_capture && current == '|' && s->row_previous != '\\' && !s->row_raw_ticks) {
+  if (s->row_capture && current == '|' && !s->row_carry_escape && !s->row_raw_ticks) {
     if (s->row_boundary_col == UINT32_MAX) s->row_boundary_col = s->row_capture_col;
     s->row_cell_start_col = s->row_capture_col + 1;
   }
   lexer->advance(lexer, false);
   if (s->row_capture) {
-    if (current == '`') ++s->row_raw_pending;
+    // An escaped tick opens no run for the cell splitter either (CARVE T1).
+    if (current == '`' && !s->row_carry_escape) ++s->row_raw_pending;
     if (lexer->lookahead != '`' && s->row_raw_pending) {
       if (!s->row_raw_ticks) s->row_raw_ticks = s->row_raw_pending;
       else if (s->row_raw_ticks == s->row_raw_pending) s->row_raw_ticks = 0;
@@ -3156,6 +3157,8 @@ typedef struct {
   uint32_t row_boundary_col, continuation_ticks;
   unsigned row_ticks;
   unsigned pending_ticks;
+  // The next character is backslash-escaped, read as the cell splitter does.
+  bool escaping;
   unsigned bracket_scans;
   bool no_comment_close[2];
   uint32_t no_comment_close_from[2];
@@ -3197,7 +3200,10 @@ static void bracket_probe_advance(TSLexer *lexer, bool skip) {
       probe->row_ticks = probe->continuation_ticks;
       probe->pending_ticks = 0;
     }
-    if (previous == '`') ++probe->pending_ticks;
+    bool escaped = probe->escaping;
+    probe->escaping = !escaped && previous == '\\' && !probe->row_ticks &&
+                      !probe->pending_ticks;
+    if (previous == '`' && !escaped) ++probe->pending_ticks;
     probe->host->advance(probe->host, skip);
     if (probe->host->lookahead != '`' && probe->pending_ticks) {
       if (!probe->row_ticks) probe->row_ticks = probe->pending_ticks;
@@ -3211,7 +3217,7 @@ static void bracket_probe_advance(TSLexer *lexer, bool skip) {
     bool row_first_line = before->row_first_line && previous != '\r' && previous != '\n';
     array_push(&probe->characters, ((BracketProbeCharacter){
       .character = probe->host->lookahead, .row_ticks = probe->row_ticks,
-      .escaped_pipe = previous == '\\', .range_start = range_start,
+      .escaped_pipe = probe->escaping, .range_start = range_start,
       .column = column, .column_absolute = absolute,
       .row_first_line = row_first_line}));
   }
