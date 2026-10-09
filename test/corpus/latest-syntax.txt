@@ -5223,6 +5223,58 @@ A quoted option value holds an at sign
       (include_close))))
 
 ==================
+An option with an empty value is an extra part
+==================
+
+{{ c.crv @k: }}
+
+---
+
+(document
+  (paragraph
+    (include_directive
+      (include_open)
+      path: (include_path)
+      (include_extra)
+      (include_close))))
+
+==================
+An option with an empty value keeps the glued option after it
+==================
+
+{{ c.crv @k:@shift:1 }}
+
+---
+
+(document
+  (paragraph
+    (include_directive
+      (include_open)
+      path: (include_path)
+      (include_extra)
+      option: (include_option
+        name: (include_option_name)
+        (include_option_separator)
+        value: (include_option_value))
+      (include_close))))
+
+==================
+An option name without a separator is an extra part
+==================
+
+{{ c.crv @k }}
+
+---
+
+(document
+  (paragraph
+    (include_directive
+      (include_open)
+      path: (include_path)
+      (include_extra)
+      (include_close))))
+
+==================
 A directive still needs its padding run on each side
 ==================
 
