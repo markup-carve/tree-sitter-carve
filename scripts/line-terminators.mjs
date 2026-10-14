@@ -90,7 +90,19 @@ const [cli, cliArgs] = existsSync(localCli)
   ? [localCli, []]
   : ['npx', ['tree-sitter']];
 const MAX_OUTPUT = 64 * 1024 * 1024;
+// Exiting does not stop the other parses in flight, and the CLI is a Node
+// wrapper that does not forward signals to the binary it starts. Each parse
+// gets its own process group so a kill reaches both.
+const running = new Set();
+function killGroup(child) {
+  try {
+    process.kill(-child.pid, 'SIGKILL');
+  } catch {
+    // Already gone.
+  }
+}
 function fail(message, stderr) {
+  for (const child of running) killGroup(child);
   console.error(message);
   if (stderr) console.error(stderr.trim());
   rmSync(work, { recursive: true, force: true });
@@ -101,10 +113,12 @@ function spawnParse(file) {
     let error = null;
     const child = spawn(cli, [...cliArgs, 'parse', ...TIMEOUT_ARGS, file], {
       cwd: repoRoot,
+      detached: true,
     });
+    running.add(child);
     const timer = setTimeout(() => {
       error ??= new Error(`spawn ${cli} ETIMEDOUT`);
-      child.kill();
+      killGroup(child);
     }, spawnBudgetMs(1));
     const out = [];
     const err = [];
@@ -113,7 +127,7 @@ function spawnParse(file) {
       size += chunk.length;
       if (size > MAX_OUTPUT && !error) {
         error = new Error('stdout maxBuffer length exceeded');
-        child.kill();
+        killGroup(child);
       }
       sink.push(chunk);
     };
@@ -123,6 +137,7 @@ function spawnParse(file) {
     // a no-op.
     const finish = () => {
       clearTimeout(timer);
+      running.delete(child);
       resolve({
         error,
         stdout: Buffer.concat(out).toString('utf8'),
