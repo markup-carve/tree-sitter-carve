@@ -6,33 +6,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-### Fixed
-
-- Parse long paragraphs and lines in near-linear time. Unclosed bare openers (`*a *a ...`), unclosed link destinations (`[a](` repeated) and long unbroken words no longer rescan the rest of the paragraph or line at every opener or character.
-- Keep later items of a list nested in a quoted list item, including ordered lists, lists in a quote on a marker line, blank quoted lines between items, and definition lists (#539).
-- Keep a comment line inside the list item it sits in at any column, and keep the line after a comment in the item where the comment retains it, instead of splitting the list (#539).
-- End an unclosed code fence inside a colon container at the container's closer (#539).
-- Keep the rows of a table in a footnote body in one table (#539).
-- Keep a list item open across three or more blank lines when the next line continues it; a sibling marker after such a run still starts a new list (#539).
-- Read a thematic-break line or a comment line inside a line block as part of its paragraph (#539).
-- Parse a lone `-` before a `---` line as a paragraph and a thematic break instead of an error (#539).
-- Stop the parser hanging when a line starts with a `*` that opens nothing and the next line holds an emphasis at the same column, as in `*a` followed by `/b/`. A delimiter note no longer carries over a line end, and a rejected slash close no longer emits an empty token.
-- Read a colon fence of 256 or more colons at its full width, so `:::...` with 256 colons opens a container instead of a paragraph. A block holding such a width takes two more bytes of scanner state.
-- Read a code fence of 128 or more backticks or tildes at its full width. A backtick run of 128 to 255 read as a tilde fence and never closed, and 256 read as no fence at all.
-- Read a comment fence of 256 or more percent signs at its full width, so it hides its body and closes only on a run of exactly its width.
-- Let a `+` continuation marker attach a block to a footnote body, and an attribute line after the marker attribute the attached block (#542).
-- Accept a `+` table continuation row only after a body row, with a tab after the marker, inside a list item, and not across a quote it leaves; read `| - |` as a separator row (#542).
-- Fold a list marker into a paragraph held by a quote or div inside a list item, and an unmarked opener past the item's content column into the quoted paragraph (#542).
-- Fold a block-opener line between a list item's marker and content columns into the item's paragraph (#542).
-- Read a `:` followed only by whitespace as term text, and an empty `:: ` in a description body as description text (#542).
-- Nest a second ordered marker on the same line (`1. 1. x`, `a) a) x`) instead of producing an error (#546).
-- Count a blank line taken by a paragraph's end toward a list's blank-line run, so two blank lines after a closed fence no longer split the list (#546).
-- Read headings, quotes, fences and tables inside a line block as text (#546).
-- Read a `+` at the content column of the item holding the open paragraph as text, and let a `+` before an indented line attach nothing (#546).
-
 ## [0.1.9] - 2026-10-14
 
-This release aligns caption, autolink, attribute, include-option and nesting readings with carve-js, and simplifies the editor queries.
+This release aligns caption, autolink, attribute, include-option, list, quote, table and nesting readings with carve-js, parses long lines in near-linear time, reads very wide fences at full width, and simplifies the editor queries.
 
 ### Fixed
 
@@ -48,10 +24,31 @@ This release aligns caption, autolink, attribute, include-option and nesting rea
 - Split a table row the way the engine does around escapes: an escaped tick opens no code run, and in `\\|` the pipe splits the cell (#528).
 - End an unquoted include option value at the next `@`, so `{{ c.crv@shift:1@lines:1-2 }}` reads as two options (#533).
 - Read an include option with no value, such as `{{ c.crv @k }}`, as an extra part instead of breaking the directive (#534).
-- Keep `[t][@a]` as text when the bracket text holds markup too: a citation key cannot label a reference link.
-- Read a braced comment directly after an inline attribute block as a comment.
-- Join quote lines past the nesting cap into the deepest paragraph, as carve-js does.
-- Keep list markers and indentation past column 240 as text instead of letting their columns wrap into an ERROR.
+- Keep `[t][@a]` as text when the bracket text holds markup too: a citation key cannot label a reference link (#544).
+- Read a braced comment directly after an inline attribute block as a comment (#544).
+- Join quote lines past the nesting cap into the deepest paragraph, as carve-js does (#544).
+- Keep list markers and indentation past column 240 as text instead of letting their columns wrap into an ERROR (#544).
+- Parse long paragraphs and lines in near-linear time. Unclosed bare openers (`*a *a ...`), unclosed link destinations (`[a](` repeated) and long unbroken words no longer rescan the rest of the paragraph or line at every opener or character (#545).
+- Keep later items of a list nested in a quoted list item, including ordered lists, lists in a quote on a marker line, blank quoted lines between items, and definition lists (#539).
+- Keep a comment line inside the list item it sits in at any column, and keep the line after a comment in the item where the comment retains it, instead of splitting the list (#539).
+- End an unclosed code fence inside a colon container at the container's closer (#539).
+- Keep the rows of a table in a footnote body in one table (#539).
+- Keep a list item open across three or more blank lines when the next line continues it; a sibling marker after such a run still starts a new list (#539).
+- Read a thematic-break line or a comment line inside a line block as part of its paragraph (#539).
+- Parse a lone `-` before a `---` line as a paragraph and a thematic break instead of an error (#539).
+- Stop the parser hanging when a line starts with a `*` that opens nothing and the next line holds an emphasis at the same column, as in `*a` followed by `/b/`. A delimiter note no longer carries over a line end, and a rejected slash close no longer emits an empty token (#547).
+- Read a colon fence of 256 or more colons at its full width, so `:::...` with 256 colons opens a container instead of a paragraph. A block holding such a width takes two more bytes of scanner state (#547).
+- Read a code fence of 128 or more backticks or tildes at its full width. A backtick run of 128 to 255 read as a tilde fence and never closed, and 256 read as no fence at all (#548).
+- Read a comment fence of 256 or more percent signs at its full width, so it hides its body and closes only on a run of exactly its width (#549).
+- Let a `+` continuation marker attach a block to a footnote body, and an attribute line after the marker attribute the attached block (#542).
+- Accept a `+` table continuation row only after a body row, with a tab after the marker, inside a list item, and not across a quote it leaves; read `| - |` as a separator row (#542).
+- Fold a list marker into a paragraph held by a quote or div inside a list item, and an unmarked opener past the item's content column into the quoted paragraph (#542).
+- Fold a block-opener line between a list item's marker and content columns into the item's paragraph (#542).
+- Read a `:` followed only by whitespace as term text, and an empty `:: ` in a description body as description text (#542).
+- Nest a second ordered marker on the same line (`1. 1. x`, `a) a) x`) instead of producing an error (#546).
+- Count a blank line taken by a paragraph's end toward a list's blank-line run, so two blank lines after a closed fence no longer split the list (#546).
+- Read headings, quotes, fences and tables inside a line block as text (#546).
+- Read a `+` at the content column of the item holding the open paragraph as text, and let a `+` before an indented line attach nothing (#546).
 
 ### Changed
 
