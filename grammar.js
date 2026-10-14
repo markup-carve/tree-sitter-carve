@@ -369,7 +369,8 @@ module.exports = grammar({
         $._whitespace,
         optional(field("language", $.language)),
         $._newline,
-        field("content", $.frontmatter_content),
+        // Empty frontmatter, `---` over `---`, is frontmatter (spec 21879d7).
+        optional(field("content", $.frontmatter_content)),
         $.frontmatter_marker,
         $._newline,
       ),
@@ -865,6 +866,11 @@ module.exports = grammar({
       choice(
         seq(
           alias($._table_cell_body, $.table_cell),
+          alias($._table_cell_end, "|"),
+        ),
+        // A zero-width cell, `||`: a blank row is still a row.
+        seq(
+          alias($._empty_table_cell, $.table_cell),
           alias($._table_cell_end, "|"),
         ),
         alias($._table_escaped_cell_body, $.table_cell),
@@ -3235,5 +3241,8 @@ module.exports = grammar({
     // stands below an open description body. Appended last for the same index
     // reason as the tokens above it.
     $._lazy_description_fence,
+
+    // Zero-width: a cell with nothing between its pipes. Appended last.
+    $._empty_table_cell,
   ],
 });

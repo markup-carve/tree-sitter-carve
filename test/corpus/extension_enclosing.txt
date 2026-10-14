@@ -18,7 +18,7 @@ An extension cannot cross a sibling list item
         (paragraph)))))
 
 =========================
-An extension cannot hide the first enclosing forced closer
+A forced child of the enclosing kind inside an extension nests
 =========================
 {*a :x[a {*b c*}] b*}
 
@@ -28,7 +28,14 @@ An extension cannot hide the first enclosing forced closer
   (paragraph
     (strong
       (strong_begin)
-      (content)
+      (content
+        (extension_inline
+          (extension_marker_begin)
+          (content
+            (strong
+              (strong_begin)
+              (content)
+              (strong_end)))))
       (strong_end))))
 
 =========================

@@ -712,7 +712,7 @@ Empty and wider verbatim runs keep their braced boundary rules
       (strong_end))))
 
 ==================
-A forced opener of a kind already open is literal, and the outer span closes
+A forced opener of a kind already open nests a child (CARVE-P9-043)
 ==================
 
 a{*{*x*}*}b
@@ -725,12 +725,24 @@ a{*{*x*}*}b
   (paragraph
     (strong
       begin_marker: (strong_begin)
-      content: (content)
+      content: (content
+        (strong
+          begin_marker: (strong_begin)
+          content: (content)
+          end_marker: (strong_end)))
       end_marker: (strong_end)))
   (paragraph
     (emphasis
       begin_marker: (emphasis_begin)
-      content: (content)
+      content: (content
+        (strong
+          begin_marker: (strong_begin)
+          content: (content
+            (emphasis
+              begin_marker: (emphasis_begin)
+              content: (content)
+              end_marker: (emphasis_end)))
+          end_marker: (strong_end)))
       end_marker: (emphasis_end))))
 
 ==================
@@ -1284,7 +1296,7 @@ see[^f]
       text: (link_text))))
 
 ==================
-A list item leaves a definition past its div's content column as text
+A list item collects a definition past its div's content column
 ==================
 - a
   ::: note
@@ -1305,7 +1317,9 @@ A list item leaves a definition past its div's content column as text
           (div_marker_begin)
           type: (admonition_type)
           content: (content
-            (paragraph))
+            (link_reference_definition
+              label: (link_label)
+              destination: (link_destination)))
           (div_marker_end)))))
   (paragraph
     (collapsed_reference_link

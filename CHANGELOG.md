@@ -6,6 +6,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Read an explicitly delimited row of blank cells, `||` and `| |` included, as a table row (#551).
+- Read `---` directly over `---` as empty frontmatter (#551).
+- Keep a comment at a list item's content column from retaining the line below it, and let a description body keep a below-column comment as a list item does (#551).
+- Read a tab inside a block attribute line, or after a definition's `]:`, as text, and a destination starting with Unicode whitespace as no definition (#551).
+- Let a list item that hosts a div collect a definition written past the div's content column (#551).
+- Keep a closed container on a quoted marker line, and a definition list there, from turning the lines below into errors (#551).
+- Let a braced emphasis span open a child of its own kind, as in `{*a {*b*} c*}` and `*a {*b*} c*`; the empty `{**}` stays text. An enclosing braced closer inside an inline extension's payload is content unless an unterminated code run reaches it (#551).
+
+### Changed
+
+- Move the spec pin to `21879d7` and the engine oracle to `26ccd5a` (#551).
+
 ## [0.1.9] - 2026-10-14
 
 This release aligns caption, autolink, attribute, include-option, list, quote, table and nesting readings with carve-js, parses long lines in near-linear time, reads very wide fences at full width, and simplifies the editor queries.

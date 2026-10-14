@@ -1256,11 +1256,13 @@ Block ownership boundary 15
       (term))
     (list_item
       (list_marker_description)
-      (definition)))
-  (fenced_comment_block
-    (comment_fence_marker_begin)
-    (content)
-    (comment_fence_marker_end))
+      (definition)
+      (fenced_comment_block
+        (comment_fence_marker_begin)
+        (content)
+        (comment_fence_marker_end))
+      (code_block
+        (code_block_marker_begin))))
   (paragraph
     (verbatim
       (verbatim_marker_begin)
