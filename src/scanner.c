@@ -270,6 +270,7 @@ typedef enum {
 
   // A cell with nothing between its pipes, `||`. Appended last.
   EMPTY_TABLE_CELL,
+  EMPTY_LINK_PADDING,
 } TokenType;
 
 // The different blocks in Carve that we track,
@@ -5596,15 +5597,8 @@ static bool scan_verbatim_run_in_cell(Scanner *s, TSLexer *lexer,
 /// `ignored_text` slot was there to avoid; that slot is what made PART 7's
 /// promised fallback unreachable at this line, so the tail is modeled here and
 /// the slot is gone.
-static bool ref_def_tail_is_modeled(Scanner *s, TSLexer *lexer) {
-  // The run after the colon. Its FIRST character was already required to be a
-  // space; more spaces may follow (`[a]:` + two spaces + `/u`).
-  bool tabbed = false;
-  consume_ws_run(s, lexer, &tabbed);
-  if (at_line_end(lexer) || lexer->eof(lexer)) {
-    // No destination: `[r]:   ` is paragraph text (corpus 16-reference-link-9).
-    return false;
-  }
+static bool ref_def_tail_is_modeled(Scanner *s, TSLexer *lexer, bool tabbed) {
+  // The separator run after the colon has already been consumed.
   // The separator is spaces only, and the destination does not start with
   // Unicode whitespace (spec 21879d7): `[a]: <TAB>/u` is paragraph text.
   int32_t lead = lexer->lookahead;
@@ -5672,6 +5666,7 @@ static bool scan_ref_def(Scanner *s, TSLexer *lexer) {
   // opener and is NOT anchored: its entry runs free-form to end of line, so a
   // multi-word entry is kept whole. Recorded before the label is consumed.
   bool citation = lexer->lookahead == '@';
+  bool footnote = lexer->lookahead == '^';
   // THE LABEL IS A CHARACTER RUN AND IT ENDS AT THE FIRST `]`.
   // `reference_label = (character - ']' - '@'), {character - ']'}`
   // (resources/grammar.ebnf): no escape, no verbatim exception. `[a `]` c]: /u`
@@ -5710,14 +5705,28 @@ static bool scan_ref_def(Scanner *s, TSLexer *lexer) {
   // matching a truncated `[a]:` and the rest of the line parsing as something
   // else, because the destination group is optional and the rule's tail accepts
   // trailing whitespace (tree-sitter-carve#83).
-  if (lexer->lookahead != ' ') {
+  if (citation) {
+    return lexer->lookahead == ' ';
+  }
+  if (footnote) {
     return false;
   }
-
-  if (citation) {
+  if (at_line_end(lexer) || lexer->eof(lexer)) {
     return true;
   }
-  return ref_def_tail_is_modeled(s, lexer);
+  int32_t first_separator = lexer->lookahead;
+  if (first_separator != ' ' && first_separator != '\t') {
+    return false;
+  }
+  bool tabbed = false;
+  consume_ws_run(s, lexer, &tabbed);
+  if (at_line_end(lexer) || lexer->eof(lexer)) {
+    return true;
+  }
+  if (first_separator != ' ') {
+    return false;
+  }
+  return ref_def_tail_is_modeled(s, lexer, tabbed);
 }
 
 static bool parse_ref_def_begin(Scanner *s, TSLexer *lexer,
@@ -10878,16 +10887,27 @@ static bool probe_scan_inline_link_tail(Scanner *s, TSLexer *lexer, char bare, b
   // this line fails the same way (see `link_tail_open_line`). Only noted while
   // the host lexer is still on the line this scan started on.
   if (at_line_end(lexer) && !s->host_crossed_line) s->link_tail_open_line = true;
-  if (!any_dest) {
-    return false;
-  }
   if (lexer->lookahead == ')') {
     return true;
   }
-  if (lexer->lookahead != ' ') {
+  bool title_space_consumed = false;
+  if (!any_dest && (lexer->lookahead == ' ' || lexer->lookahead == '\t')) {
+    bool title_separator = lexer->lookahead == ' ';
+    advance(s, lexer);
+    if (title_separator && (lexer->lookahead == '"' || lexer->lookahead == '\'')) {
+      title_space_consumed = true;
+    } else {
+      while (lexer->lookahead == ' ' || lexer->lookahead == '\t') advance(s, lexer);
+      return lexer->lookahead == ')';
+    }
+  }
+  if (!any_dest && !title_space_consumed) {
     return false;
   }
-  advance(s, lexer);
+  if (!title_space_consumed && lexer->lookahead != ' ') {
+    return false;
+  }
+  if (!title_space_consumed) advance(s, lexer);
   int32_t quote = lexer->lookahead;
   if (quote != '"' && quote != '\'') {
     return false;
@@ -10896,6 +10916,7 @@ static bool probe_scan_inline_link_tail(Scanner *s, TSLexer *lexer, char bare, b
   int32_t previous = quote;
   while (!lexer->eof(lexer)) {
     if (at_line_end(lexer)) {
+      if (!any_dest) return false;
       Block *host = peek_block(s);
       if ((host && (host->type == HEADING || disallow_newline(host)))) {
         if (boundary) *boundary = true;
@@ -10928,6 +10949,9 @@ static bool probe_scan_inline_link_tail(Scanner *s, TSLexer *lexer, char bare, b
                             previous != '\t' && previous != '\n';
     if (lexer->lookahead == quote) {
       advance(s, lexer);
+      if (!any_dest) {
+        while (lexer->lookahead == ' ' || lexer->lookahead == '\t') advance(s, lexer);
+      }
       return lexer->lookahead == ')';
     }
     advance(s, lexer);
@@ -12516,6 +12540,18 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
 // slash closer, bounded before the first rich construct or line break.
 // Its sentinel cannot be mistaken for a delimiter character.
 static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
+  if (valid_symbols[EMPTY_LINK_PADDING] && !valid_symbols[ERROR] &&
+      (lexer->lookahead == ' ' || lexer->lookahead == '\t')) {
+    do {
+      advance(s, lexer);
+    } while (lexer->lookahead == ' ' || lexer->lookahead == '\t');
+    if (lexer->lookahead == ')') {
+      mark_end(s, lexer);
+      lexer->result_symbol = EMPTY_LINK_PADDING;
+      return true;
+    }
+    return false;
+  }
   if (s->after_closer_char == PLAIN_BRACKET_REMAINDER &&
       (lexer->lookahead != '[' || line_column(s, lexer) != s->after_closer_col)) {
     s->after_closer_char = 0;

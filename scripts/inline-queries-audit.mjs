@@ -36,7 +36,7 @@ const CASES = [
   ['a fenced quote takes a caption', '::: >\nq\n:::\n^ cap\n', { caption: 1 }],
   ['a figure group takes a caption', '::: figure\n![a](a.png)\n:::\n^ cap\n', { caption: 1 }],
   ['a detached group caption', '::: figure\n![a](a.png)\n:::\n\n\n^ cap\n', { caption: 0 }],
-  ['a reference definition needs a destination', '[r]:   \n', { link_reference_definition: 0, paragraph: 1 }],
+  ['an empty reference definition', '[r]:   \n', { link_reference_definition: 1, paragraph: 0 }],
   ['an underscore extension name', ':_[x] a:_[y]\n', { extension_inline: 2 }],
   ['a tab is no inline attribute padding', '[x]{\t}\n', { span: 0 }],
   ['a tab does not separate inline attributes', '*x*{.a\t.b}\n', { inline_attribute: 0 }],

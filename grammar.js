@@ -1481,9 +1481,8 @@ module.exports = grammar({
           seq(
             // The separator after `]:` is a space and then a free run: `[a]:`
             // plus two spaces plus `/u` is a definition, and so is `[a]:` plus
-            // a space and a TAB. `scan_ref_def` in `src/scanner.c` requires the
-            // FIRST character to be a space, which is what carve-rs and
-            // carve-js both do (tree-sitter-carve#83).
+            // a space and a TAB. A nonempty destination requires a space
+            // before it (tree-sitter-carve#83).
             $._whitespace1,
             field("destination", $.link_destination),
             // `_whitespace1` rather than a one-space token, for the reason the
@@ -1508,8 +1507,8 @@ module.exports = grammar({
         ),
         // The line ENDING is `whitespace` - space and tab both - the same
         // terminal `blank_line` takes (PART 1; carve#890), so `[a]: /u` + TAB is
-        // still a definition. `[r]:   ` has no destination and is paragraph text
-        // (corpus 16-reference-link-9); `ref_def_tail_is_modeled` refuses it.
+        // still a definition. A bare line is an empty definition; trailing
+        // ASCII pad is allowed.
         optional($._whitespace1),
         choice($._newline, $._eof_or_newline),
       ),
@@ -2659,11 +2658,24 @@ module.exports = grammar({
       seq(
         $._parens_span_begin,
         $._parens_span_mark_begin,
-        $._inline_link_url,
-        optional(
+        choice(
           seq(
-            $._link_title_space,
-            field("title", alias($._inline_link_title, $.link_title)),
+            $._inline_link_url,
+            optional(
+              seq(
+                $._link_title_space,
+                field("title", alias($._inline_link_title, $.link_title)),
+              ),
+            ),
+          ),
+          seq(
+            optional(
+              seq(
+                $._link_title_space,
+                field("title", alias($._inline_link_title, $.link_title)),
+              ),
+            ),
+            optional($._empty_link_padding),
           ),
         ),
         alias($._parens_span_end, ")"),
@@ -3246,5 +3258,7 @@ module.exports = grammar({
 
     // Zero-width: a cell with nothing between its pipes. Appended last.
     $._empty_table_cell,
+    // ASCII pad is an empty URL only when the next byte closes the tail.
+    $._empty_link_padding,
   ],
 });
