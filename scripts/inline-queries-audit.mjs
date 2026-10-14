@@ -17,6 +17,7 @@ const PAIRS = {
   autolink: /<a href="/g,
   caption: /<figcaption>/g,
   extension_inline: /class="ext-/g,
+  table_cell: /<t[dh][ >]/g,
 };
 
 const CASES = [
@@ -44,6 +45,10 @@ const CASES = [
   ['an abbreviation definition interrupts a paragraph', 'The HTML spec.\n*[HTML]: HyperText\n', { abbreviation_definition: 1 }],
   ['an indented abbreviation does not', 'a\n *[H]: x\n', { abbreviation_definition: 0 }],
   ['an indented colon fence stays one paragraph', ' ::: note\n Body.\n :::\n', { paragraph: 1 }],
+  ['a tab-padded cell attribute is cell content', '|{.a\t.b} a | b |\n', { table_cell: 2, table_cell_attributes: 0 }],
+  ['a malformed cell attribute is cell content', '|{???} a | b |\n', { table_cell: 2, table_cell_attributes: 0 }],
+  ['a space-padded cell attribute', '|{.a .b} a | b |\n', { table_cell: 2, table_cell_attributes: 1 }],
+  ['a malformed row attribute is no table', '| a | b |{.a:b}\n', { table_cell: 0, paragraph: 1 }],
   ['Djot quote braces are text', 'say {"hi"} and {\'x\'}\n', { quotation_marks: 0 }],
 ];
 

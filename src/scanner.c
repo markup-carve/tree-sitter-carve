@@ -6701,10 +6701,11 @@ static bool scan_table_row(Scanner *s, TSLexer *lexer, TokenType *row_type,
     // opening a row that then cannot close - that came back as an ERROR where
     // the language reads an ordinary paragraph (corpus
     // 248-an-attribute-name-admits-no-colon-3).
-    if (attr_after_pipe) {
-      if (!scan_valid_inline_attribute(s, lexer)) {
-        return false;
-      }
+    // A malformed block is cell content (`|{???} a |` is a cell in carve-js);
+    // a malformed ROW attribute leaves an unterminated cell, so the row fails.
+    if (attr_after_pipe && !scan_valid_inline_attribute(s, lexer)) {
+      attr_after_pipe = false;
+    } else if (attr_after_pipe) {
       while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
         advance(s, lexer);
       }

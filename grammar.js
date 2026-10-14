@@ -12,7 +12,7 @@ const AUTOLINK_URL =
 const AUTOLINK_EMAIL = /[a-zA-Z0-9._+-]+@[a-zA-Z0-9._+-]+\.[a-zA-Z]+/;
 
 // A table cell's leading marker run: the kind marker, the alignment run and the
-// attribute block, ending at the one space `cell_padding` spells
+// attribute block (space-padded only, CARVE-P4-001), ending at the one space `cell_padding` spells
 // (`header_cell` and `data_cell` in resources/grammar.ebnf).
 //
 // ONE TOKEN, because the decision needs the whole run. Spelled as parts, the
@@ -29,11 +29,11 @@ const CELL_ATTR_ITEM =
   "|:[A-Za-z][A-Za-z0-9-]*" +
   "|[A-Za-z_][A-Za-z0-9_-]*(?:=(?:\"[^\"\\r\\n]*\"|'[^'\\r\\n]*'|[^\\s\"'{}]+))?)";
 const CELL_MARKER_RUN = new RegExp(
-  "(?:=?(?:[<>~][\\^~v]?|\\?[\\^~v])|=)?\\{[ \\t]*(?:" +
+  "(?:=?(?:[<>~][\\^~v]?|\\?[\\^~v])|=)?\\{ *(?:" +
     CELL_ATTR_ITEM +
-    "(?:[ \\t]+" +
+    "(?: +" +
     CELL_ATTR_ITEM +
-    ")*[ \\t]*)?\\} ",
+    ")* *)?\\} ",
 );
 
 // The inline element alternatives, shared by ordinary inline content and by a
