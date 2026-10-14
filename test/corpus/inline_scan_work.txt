@@ -1,0 +1,67 @@
+==================
+A long word inside an underline keeps its closer
+==================
+_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa_
+
+---
+
+(document (paragraph (underline begin_marker: (underline_begin) content: (content) end_marker: (underline_end))))
+
+==================
+A long word at the end of a line reads as text
+==================
+x aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+y *z*
+
+---
+
+(document (paragraph (strong begin_marker: (strong_begin) content: (content) end_marker: (strong_end))))
+
+==================
+Unclosed strong openers before a closed one in a bracket
+==================
+*a *a [b *c d* e] f *g
+
+---
+
+(document (paragraph (strong begin_marker: (strong_begin) content: (content) end_marker: (strong_end))))
+
+==================
+Unclosed strong openers on every line close on the last
+==================
+a *b
+c *d
+e *f
+g h*
+
+---
+
+(document (paragraph (strong begin_marker: (strong_begin) content: (content) end_marker: (strong_end))))
+
+==================
+Unclosed emphasis openers then a closer later on the line
+==================
+/a /a /a b/ c
+
+---
+
+(document (paragraph (emphasis begin_marker: (emphasis_begin) content: (content) end_marker: (emphasis_end))))
+
+==================
+Unclosed link destinations before a closed link
+==================
+[a](b [c](d [e](f) g
+
+---
+
+(document (paragraph (inline_link text: (link_text) destination: (inline_link_destination))))
+
+==================
+An unclosed link destination does not reach the next line
+==================
+[a](b [c](d
+[e](f) g
+
+---
+
+(document (paragraph (inline_link text: (link_text) destination: (inline_link_destination))))

@@ -6,6 +6,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Parse long paragraphs and lines in near-linear time. Unclosed bare openers (`*a *a ...`), unclosed link destinations (`[a](` repeated) and long unbroken words no longer rescan the rest of the paragraph or line at every opener or character.
+
 ## [0.1.9] - 2026-10-14
 
 This release aligns caption, autolink, attribute, include-option and nesting readings with carve-js, and simplifies the editor queries.

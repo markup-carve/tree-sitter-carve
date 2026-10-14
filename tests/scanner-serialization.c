@@ -34,7 +34,7 @@ int main(void) {
     ts_free(last);
   }
   unsigned length = tree_sitter_carve_external_scanner_serialize(scanner, buffer);
-  if (length != 1022 || (uint8_t)buffer[15] != 251) {
+  if (length != 1023 || (uint8_t)buffer[15] != 251) {
     fprintf(stderr, "251 blocks encoded as %u bytes with count %u\n", length,
             (uint8_t)buffer[15]);
     return 1;
@@ -144,7 +144,7 @@ int main(void) {
   Scanner *row_back = tree_sitter_carve_external_scanner_create();
   tree_sitter_carve_external_scanner_deserialize(row_back, buffer, row_length);
   Block *restored_row = peek_block(row_back);
-  if (!restored_row || restored_row->type != TABLE_ROW || row_length != 34 ||
+  if (!restored_row || restored_row->type != TABLE_ROW || row_length != 35 ||
       restored_row->cell_boundary_col != 0x12345678 || restored_row->cell_carry_ticks != 257 ||
       restored_row->bracket_cell_col != 0x23456789 ||
       restored_row->flags != BLOCK_FLAG_TABLE_ROW_BOUNDARY_SAFE) {
@@ -162,7 +162,7 @@ int main(void) {
   tree_sitter_carve_external_scanner_deserialize(label_back, buffer, label_length);
   Inline *restored_label = peek_inline(label_back);
   if (!restored_label || restored_label->flags != INLINE_LABEL ||
-      restored_label->literal_closes != 0x12345678 || label_length != 24) {
+      restored_label->literal_closes != 0x12345678 || label_length != 25) {
     fputs("wide label bracket depth did not survive serialization\n", stderr);
     return 1;
   }
@@ -175,7 +175,7 @@ int main(void) {
   unsigned literal_length = tree_sitter_carve_external_scanner_serialize(literal_state, buffer);
   Scanner *literal_back = tree_sitter_carve_external_scanner_create();
   tree_sitter_carve_external_scanner_deserialize(literal_back, buffer, literal_length);
-  if (peek_inline(literal_back)->literal_closes != 16384 || literal_length != 24) {
+  if (peek_inline(literal_back)->literal_closes != 16384 || literal_length != 25) {
     fputs("literal bracket depth did not survive serialization\n", stderr);
     return 1;
   }
@@ -200,6 +200,28 @@ int main(void) {
   }
   tree_sitter_carve_external_scanner_destroy(div_back);
   tree_sitter_carve_external_scanner_destroy(div);
+
+  // The inline notes ride behind the inline entries and in front of the tail,
+  // so a round trip must bring back both them and the spans before them.
+  Scanner *notes = tree_sitter_carve_external_scanner_create();
+  push_inline_flagged(notes, STRONG, 0, 0);
+  notes->mid_line = true;
+  notes->no_closer_kinds = 0x0105;
+  notes->no_closer_scope = 0xbeef;
+  notes->link_tail_open_line = true;
+  notes->missing_closers = 1 << 3;
+  unsigned notes_length = tree_sitter_carve_external_scanner_serialize(notes, buffer);
+  Scanner *notes_back = tree_sitter_carve_external_scanner_create();
+  tree_sitter_carve_external_scanner_deserialize(notes_back, buffer, notes_length);
+  if (notes_length != 26 || !notes_back->mid_line || notes_back->no_closer_kinds != 0x0105 ||
+      notes_back->no_closer_scope != 0xbeef || !notes_back->link_tail_open_line ||
+      notes_back->missing_closers != 1 << 3 || notes_back->open_inline->size != 1 ||
+      peek_inline(notes_back)->type != STRONG) {
+    fprintf(stderr, "inline notes did not survive serialization (%u bytes)\n", notes_length);
+    return 1;
+  }
+  tree_sitter_carve_external_scanner_destroy(notes_back);
+  tree_sitter_carve_external_scanner_destroy(notes);
 
   Scanner *term = tree_sitter_carve_external_scanner_create();
   Block *definition = create_block(LIST_DEFINITION, 3);

@@ -84,6 +84,36 @@ A reading taken from a stale artifact is the most common wrong answer here.
   a `-Woverflow` warning when the file is compiled, and
   `npm run test:parser-warnings` fails on one.
 
+## Scanner cost on long lines
+
+tree-sitter gives the external scanner no byte offset, and `get_column` rereads
+the current line from its start whenever the lexer has moved since the last
+read. So a reader that looks ahead from every opener, or asks for a column at
+every token, costs time proportional to the paragraph or line times the number
+of tokens.
+
+- Closer and link-destination probes that find nothing are noted in the
+  serialized state (`no_closer_kinds`, `link_tail_open_line`), and later openers
+  in the same paragraph or line reuse the answer.
+- `mid_line` records that the last external token ended mid-line, which spares
+  the line-start test its column read.
+- A pure alphanumeric word of 256 or more characters is one token.
+- `npm run test:inline-scan-work` counts scanner and lexer advances as each
+  input family doubles and fails on growth past 2.5x per doubling.
+
+Two costs remain:
+
+- A single line of plain words with no inline markup pays one column read per
+  whitespace token, so it is quadratic in the line length: about 5 s for a
+  100 KB line on a loaded 16-core machine. The same text wrapped into ordinary
+  lines is linear.
+- Older runtimes, such as the 0.22 CLI this repository pins, reread the line
+  on every `get_column`. There the column reads that each failed bare opener
+  makes keep `*a *a ...` lines quadratic, at about a third of the old cost.
+
+The serialized state fits at most 251 open blocks in the fixed 1024-byte buffer.
+`MAX_NESTING_DEPTH` (200) keeps container nesting below that.
+
 ## What the gates cannot see
 
 `test:inline-reading` compares inline spans, so a change that moves none of them
