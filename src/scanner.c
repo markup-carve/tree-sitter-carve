@@ -580,6 +580,9 @@ typedef struct {
   // The last table row opened was a separator, which a `+` continuation row
   // cannot join.
   bool after_separator_row;
+  // A newline token just took a blank line inside a list item, so the item
+  // spacer that follows starts on the run's second blank line.
+  bool blank_line_taken;
   // Bits 0..8 record missing braced closers.
   uint16_t missing_closers;
   // Blank lines before the current line, or CAPTION_GAP_FENCE right after a
@@ -1311,6 +1314,13 @@ static bool inside_line_block(Scanner *s) {
   return div != NULL && (div->flags & BLOCK_FLAG_LINE_BLOCK) != 0;
 }
 
+/// A line block's body is lines of inline content: no marker or break opens.
+static bool line_block_body(Scanner *s) {
+  Block *top = peek_block(s);
+  return top && (top->type == DIV || top->type == FIGURE_GROUP) &&
+         (top->flags & BLOCK_FLAG_LINE_BLOCK);
+}
+
 static Block *find_list(Scanner *s) {
   for (int i = s->open_blocks->size - 1; i >= 0; --i) {
     Block *b = *array_get(s->open_blocks, i);
@@ -1708,6 +1718,8 @@ static bool scan_until_unescaped(Scanner *s, TSLexer *lexer, char c) {
 
 static bool parse_indented_content_spacer(Scanner *s, TSLexer *lexer,
                                           bool is_newline) {
+  bool blank_line_taken = s->blank_line_taken;
+  s->blank_line_taken = false;
   if (is_newline) {
     consume_line_end(s, lexer);
     mark_end(s, lexer);
@@ -1719,15 +1731,15 @@ static bool parse_indented_content_spacer(Scanner *s, TSLexer *lexer,
     // run of three denies the next sibling marker its list (PART 9 N1a).
     Block *top = peek_block(s);
     if (top && is_list(top->type)) {
-      bool extra = false;
+      uint32_t run = blank_line_taken ? 2 : 1;
       for (;;) {
         consume_whitespace(s, lexer);
         if (lexer->eof(lexer) || !at_line_end(lexer)) break;
         consume_line_end(s, lexer);
         mark_end(s, lexer);
-        extra = true;
+        ++run;
       }
-      if (extra && !lexer->eof(lexer)) {
+      if (run >= 3 && !lexer->eof(lexer)) {
         for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
           Block *b = *array_get(s->open_blocks, i);
           if (is_list(b->type)) b->flags |= BLOCK_FLAG_LIST_HARD_BOUNDARY;
@@ -3870,7 +3882,7 @@ static bool parse_code_fence(Scanner *s, TSLexer *lexer,
     // Same question `scan_unordered_list_marker_token` asks for `- - A`.
     bool at_marker_content_col =
         s->marker_end_col != 0 && fence_col == s->marker_end_col;
-    if (valid_symbols[CODE_BLOCK_BEGIN] &&
+    if (valid_symbols[CODE_BLOCK_BEGIN] && !line_block_body(s) &&
         (!has_extra_indent(s) || at_marker_content_col ||
          quoted_item_column_reached(s, fence_col)) &&
         try_begin_code_block(s, lexer, width, fence_char, fence_col)) {
@@ -4143,6 +4155,9 @@ static void open_marker_line_quote(Scanner *s, uint32_t marker_start_col) {
 
 static bool parse_block_quote(Scanner *s, TSLexer *lexer,
                               const bool *valid_symbols) {
+  if (line_block_body(s)) {
+    return false;
+  }
   if (!valid_symbols[BLOCK_QUOTE_BEGIN] &&
       !valid_symbols[BLOCK_QUOTE_CONTINUATION] && !valid_symbols[BLOCK_CLOSE] &&
       !valid_symbols[CLOSE_PARAGRAPH]) {
@@ -5069,7 +5084,7 @@ static bool ensure_list_open(Scanner *s, BlockType type, uint8_t indent) {
 
 static bool handle_ordered_list_marker(Scanner *s, TSLexer *lexer,
                                        const bool *valid_symbols,
-                                       TokenType marker) {
+                                       TokenType marker, uint32_t start_col) {
   if (marker != IGNORED && valid_symbols[marker] &&
       line_column(s, lexer) <= MAX_LIST_MARKER_COLUMN) {
     // Mark the token end (after the marker's space) before the content probe,
@@ -5090,7 +5105,14 @@ static bool handle_ordered_list_marker(Scanner *s, TSLexer *lexer,
     if (!marker_line_has_content(s, lexer)) {
       return false;
     }
-    if (!ensure_list_open(s, list_marker_to_block(marker), s->indent + 1)) return false;
+    // A marker where the previous marker on this line ended nests at its own
+    // column (`1. 1. x`), as a bullet does.
+    uint8_t list_indent = s->indent;
+    if (start_col > s->indent && s->marker_end_col != 0 &&
+        start_col == s->marker_end_col && start_col < UINT8_MAX) {
+      list_indent = (uint8_t)start_col;
+    }
+    if (!ensure_list_open(s, list_marker_to_block(marker), list_indent + 1)) return false;
     record_list_marker_margin(s, content_col, false);
     lexer->result_symbol = marker;
     return true;
@@ -5267,12 +5289,6 @@ static bool list_text_line(Scanner *s) {
          (top->flags & BLOCK_FLAG_LIST_TEXT_LINE);
 }
 
-/// A line block's body is lines of inline content: no marker or break opens.
-static bool line_block_body(Scanner *s) {
-  Block *top = peek_block(s);
-  return top && (top->type == DIV || top->type == FIGURE_GROUP) &&
-         (top->flags & BLOCK_FLAG_LINE_BLOCK);
-}
 
 static bool parse_list_marker_or_thematic_break(
     Scanner *s, TSLexer *lexer, const bool *valid_symbols, char marker,
@@ -6469,6 +6485,28 @@ static bool parse_colon(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     if (ok && bare && (s->state & STATE_FENCE_ABSORBS)) {
       ok = false;
     }
+    // A marker-line opener whose next line folds in lazily, below the item's
+    // content column, opens nothing (corpus 364, 482, 161).
+    Block *opener_item = find_list(s);
+    if (ok && marker_line_nested && opener_item &&
+        opener_item->type != LIST_DEFINITION && opener_item->content_col != 0 &&
+        valid_symbols[NOT_A_CONTAINER_OPENER]) {
+      scan_to_line_end(s, lexer);
+      if (!lexer->eof(lexer)) {
+        consume_line_end(s, lexer);
+        uint8_t next_indent = consume_whitespace(s, lexer);
+        bool lazy = !at_line_end(lexer) && !lexer->eof(lexer) &&
+                    next_indent < opener_item->content_col;
+        if (lazy && next_indent + 1 == opener_item->data &&
+            scan_list_marker_token(s, lexer) != IGNORED) {
+          lazy = false;
+        }
+        if (lazy) {
+          lexer->result_symbol = NOT_A_CONTAINER_OPENER;
+          return true;
+        }
+      }
+    }
     if (!ok) {
       // EMIT rather than refuse. Refusing leaves the lexer past the colons -
       // `mark_end` above already committed the token to them - and the `{`
@@ -6552,7 +6590,7 @@ static bool parse_heading(Scanner *s, TSLexer *lexer,
   Block *top = peek_block(s);
 
   // Avoids consuming `#` inside code/verbatim contexts.
-  if ((top && top->type == CODE_BLOCK)) {
+  if ((top && top->type == CODE_BLOCK) || line_block_body(s)) {
     return false;
   }
 
@@ -7177,6 +7215,9 @@ static void capture_remaining_cell(Scanner *s, TSLexer *lexer, Block *row,
 
 static bool parse_table_begin(Scanner *s, TSLexer *lexer,
                               const bool *valid_symbols) {
+  if (line_block_body(s)) {
+    return false;
+  }
   if (lexer->lookahead != '|') {
     return false;
   }
@@ -7255,8 +7296,10 @@ static bool emit_plus_line(Scanner *s, TSLexer *lexer,
   Block *list = find_list(s);
   uint8_t next_indent = consume_whitespace(s, lexer);
   Block *note = peek_block(s);
+  // A `+` attaches only a flush-left block (corpus 384, 435).
   bool empty = lexer->eof(lexer) || (!list && at_line_end(lexer)) ||
-               (!list && note && note->type == FOOTNOTE && next_indent > 0);
+               (next_indent > 0 && !at_line_end(lexer) &&
+                (list || (note && note->type == FOOTNOTE)));
   if (!empty && list && !at_line_end(lexer)) {
     bool ending_newline = false;
     scan_block_quote_markers(s, lexer, &ending_newline);
@@ -8230,7 +8273,15 @@ static bool scan_continuation_marker_at_paragraph_end(Scanner *s,
   // The same column question the marker itself asks. If the two disagree, this
   // probe ends a paragraph the marker then refuses to open, and the `+` becomes
   // a block of its own where the language keeps it as lazy text.
-  if (!continuation_marker_column(s, line_column(s, lexer))) {
+  uint32_t column = line_column(s, lexer);
+  if (!continuation_marker_column(s, column)) {
+    return false;
+  }
+  // At the content column of the item holding the paragraph, a `+` is lazy
+  // text of that paragraph (corpus 88, 246).
+  Block *item = peek_block(s);
+  if (column != 0 && item && is_list(item->type) &&
+      item->content_col == column) {
     return false;
   }
   advance(s, lexer);
@@ -8879,6 +8930,11 @@ static bool close_paragraph(Scanner *s, TSLexer *lexer) {
     return true;
   }
 
+  // A line block's paragraph runs to a blank line or a colon fence.
+  if (line_block_body(s) && lexer->lookahead != ':') {
+    return false;
+  }
+
   // Between an item's marker and content columns no block opens: the line
   // folds into the item's paragraph (corpus 143, 145). A comment or a
   // definition still ends it.
@@ -9143,6 +9199,9 @@ static bool parse_newline(Scanner *s, TSLexer *lexer,
   if (valid_symbols[EOF_OR_NEWLINE]) {
     s->state &= ~STATE_FENCE_ABSORBS;
     s->state &= ~STATE_SINGLE_LINE_CAPTION;
+    if (newline_column == 0 && top && is_list(top->type)) {
+      s->blank_line_taken = true;
+    }
     clear_literal_brackets(s);
     lexer->result_symbol = EOF_OR_NEWLINE;
     return true;
@@ -13323,6 +13382,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
         b->flags &= (uint8_t)~BLOCK_FLAG_LIST_TEXT_LINE;
       }
     }
+    if (!at_line_end(lexer)) s->blank_line_taken = false;
   }
   if (at_line_start && pending_list && pending_top &&
       pending_top->type != COMMENT_FENCE && pending_top->type != CODE_BLOCK &&
@@ -13995,11 +14055,14 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   // closing of lists (both may try to parse the same characters).
   bool from_word = deferred_word && s->advances == deferred_at;
   uint32_t word_at = s->advances;
+  // Only a marker after another marker on this line needs its column.
+  uint32_t ordered_col =
+      !list_text_line(s) && s->marker_end_col != 0 ? line_column(s, lexer) : 0;
   TokenType ordered_list_marker =
       list_text_line(s) ? IGNORED : scan_ordered_list_marker_token(s, lexer);
   if (ordered_list_marker != IGNORED &&
       handle_ordered_list_marker(s, lexer, valid_symbols,
-                                 ordered_list_marker)) {
+                                 ordered_list_marker, ordered_col)) {
     return true;
   }
   // THE READER'S SECOND CHANCE FOR A WORD. At a line start the reader stands
@@ -14170,6 +14233,7 @@ static void init_scalars(Scanner *s) {
   s->state = 0;
   s->after_literal_star = false;
   s->after_separator_row = false;
+  s->blank_line_taken = false;
   s->missing_closers = 0;
   s->caption_gap = 0;
   s->line_blank = false;
@@ -14341,7 +14405,8 @@ unsigned tree_sitter_carve_external_scanner_serialize(void *payload,
   // Bits 9..10 of the tail carry the caption gap; missing closers use 0..8.
   uint16_t tail = s->missing_closers | (uint16_t)((s->caption_gap & 3) << 9) |
                   (s->after_literal_star ? 1 << 14 : 0) |
-                  (s->after_separator_row ? 1 << 15 : 0);
+                  (s->after_separator_row ? 1 << 15 : 0) |
+                  (s->blank_line_taken ? 1 << 11 : 0);
   buffer[size++] = (char)tail;
   buffer[size++] = (char)(tail >> 8);
   return size;
@@ -14358,6 +14423,7 @@ void tree_sitter_carve_external_scanner_deserialize(void *payload, char *buffer,
     uint16_t tail = (uint8_t)buffer[length - 2] | (uint16_t)(uint8_t)buffer[length - 1] << 8;
     s->after_literal_star = (tail & (1 << 14)) != 0;
     s->after_separator_row = (tail & (1 << 15)) != 0;
+    s->blank_line_taken = (tail & (1 << 11)) != 0;
     uint8_t notes = (uint8_t)buffer[length - 3];
     length -= 3;
     s->mid_line = (notes & 1) != 0;

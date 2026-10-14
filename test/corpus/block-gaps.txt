@@ -1,0 +1,203 @@
+================================================================================
+Two ordered markers on one line nest
+================================================================================
+1. 1. x
+   2. y
+2. z
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_decimal_period)
+      (list_item_content
+        (list
+          (list_item
+            (list_marker_decimal_period)
+            (list_item_content
+              (paragraph)))
+          (list_item
+            (list_marker_decimal_period)
+            (list_item_content
+              (paragraph))))))
+    (list_item
+      (list_marker_decimal_period)
+      (list_item_content
+        (paragraph)))))
+
+================================================================================
+Two alphabetic markers on one line nest
+================================================================================
+a) a) x
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_lower_alpha_paren)
+      (list_item_content
+        (list
+          (list_item
+            (list_marker_lower_alpha_paren)
+            (list_item_content
+              (paragraph))))))))
+
+================================================================================
+Two blank lines after a closed fence keep the list together
+================================================================================
+- a
+  ```
+  x
+  ```
+
+
+- b
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph)
+        (code_block
+          (code_block_marker_begin)
+          (code)
+          (code_block_marker_end))))
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph)))))
+
+================================================================================
+Three blank lines after a closed fence start a new list
+================================================================================
+- a
+  ```
+  x
+  ```
+
+
+
+- b
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph)
+        (code_block
+          (code_block_marker_begin)
+          (code)
+          (code_block_marker_end)))))
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph)))))
+
+================================================================================
+Block openers inside a line block are text
+================================================================================
+::: |
+# h
+- x
+> q
+| a |
+:::
+after
+
+--------------------------------------------------------------------------------
+
+(document
+  (div
+    (div_marker_begin)
+    (line_block_marker)
+    (content
+      (paragraph))
+    (div_marker_end))
+  (paragraph))
+
+================================================================================
+A marker-line colon opener whose body folds in opens nothing
+================================================================================
+- ::: d
+tail
+
+after
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph))))
+  (paragraph))
+
+================================================================================
+A marker-line colon opener with a lazy body leaves a later closer to open a div
+================================================================================
+- :::
+ y
+  :::
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph)
+        (div
+          (div_marker_begin))))))
+
+================================================================================
+A continuation marker at the item's content column is paragraph text
+================================================================================
+- a
+  - b
+    +
+    c
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph)
+        (list
+          (list_item
+            (list_marker_dash)
+            (list_item_content
+              (paragraph))))))))
+
+================================================================================
+A continuation marker before an indented line attaches nothing to a list item
+================================================================================
+* * +
+ x
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_star)
+      (list_item_content
+        (list
+          (list_item
+            (list_marker_star)
+            (list_item_content
+              (list_continuation_marker)))))))
+  (paragraph))
