@@ -168,3 +168,25 @@ A tab-padded or malformed cell attribute is cell content
 -------------------------------------------------------------------------------
 
 (document (table (table_row (table_cell) (table_cell))) (table (table_row (table_cell) (table_cell))))
+
+===============================================================================
+Markup in the text does not make a citation label
+===============================================================================
+
+[*b*][@a]
+
+![`c`][@a]
+
+-------------------------------------------------------------------------------
+
+(document (paragraph) (paragraph))
+
+===============================================================================
+A braced comment after an inline attribute block
+===============================================================================
+
+[x]{.a}{% c %} y
+
+-------------------------------------------------------------------------------
+
+(document (paragraph (span content: (content) attribute: (inline_attribute (args (class)))) (braced_comment content: (content))))
