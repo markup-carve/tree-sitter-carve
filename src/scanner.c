@@ -325,8 +325,8 @@ typedef struct {
   BlockType type;
   // Data depends on the block type.
   // Can be indentation, number of opening/ending symbols, or number of cells in
-  // a table row.
-  uint8_t data;
+  // a table row. Wide enough for a colon fence of more than 255 colons.
+  uint16_t data;
   // The column where this container's CONTENT starts, or 0 when unknown.
   //
   // `data` is the marker's own indent plus one, which is a minimum indent and
@@ -1012,6 +1012,17 @@ static uint8_t consume_chars(Scanner *s, TSLexer *lexer, char c) {
   return count;
 }
 
+// A colon fence's width, which can pass 255; `consume_chars` would wrap it.
+// Widths past 65535 all read as 65535.
+static uint16_t consume_colons(Scanner *s, TSLexer *lexer) {
+  uint16_t count = 0;
+  while (lexer->lookahead == ':') {
+    advance(s, lexer);
+    if (count < UINT16_MAX) ++count;
+  }
+  return count;
+}
+
 static uint8_t consume_whitespace(Scanner *s, TSLexer *lexer) {
   uint8_t indent = 0;
   for (;;) {
@@ -1070,7 +1081,7 @@ static uint8_t consume_whitespace(Scanner *s, TSLexer *lexer) {
     (stack)->contents[(stack)->size++] = (element);                            \
   } while (0)
 
-static Block *create_block(BlockType type, uint8_t data) {
+static Block *create_block(BlockType type, uint16_t data) {
   Block *b = ts_malloc(sizeof(Block));
   b->type = type;
   b->data = data;
@@ -1098,7 +1109,7 @@ static void clear_opaque_quote_tail(Scanner *s) {
   }
 }
 
-static void push_block(Scanner *s, BlockType type, uint8_t data) {
+static void push_block(Scanner *s, BlockType type, uint16_t data) {
   s->missing_closers = 0;
   if (type != CODE_BLOCK) clear_opaque_quote_tail(s);
   stack_push(s->open_blocks, create_block(type, data));
@@ -1198,7 +1209,7 @@ static bool disallow_newline(Block *top) {
 // If it's directly on the top, returns 1.
 // If it cannot be found, returns 0.
 static size_t number_of_blocks_from_top(Scanner *s, BlockType type,
-                                        uint8_t level) {
+                                        uint16_t level) {
   for (int i = s->open_blocks->size - 1; i >= 0; --i) {
     Block *b = *array_get(s->open_blocks, i);
     if (b->type == type && b->data == level) {
@@ -1215,7 +1226,7 @@ static size_t number_of_blocks_from_top(Scanner *s, BlockType type,
 /// own fence. `number_of_blocks_from_top` takes ONE type, which is why this
 /// exists rather than a second call beside each site.
 static size_t number_of_colon_fence_blocks_from_top(Scanner *s,
-                                                    uint8_t colons) {
+                                                    uint16_t colons) {
   for (int i = s->open_blocks->size - 1; i >= 0; --i) {
     Block *b = *array_get(s->open_blocks, i);
     if ((b->type == DIV || b->type == FIGURE_GROUP) && b->data == colons) {
@@ -1776,7 +1787,7 @@ static int description_fence_keeps_line(Scanner *s, TSLexer *lexer) {
   // A new entry ends the body. A colon fence does not: the reference keeps
   // `::: x` in the code, since that body may hold a paragraph.
   if (lexer->lookahead == ':') {
-    uint8_t colons = consume_chars(s, lexer, ':');
+    uint16_t colons = consume_colons(s, lexer);
     return colons <= 2 && lexer->lookahead == ' ' ? 0 : 1;
   }
   // A comment line (`%%`, or a `%%%` fence) ends the body too.
@@ -4803,7 +4814,7 @@ static bool scan_paragraph_closing_marker(Scanner *s, TSLexer *lexer) {
     // Read before the colons are consumed: the margin test below needs where
     // the LINE starts, not where the fence's tail ended up.
     uint32_t marker_column = line_column(s, lexer);
-    uint8_t colons = consume_chars(s, lexer, ':');
+    uint16_t colons = consume_colons(s, lexer);
     // An indented fence opens nothing and closes nothing open, so it is
     // paragraph text (corpus 160).
     if (colons >= 3 && !at_block_opener_margin(s, marker_column) &&
@@ -6175,7 +6186,7 @@ static bool parse_colon(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
           !valid_symbols[BLOCK_CLOSE]) {
         return false;
       }
-      uint8_t colons = consume_chars(s, lexer, ':');
+      uint16_t colons = consume_colons(s, lexer);
       while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
         advance(s, lexer);
       }
@@ -6300,7 +6311,8 @@ static bool parse_colon(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   }
 
   // We consumed one or two colons in the start of the function.
-  uint8_t colons = consume_chars(s, lexer, ':') + colons_consumed;
+  uint32_t run = (uint32_t)consume_colons(s, lexer) + colons_consumed;
+  uint16_t colons = run > UINT16_MAX ? UINT16_MAX : (uint16_t)run;
   if (colons < 3) {
     return false;
   }
@@ -12209,7 +12221,17 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
   s->host_crossed_line = false;
   s->host_crossed_line_at_mark = false;
   if (at_line_end(lexer) || lexer->eof(lexer)) s->missing_closers = 0;
+  bool line_end = at_line_end(lexer);
+  uint8_t closer_char = s->after_closer_char;
+  uint32_t closer_col = s->after_closer_col;
   bool found = scan(s, lexer, valid_symbols);
+  // A closer note is a column on its own line. A token read from a line end
+  // carries it to the next line, where the same column is another character.
+  if (found && line_end && closer_char && !HAS_NO_COMBINED_CLOSER(s) &&
+      s->after_closer_char == closer_char && s->after_closer_col == closer_col) {
+    s->after_closer_char = 0;
+    s->after_closer_col = 0;
+  }
   if (found && peek_block(s) && peek_block(s)->type == BLOCK_QUOTE &&
       (lexer->result_symbol == LITERAL_RUN ||
        lexer->result_symbol == THEMATIC_BREAK_DASH ||
@@ -12512,8 +12534,12 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       combined_fallback->type == EMPHASIS &&
       (combined_fallback->flags & INLINE_COMBINED_FALLBACK) &&
       lexer->lookahead == '/') {
+    uint32_t before = s->advances;
     if (parse_span_end(s, lexer, EMPHASIS, EMPHASIS_END)) return true;
     // A rejected slash close is literal within this fallback, not a new opener.
+    // A zero-width run would repeat forever, so a close that read nothing
+    // leaves the slash to the other readings.
+    if (s->advances == before) return false;
     mark_end(s, lexer);
     lexer->result_symbol = LITERAL_RUN;
     return true;
@@ -12611,7 +12637,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
         consume_whitespace(s, lexer);
         if (at_line_end(lexer) || lexer->eof(lexer)) break;
         if (lexer->lookahead == ':' && (find_block(s, DIV) || find_block(s, FIGURE_GROUP))) {
-          uint8_t colons = consume_chars(s, lexer, ':');
+          uint16_t colons = consume_colons(s, lexer);
           uint8_t spaces = consume_whitespace(s, lexer);
           if (colons >= 3 && number_of_colon_fence_blocks_from_top(s, colons) &&
               (at_line_end(lexer) || lexer->eof(lexer))) break;
@@ -14010,9 +14036,13 @@ unsigned tree_sitter_carve_external_scanner_serialize(void *payload,
   const size_t block_count_bytes = 1;
   const size_t block_bytes = 4;
   const size_t inline_bytes = 3;
-  size_t row_bytes = 0;
-  for (size_t i = 0; i < s->open_blocks->size; ++i)
-    if ((*array_get(s->open_blocks, i))->type == TABLE_ROW) row_bytes += 12;
+  size_t block_extra_bytes = 0;
+  for (size_t i = 0; i < s->open_blocks->size; ++i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (b->type == TABLE_ROW) block_extra_bytes += 12;
+    // A data value of 255 or more is the escape byte plus two.
+    if (b->data >= UINT8_MAX) block_extra_bytes += 2;
+  }
   size_t label_bytes = 0;
   for (size_t i = 0; i < s->open_inline->size; ++i) {
     Inline *e = *array_get(s->open_inline, i);
@@ -14028,7 +14058,7 @@ unsigned tree_sitter_carve_external_scanner_serialize(void *payload,
               inline_bytes ||
       scalar_bytes + block_count_bytes +
               s->open_blocks->size * block_bytes +
-              s->open_inline->size * inline_bytes + label_bytes + row_bytes >
+              s->open_inline->size * inline_bytes + label_bytes + block_extra_bytes >
           TREE_SITTER_SERIALIZATION_BUFFER_SIZE) {
     return 0;
   }
@@ -14053,9 +14083,13 @@ unsigned tree_sitter_carve_external_scanner_serialize(void *payload,
   for (size_t i = 0; i < s->open_blocks->size; ++i) {
     Block *b = *array_get(s->open_blocks, i);
     buffer[size++] = (char)b->type;
-    buffer[size++] = (char)b->data;
+    buffer[size++] = (char)(b->data >= UINT8_MAX ? UINT8_MAX : b->data);
     buffer[size++] = (char)b->content_col;
     buffer[size++] = (char)b->flags;
+    if (b->data >= UINT8_MAX) {
+      buffer[size++] = (char)(b->data & 0xff);
+      buffer[size++] = (char)(b->data >> 8);
+    }
     if (b->type == TABLE_ROW) {
       for (unsigned shift = 0; shift < 32; shift += 8)
         buffer[size++] = (char)(b->cell_boundary_col >> shift);
@@ -14142,9 +14176,14 @@ void tree_sitter_carve_external_scanner_deserialize(void *payload, char *buffer,
     uint8_t open_blocks = (uint8_t)buffer[size++];
     while (open_blocks-- > 0) {
       BlockType type = (BlockType)buffer[size++];
-      uint8_t level = (uint8_t)buffer[size++];
+      uint16_t level = (uint8_t)buffer[size++];
       uint8_t content_col = (uint8_t)buffer[size++];
       uint8_t flags = (uint8_t)buffer[size++];
+      if (level == UINT8_MAX) {
+        if (size + 2 > length) return;
+        level = (uint16_t)((uint8_t)buffer[size] | (uint8_t)buffer[size + 1] << 8);
+        size += 2;
+      }
       Block *b = create_block(type, level);
       b->content_col = content_col;
       b->flags = flags;
