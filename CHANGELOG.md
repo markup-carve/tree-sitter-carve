@@ -14,7 +14,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Read inline extensions whose name starts with an underscore, such as `:_[x]`.
 - Refuse tab padding inside inline and list-marker attribute blocks; a block attribute line keeps it. `{}` and `{ }` alone on a line are text. A table cell whose leading attribute block is malformed or tab-padded keeps the block as cell content.
 - Let an abbreviation definition interrupt a paragraph. Keep an indented colon fence and a reference definition without a destination as paragraph text.
-- Read colon-fence openers past the nesting cap of 200 as paragraph text.
+- Apply the nesting cap of 200 to block quotes, lists, colon fences and footnotes together; an opener past it is paragraph text.
+- Keep an inline attribute block on its line, and drop the Djot `%comment%` attribute item, which Carve does not have. The `comment` node type is gone.
+- Keep `[t][@a]` as text: a citation key cannot label a reference link.
 
 ### Changed
 

@@ -267,6 +267,17 @@ function symbolFallback($, options) {
     seq("![", choice($._square_bracket_span_mark_begin, $._in_fallback)),
     seq("[", choice($._square_bracket_span_mark_begin, $._in_fallback)),
     seq("(", choice($._parens_span_mark_begin, $._in_fallback)),
+    // `[t][@a]` is a reference-link shape whose label may not start with `@`,
+    // so the whole run is text even with citations enabled (corpus 334).
+    token(
+      prec(
+        2,
+        seq(
+          optional("!"),
+          /\[[^\[\]\r\n*\/_~=^`{}<>$\\:@#!%|"']*\]\[@[^\[\]\r\n]*\]/,
+        ),
+      ),
+    ),
 
     // Autolink
     "<",
@@ -1772,7 +1783,6 @@ module.exports = grammar({
                 // grammar's resolution order so `flag=value` still picks
                 // key_value (the parser looks ahead for `=`).
                 $.boolean_attribute,
-                alias($._comment, $.comment),
                 $._whitespace1,
                 // A wrapped attribute repeats an enclosing quote's markers
                 // before its next attribute item. The markers are structure,
@@ -2572,7 +2582,6 @@ module.exports = grammar({
         $.key_value,
         $.language_attribute,
         $.boolean_attribute,
-        alias($._comment, $.comment),
       ),
     _attribute_separator: ($) => choice($._whitespace1, $._newline_inline),
 
@@ -2672,16 +2681,6 @@ module.exports = grammar({
         ),
       ),
     _parens_span_begin: (_) => "(",
-
-    _comment: ($) =>
-      seq(
-        "%",
-        field(
-          "content",
-          alias(repeat(choice($.backslash_escape, /[^%}]/)), $.content),
-        ),
-        choice(alias($._comment_end_marker, "%"), $._comment_close),
-      ),
 
     // The DELIMITED inline comment, grammar.ebnf
     // `braced_comment = "{%", {character - "%}"}, "%}"`. It was named

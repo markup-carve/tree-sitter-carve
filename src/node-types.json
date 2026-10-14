@@ -51,10 +51,6 @@
           "named": true
         },
         {
-          "type": "comment",
-          "named": true
-        },
-        {
           "type": "identifier",
           "named": true
         },
@@ -781,22 +777,6 @@
         "types": [
           {
             "type": "link_text",
-            "named": true
-          }
-        ]
-      }
-    }
-  },
-  {
-    "type": "comment",
-    "named": true,
-    "fields": {
-      "content": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "content",
             "named": true
           }
         ]
