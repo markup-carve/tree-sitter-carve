@@ -1,0 +1,35 @@
+===============================================================================
+A braced closer inside a closed bracket is bracket content
+===============================================================================
+
+{*a [x *}] b*}
+
+{/a [x /}] b/}
+
+{+a [x +}] b+}
+
+-------------------------------------------------------------------------------
+
+(document (paragraph (strong begin_marker: (strong_begin) content: (content) end_marker: (strong_end))) (paragraph (emphasis begin_marker: (emphasis_begin) content: (content) end_marker: (emphasis_end))) (paragraph (insert begin_marker: (insert_begin) content: (content) end_marker: (insert_end))))
+
+===============================================================================
+A braced closer inside a link or span text stays in it
+===============================================================================
+
+{*a [x *}](u) b*}
+
+{*a [x *}]{.c} b*}
+
+-------------------------------------------------------------------------------
+
+(document (paragraph (strong begin_marker: (strong_begin) content: (content (inline_link text: (link_text) destination: (inline_link_destination))) end_marker: (strong_end))) (paragraph (strong begin_marker: (strong_begin) content: (content (span content: (content) attribute: (inline_attribute (args (class))))) end_marker: (strong_end))))
+
+===============================================================================
+A braced closer inside an unclosed bracket still closes
+===============================================================================
+
+{*a [x *} b
+
+-------------------------------------------------------------------------------
+
+(document (paragraph (strong begin_marker: (strong_begin) content: (content) end_marker: (strong_end))))

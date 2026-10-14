@@ -8,6 +8,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Keep a braced span open across a bracket that holds its closer, as in `{*a [x *}] b*}`; the closer is bracket content when the bracket closes.
 - Read an explicitly delimited row of blank cells, `||` and `| |` included, as a table row (#551).
 - Read `---` directly over `---` as empty frontmatter (#551).
 - Keep a comment at a list item's content column from retaining the line below it, and let a description body keep a below-column comment as a list item does (#551).

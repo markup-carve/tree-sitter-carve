@@ -11021,7 +11021,12 @@ static bool probe_square_bracket_lookahead_states(Scanner *s, BracketProbe *prob
   // An enclosing bracket's `]` is also this one's, and the depth count below
   // already pairs brackets; asking for the enclosing span's end would stop at
   // this bracket's own `]` (`[t[z]](/u)`, #422).
-  if (top && top->type != SQUARE_BRACKET_SPAN && top->type != LITERAL_BRACKET) {
+  // A braced span's closer inside the bracket is bracket content (E2b), so
+  // it does not end the run: `{*a [x *}] b*}` keeps one strong.
+  bool braced_span = top && (top->flags & INLINE_BRACED) &&
+                         top->type >= EMPHASIS && top->type <= DELETE;
+  if (top && top->type != SQUARE_BRACKET_SPAN && top->type != LITERAL_BRACKET &&
+      !braced_span) {
     top_type = &top->type;
   }
 
