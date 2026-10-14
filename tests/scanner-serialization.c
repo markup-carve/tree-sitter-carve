@@ -223,6 +223,29 @@ int main(void) {
   tree_sitter_carve_external_scanner_destroy(notes_back);
   tree_sitter_carve_external_scanner_destroy(notes);
 
+  // A colon fence of 255 or more colons stores its width behind an escape byte,
+  // so 256 does not read back as 0 and 255 is not mistaken for the escape.
+  Scanner *wide = tree_sitter_carve_external_scanner_create();
+  const uint16_t widths[] = {3, 254, 255, 256, 300, 1000};
+  for (unsigned i = 0; i < 6; ++i) push_block(wide, DIV, widths[i]);
+  unsigned wide_length = tree_sitter_carve_external_scanner_serialize(wide, buffer);
+  Scanner *wide_back = tree_sitter_carve_external_scanner_create();
+  tree_sitter_carve_external_scanner_deserialize(wide_back, buffer, wide_length);
+  if (wide_back->open_blocks->size != 6 || wide_length != 15 + 1 + 6 * 4 + 4 * 2 + 3) {
+    fprintf(stderr, "wide fences encoded as %u bytes, restored %u blocks\n", wide_length,
+            wide_back->open_blocks->size);
+    return 1;
+  }
+  for (unsigned i = 0; i < 6; ++i) {
+    if ((*array_get(wide_back->open_blocks, i))->data != widths[i]) {
+      fprintf(stderr, "fence width %u restored as %u\n", widths[i],
+              (*array_get(wide_back->open_blocks, i))->data);
+      return 1;
+    }
+  }
+  tree_sitter_carve_external_scanner_destroy(wide_back);
+  tree_sitter_carve_external_scanner_destroy(wide);
+
   Scanner *term = tree_sitter_carve_external_scanner_create();
   Block *definition = create_block(LIST_DEFINITION, 3);
   definition->flags = BLOCK_FLAG_DEFINITION_TERM;
