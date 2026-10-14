@@ -1027,6 +1027,13 @@ static uint16_t consume_colons(Scanner *s, TSLexer *lexer) {
   return consume_wide_run(s, lexer, ':', UINT16_MAX);
 }
 
+// A comment fence closes on a run of exactly its width, so a run that reached
+// the cap could not be told from a longer one: such a run opens no fence.
+static const uint16_t COMMENT_FENCE_CAP = UINT16_MAX;
+static uint16_t consume_percents(Scanner *s, TSLexer *lexer) {
+  return consume_wide_run(s, lexer, '%', COMMENT_FENCE_CAP);
+}
+
 // A code fence run, at most `CODE_FENCE_WIDTH` so it packs beside the tilde
 // bit in `Block.data`.
 static const uint16_t CODE_FENCE_WIDTH = 0x7fff;
@@ -1803,7 +1810,7 @@ static int description_fence_keeps_line(Scanner *s, TSLexer *lexer) {
   }
   // A comment line (`%%`, or a `%%%` fence) ends the body too.
   if (lexer->lookahead == '%') {
-    return consume_chars(s, lexer, '%') >= 2 ? 0 : 1;
+    return consume_percents(s, lexer) >= 2 ? 0 : 1;
   }
   uint8_t indent = s->indent;
   uint16_t state = s->state;
@@ -3069,7 +3076,7 @@ static bool try_begin_code_block(Scanner *s, TSLexer *lexer, uint16_t width,
 /// width. Used to ask, of the line the lexer is sitting on, "is this the
 /// closer?" - the answer is an EXACT width match, the rule the carve engines
 /// follow: a `%%%%` line does not close a `%%%` fence.
-static uint8_t scan_comment_fence_line_width(Scanner *s, TSLexer *lexer) {
+static uint16_t scan_comment_fence_line_width(Scanner *s, TSLexer *lexer) {
   consume_whitespace(s, lexer);
   bool ending_newline = false;
   uint8_t markers = scan_block_quote_markers(s, lexer, &ending_newline);
@@ -3087,7 +3094,7 @@ static uint8_t scan_comment_fence_line_width(Scanner *s, TSLexer *lexer) {
   while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
     advance(s, lexer);
   }
-  return consume_chars(s, lexer, '%');
+  return consume_percents(s, lexer);
 }
 
 /// Consume the rest of the line, leaving the lexer ON its newline.
@@ -3111,12 +3118,12 @@ static bool parse_comment_fence(Scanner *s, TSLexer *lexer,
   if (!top || top->type != COMMENT_FENCE) {
     return false;
   }
-  uint8_t width = top->data;
+  uint16_t width = top->data;
 
   // Is the line the lexer sits on this fence's closer? Asked once, because
   // asking twice would leave the second question looking at the middle of the
   // first answer.
-  uint8_t percents = scan_comment_fence_line_width(s, lexer);
+  uint16_t percents = scan_comment_fence_line_width(s, lexer);
   bool closes = percents == width;
 
   if (closes) {
@@ -3183,8 +3190,8 @@ static bool parse_comment_fence_begin(Scanner *s, TSLexer *lexer,
   bool below_content = host_list && host_list->type != LIST_DEFINITION &&
       s->indent >= host_list->data &&
       s->indent < list_item_margin(s, host_list);
-  uint8_t percents = consume_chars(s, lexer, '%');
-  if (percents < 3) {
+  uint16_t percents = consume_percents(s, lexer);
+  if (percents < 3 || percents == COMMENT_FENCE_CAP) {
     return false;
   }
   mark_end(s, lexer);
@@ -3222,8 +3229,8 @@ static bool parse_term_comment(Scanner *s, TSLexer *lexer) {
   }
   consume_whitespace(s, lexer);
   if (lexer->lookahead != '%') return false;
-  uint8_t width = consume_chars(s, lexer, '%');
-  if (width < 3) return false;
+  uint16_t width = consume_percents(s, lexer);
+  if (width < 3 || width == COMMENT_FENCE_CAP) return false;
   uint32_t margin = 0;
   bool below_term = false;
   for (int i = s->open_blocks->size - 1; i >= 0; --i) {
@@ -3260,7 +3267,7 @@ static bool parse_term_comment(Scanner *s, TSLexer *lexer) {
     consume_whitespace(s, lexer);
     if (!at_line_end(lexer) && !lexer->eof(lexer) &&
         line_column(s, lexer) < margin) return false;
-    uint8_t run = consume_chars(s, lexer, '%');
+    uint16_t run = consume_percents(s, lexer);
     if (markers == quote_depth && run == width) {
       scan_to_line_end(s, lexer);
       mark_end(s, lexer);
@@ -13442,9 +13449,9 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     uint8_t level = s->block_quote_level;
     uint16_t state = s->state;
     uint32_t col_base = s->col_base;
-    uint8_t width = consume_chars(s, lexer, '%');
+    uint16_t width = consume_percents(s, lexer);
     bool closed = false;
-    if (width >= 3) {
+    if (width >= 3 && width < COMMENT_FENCE_CAP) {
       scan_to_line_end(s, lexer);
       while (!lexer->eof(lexer)) {
         consume_line_end(s, lexer);
