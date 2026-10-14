@@ -1012,15 +1012,26 @@ static uint8_t consume_chars(Scanner *s, TSLexer *lexer, char c) {
   return count;
 }
 
-// A colon fence's width, which can pass 255; `consume_chars` would wrap it.
-// Widths past 65535 all read as 65535.
-static uint16_t consume_colons(Scanner *s, TSLexer *lexer) {
+// A fence's width, which can pass 255; `consume_chars` would wrap it.
+// Widths past `max` all read as `max`.
+static uint16_t consume_wide_run(Scanner *s, TSLexer *lexer, char c, uint16_t max) {
   uint16_t count = 0;
-  while (lexer->lookahead == ':') {
+  while (lexer->lookahead == c) {
     advance(s, lexer);
-    if (count < UINT16_MAX) ++count;
+    if (count < max) ++count;
   }
   return count;
+}
+
+static uint16_t consume_colons(Scanner *s, TSLexer *lexer) {
+  return consume_wide_run(s, lexer, ':', UINT16_MAX);
+}
+
+// A code fence run, at most `CODE_FENCE_WIDTH` so it packs beside the tilde
+// bit in `Block.data`.
+static const uint16_t CODE_FENCE_WIDTH = 0x7fff;
+static uint16_t consume_fence_run(Scanner *s, TSLexer *lexer, char c) {
+  return consume_wide_run(s, lexer, c, CODE_FENCE_WIDTH);
 }
 
 static uint8_t consume_whitespace(Scanner *s, TSLexer *lexer) {
@@ -2335,7 +2346,7 @@ static char open_verbatim_stop_marker(Scanner *s) {
 // Try to close an open verbatim implicitly
 // (should happen on a newline).
 static bool code_fence_has_closer_ahead(Scanner *s, TSLexer *lexer, int32_t c,
-                                        uint8_t width, uint32_t column,
+                                        uint16_t width, uint32_t column,
                                         bool ignore_host_list);
 static bool code_fence_info_is_modeled(Scanner *s, TSLexer *lexer);
 
@@ -2355,7 +2366,7 @@ static bool verbatim_line_continues(Scanner *s, TSLexer *lexer) {
     return false;
   }
   if (lexer->lookahead == '`' && top != NULL) {
-    uint8_t run = consume_chars(s, lexer, '`');
+    uint16_t run = consume_fence_run(s, lexer, '`');
     // Under three backticks cannot open a fence, so it can only be a closer.
     if (run < 3) {
       return true;
@@ -2657,10 +2668,9 @@ static bool parse_verbatim_content(Scanner *s, TSLexer *lexer, bool end_valid,
 // The COMMENT fence is deliberately not this rule - `%%%%` does not close
 // `%%%`, which the corpus pins in both directions - so this stays scoped to
 // CODE_BLOCK.
-static const uint8_t CODE_FENCE_TILDE = 0x80;
-static const uint8_t CODE_FENCE_WIDTH = 0x7f;
+static const uint16_t CODE_FENCE_TILDE = 0x8000;
 
-static bool code_fence_run_matches_open_block(Scanner *s, uint8_t width,
+static bool code_fence_run_matches_open_block(Scanner *s, uint16_t width,
                                                char fence_char,
                                                uint32_t column) {
   Block *top = peek_block(s);
@@ -2904,7 +2914,7 @@ static bool at_description_entry(Scanner *s, TSLexer *lexer) {
 /// description body owns its body"). A top-level item's fence does not. Read
 /// as a peek past the opener, whose token end is already marked.
 static int fence_owns_description_body(Scanner *s, TSLexer *lexer,
-                                        uint8_t width, char fence_char,
+                                        uint16_t width, char fence_char,
                                         uint32_t column) {
   if (s->marker_end_col == 0 || column != s->marker_end_col) {
     return -1;
@@ -2944,7 +2954,7 @@ static int fence_owns_description_body(Scanner *s, TSLexer *lexer,
       continue;
     }
     if (indent == column && lexer->lookahead == fence_char &&
-        consume_chars(s, lexer, fence_char) >= width) {
+        consume_fence_run(s, lexer, fence_char) >= width) {
       while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
         advance(s, lexer);
       }
@@ -2959,7 +2969,7 @@ static int fence_owns_description_body(Scanner *s, TSLexer *lexer,
   return true;
 }
 
-static bool try_begin_code_block(Scanner *s, TSLexer *lexer, uint8_t width,
+static bool try_begin_code_block(Scanner *s, TSLexer *lexer, uint16_t width,
                                  char fence_char, uint32_t column) {
   Block *top = peek_block(s);
   if (top && top->type == CODE_BLOCK) {
@@ -3705,7 +3715,7 @@ static bool scan_quoted_code_fence_closer(Scanner *s, TSLexer *lexer) {
     return false;
   }
   char fence_char = (top->data & CODE_FENCE_TILDE) ? '~' : '`';
-  uint8_t width = consume_chars(s, lexer, fence_char);
+  uint16_t width = consume_fence_run(s, lexer, fence_char);
   return width >= (top->data & CODE_FENCE_WIDTH) &&
          code_fence_closer_tail_is_blank(s, lexer);
 }
@@ -3773,7 +3783,7 @@ static bool parse_code_fence(Scanner *s, TSLexer *lexer,
   // the lexer sits past the ticks.
   uint32_t fence_col = valid_symbols[CODE_BLOCK_BEGIN] || closer_possible
                            ? line_column(s, lexer) : 0;
-  uint8_t width = consume_chars(s, lexer, fence_char);
+  uint16_t width = consume_fence_run(s, lexer, fence_char);
   if (width == 0) {
     return false;
   }
@@ -5895,7 +5905,7 @@ static bool description_fence_line_is_body_content(Scanner *s,
                                                    TSLexer *lexer) {
   uint32_t column = line_column(s, lexer);
   int32_t fence_char = lexer->lookahead;
-  uint8_t width = consume_chars(s, lexer, (char)fence_char);
+  uint16_t width = consume_fence_run(s, lexer, (char)fence_char);
   if (width < 3) {
     return false;
   }
@@ -8347,7 +8357,7 @@ static bool scan_heading_at_paragraph_end(Scanner *s, TSLexer *lexer) {
 /// ``` ``` ``` at column 0 opened a `code_block` with no end marker where
 /// carve-js builds no block at all.
 static bool code_fence_has_closer_ahead(Scanner *s, TSLexer *lexer, int32_t c,
-                                        uint8_t width, uint32_t column,
+                                        uint16_t width, uint32_t column,
                                         bool ignore_host_list) {
   // An opener outside a preceding quote does not require that quote's
   // markers on its own body and closer lines.
@@ -8405,11 +8415,7 @@ static bool code_fence_has_closer_ahead(Scanner *s, TSLexer *lexer, int32_t c,
       // round to the top, which skips the rest of the line.
       continue;
     }
-    uint8_t run = 0;
-    while (lexer->lookahead == c) {
-      advance(s, lexer);
-      ++run;
-    }
+    uint16_t run = consume_fence_run(s, lexer, (char)c);
     if (run >= width) {
       while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
         advance(s, lexer);
@@ -8446,7 +8452,7 @@ static bool scan_code_fence_at_paragraph_end(Scanner *s, TSLexer *lexer,
   if (!at_block_opener_margin(s, column)) {
     return false;
   }
-  uint8_t width = consume_chars(s, lexer, (char)fence_char);
+  uint16_t width = consume_fence_run(s, lexer, (char)fence_char);
   if (width < 3) {
     return false;
   }
