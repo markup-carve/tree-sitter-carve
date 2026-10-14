@@ -19,6 +19,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Stop the parser hanging when a line starts with a `*` that opens nothing and the next line holds an emphasis at the same column, as in `*a` followed by `/b/`. A delimiter note no longer carries over a line end, and a rejected slash close no longer emits an empty token.
 - Read a colon fence of 256 or more colons at its full width, so `:::...` with 256 colons opens a container instead of a paragraph. A block holding such a width takes two more bytes of scanner state.
 - Read a code fence of 128 or more backticks or tildes at its full width. A backtick run of 128 to 255 read as a tilde fence and never closed, and 256 read as no fence at all.
+- Read a comment fence of 256 or more percent signs at its full width, so it hides its body and closes only on a run of exactly its width.
 
 ## [0.1.9] - 2026-10-14
 

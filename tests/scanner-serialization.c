@@ -269,6 +269,24 @@ int main(void) {
   tree_sitter_carve_external_scanner_destroy(fences_back);
   tree_sitter_carve_external_scanner_destroy(fences);
 
+  // A comment fence closes only on a run of exactly its own width.
+  Scanner *comments = tree_sitter_carve_external_scanner_create();
+  const uint16_t comment_widths[] = {3, 255, 256, 300};
+  for (unsigned i = 0; i < 4; ++i) push_block(comments, COMMENT_FENCE, comment_widths[i]);
+  unsigned comments_length = tree_sitter_carve_external_scanner_serialize(comments, buffer);
+  Scanner *comments_back = tree_sitter_carve_external_scanner_create();
+  tree_sitter_carve_external_scanner_deserialize(comments_back, buffer, comments_length);
+  for (unsigned i = 0; i < 4; ++i) {
+    uint16_t data = comments_back->open_blocks->size == 4
+        ? (*array_get(comments_back->open_blocks, i))->data : 0;
+    if (data != comment_widths[i]) {
+      fprintf(stderr, "comment fence width %u restored as %u\n", comment_widths[i], data);
+      return 1;
+    }
+  }
+  tree_sitter_carve_external_scanner_destroy(comments_back);
+  tree_sitter_carve_external_scanner_destroy(comments);
+
   Scanner *term = tree_sitter_carve_external_scanner_create();
   Block *definition = create_block(LIST_DEFINITION, 3);
   definition->flags = BLOCK_FLAG_DEFINITION_TERM;
