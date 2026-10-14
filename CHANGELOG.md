@@ -57,7 +57,7 @@ This release aligns caption, autolink, attribute, include-option, list, quote, t
 - Let a list item that hosts a div collect a definition written past the div's content column (#551).
 - Keep a closed container on a quoted marker line, and a definition list there, from turning the lines below into errors (#551).
 - Let a braced emphasis span open a child of its own kind, as in `{*a {*b*} c*}` and `*a {*b*} c*`; the empty `{**}` stays text. An enclosing braced closer inside an inline extension's payload is content unless an unterminated code run reaches it (#551).
-- Read the remaining spec 0.1.9 readings as carve-js 0.1.11 does: a description body keeps no line below its column, a fence or heading past a quoted div's column opens in it, `>  - a` opens a list, a tab is part of a cross-reference id, and `|{#x}|` is a table row (#555).
+- Read the remaining spec 0.1.9 readings as carve-js 0.1.11 does: a description body keeps no line below its column, a fence or heading past a quoted div's column opens in it, `>  - a` opens a list, a tab is part of a cross-reference id, and `|{#x}|` is a table row (#555, #556).
 
 ### Changed
 
