@@ -707,7 +707,20 @@
       "reason": "Under TWO quote levels a fence past a quoted div's column, after the item it leaves, reads as paragraph text: the second quote marker's continuation does not hand the line to the div the way one quote level does. One quote level is read correctly (the sibling document of this category)."
     }
   },
-  "oracleGoldenDisagreements": {},
+  "oracleGoldenDisagreements": {
+    "reference-link-8": "Published carve-js 0.1.11 predates bare empty reference definitions (#2878).",
+    "reference-link-9": "Published carve-js 0.1.11 predates bare empty reference definitions (#2878).",
+    "a-reference-definition-cannot-take-its-destination-from-the-next-line-2": "Published carve-js 0.1.11 predates bare empty reference definitions (#2878).",
+    "a-reference-definition-cannot-take-its-destination-from-the-next-line": "Published carve-js 0.1.11 predates bare empty reference definitions (#2878).",
+    "an-empty-link-destination-is-not-a-link-2": "Published carve-js 0.1.11 predates empty inline destinations (#2878).",
+    "an-empty-link-destination-is-not-a-link-3": "Published carve-js 0.1.11 predates empty inline destinations (#2878).",
+    "an-empty-link-destination-is-not-a-link": "Published carve-js 0.1.11 predates empty inline destinations (#2878).",
+    "a-bare-closer-does-not-reach-inside-a-cross-reference-2": "Published carve-js 0.1.11 predates the new cross-reference closer reading (#2878 spec pin).",
+    "a-bare-closer-does-not-reach-inside-a-cross-reference": "Published carve-js 0.1.11 predates the new cross-reference closer reading (#2878 spec pin).",
+    "an-autolink-or-a-cross-reference-is-atomic-to-brackets-and-braces-2": "Published carve-js 0.1.11 predates the new atomic autolink reading (#2878 spec pin).",
+    "an-autolink-or-a-cross-reference-is-atomic-to-brackets-and-braces-3": "Published carve-js 0.1.11 predates the new atomic cross-reference reading (#2878 spec pin).",
+    "an-autolink-or-a-cross-reference-is-atomic-to-brackets-and-braces": "Published carve-js 0.1.11 predates the new atomic autolink reading (#2878 spec pin)."
+  },
   "errorFamilies": {},
   "inlineReadingGaps": {
     "a-shifted-fence-in-a-quoted-container-s-body-stores-no-continuation-claim-2": {
