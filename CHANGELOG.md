@@ -6,21 +6,28 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.1.9] - 2026-10-14
+
+This release aligns caption, autolink, attribute, include-option and nesting readings with carve-js, and simplifies the editor queries.
+
 ### Fixed
 
-- Detach a standalone caption after two blank lines, and build no caption below a colon fence other than a figure group or a fenced quote.
-- Recognize email autolinks such as `<a@b.com>`. An autolink body is now only a URL with a scheme or an email address, so format and control characters and scheme-less bodies stay text.
-- Keep the Djot quote forms `{"`, `"}`, `{'` and `'}` as text with their braces.
-- Read inline extensions whose name starts with an underscore, such as `:_[x]`.
-- Refuse tab padding inside inline and list-marker attribute blocks; a block attribute line keeps it. `{}` and `{ }` alone on a line are text. A table cell whose leading attribute block is malformed or tab-padded keeps the block as cell content.
-- Let an abbreviation definition interrupt a paragraph. Keep an indented colon fence and a reference definition without a destination as paragraph text.
-- Apply the nesting cap of 200 to block quotes, lists, colon fences and footnotes together; an opener past it is paragraph text.
-- Keep an inline attribute block on its line, and drop the Djot `%comment%` attribute item, which Carve does not have. The `comment` node type is gone.
-- Keep `[t][@a]` as text: a citation key cannot label a reference link.
+- Detach a standalone caption after two blank lines, and build no caption below a colon fence other than a figure group or a fenced quote (#540).
+- Recognize email autolinks such as `<a@b.com>`. An autolink body is now only a URL with a scheme or an email address, so format and control characters and scheme-less bodies stay text (#540).
+- Keep the Djot quote forms `{"`, `"}`, `{'` and `'}` as text with their braces (#540).
+- Read inline extensions whose name starts with an underscore, such as `:_[x]` (#540).
+- Refuse tab padding inside inline and list-marker attribute blocks; a block attribute line keeps it. `{}` and `{ }` alone on a line are text. A table cell whose leading attribute block is malformed or tab-padded keeps the block as cell content (#540, #541).
+- Let an abbreviation definition interrupt a paragraph. Keep an indented colon fence and a reference definition without a destination as paragraph text (#540).
+- Apply the nesting cap of 200 to block quotes, lists, colon fences and footnotes together; an opener past it is paragraph text (#540, #541).
+- Keep an inline attribute block on its line, and drop the Djot `%comment%` attribute item, which Carve does not have. The `comment` node type is gone (#541).
+- Keep `[t][@a]` as text: a citation key cannot label a reference link (#541).
+- Split a table row the way the engine does around escapes: an escaped tick opens no code run, and in `\\|` the pipe splits the cell (#528).
+- End an unquoted include option value at the next `@`, so `{{ c.crv@shift:1@lines:1-2 }}` reads as two options (#533).
+- Read an include option with no value, such as `{{ c.crv @k }}`, as an extra part instead of breaking the directive (#534).
 
 ### Changed
 
-- Inject YAML into frontmatter without a language, and the `comment` language into `%%`, `%%%` and `{% %}` comments. `TODO`, `NOTE` and `FIXME` in prose are no longer highlighted, a description body is no longer italic, and captures of list markers the grammar never builds are removed.
+- Inject YAML into frontmatter without a language, and the `comment` language into `%%`, `%%%` and `{% %}` comments. `TODO`, `NOTE` and `FIXME` in prose are no longer highlighted, a description body is no longer italic, and captures of list markers the grammar never builds are removed (#540).
 
 ## [0.1.8] - 2026-10-05
 
