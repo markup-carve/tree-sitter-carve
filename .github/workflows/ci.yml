@@ -59,8 +59,8 @@ jobs:
         run: npm run test:bracket-boundaries
       - name: Check attributed spans and literal bracket work
         run: npm run test:attributed-span-boundaries && npm run test:literal-bracket-work && npm run test:malformed-brackets && npm run test:bare-span-boundaries
-      - name: Bound scanner work for malformed combined openers
-        run: npm run test:combined-opener-work && npm run test:rich-inline-columns
+      - name: Bound scanner work for malformed combined openers and long inline runs
+        run: npm run test:combined-opener-work && npm run test:rich-inline-columns && npm run test:inline-scan-work
 
       - name: Check bracket qualification and lookahead work
         run: npm run test:bracket-qualification
