@@ -380,8 +380,9 @@ static const uint8_t BLOCK_FLAG_LIST_TEXT_LINE = 1 << 0;
 // Lists only: a `+`-attached block so far holds only attribute lines, so the
 // next line is still the attached block.
 static const uint8_t BLOCK_FLAG_LIST_ATTACHED_ATTRIBUTE = 1 << 7;
-static const uint8_t LIST_COMMENT_FLAGS = BLOCK_FLAG_LIST_COMMENT_CLAIM |
-                                          BLOCK_FLAG_LIST_COMMENT_RETAINS;
+// A literal, not the two names above: C (and MSVC) rejects a static const
+// initialized from other const objects.
+static const uint8_t LIST_COMMENT_FLAGS = (1 << 3) | (1 << 4);
 static const uint8_t BLOCK_FLAG_TABLE_ROW_BOUNDARY_SAFE = 1 << 2;
 // Definition terms and description bodies use the same block type. Keep the
 // current item kind so nested terms and folded continuation lines stay scoped.
