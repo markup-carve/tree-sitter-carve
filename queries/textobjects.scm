@@ -123,8 +123,10 @@
   (footnote_marker_begin) @statement.outer)
 
 ; Comments
-(comment
-  (content) @comment.inner) @comment.outer
+[
+  (comment_line)
+  (trailing_comment)
+] @comment.outer
 
 (definition_list
   (list_item) @function.inner) @function.outer

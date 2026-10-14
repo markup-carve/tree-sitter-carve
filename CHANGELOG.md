@@ -6,6 +6,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Detach a standalone caption after two blank lines, and build no caption below a colon fence other than a figure group or a fenced quote.
+- Recognize email autolinks such as `<a@b.com>`. An autolink body is now only a URL with a scheme or an email address, so format and control characters and scheme-less bodies stay text.
+- Keep the Djot quote forms `{"`, `"}`, `{'` and `'}` as text with their braces.
+- Read inline extensions whose name starts with an underscore, such as `:_[x]`.
+- Refuse tab padding inside inline and list-marker attribute blocks; a block attribute line keeps it. `{}` and `{ }` alone on a line are text.
+- Let an abbreviation definition interrupt a paragraph. Keep an indented colon fence and a reference definition without a destination as paragraph text.
+- Read colon-fence openers past the nesting cap of 200 as paragraph text.
+
+### Changed
+
+- Inject YAML into frontmatter without a language, and the `comment` language into `%%`, `%%%` and `{% %}` comments. `TODO`, `NOTE` and `FIXME` in prose are no longer highlighted, a description body is no longer italic, and captures of list markers the grammar never builds are removed.
+
 ## [0.1.8] - 2026-10-05
 
 This release fixes formatting boundaries and incremental parsing, recovers named containers with invalid metadata, and updates the spec corpus and engine oracle together.

@@ -23,7 +23,7 @@ A quoted attribute pipe still splits table cells
 
 ----------------------------------------------------------------------
 
-(document (table (table_row (table_cell) (table_cell (quotation_marks)))))
+(document (table (table_row (table_cell) (table_cell))))
 
 ======================================================================
 An unmatched destination backtick leaves outer brackets literal

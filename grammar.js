@@ -5,6 +5,12 @@ const NAME = /[a-zA-Z0-9_-]+(\.[a-zA-Z0-9_-]+)*/;
 const NAME_WORD_END = /(?:[a-zA-Z0-9_-]+\.)*[a-zA-Z0-9_-]*[a-zA-Z0-9_]/;
 const NAME_DASH_END = /(?:[a-zA-Z0-9_-]+\.)*[a-zA-Z0-9_-]*-/;
 
+// `url = scheme, ':', {url_char}+`: outside ASCII a url_char is anything but
+// whitespace, a format character (Cf) or a control character (Cc).
+const AUTOLINK_URL =
+  /[a-zA-Z][a-zA-Z0-9+.-]*:([a-zA-Z0-9\-._~:/?#\[\]@!$&'()*+,;=%]|[^\x00-\x7F\p{Cf}\p{Cc}\p{White_Space}])+/;
+const AUTOLINK_EMAIL = /[a-zA-Z0-9._+-]+@[a-zA-Z0-9._+-]+\.[a-zA-Z]+/;
+
 // A table cell's leading marker run: the kind marker, the alignment run and the
 // attribute block, ending at the one space `cell_padding` spells
 // (`header_cell` and `data_cell` in resources/grammar.ebnf).
@@ -264,7 +270,7 @@ function symbolFallback($, options) {
 
     // Autolink
     "<",
-    seq("<", /[^>\s]+/),
+    seq("<", $._autolink_body),
 
     // Math
     "$$",
@@ -1473,9 +1479,9 @@ module.exports = grammar({
           ),
         ),
         // The line ENDING is `whitespace` - space and tab both - the same
-        // terminal `blank_line` takes (PART 1; carve#890). So `[r]:   ` stays a
-        // definition-shaped line with no destination (corpus 16-reference-link-9)
-        // and `[a]: /u` + TAB is still a definition.
+        // terminal `blank_line` takes (PART 1; carve#890), so `[a]: /u` + TAB is
+        // still a definition. `[r]:   ` has no destination and is paragraph text
+        // (corpus 16-reference-link-9); `ref_def_tail_is_modeled` refuses it.
         optional($._whitespace1),
         choice($._newline, $._eof_or_newline),
       ),
@@ -1942,7 +1948,8 @@ module.exports = grammar({
       choice($.quotation_marks, $.ellipsis, $.em_dash, $.en_dash),
     // It would be nice to be able to mark bare " and ', but then we'd have to be smarter
     // so we don't mark the ' in `it's`. Not sure if we can do that in a correct way.
-    quotation_marks: (_) => token(choice('{"', '"}', "{'", "'}", '\\"', "\\'")),
+    // Carve has no Djot `{"` / `"}` forms: `{"hi"}` renders the braces as text.
+    quotation_marks: (_) => token(choice('\\"', "\\'")),
     ellipsis: (_) => "...",
     // Inside a braced delete the `-` right before `}` belongs to the closer, and
     // longest-match would eat it: `{---}` is a delete over `-`, `{----}` one
@@ -1952,7 +1959,11 @@ module.exports = grammar({
 
     backslash_escape: (_) => /\\[^\r\n]/,
 
-    autolink: (_) => seq("<", /[^>\s]+/, ">"),
+    // `autolink = '<', (url_autolink | email_autolink), '>'`. The body outranks
+    // a glued mention, which otherwise took `a@b.com` from `<a@b.com>`.
+    autolink: ($) => seq("<", $._autolink_body, ">"),
+    _autolink_body: (_) =>
+      token.immediate(prec(2, choice(AUTOLINK_URL, AUTOLINK_EMAIL))),
 
     // A cross-reference with auto text, grammar.ebnf
     // `auto_text_link = "</#", crossref_id, '>'`. It is NOT an autolink: the
@@ -2000,7 +2011,7 @@ module.exports = grammar({
     // including when it follows an escape or sits inside code or a comment.
     // The opener stays one token so a malformed run - no bracket, no
     // name - falls back to text rather than committing to an ERROR.
-    _extension_marker: (_) => token(seq(":", /[a-zA-Z][a-zA-Z0-9_-]*/, "[")),
+    _extension_marker: (_) => token(seq(":", /[a-zA-Z_][a-zA-Z0-9_-]*/, "[")),
     extension_inline: ($) =>
       seq(
         alias($._extension_marker, $.extension_marker_begin),
