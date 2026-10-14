@@ -35,8 +35,8 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs';
-import { spawnSync } from 'node:child_process';
-import { tmpdir } from 'node:os';
+import { spawn } from 'node:child_process';
+import { availableParallelism, tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { refuseShortRun } from './participants.mjs';
@@ -82,41 +82,104 @@ for (const f of files) {
 // stops printing part way through a long run - a batch of 200 corpus documents
 // came back with 135 trees - and a check that cannot tell a short answer from a
 // clean one is worse than no check. The cost is bounded by resolving the CLI
-// once instead of paying `npx`'s own startup 2000 times.
+// once instead of paying `npx`'s own startup 2000 times, and by keeping one
+// process per core in flight. Results land by index, so order never depends on
+// which process finishes first.
 const localCli = path.join(repoRoot, 'node_modules', '.bin', 'tree-sitter');
 const [cli, cliArgs] = existsSync(localCli)
   ? [localCli, []]
   : ['npx', ['tree-sitter']];
-function parseOne(file) {
-  const run = spawnSync(cli, [...cliArgs, 'parse', ...TIMEOUT_ARGS, file], {
-    cwd: repoRoot,
-    encoding: 'utf8',
-    maxBuffer: 64 * 1024 * 1024,
-    timeout: spawnBudgetMs(1),
-  });
-  if (run.error) {
-    console.error(`Failed to run tree-sitter parse: ${run.error.message}`);
-    rmSync(work, { recursive: true, force: true });
-    process.exit(2);
+const MAX_OUTPUT = 64 * 1024 * 1024;
+// Exiting does not stop the other parses in flight, and the CLI is a Node
+// wrapper that does not forward signals to the binary it starts. Each parse
+// gets its own process group so a kill reaches both.
+const running = new Set();
+function killGroup(child) {
+  try {
+    process.kill(-child.pid, 'SIGKILL');
+  } catch {
+    // Already gone.
   }
+}
+function fail(message, stderr) {
+  for (const child of running) killGroup(child);
+  console.error(message);
+  if (stderr) console.error(stderr.trim());
+  rmSync(work, { recursive: true, force: true });
+  process.exit(2);
+}
+function spawnParse(file) {
+  return new Promise((resolve) => {
+    let error = null;
+    const child = spawn(cli, [...cliArgs, 'parse', ...TIMEOUT_ARGS, file], {
+      cwd: repoRoot,
+      detached: true,
+    });
+    running.add(child);
+    const timer = setTimeout(() => {
+      error ??= new Error(`spawn ${cli} ETIMEDOUT`);
+      killGroup(child);
+    }, spawnBudgetMs(1));
+    const out = [];
+    const err = [];
+    let size = 0;
+    const collect = (sink) => (chunk) => {
+      size += chunk.length;
+      if (size > MAX_OUTPUT && !error) {
+        error = new Error('stdout maxBuffer length exceeded');
+        killGroup(child);
+      }
+      sink.push(chunk);
+    };
+    child.stdout.on('data', collect(out));
+    child.stderr.on('data', collect(err));
+    // A spawn that fails may emit 'error' without 'close'; a second resolve is
+    // a no-op.
+    const finish = () => {
+      clearTimeout(timer);
+      running.delete(child);
+      resolve({
+        error,
+        stdout: Buffer.concat(out).toString('utf8'),
+        stderr: Buffer.concat(err).toString('utf8'),
+      });
+    };
+    child.on('error', (e) => {
+      error ??= e;
+      finish();
+    });
+    child.on('close', finish);
+  });
+}
+async function parseOne(file) {
+  const run = await spawnParse(file);
+  if (run.error) fail(`Failed to run tree-sitter parse: ${run.error.message}`);
   // This sweep re-spells the WHOLE corpus three ways, so it is the check most
   // likely to be the first to meet a terminator-dependent non-termination. A
   // document the CLI abandons prints nothing at all - which here would compare
   // equal to another empty reading and pass.
   if (!(run.stdout || '').trim()) {
-    console.error(
+    fail(
       `LINE TERMINATORS: ${file} produced no tree; the parse did not finish ` +
         `within ${PARSE_TIMEOUT_US / 1_000_000}s. A spelling that cannot be ` +
         'parsed is not a spelling that agrees.',
+      run.stderr,
     );
-    if (run.stderr) console.error(run.stderr.toString().trim());
-    rmSync(work, { recursive: true, force: true });
-    process.exit(2);
   }
   return run.stdout || '';
 }
-function parseAll(paths) {
-  return paths.map(parseOne);
+async function parseAll(paths) {
+  const trees = new Array(paths.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < paths.length) {
+      const i = next++;
+      trees[i] = await parseOne(paths[i]);
+    }
+  };
+  const width = Math.min(availableParallelism(), paths.length);
+  await Promise.all(Array.from({ length: width }, worker));
+  return trees;
 }
 
 // Node types only. Positions cannot be compared across spellings (see the
@@ -129,9 +192,13 @@ const shape = (t) =>
     .replace(/\s+/g, ' ')
     .trim();
 
+// The first parse may compile the grammar into the CLI's cache. Let it do that
+// alone, so the pool never starts many compiles of the same library at once.
+await parseOne(written.lf[0]);
+
 const parsed = {};
 for (const name of Object.keys(SPELLINGS)) {
-  const trees = parseAll(written[name]);
+  const trees = await parseAll(written[name]);
   const empty = trees.filter((t) => !t.trim()).length;
   if (empty) {
     console.error(
@@ -155,11 +222,12 @@ const scannerRegressions = {
 };
 for (const [name, source] of Object.entries(scannerRegressions)) {
   const lines = source.split('\n');
-  const trees = Object.entries(SPELLINGS).map(([spelling, sep]) => {
+  const paths = Object.entries(SPELLINGS).map(([spelling, sep]) => {
     const p = path.join(work, `${spelling}-regression-${name}.crv`);
     writeFileSync(p, lines.join(sep));
-    return shape(parseOne(p));
+    return p;
   });
+  const trees = (await parseAll(paths)).map(shape);
   if (trees.some((tree) => tree !== trees[0])) {
     console.error(`${name} changes tree across line terminator spellings.`);
     rmSync(work, { recursive: true, force: true });
