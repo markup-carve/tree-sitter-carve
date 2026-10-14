@@ -1,0 +1,33 @@
+name: npm install
+description: Restore node_modules for this lockfile, or run npm ci, then build the Node binding.
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v7
+      with:
+        node-version: 22
+
+    # npm ci spends about a minute cloning and building the carve-js git
+    # dependency and compiling the tree-sitter binding. node_modules is safe to
+    # reuse across runs because every input is in the key: the lockfile pins
+    # each package (the git dependency by commit), and the native modules are
+    # tied to the OS, architecture and Node major.
+    - id: node-version
+      shell: bash
+      run: echo "major=$(node -p 'process.versions.node.split(".")[0]')" >> "$GITHUB_OUTPUT"
+    - id: cache
+      uses: actions/cache@v6
+      with:
+        path: node_modules
+        key: node-modules-${{ runner.os }}-${{ runner.arch }}-node${{ steps.node-version.outputs.major }}-${{ hashFiles('package-lock.json') }}
+
+    - if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: npm ci
+
+    # npm ci runs this package's own install script; a restored node_modules
+    # skips it, so build the binding from the checked-out sources here.
+    - if: steps.cache.outputs.cache-hit == 'true'
+      shell: bash
+      run: npm run install
