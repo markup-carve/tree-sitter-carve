@@ -49,8 +49,10 @@ for (const [index, source] of tableControls.entries()) {
     const tree = parser.parse(source.replace(/\r\n|\r|\n/g, newline)).rootNode;
     assert.equal(tree.hasError, false, `table control ${index}`);
     assert.equal(tree.descendantsOfType('table').length, 1, `table control ${index}`);
-    assert.equal(tree.descendantsOfType('table_row').length, index === 6 ? 2 : 1, `table control ${index}`);
-    if (index < 5 || index === 7) assert.equal(tree.descendantsOfType('paragraph').length, 1, `table control ${index}`);
+    // A blank row (`||`, `| |`) is a row (spec 21879d7).
+    const rows = index === 2 || index === 3 || index === 6 ? 2 : 1;
+    assert.equal(tree.descendantsOfType('table_row').length, rows, `table control ${index}`);
+    if (index < 2 || index === 4 || index === 7) assert.equal(tree.descendantsOfType('paragraph').length, 1, `table control ${index}`);
     if (index === 5) {
       assert.equal(tree.descendantsOfType('block_quote').length, 3);
       assert.equal(tree.descendantsOfType('heading').length, 1);

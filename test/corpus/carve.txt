@@ -4170,7 +4170,7 @@ title: t
   (paragraph))
 
 ===============================================================================
-Two adjacent `---` lines are not empty closed frontmatter (tree-sitter-carve#95)
+Two adjacent `---` lines are empty closed frontmatter
 ===============================================================================
 ---
 ---
@@ -4179,8 +4179,9 @@ x
 -------------------------------------------------------------------------------
 
 (document
-  (thematic_break)
-  (thematic_break)
+  (frontmatter
+    (frontmatter_marker)
+    (frontmatter_marker))
   (paragraph))
 
 ===============================================================================

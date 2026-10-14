@@ -1284,7 +1284,7 @@ see[^f]
       text: (link_text))))
 
 ==================
-A list item leaves a definition past its div's content column as text
+A list item collects a definition past its div's content column
 ==================
 - a
   ::: note
@@ -1305,7 +1305,9 @@ A list item leaves a definition past its div's content column as text
           (div_marker_begin)
           type: (admonition_type)
           content: (content
-            (paragraph))
+            (link_reference_definition
+              label: (link_label)
+              destination: (link_destination)))
           (div_marker_end)))))
   (paragraph
     (collapsed_reference_link

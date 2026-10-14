@@ -191,7 +191,7 @@ b
         (paragraph)))))
 
 ================================================================================
-A line after a comment at the content column stays in the band
+A line after a comment at the content column leaves the item
 ================================================================================
 - x
   %%%
@@ -205,8 +205,8 @@ A line after a comment at the content column stays in the band
       (list_marker_dash)
       (list_item_content
         (paragraph)
-        (comment_line)
-        (paragraph)))))
+        (comment_line))))
+  (paragraph))
 
 ================================================================================
 A column 0 line after a comment at the content column leaves the item
@@ -227,7 +227,7 @@ b
   (paragraph))
 
 ================================================================================
-A below-column marker after a comment is item text
+A below-column marker after a comment at the content column leaves the item
 ================================================================================
 - a
   %%%
@@ -246,7 +246,11 @@ A below-column marker after a comment is item text
         (fenced_comment_block
           (comment_fence_marker_begin)
           (content)
-          (comment_fence_marker_end))
+          (comment_fence_marker_end)))))
+  (list
+    (list_item
+      (list_marker_decimal_period)
+      (list_item_content
         (paragraph)))))
 
 ================================================================================
