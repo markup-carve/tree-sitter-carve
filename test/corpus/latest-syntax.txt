@@ -712,7 +712,7 @@ Empty and wider verbatim runs keep their braced boundary rules
       (strong_end))))
 
 ==================
-A forced opener of a kind already open is literal, and the outer span closes
+A forced opener of a kind already open nests a child (CARVE-P9-043)
 ==================
 
 a{*{*x*}*}b
@@ -725,12 +725,24 @@ a{*{*x*}*}b
   (paragraph
     (strong
       begin_marker: (strong_begin)
-      content: (content)
+      content: (content
+        (strong
+          begin_marker: (strong_begin)
+          content: (content)
+          end_marker: (strong_end)))
       end_marker: (strong_end)))
   (paragraph
     (emphasis
       begin_marker: (emphasis_begin)
-      content: (content)
+      content: (content
+        (strong
+          begin_marker: (strong_begin)
+          content: (content
+            (emphasis
+              begin_marker: (emphasis_begin)
+              content: (content)
+              end_marker: (emphasis_end)))
+          end_marker: (strong_end)))
       end_marker: (emphasis_end))))
 
 ==================

@@ -1,0 +1,53 @@
+===============================================================================
+A braced span nests its own kind
+===============================================================================
+
+a{*{*x*}*}b
+
+*a {*b*} c*
+
+{/a *b {/c/}*/}
+
+-------------------------------------------------------------------------------
+
+(document (paragraph (strong begin_marker: (strong_begin) content: (content (strong begin_marker: (strong_begin) content: (content) end_marker: (strong_end))) end_marker: (strong_end))) (paragraph (strong begin_marker: (strong_begin) content: (content (strong begin_marker: (strong_begin) content: (content) end_marker: (strong_end))) end_marker: (strong_end))) (paragraph (emphasis begin_marker: (emphasis_begin) content: (content (strong begin_marker: (strong_begin) content: (content (emphasis begin_marker: (emphasis_begin) content: (content) end_marker: (emphasis_end))) end_marker: (strong_end))) end_marker: (emphasis_end))))
+
+===============================================================================
+An empty braced span stays text inside its own kind
+===============================================================================
+
+{*a {**} b*}
+
+-------------------------------------------------------------------------------
+
+(document (paragraph (strong begin_marker: (strong_begin) content: (content) end_marker: (strong_end))))
+
+===============================================================================
+An unmatched outer braced opener keeps its closed child
+===============================================================================
+
+{*a {*b*}
+
+-------------------------------------------------------------------------------
+
+(document (paragraph (strong begin_marker: (strong_begin) content: (content) end_marker: (strong_end))))
+
+===============================================================================
+Insert does not nest its own kind
+===============================================================================
+
+{+a {+b+} c+}
+
+-------------------------------------------------------------------------------
+
+(document (paragraph (insert begin_marker: (insert_begin) content: (content) end_marker: (insert_end))))
+
+===============================================================================
+A braced closer in an extension payload is content
+===============================================================================
+
+{*a :x[a *}] b*}
+
+-------------------------------------------------------------------------------
+
+(document (paragraph (strong begin_marker: (strong_begin) content: (content (extension_inline (extension_marker_begin) content: (content))) end_marker: (strong_end))))

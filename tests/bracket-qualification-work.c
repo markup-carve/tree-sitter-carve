@@ -100,7 +100,8 @@ int main(void) {
     push_inline_flagged(scanner, STRONG, 0, INLINE_BRACED);
     uint32_t remaining;
     bool changes_scope, opaque_cut;
-    assert(extension_payload_closed(scanner, &input.lexer, &remaining, &changes_scope, &opaque_cut) == (shape != 2));
+    // A same-kind braced child nests (CARVE-P9-043), so every payload closes.
+    assert(extension_payload_closed(scanner, &input.lexer, &remaining, &changes_scope, &opaque_cut));
     assert(scanner->advances <= 4 * width);
     assert(input.advances <= width);
     assert(input.columns <= 1);

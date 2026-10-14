@@ -599,6 +599,10 @@ typedef struct {
   bool attribute_block_line;
   char braced_probe_marker;
   bool braced_probe_raw_closer;
+  // The closer probe passed a nested opener of its own kind. Transient.
+  bool braced_probe_nested_same;
+  // The closer probe's closer ended an unterminated code run. Transient.
+  bool braced_probe_closer_in_code;
   uint8_t after_closer_char;
   uint32_t after_closer_col;
 
@@ -762,6 +766,7 @@ static TokenType scan_unordered_list_marker_token(Scanner *s, TSLexer *lexer);
 static bool scan_valid_inline_attribute(Scanner *s, TSLexer *lexer);
 static bool is_bare_delim_kind(int32_t c, InlineType *kind);
 static bool kind_open_in_scope(Scanner *s, InlineType type);
+static bool braced_same_kind_blocked(Scanner *s, InlineType type);
 static bool braced_closer_ahead(Scanner *s, TSLexer *lexer, char marker);
 static bool at_block_opener_margin(Scanner *s, uint32_t column);
 static bool marker_line_has_content(Scanner *s, TSLexer *lexer);
@@ -7818,17 +7823,34 @@ static bool parse_open_curly_bracket(Scanner *s, TSLexer *lexer,
   if (lexer->lookahead == '-') { brace_kind = DELETE; brace_marker = true; }
   if (valid_symbols[LITERAL_RUN] && brace_marker) {
     char marker = (char)lexer->lookahead;
-    bool same = kind_open_in_scope(s, brace_kind);
     advance(s, lexer);
+    // The empty `{XX}` of an emphasis kind is text as a whole; its `X}`
+    // closes nothing. Insert and delete do not nest (`{--}` is an en dash).
+    if (lexer->lookahead == marker && marker != '-' && marker != '+') {
+      advance(s, lexer);
+      if (lexer->lookahead == '}') {
+        advance(s, lexer);
+        mark_end(s, lexer);
+        lexer->result_symbol = LITERAL_RUN;
+        return true;
+      }
+    }
     bool root_scope = !peek_inline(s) && !find_block(s, TABLE_ROW);
     uint16_t bit = (uint16_t)(1 << (brace_kind - EMPHASIS));
     bool opens = false;
-    if (!same && !(root_scope && (s->missing_closers & bit))) {
+    // A braced opener may nest inside its own kind (CARVE-P9-043). The memo
+    // holds only when no nested opener of the kind took a closer.
+    if (!braced_same_kind_blocked(s, brace_kind) &&
+        !(root_scope && (s->missing_closers & bit))) {
       s->braced_probe_marker = marker;
       s->braced_probe_raw_closer = false;
+      s->braced_probe_nested_same = false;
       opens = braced_closer_ahead(s, lexer, marker);
       s->braced_probe_marker = 0;
-      if (!opens && root_scope && !s->braced_probe_raw_closer) s->missing_closers |= bit;
+      if (!opens && root_scope && !s->braced_probe_raw_closer &&
+          !s->braced_probe_nested_same) {
+        s->missing_closers |= bit;
+      }
     }
     if (opens) {
       *literal_curly = false;
@@ -9626,6 +9648,12 @@ static bool parse_trailing_comment(Scanner *s, TSLexer *lexer,
   return true;
 }
 
+/// A braced opener of an already-open kind is text only for insert and
+/// delete; the seven emphasis kinds nest (CARVE-P9-043).
+static bool braced_same_kind_blocked(Scanner *s, InlineType type) {
+  return (type == INSERT || type == DELETE) && kind_open_in_scope(s, type);
+}
+
 static bool kind_open_in_scope(Scanner *s, InlineType type) {
   for (int i = s->open_inline->size - 1; i >= 0; --i) {
     Inline *e = *array_get(s->open_inline, i);
@@ -9649,9 +9677,9 @@ static bool kind_open_in_scope(Scanner *s, InlineType type) {
 /// opener"; a branch that does not exist does not need outscoring
 /// (tree-sitter-carve#316).
 ///
-/// A same-kind braced opener on the way is content (corpus 471), so it opens
-/// nothing here. A braced span of ANOTHER kind is tracked, because a closer
-/// inside it belongs to it: `{*a {/b *} d/} e*}` keeps its `*}` as content.
+/// A braced opener on the way, of this kind or another, is tracked: a closer
+/// inside it belongs to it (`{*a {*b*} c*}` nests, `{*a {/b *} d/} e*}` keeps
+/// its `*}` as content).
 /// Anything this cannot account for answers "no closer", which leaves the old
 /// behavior in place rather than forcing a span that may not close.
 ///
@@ -9706,6 +9734,23 @@ static bool continuation_row_ahead(Scanner *s, TSLexer *lexer) {
   return true;
 }
 
+/// The end of a closer probe's scope: a closer it set aside inside a bracket
+/// that never closed is the span's closer after all. A probe is rewound to
+/// stand on its `}`, as a direct find leaves it.
+static bool braced_closer_in_open_run(Scanner *s, BracketProbe *probe,
+                                      unsigned pending,
+                                      uint32_t pending_position,
+                                      uint32_t pending_col_base,
+                                      uint32_t *close_position) {
+  if (!pending) return false;
+  if (probe) {
+    if (close_position) *close_position = pending_position;
+    bracket_probe_rewind(probe, pending_position + 1);
+    s->col_base = pending_col_base;
+  }
+  return true;
+}
+
 static bool probe_braced_closer_ahead(Scanner *s, TSLexer *lexer, char marker, BracketProbe *probe, uint32_t *close_position, uint32_t before) {
   // An EMPTY braced span is not a span (carve#1447): `{--}` is the en dash.
   if (lexer->lookahead == marker) {
@@ -9719,8 +9764,14 @@ static bool probe_braced_closer_ahead(Scanner *s, TSLexer *lexer, char marker, B
   // row's own content rather than past its scope (tree-sitter-carve#437).
   bool in_bracket = find_inline(s, LITERAL_BRACKET) || find_inline(s, SQUARE_BRACKET_SPAN) || find_inline(s, INLINE_NOTE) || find_inline(s, EXTENSION);
   unsigned bracket_depth = 0;
+  // A closer inside a bracket run is content (E2b); it counts only if its
+  // bracket never closes. `pending` is that bracket depth, 0 for none.
+  unsigned pending = 0;
+  uint32_t pending_position = 0;
+  uint32_t pending_col_base = 0;
   bool in_row = find_block(s, TABLE_ROW) != NULL;
-  char nested[16];
+  // Braced spans nest up to the inline nesting cap (MAX_NESTING_DEPTH).
+  char nested[200];
   uint8_t depth = 0;
   while (!lexer->eof(lexer) && (!probe || probe->position < before)) {
     if (at_line_end(lexer)) {
@@ -9728,7 +9779,7 @@ static bool probe_braced_closer_ahead(Scanner *s, TSLexer *lexer, char marker, B
         if (continuation_row_ahead(s, lexer)) {
           continue;
         }
-        return false;
+        return braced_closer_in_open_run(s, probe, pending, pending_position, pending_col_base, close_position);
       }
       if (probe) {
         consume_line_end(s, lexer);
@@ -9742,9 +9793,9 @@ static bool probe_braced_closer_ahead(Scanner *s, TSLexer *lexer, char marker, B
       }
       uint8_t indent = consume_whitespace(s, lexer);
       if (lexer->eof(lexer) || at_line_end(lexer)) {
-        return false;
+        return braced_closer_in_open_run(s, probe, pending, pending_position, pending_col_base, close_position);
       }
-      if (probe && caption_line_ends_block(s, probe, indent)) return false;
+      if (probe && caption_line_ends_block(s, probe, indent)) return braced_closer_in_open_run(s, probe, pending, pending_position, pending_col_base, close_position);
       continue;
     }
     int32_t c = lexer->lookahead;
@@ -9764,6 +9815,7 @@ static bool probe_braced_closer_ahead(Scanner *s, TSLexer *lexer, char marker, B
       VerbatimRunEnd end =
           read_verbatim_run(s, lexer, width, depth == 0 ? marker : 0, in_row);
       if (end == VerbatimRunReachesSpanCloser) {
+        s->braced_probe_closer_in_code = true;
         if (close_position && probe) {
           for (uint32_t i = run_start; i + 1 < probe->characters.size; ++i) {
             if (probe->characters.contents[i].character == marker &&
@@ -9776,20 +9828,41 @@ static bool probe_braced_closer_ahead(Scanner *s, TSLexer *lexer, char marker, B
         return true;
       }
       if (end == VerbatimRunReachesBlockEnd) {
-        return false;
+        return braced_closer_in_open_run(s, probe, pending, pending_position, pending_col_base, close_position);
       }
       continue;
     }
     if (c == '[') ++bracket_depth;
     if (c == ']') {
-      if (bracket_depth) --bracket_depth;
-      else if (in_bracket) return false;
+      if (bracket_depth) {
+        --bracket_depth;
+        if (pending > bracket_depth) pending = 0;
+      }
+      else if (in_bracket) return braced_closer_in_open_run(s, probe, pending, pending_position, pending_col_base, close_position);
     }
     if (c == '{') {
       advance(s, lexer);
       int32_t m = lexer->lookahead;
-      if (m == marker) {
+      if (m == marker && (m == '+' || m == '-')) {
         advance(s, lexer);
+        continue;
+      }
+      if (m == marker) {
+        // A same-kind braced emphasis opener nests (CARVE-P9-043), unless it
+        // is the empty `{XX}`, which is text.
+        advance(s, lexer);
+        if (lexer->lookahead == marker) {
+          advance(s, lexer);
+          if (lexer->lookahead == '}') {
+            advance(s, lexer);
+            continue;
+          }
+        }
+        if (depth == sizeof(nested)) {
+          return false;
+        }
+        nested[depth++] = (char)m;
+        s->braced_probe_nested_same = true;
         continue;
       }
       if (m == '*' || m == '/' || m == '_' || m == '~' || m == '=' ||
@@ -9810,23 +9883,30 @@ static bool probe_braced_closer_ahead(Scanner *s, TSLexer *lexer, char marker, B
           advance(s, lexer);
           continue;
         }
-        if (depth == 0) {
+        if (depth == 0 && bracket_depth == 0) {
           if (close_position && probe) *close_position = probe->position - 1;
           return true;
+        }
+        if (depth == 0 && !pending) {
+          pending = bracket_depth;
+          pending_position = probe ? probe->position - 1 : 0;
+          pending_col_base = s->col_base;
         }
       }
       continue;
     }
     advance(s, lexer);
   }
-  return false;
+  return braced_closer_in_open_run(s, probe, pending, pending_position, pending_col_base, close_position);
 }
 
 
 static bool braced_closer_ahead(Scanner *s, TSLexer *lexer, char marker) {
-  if (!in_caption(s) && !find_inline(s, EXTENSION)) return probe_braced_closer_ahead(s, lexer, marker, NULL, NULL, UINT32_MAX);
+  // Inside another probe, pass it on so a closer found in an open bracket run
+  // can leave the probe standing on it.
   if (lexer->advance == bracket_probe_advance)
     return probe_braced_closer_ahead(s, lexer, marker, (BracketProbe *)lexer, NULL, UINT32_MAX);
+  if (!in_caption(s) && !find_inline(s, EXTENSION)) return probe_braced_closer_ahead(s, lexer, marker, NULL, NULL, UINT32_MAX);
   BracketProbe probe = bracket_probe_new(s, lexer);
   bool closer = probe_braced_closer_ahead(s, &probe.lexer, marker, &probe, NULL, UINT32_MAX);
   array_delete(&probe.characters);
@@ -10481,15 +10561,12 @@ static bool extension_payload_closed(Scanner *s, TSLexer *host, uint32_t *remain
     bracket_probe_rewind(&probe, 0);
     s->col_base = base;
     bool scope_end = false;
-    if (lexer->lookahead == enclosing_marker) {
-      advance(s, lexer);
-      scope_end = lexer->lookahead == '}';
-      bracket_probe_rewind(&probe, 0);
-      s->col_base = base;
-    }
+    // Only a code run reaching the closer ends the scope inside the payload;
+    // a bare closer there is bracket content (E2b).
     uint32_t close_position = UINT32_MAX;
-    if (!scope_end && probe_braced_closer_ahead(s, lexer, enclosing_marker, &probe, &close_position, cut))
-      scope_end = close_position < cut;
+    s->braced_probe_closer_in_code = false;
+    if (probe_braced_closer_ahead(s, lexer, enclosing_marker, &probe, &close_position, cut))
+      scope_end = close_position < cut && s->braced_probe_closer_in_code;
     closed = !scope_end;
     bracket_probe_rewind(&probe, cut);
     s->col_base = base;
@@ -10677,8 +10754,9 @@ static bool probe_bare_closer_skips_brackets(Scanner *s, BracketProbe *probe, ch
       static const InlineType braced_kinds[] = {STRONG, EMPHASIS, UNDERLINE, STRIKETHROUGH,
           HIGHLIGHTED, SUPERSCRIPT, SUBSCRIPT, INSERT, DELETE};
       uint16_t brace_bit = candidate ? (uint16_t)(1 << (candidate - markers)) : 0;
-      if (brace_bit && lexer->lookahead != bare &&
-          !kind_open_in_scope(s, braced_kinds[candidate - markers]) && !(unclosed_braced & brace_bit)) {
+      // A braced span of the bare kind is opaque too: it nests (E3).
+      if (brace_bit && !(unclosed_braced & brace_bit) &&
+          !braced_same_kind_blocked(s, braced_kinds[candidate - markers])) {
         char marker = (char)lexer->lookahead;
         advance(s, lexer);
         if (braced_closer_ahead(s, lexer, marker)) {
@@ -12947,11 +13025,11 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
         advance(s, lexer);
         uint32_t brace_restart = decision_probe.position;
         uint32_t brace_base = s->col_base;
-        if (lexer->lookahead == '*' || lexer->lookahead == '/' ||
-            (lexer->lookahead != '_' &&
+        // `{*` and `{/` are braced children too (CARVE-P9-043).
+        if (lexer->lookahead != '*' && lexer->lookahead != '/' && lexer->lookahead != '_' &&
             lexer->lookahead != '~' && lexer->lookahead != '=' && lexer->lookahead != '^' &&
             lexer->lookahead != ',' && lexer->lookahead != '+' && lexer->lookahead != '-' &&
-            lexer->lookahead != '%' && lexer->lookahead != '#')) {
+            lexer->lookahead != '%' && lexer->lookahead != '#') {
           previous = '{';
           ++characters;
           continue;
@@ -13261,7 +13339,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       s->state &= ~STATE_BARE_SPAN_OPENER;
       int32_t first_content = lexer->lookahead;
       uint32_t content_column = line_column(s, lexer);
-      bool opens = !kind_open_in_scope(s, kind) &&
+      bool opens = !braced_same_kind_blocked(s, kind) &&
                    braced_closer_ahead(s, lexer, inline_marker(kind));
       if (opens) {
         push_inline_flagged(s, kind, 0, INLINE_BRACED);
@@ -14237,6 +14315,8 @@ static void init_scalars(Scanner *s) {
   s->attribute_block_line = false;
   s->braced_probe_marker = 0;
   s->braced_probe_raw_closer = false;
+  s->braced_probe_nested_same = false;
+  s->braced_probe_closer_in_code = false;
   s->after_closer_char = 0;
   s->after_closer_col = 0;
   s->marker_attribute_width = 0;

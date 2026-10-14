@@ -803,26 +803,6 @@
       "reading": "code html=1 tree=0",
       "reason": "spec 21879d7 changes how a flush-left or below-column fence folds into a description body; the grammar keeps the earlier reading. Follow-up to the spec bump."
     },
-    "braced-emphasis-can-nest-its-own-kind-10": {
-      "reading": "strong#1 html=\"ab\" tree=\"a\"",
-      "reason": "spec 21879d7 lets a braced span nest a span of its own kind; the inline scanner still reads the inner braced opener as content. Follow-up for the inline scanner."
-    },
-    "braced-emphasis-can-nest-its-own-kind-13": {
-      "reading": "strong html=3 tree=2, strong#2 html=\"b\" tree=\"abc\", em html=3 tree=2",
-      "reason": "spec 21879d7 lets a braced span nest a span of its own kind; the inline scanner still reads the inner braced opener as content. Follow-up for the inline scanner."
-    },
-    "braced-emphasis-can-nest-its-own-kind-2": {
-      "reading": "strong html=2 tree=1, strong#1 html=\"abc\" tree=\"ab\"",
-      "reason": "spec 21879d7 lets a braced span nest a span of its own kind; the inline scanner still reads the inner braced opener as content. Follow-up for the inline scanner."
-    },
-    "braced-emphasis-can-nest-its-own-kind-4": {
-      "reading": "strong html=1 tree=0, em html=2 tree=1",
-      "reason": "spec 21879d7 lets a braced span nest a span of its own kind; the inline scanner still reads the inner braced opener as content. Follow-up for the inline scanner."
-    },
-    "braced-emphasis-can-nest-its-own-kind": {
-      "reading": "strong html=2 tree=1",
-      "reason": "spec 21879d7 lets a braced span nest a span of its own kind; the inline scanner still reads the inner braced opener as content. Follow-up for the inline scanner."
-    },
     "an-info-string-does-not-change-how-a-flush-left-fence-folds-into-a-description-body-2": {
       "reading": "code html=0 tree=1",
       "reason": "spec 21879d7 changes how a flush-left or below-column fence folds into a description body; the grammar keeps the earlier reading. Follow-up to the spec bump."

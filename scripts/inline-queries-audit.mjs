@@ -40,7 +40,7 @@ const CASES = [
   ['an underscore extension name', ':_[x] a:_[y]\n', { extension_inline: 2 }],
   ['a tab is no inline attribute padding', '[x]{\t}\n', { span: 0 }],
   ['a tab does not separate inline attributes', '*x*{.a\t.b}\n', { inline_attribute: 0 }],
-  ['a tab still pads a block attribute line', '{.a\t.b}\n# h\n', { block_attribute: 1 }],
+  ['a tab is no block attribute padding either', '{.a\t.b}\n# h\n', { block_attribute: 0 }],
   ['an empty block attribute line is text', '{}\n\n{ }\n', { block_attribute: 0, paragraph: 2 }],
   ['an abbreviation definition interrupts a paragraph', 'The HTML spec.\n*[HTML]: HyperText\n', { abbreviation_definition: 1 }],
   ['an indented abbreviation does not', 'a\n *[H]: x\n', { abbreviation_definition: 0 }],
