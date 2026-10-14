@@ -534,9 +534,10 @@ typedef struct {
   uint8_t caption_gap;
   // The current scan call started on a blank line. Transient.
   bool line_blank;
-  // An attribute block standing on its own line may pad with tabs; an inline
-  // one is space-only (CARVE-P4-001). Transient, set around the block reads.
-  bool attribute_tabs;
+  // An attribute block standing on its own line may pad with tabs and wrap; an
+  // inline one is space-only (CARVE-P4-001) and stays on its line. Transient,
+  // set around the block reads.
+  bool attribute_block_line;
   char braced_probe_marker;
   bool braced_probe_raw_closer;
   uint8_t after_closer_char;
@@ -2073,17 +2074,24 @@ static bool colon_fence_metadata_tail_is_modeled(Scanner *s, TSLexer *lexer) {
 /// The backslash form is the one tail that cannot be answered from its first
 /// character, so this takes the lexer and reads past it. Both callers scan
 /// ahead only; neither has committed a token end at the point it asks.
+/// Open containers that nest content, which MAX_NESTING_DEPTH bounds as one
+/// count: quotes, lists, colon fences and footnotes alike.
+static bool at_nesting_cap(Scanner *s) {
+  uint32_t depth = 0;
+  for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
+    BlockType type = (*array_get(s->open_blocks, i))->type;
+    if (type == DIV || type == FIGURE_GROUP || type == BLOCK_QUOTE ||
+        type == FOOTNOTE || is_list(type)) {
+      ++depth;
+    }
+  }
+  return depth >= MAX_NESTING_DEPTH;
+}
+
 static bool colon_fence_tail_opens_block(Scanner *s, TSLexer *lexer, bool bare,
                                          bool spaced, bool tabbed, int32_t c) {
-  // Past MAX_NESTING_DEPTH open fences an opener is paragraph text.
-  if (!bare) {
-    uint32_t depth = 0;
-    for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
-      BlockType type = (*array_get(s->open_blocks, i))->type;
-      if (type == DIV || type == FIGURE_GROUP) ++depth;
-    }
-    if (depth >= MAX_NESTING_DEPTH) return false;
-  }
+  // Past the nesting cap an opener is paragraph text.
+  if (!bare && at_nesting_cap(s)) return false;
   // A BARE fence is decided before the separator's SPELLING is read, and
   // deliberately: a whitespace-only tail is trailing whitespace, not a
   // separator, so `:::` + tab + newline is the same bare fence as `:::` and
@@ -4184,7 +4192,7 @@ static bool parse_block_quote(Scanner *s, TSLexer *lexer,
   }
 
   // Finally, start a new block quote if there's any marker.
-  if (valid_symbols[BLOCK_QUOTE_BEGIN] && has_marker) {
+  if (valid_symbols[BLOCK_QUOTE_BEGIN] && has_marker && !at_nesting_cap(s)) {
     // A quote opens at its container's margin, like every block opener: an
     // indented `>` at the document margin is paragraph text. The line's first
     // marker is measured by `indent`, which expands tabs; the lexer column
@@ -4849,17 +4857,19 @@ static void record_list_marker_margin(Scanner *s, uint8_t col,
   s->marker_end_col = col;
 }
 
-static void ensure_list_open(Scanner *s, BlockType type, uint8_t indent) {
+/// False when a new list would pass the nesting cap; the marker is then text.
+static bool ensure_list_open(Scanner *s, BlockType type, uint8_t indent) {
   Block *top = peek_block(s);
   // Found a list with the same type and indent, we should continue it.
   if (top && top->type == type && top->data == indent) {
-    return;
+    return true;
     // There might be other cases, like if the top list is a list of different
     // types, but that's handled by BLOCK_CLOSE in `close_list_if_needed` and
     // we shouldn't see that state here.
   }
-
+  if (at_nesting_cap(s)) return false;
   push_block(s, type, indent);
+  return true;
 }
 
 static bool handle_ordered_list_marker(Scanner *s, TSLexer *lexer,
@@ -4884,7 +4894,7 @@ static bool handle_ordered_list_marker(Scanner *s, TSLexer *lexer,
     if (!marker_line_has_content(s, lexer)) {
       return false;
     }
-    ensure_list_open(s, list_marker_to_block(marker), s->indent + 1);
+    if (!ensure_list_open(s, list_marker_to_block(marker), s->indent + 1)) return false;
     record_list_marker_margin(s, content_col, false);
     lexer->result_symbol = marker;
     return true;
@@ -5247,7 +5257,7 @@ static bool parse_list_marker_or_thematic_break(
   if (can_be_list_marker) {
     if (valid_symbols[LIST_MARKER_TASK_BEGIN]) {
       if (scan_task_list_marker(s, lexer)) {
-        ensure_list_open(s, LIST_TASK, list_indent + 1);
+        if (!ensure_list_open(s, LIST_TASK, list_indent + 1)) return false;
         record_list_marker_margin(s, marker_content_col, false);
         while (lexer->lookahead == ' ') advance(s, lexer);
         s->marker_end_col = (uint8_t)line_column(s, lexer);
@@ -5262,7 +5272,7 @@ static bool parse_list_marker_or_thematic_break(
       if (!consumed_line_of_markers && !marker_line_has_content(s, lexer)) {
         return false;
       }
-      ensure_list_open(s, list_type, list_indent + 1);
+      if (!ensure_list_open(s, list_type, list_indent + 1)) return false;
       record_list_marker_margin(s, marker_content_col, false);
       lexer->result_symbol = marker_type;
       return true;
@@ -6027,7 +6037,7 @@ static bool parse_colon(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       if (!marker_line_has_content(s, lexer)) {
         return false;
       }
-      ensure_list_open(s, LIST_DEFINITION, list_indent + 1);
+      if (!ensure_list_open(s, LIST_DEFINITION, list_indent + 1)) return false;
       peek_block(s)->flags |= BLOCK_FLAG_DEFINITION_TERM;
       // Record where the term's content starts, as the bullet and ordered
       // markers do. Without it the block reads column 0, and
@@ -6063,7 +6073,7 @@ static bool parse_colon(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     if (!marker_line_has_content(s, lexer)) {
       return false;
     }
-    ensure_list_open(s, LIST_DEFINITION, list_indent + 1);
+    if (!ensure_list_open(s, LIST_DEFINITION, list_indent + 1)) return false;
     peek_block(s)->flags &= (uint8_t)~BLOCK_FLAG_DEFINITION_TERM;
     // The full space run above is marker padding, so the lexer sits at the
     // body's authored content column. See the term branch.
@@ -6701,10 +6711,11 @@ static bool scan_table_row(Scanner *s, TSLexer *lexer, TokenType *row_type,
     // opening a row that then cannot close - that came back as an ERROR where
     // the language reads an ordinary paragraph (corpus
     // 248-an-attribute-name-admits-no-colon-3).
-    if (attr_after_pipe) {
-      if (!scan_valid_inline_attribute(s, lexer)) {
-        return false;
-      }
+    // A malformed block is cell content (`|{???} a |` is a cell in carve-js);
+    // a malformed ROW attribute leaves an unterminated cell, so the row fails.
+    if (attr_after_pipe && !scan_valid_inline_attribute(s, lexer)) {
+      attr_after_pipe = false;
+    } else if (attr_after_pipe) {
       while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
         advance(s, lexer);
       }
@@ -7598,14 +7609,14 @@ static bool parse_open_curly_bracket(Scanner *s, TSLexer *lexer,
         // ADJACENT BLOCKS ON ONE LINE MERGE (corpus
         // 114-adjacent-attribute-blocks-on-one-line-merge), so a `{` behind
         // the closing brace opens another block rather than ending the run.
-        s->attribute_tabs = true;
+        s->attribute_block_line = true;
         while (lexer->lookahead == '{') {
           if (!scan_valid_inline_attribute(s, lexer)) {
-            s->attribute_tabs = false;
+            s->attribute_block_line = false;
             goto no_attribute;
           }
         }
-        s->attribute_tabs = false;
+        s->attribute_block_line = false;
         while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
           advance(s, lexer);
         }
@@ -7642,7 +7653,9 @@ static bool parse_open_curly_bracket(Scanner *s, TSLexer *lexer,
       has_item = true;
       break;
     case '%':
-      if (!scan_comment(s, lexer, indent, &must_be_braced_comment)) {
+      // Carve has no `%comment%` attribute item; only `{%` opens a comment.
+      if (!can_be_braced_comment ||
+          !scan_comment(s, lexer, indent, &must_be_braced_comment)) {
         goto no_attribute;
       }
       break;
@@ -8302,14 +8315,14 @@ static bool scan_block_attribute_at_paragraph_end(Scanner *s, TSLexer *lexer) {
         return false;
       }
       advance(s, lexer);
-      s->attribute_tabs = true;
+      s->attribute_block_line = true;
       while (lexer->lookahead == '{') {
         if (!scan_valid_inline_attribute(s, lexer)) {
-          s->attribute_tabs = false;
+          s->attribute_block_line = false;
           return false;
         }
       }
-      s->attribute_tabs = false;
+      s->attribute_block_line = false;
       while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
         advance(s, lexer);
       }
@@ -9495,7 +9508,8 @@ static bool scan_until_no_newline(Scanner *s, TSLexer *lexer, char c,
 
 // Validate a `{...}` inline attribute, mirroring the payload grammar used for
 // block attributes in `parse_open_curly_bracket` (class `.x`, id `#x`,
-// `key=value`, bare boolean `key`, `%comment%`, whitespace, a single newline).
+// `key=value`, bare boolean `key`, spaces; a block line also takes tabs and a
+// single newline).
 // The lexer must be positioned at the opening `{`. Returns true and leaves the
 // lexer just past the closing `}` when the attribute is well-formed; otherwise
 // returns false. Used so an unparseable attribute (`[x]{???}`, `[x]{.a!b}`)
@@ -9522,7 +9536,7 @@ static bool scan_inline_attribute_body(Scanner *s, TSLexer *lexer) {
   bool seen_newline = false;
   bool line_start = false;
   while (!lexer->eof(lexer)) {
-    if (s->attribute_tabs || line_start) {
+    if (s->attribute_block_line || line_start) {
       consume_whitespace(s, lexer);
     } else {
       while (lexer->lookahead == ' ') advance(s, lexer);
@@ -9568,17 +9582,10 @@ static bool scan_inline_attribute_body(Scanner *s, TSLexer *lexer) {
       }
       break;
     }
-    case '%': {
-      bool must_be_braced_comment = false;
-      if (!scan_comment(s, lexer, s->indent + 1, &must_be_braced_comment)) {
-        return false;
-      }
-      break;
-    }
     case '\r':
     case '\n':
-      // A single embedded newline is allowed, but not a blank line.
-      if (seen_newline) {
+      // An inline block stays on its line; a block line takes one wrap.
+      if (seen_newline || !s->attribute_block_line) {
         return false;
       }
       seen_newline = true;
@@ -11865,7 +11872,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   s->col_base_marked = false;
   s->combined_probe = false;
   s->line_blank = false;
-  s->attribute_tabs = false;
+  s->attribute_block_line = false;
   // Snapshot BEFORE any reader below runs, so a probe positioned late in this
   // call (see `parse_trailing_comment`) can tell whether it is still looking
   // at the position tree-sitter actually asked about, or at wherever an
@@ -13499,7 +13506,7 @@ static void init_scalars(Scanner *s) {
   s->missing_closers = 0;
   s->caption_gap = 0;
   s->line_blank = false;
-  s->attribute_tabs = false;
+  s->attribute_block_line = false;
   s->braced_probe_marker = 0;
   s->braced_probe_raw_closer = false;
   s->after_closer_char = 0;

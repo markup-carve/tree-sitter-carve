@@ -17,6 +17,7 @@ const PAIRS = {
   autolink: /<a href="/g,
   caption: /<figcaption>/g,
   extension_inline: /class="ext-/g,
+  table_cell: /<t[dh][ >]/g,
 };
 
 const CASES = [
@@ -44,6 +45,20 @@ const CASES = [
   ['an abbreviation definition interrupts a paragraph', 'The HTML spec.\n*[HTML]: HyperText\n', { abbreviation_definition: 1 }],
   ['an indented abbreviation does not', 'a\n *[H]: x\n', { abbreviation_definition: 0 }],
   ['an indented colon fence stays one paragraph', ' ::: note\n Body.\n :::\n', { paragraph: 1 }],
+  ['a tab-padded cell attribute is cell content', '|{.a\t.b} a | b |\n', { table_cell: 2, table_cell_attributes: 0 }],
+  ['a malformed cell attribute is cell content', '|{???} a | b |\n', { table_cell: 2, table_cell_attributes: 0 }],
+  ['a space-padded cell attribute', '|{.a .b} a | b |\n', { table_cell: 2, table_cell_attributes: 1 }],
+  ['a malformed row attribute is no table', '| a | b |{.a:b}\n', { table_cell: 0, paragraph: 1 }],
+  ['an inline attribute stays on its line', '[x]{.a\n.b}\n', { span: 0, inline_attribute: 0 }],
+  ['an attribute after code stays on its line', '`c`{.a\n.b}\n', { inline_attribute: 0 }],
+  ['a block attribute line may wrap', '{.a\n .b}\n# h\n', { block_attribute: 1 }],
+  ['a percent comment is no inline attribute item', '[x]{.c %c%}\n', { span: 0, inline_attribute: 0 }],
+  ['a percent comment is no block attribute item', '{.c %c%}\n# h\n', { block_attribute: 0 }],
+  ['a braced comment line is still a comment', '{% c %}\n', { braced_comment: 1 }],
+  ['a citation key cannot label a reference link', '[t][@a]\n', { citation_group: 0 }],
+  ['nor an image reference', '![t][@a]\n', { citation_group: 0 }],
+  ['a bracketed citation stays a citation', 'x [@doe] y\n', { citation_group: 1 }],
+  ['a citation behind a stray bracket', 'a][@a]\n', { citation_group: 1 }],
   ['Djot quote braces are text', 'say {"hi"} and {\'x\'}\n', { quotation_marks: 0 }],
 ];
 
@@ -59,6 +74,20 @@ for (const [name, source, want] of CASES) {
       const rendered = (html.match(PAIRS[type]) || []).length;
       assert.equal(count, rendered, `${name}: carve-js renders ${rendered} for ${type}\n${html}`);
     }
+    ++checks;
+  }
+}
+
+// The cap counts every container kind together, as carve-js does.
+for (const [source, want] of [
+  [':::: note\n'.repeat(150) + '> '.repeat(60) + 'x\n', { div: 150, block_quote: 50 }],
+  [':::: note\n'.repeat(199) + '- - - x\n', { div: 199, list_item: 1 }],
+  [':::: note\n'.repeat(199) + '> > > x\n', { div: 199, block_quote: 1 }],
+]) {
+  const root = parser.parse(source).rootNode;
+  assert.equal(root.hasError, false, 'mixed nesting cap');
+  for (const [type, count] of Object.entries(want)) {
+    assert.equal(root.descendantsOfType(type).length, count, `mixed nesting cap: ${type}`);
     ++checks;
   }
 }
