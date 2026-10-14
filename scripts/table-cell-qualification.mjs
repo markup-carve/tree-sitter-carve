@@ -40,7 +40,8 @@ for (const body of [
 ]) for (const ending of ['\n', '\r\n', '\r', '']) check(body + ending);
 
 for (const [body, cells, spans] of [
-  ["| <https://e.org/a|b> [s]{.k} | [t]{.k} |", 2, 2],
+  // `|` is no url_char, so the pipe ends the cell (carve-js agrees).
+  ["| <https://e.org/a|b> [s]{.k} | [t]{.k} |", 3, 2],
   ["| [l](u|v) [s]{.k} | [t]{.k} |", 2, 2],
   ["| {% a|b %} [s]{.k} | [t]{.k} |", 2, 2],
   ["| {# a|b #} [s]{.k} | [t]{.k} |", 2, 3],

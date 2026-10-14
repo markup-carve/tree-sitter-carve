@@ -3158,6 +3158,7 @@ A lone paren is not the bare dot's counterpart
 
 ===============================================================================
 An indented colon fence opens no div
+;; Nor does the indented closer end the paragraph (corpus 160).
 ===============================================================================
 
  ::: note
@@ -3167,7 +3168,6 @@ An indented colon fence opens no div
 -------------------------------------------------------------------------------
 
 (document
-  (paragraph)
   (paragraph))
 
 ===============================================================================
@@ -5478,14 +5478,13 @@ x </#> y
 -------------------------------------------------------------------------------
 
 (document
-  (paragraph
-    (autolink)))
+  (paragraph))
 
 ===============================================================================
 A crossref id cannot hold a space
 ;; `crossref_id = {character - ('>' | whitespace | newline)}+`, so the run ends
-;; at the space and nothing is built - matching carve-js, which renders the
-;; brackets as literal text.
+;; at the space and no crossref is built - matching carve-js, which renders the
+;; brackets as literal text and `#a` as a tag.
 ===============================================================================
 
 x </#a b> y
@@ -5493,7 +5492,8 @@ x </#a b> y
 -------------------------------------------------------------------------------
 
 (document
-  (paragraph))
+  (paragraph
+    (tag)))
 
 ===============================================================================
 A crossref inside a code span stays inert
@@ -7726,8 +7726,7 @@ b"}
     (strong
       begin_marker: (strong_begin)
       content: (content)
-      end_marker: (strong_end))
-    (quotation_marks)))
+      end_marker: (strong_end))))
 
 ===============================================================================
 A slash glued to a paragraph's first word opens nothing, and neither does an underscore after it (#320)

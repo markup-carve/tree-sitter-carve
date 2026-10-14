@@ -104,19 +104,14 @@
   (list_marker_description)
   (list_marker_decimal_period)
   (list_marker_decimal_paren)
-  (list_marker_decimal_parens)
   (list_marker_lower_alpha_period)
   (list_marker_lower_alpha_paren)
-  (list_marker_lower_alpha_parens)
   (list_marker_upper_alpha_period)
   (list_marker_upper_alpha_paren)
-  (list_marker_upper_alpha_parens)
   (list_marker_lower_roman_period)
   (list_marker_lower_roman_paren)
-  (list_marker_lower_roman_parens)
   (list_marker_upper_roman_period)
   (list_marker_upper_roman_paren)
-  (list_marker_upper_roman_parens)
 ] @markup.list
 
 ; The `+` list/block-quote continuation marker (PART 9 §17).
@@ -142,17 +137,8 @@
 (list_item
   (term) @type.definition)
 
-(list_item
-  (definition) @markup.italic)
-
-; Conceal { and } but leave " and '
+; Conceal the backslash of an escaped quote
 ((quotation_marks) @string.special
-  (#any-of? @string.special "\"}" "'}")
-  (#offset! @string.special 0 1 0 0)
-  (#set! conceal ""))
-
-((quotation_marks) @string.special
-  (#any-of? @string.special "\\\"" "\\'" "{'" "{\"")
   (#offset! @string.special 0 0 0 -1)
   (#set! conceal ""))
 
@@ -261,7 +247,6 @@
 [
   (comment_line)
   (fenced_comment_block)
-  (comment)
   (braced_comment)
   (trailing_comment)
 ] @comment
@@ -470,16 +455,15 @@
   (footnote_marker_end)
 ] @punctuation.bracket
 
-(todo) @comment.todo
-
-(note) @comment.note
-
-(fixme) @comment.error
-
+; TODO / NOTE / FIXME inside comments come from the comment injection; in
+; prose they are ordinary words.
 [
   (paragraph)
-  (comment)
   (table_cell)
+  (comment_line)
+  (trailing_comment)
+  (fenced_comment_block)
+  (braced_comment)
 ] @spell
 
 [
