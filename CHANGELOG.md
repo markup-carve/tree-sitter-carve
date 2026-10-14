@@ -25,6 +25,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Fold a list marker into a paragraph held by a quote or div inside a list item, and an unmarked opener past the item's content column into the quoted paragraph (#542).
 - Fold a block-opener line between a list item's marker and content columns into the item's paragraph (#542).
 - Read a `:` followed only by whitespace as term text, and an empty `:: ` in a description body as description text (#542).
+- Nest a second ordered marker on the same line (`1. 1. x`, `a) a) x`) instead of producing an error (#546).
+- Count a blank line taken by a paragraph's end toward a list's blank-line run, so two blank lines after a closed fence no longer split the list (#546).
+- Read headings, quotes, fences and tables inside a line block as text (#546).
+- Read a `+` at the content column of the item holding the open paragraph as text, and let a `+` before an indented line attach nothing (#546).
 
 ## [0.1.9] - 2026-10-14
 
