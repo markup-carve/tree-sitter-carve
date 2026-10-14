@@ -246,6 +246,29 @@ int main(void) {
   tree_sitter_carve_external_scanner_destroy(wide_back);
   tree_sitter_carve_external_scanner_destroy(wide);
 
+  // A code fence keeps its width in the low 15 bits and the tilde bit on top,
+  // so 128 backticks is not a tilde fence and 256 does not read back as 0.
+  Scanner *fences = tree_sitter_carve_external_scanner_create();
+  const uint16_t fence_data[] = {3, 127, 128, 256, 300, 3 | CODE_FENCE_TILDE,
+                                 128 | CODE_FENCE_TILDE, 256 | CODE_FENCE_TILDE};
+  for (unsigned i = 0; i < 8; ++i) push_block(fences, CODE_BLOCK, fence_data[i]);
+  unsigned fences_length = tree_sitter_carve_external_scanner_serialize(fences, buffer);
+  Scanner *fences_back = tree_sitter_carve_external_scanner_create();
+  tree_sitter_carve_external_scanner_deserialize(fences_back, buffer, fences_length);
+  if (fences_back->open_blocks->size != 8) {
+    fprintf(stderr, "restored %u of 8 code fences\n", fences_back->open_blocks->size);
+    return 1;
+  }
+  for (unsigned i = 0; i < 8; ++i) {
+    uint16_t data = (*array_get(fences_back->open_blocks, i))->data;
+    if (data != fence_data[i]) {
+      fprintf(stderr, "code fence data %u restored as %u\n", fence_data[i], data);
+      return 1;
+    }
+  }
+  tree_sitter_carve_external_scanner_destroy(fences_back);
+  tree_sitter_carve_external_scanner_destroy(fences);
+
   Scanner *term = tree_sitter_carve_external_scanner_create();
   Block *definition = create_block(LIST_DEFINITION, 3);
   definition->flags = BLOCK_FLAG_DEFINITION_TERM;
