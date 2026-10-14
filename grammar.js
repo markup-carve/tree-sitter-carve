@@ -548,10 +548,10 @@ module.exports = grammar({
           ),
           seq(
             choice($.heading, $._nonparagraph_block),
-            // A fence-shaped run with no closer ahead below the body is the
-            // body's own content rather than a block (carve#2741). The scanner
-            // emits the zero-width token ONLY there, so no other line can
-            // reach this branch and fold into the description.
+            // Unreachable since spec 548, under which a body keeps no line
+            // below its column: the scanner no longer emits the token. Kept so
+            // the external token list, and with it the parser's ABI, is
+            // unchanged.
             optional(
               seq(
                 $._lazy_description_fence,
@@ -2017,7 +2017,9 @@ module.exports = grammar({
     // not match it and the run falls back to the same text it does today. The
     // cost is that the brackets are not their own nodes, so `highlights.scm`
     // captures the whole crossref rather than concealing them.
-    auto_text_link: (_) => token(seq("</#", /[^>\s]+/, ">")),
+    // Only a space or a line end stops the id: a tab, a form feed or a no-break
+    // space is id content (spec 565).
+    auto_text_link: (_) => token(seq("</#", /[^> \r\n]+/, ">")),
 
     // A name takes an INTERNAL dot: `tagName = tagChar+ (tagDot tagChar+)*`
     // with `tagDot = "." &tagChar` (resources/carve-core.ohm), so `@john.doe`
