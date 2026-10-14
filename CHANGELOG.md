@@ -9,6 +9,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 
 - Parse long paragraphs and lines in near-linear time. Unclosed bare openers (`*a *a ...`), unclosed link destinations (`[a](` repeated) and long unbroken words no longer rescan the rest of the paragraph or line at every opener or character.
+- Keep later items of a list nested in a quoted list item, including ordered lists, lists in a quote on a marker line, blank quoted lines between items, and definition lists (#539).
+- Keep a comment line inside the list item it sits in at any column, and keep the line after a comment in the item where the comment retains it, instead of splitting the list (#539).
+- End an unclosed code fence inside a colon container at the container's closer (#539).
+- Keep the rows of a table in a footnote body in one table (#539).
+- Keep a list item open across three or more blank lines when the next line continues it; a sibling marker after such a run still starts a new list (#539).
+- Read a thematic-break line or a comment line inside a line block as part of its paragraph (#539).
+- Parse a lone `-` before a `---` line as a paragraph and a thematic break instead of an error (#539).
 
 ## [0.1.9] - 2026-10-14
 

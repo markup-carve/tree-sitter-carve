@@ -1912,6 +1912,9 @@ module.exports = grammar({
             $._newline_inline,
             $._whitespace1,
             $._table_row_continuation_seam,
+            // A comment-only line inside a line block, with the line end
+            // before it.
+            alias($._verbatim_comment_line, $.comment_line),
           ),
         ),
       ),

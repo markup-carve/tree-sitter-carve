@@ -5252,6 +5252,15 @@
             {
               "type": "SYMBOL",
               "name": "_table_row_continuation_seam"
+            },
+            {
+              "type": "ALIAS",
+              "content": {
+                "type": "SYMBOL",
+                "name": "_verbatim_comment_line"
+              },
+              "named": true,
+              "value": "comment_line"
             }
           ]
         }

@@ -1,0 +1,418 @@
+================================================================================
+A nested list in a quoted item keeps its later items
+================================================================================
+> - a
+>   - b
+>   - c
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (list
+        (list_item
+          (list_marker_dash)
+          (list_item_content
+            (paragraph)
+            (block_quote_marker)
+            (list
+              (list_item
+                (list_marker_dash)
+                (list_item_content
+                  (paragraph)))
+              (list_item
+                (block_quote_marker)
+                (list_marker_dash)
+                (list_item_content
+                  (paragraph))))))))))
+
+================================================================================
+A nested ordered list in a quoted item keeps its later items
+================================================================================
+> 1. a
+>    1. b
+>    2. c
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (list
+        (list_item
+          (list_marker_decimal_period)
+          (list_item_content
+            (paragraph)
+            (block_quote_marker)
+            (list
+              (list_item
+                (list_marker_decimal_period)
+                (list_item_content
+                  (paragraph)))
+              (list_item
+                (block_quote_marker)
+                (list_marker_decimal_period)
+                (list_item_content
+                  (paragraph))))))))))
+
+================================================================================
+A list in a quote on a marker line keeps its later items
+================================================================================
+- > - a
+  > - b
+  > - c
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (block_quote
+          (block_quote_marker)
+          (content
+            (list
+              (list_item
+                (list_marker_dash)
+                (list_item_content
+                  (paragraph)))
+              (list_item
+                (block_quote_marker)
+                (list_marker_dash)
+                (list_item_content
+                  (paragraph)))
+              (list_item
+                (block_quote_marker)
+                (list_marker_dash)
+                (list_item_content
+                  (paragraph))))))))))
+
+================================================================================
+A blank quoted line between nested items in a quoted item
+================================================================================
+> - a
+>   - b
+>
+>   - c
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (list
+        (list_item
+          (list_marker_dash)
+          (list_item_content
+            (paragraph)
+            (block_quote_marker)
+            (list
+              (list_item
+                (list_marker_dash)
+                (list_item_content
+                  (paragraph)))
+              (list_item
+                (block_quote_marker)
+                (block_quote_marker)
+                (list_marker_dash)
+                (list_item_content
+                  (paragraph))))))))))
+
+================================================================================
+A definition list nested in a quoted item
+================================================================================
+> - a
+>   :: t
+>   : d
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (list
+        (list_item
+          (list_marker_dash)
+          (list_item_content
+            (paragraph)
+            (block_quote_marker)
+            (definition_list
+              (list_item
+                (list_marker_definition)
+                (term))
+              (list_item
+                (block_quote_marker)
+                (list_marker_description)
+                (definition)))))))))
+
+================================================================================
+A comment line at column 0 keeps the list together
+================================================================================
+- intro
+%% c
+- next
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph)
+        (comment_line)))
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph)))))
+
+================================================================================
+A line after a below-column comment stays in the item
+================================================================================
+- a
+ %% c
+b
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph)
+        (comment_line)
+        (paragraph)))))
+
+================================================================================
+A line after a comment at the content column stays in the band
+================================================================================
+- x
+  %%%
+ y
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph)
+        (comment_line)
+        (paragraph)))))
+
+================================================================================
+A column 0 line after a comment at the content column leaves the item
+================================================================================
+- a
+  %% c
+b
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph)
+        (comment_line))))
+  (paragraph))
+
+================================================================================
+A below-column marker after a comment is item text
+================================================================================
+- a
+  %%%
+  x
+  %%%
+ 1. o
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph)
+        (fenced_comment_block
+          (comment_fence_marker_begin)
+          (content)
+          (comment_fence_marker_end))
+        (paragraph)))))
+
+================================================================================
+A column 0 marker after a comment opens a new list
+================================================================================
+- a
+ %% c
+1. o
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph)
+        (comment_line))))
+  (list
+    (list_item
+      (list_marker_decimal_period)
+      (list_item_content
+        (paragraph)))))
+
+================================================================================
+An unclosed code fence ends at its container closer
+================================================================================
+::: note
+```
+x
+:::
+after
+
+--------------------------------------------------------------------------------
+
+(document
+  (div
+    (div_marker_begin)
+    (admonition_type)
+    (content
+      (code_block
+        (code_block_marker_begin)
+        (code)))
+    (div_marker_end))
+  (paragraph))
+
+================================================================================
+A footnote body table keeps its rows together
+================================================================================
+x[^a]
+
+[^a]: intro
+
+  | a |
+  | b |
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (footnote_reference
+      (footnote_marker_begin)
+      (reference_label)
+      (footnote_marker_end)))
+  (footnote
+    (footnote_marker_begin)
+    (reference_label)
+    (footnote_marker_end)
+    (footnote_content
+      (paragraph)
+      (table
+        (table_row
+          (table_cell))
+        (table_row
+          (table_cell))))))
+
+================================================================================
+Three blank lines inside a list item keep it open
+================================================================================
+- apples
+
+
+
+  still apples
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph)
+        (paragraph)))))
+
+================================================================================
+Three blank lines before a sibling marker start a new list
+================================================================================
+- a
+
+
+
+- b
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph))))
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph)))))
+
+================================================================================
+A thematic break line inside a line block is text
+================================================================================
+::: |
+a
+---
+b
+:::
+
+--------------------------------------------------------------------------------
+
+(document
+  (div
+    (div_marker_begin)
+    (line_block_marker)
+    (content
+      (paragraph
+        (em_dash)))
+    (div_marker_end)))
+
+================================================================================
+A comment line inside a line block stays in its paragraph
+================================================================================
+::: |
+a
+%% secret
+c
+:::
+
+--------------------------------------------------------------------------------
+
+(document
+  (div
+    (div_marker_begin)
+    (line_block_marker)
+    (content
+      (paragraph
+        (comment_line)))
+    (div_marker_end)))
+
+================================================================================
+A lone dash before a thematic break
+================================================================================
+-
+---
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph)
+  (thematic_break))

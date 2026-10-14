@@ -2124,6 +2124,10 @@
           "named": true
         },
         {
+          "type": "comment_line",
+          "named": true
+        },
+        {
           "type": "delete",
           "named": true
         },
@@ -2677,6 +2681,10 @@
         },
         {
           "type": "collapsed_reference_link",
+          "named": true
+        },
+        {
+          "type": "comment_line",
           "named": true
         },
         {
@@ -3292,6 +3300,10 @@
         },
         {
           "type": "collapsed_reference_link",
+          "named": true
+        },
+        {
+          "type": "comment_line",
           "named": true
         },
         {
@@ -4286,6 +4298,10 @@
         },
         {
           "type": "collapsed_reference_link",
+          "named": true
+        },
+        {
+          "type": "comment_line",
           "named": true
         },
         {
