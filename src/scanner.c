@@ -6957,6 +6957,11 @@ static bool scan_continuation_row(Scanner *s, TSLexer *lexer) {
 }
 
 static bool scan_separator_row(Scanner *s, TSLexer *lexer) {
+  // A row starts with its pipe: `- |` is a list item, not a separator cell.
+  consume_whitespace(s, lexer);
+  if (lexer->lookahead != '|') {
+    return false;
+  }
   uint32_t cell_count = 0;
   bool any_content = false;
   bool curr_separator;

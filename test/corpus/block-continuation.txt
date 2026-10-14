@@ -327,3 +327,26 @@ see[^f]
       (footnote_marker_begin)
       (reference_label)
       (footnote_marker_end))))
+
+================================================================================
+A sibling item after a table in a list item is no separator row
+================================================================================
+- | a |
+- | b |
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (table
+          (table_row
+            (table_cell)))))
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (table
+          (table_row
+            (table_cell)))))))
