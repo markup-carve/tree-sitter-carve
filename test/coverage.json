@@ -699,177 +699,17 @@
   "invisibleUnderAcceptance": {},
   "batteryDisagreements": {},
   "underAcceptance": {
-    "an-unterminated-fence-on-a-nested-lead-in-a-description-body-owns-its-body-4": {
-      "gaps": "definition_list: want 2 have 1",
-      "reason": "spec 21879d7 changes how a flush-left or below-column fence folds into a description body; the grammar keeps the earlier reading. Follow-up to the spec bump."
-    },
-    "an-info-string-does-not-change-how-a-flush-left-fence-folds-into-a-description-body-2": {
-      "gaps": "code_block: want 2 have 1",
-      "reason": "spec 21879d7 changes how a flush-left or below-column fence folds into a description body; the grammar keeps the earlier reading. Follow-up to the spec bump."
-    },
-    "an-info-string-does-not-change-how-a-flush-left-fence-folds-into-a-description-body": {
-      "gaps": "code_block: want 2 have 1",
-      "reason": "spec 21879d7 changes how a flush-left or below-column fence folds into a description body; the grammar keeps the earlier reading. Follow-up to the spec bump."
-    },
-    "a-below-column-line-continues-a-paragraph-only-where-one-is-open-19": {
-      "gaps": "code_block: want 2 have 1",
-      "reason": "spec 21879d7 places a fence or opener by the column it lands at inside quoted or nested marker-line containers; the grammar does not model that placement yet, so the block lands in another container or stays text. Follow-up to the spec bump."
-    },
-    "a-below-column-line-continues-a-paragraph-only-where-one-is-open-29": {
-      "gaps": "code_block: want 2 have 1",
-      "reason": "spec 21879d7 places a fence or opener by the column it lands at inside quoted or nested marker-line containers; the grammar does not model that placement yet, so the block lands in another container or stays text. Follow-up to the spec bump."
-    },
-    "a-closed-block-leaves-no-frame-for-the-line-below-4": {
-      "gaps": "div: want 1 have 0; list: want 4 have 0",
-      "reason": "spec 21879d7 places a fence or opener by the column it lands at inside quoted or nested marker-line containers; the grammar does not model that placement yet, so the block lands in another container or stays text. Follow-up to the spec bump."
-    },
-    "a-closed-block-leaves-no-frame-for-the-line-below-5": {
-      "gaps": "div: want 1 have 0; list: want 4 have 0",
-      "reason": "spec 21879d7 places a fence or opener by the column it lands at inside quoted or nested marker-line containers; the grammar does not model that placement yet, so the block lands in another container or stays text. Follow-up to the spec bump."
-    },
-    "a-line-retained-after-a-comment-opens-a-paragraph": {
-      "gaps": "code_block: want 1 have 0; list: want 3 have 2",
-      "reason": "spec 21879d7 places a fence or opener by the column it lands at inside quoted or nested marker-line containers; the grammar does not model that placement yet, so the block lands in another container or stays text. Follow-up to the spec bump."
-    },
-    "a-container-boundary-is-read-at-the-container-s-own-column-2": {
-      "gaps": "admonition_type: want 2 have 1",
-      "reason": "spec 21879d7 places a fence or opener by the column it lands at inside quoted or nested marker-line containers; the grammar does not model that placement yet, so the block lands in another container or stays text. Follow-up to the spec bump."
-    },
-    "a-quoted-item-that-ends-on-a-block-past-its-column-holds-no-paragraph-2": {
-      "gaps": "code_block: want 1 have 0",
-      "reason": "spec 21879d7 places a fence or opener by the column it lands at inside quoted or nested marker-line containers; the grammar does not model that placement yet, so the block lands in another container or stays text. Follow-up to the spec bump."
-    },
-    "an-opener-past-a-hosted-container-s-column-opens-there-3": {
-      "gaps": "heading: want 1 have 0",
-      "reason": "spec 21879d7 places a fence or opener by the column it lands at inside quoted or nested marker-line containers; the grammar does not model that placement yet, so the block lands in another container or stays text. Follow-up to the spec bump."
-    },
     "a-shifted-fence-in-a-quoted-container-s-body-stores-no-continuation-claim-2": {
       "gaps": "code_block: want 1 have 0; list: want 3 have 2",
-      "reason": "spec 21879d7 places a fence or opener by the column it lands at inside quoted or nested marker-line containers; the grammar does not model that placement yet, so the block lands in another container or stays text. Follow-up to the spec bump."
-    },
-    "a-shifted-fence-in-a-quoted-container-s-body-stores-no-continuation-claim": {
-      "gaps": "code_block: want 1 have 0",
-      "reason": "spec 21879d7 places a fence or opener by the column it lands at inside quoted or nested marker-line containers; the grammar does not model that placement yet, so the block lands in another container or stays text. Follow-up to the spec bump."
-    },
-    "an-opener-past-a-hosted-container-s-column-interrupts-its-open-paragraph-2": {
-      "gaps": "code_block: want 1 have 0",
-      "reason": "spec 21879d7 places a fence or opener by the column it lands at inside quoted or nested marker-line containers; the grammar does not model that placement yet, so the block lands in another container or stays text. Follow-up to the spec bump."
-    },
-    "a-closed-fence-at-a-marker-line-note-s-body-column-opens-in-the-note-2": {
-      "gaps": "code_block: want 1 have 0",
-      "reason": "spec 21879d7 places a fence or opener by the column it lands at inside quoted or nested marker-line containers; the grammar does not model that placement yet, so the block lands in another container or stays text. Follow-up to the spec bump."
-    },
-    "a-fence-that-leaves-a-closed-nested-item-opens-in-the-host-it-lands-in-10": {
-      "gaps": "code_block: want 1 have 0; list: want 2 have 1",
-      "reason": "spec 21879d7 places a fence or opener by the column it lands at inside quoted or nested marker-line containers; the grammar does not model that placement yet, so the block lands in another container or stays text. Follow-up to the spec bump."
-    },
-    "a-fence-that-leaves-a-closed-nested-item-opens-in-the-host-it-lands-in-2": {
-      "gaps": "code_block: want 2 have 0",
-      "reason": "spec 21879d7 places a fence or opener by the column it lands at inside quoted or nested marker-line containers; the grammar does not model that placement yet, so the block lands in another container or stays text. Follow-up to the spec bump."
-    },
-    "a-fence-that-leaves-a-closed-nested-item-opens-in-the-host-it-lands-in-3": {
-      "gaps": "code_block: want 1 have 0; list: want 3 have 2",
-      "reason": "spec 21879d7 places a fence or opener by the column it lands at inside quoted or nested marker-line containers; the grammar does not model that placement yet, so the block lands in another container or stays text. Follow-up to the spec bump."
-    },
-    "a-fence-that-leaves-a-closed-nested-item-opens-in-the-host-it-lands-in-4": {
-      "gaps": "code_block: want 2 have 0",
-      "reason": "spec 21879d7 places a fence or opener by the column it lands at inside quoted or nested marker-line containers; the grammar does not model that placement yet, so the block lands in another container or stays text. Follow-up to the spec bump."
-    },
-    "a-fence-that-leaves-a-closed-nested-item-opens-in-the-host-it-lands-in-8": {
-      "gaps": "code_block: want 1 have 0; list: want 3 have 2",
-      "reason": "spec 21879d7 places a fence or opener by the column it lands at inside quoted or nested marker-line containers; the grammar does not model that placement yet, so the block lands in another container or stays text. Follow-up to the spec bump."
-    },
-    "a-fence-that-leaves-a-closed-nested-item-opens-in-the-host-it-lands-in-9": {
-      "gaps": "code_block: want 1 have 0; list: want 3 have 2",
-      "reason": "spec 21879d7 places a fence or opener by the column it lands at inside quoted or nested marker-line containers; the grammar does not model that placement yet, so the block lands in another container or stays text. Follow-up to the spec bump."
-    },
-    "a-fence-that-leaves-a-closed-nested-item-opens-in-the-host-it-lands-in": {
-      "gaps": "code_block: want 1 have 0; list: want 3 have 2",
-      "reason": "spec 21879d7 places a fence or opener by the column it lands at inside quoted or nested marker-line containers; the grammar does not model that placement yet, so the block lands in another container or stays text. Follow-up to the spec bump."
-    },
-    "a-comment-between-a-heading-and-a-colon-fence-leaves-the-fence-an-opener": {
-      "gaps": "heading: want 1 have 0",
-      "reason": "spec 21879d7 places a fence or opener by the column it lands at inside quoted or nested marker-line containers; the grammar does not model that placement yet, so the block lands in another container or stays text. Follow-up to the spec bump."
+      "reason": "Under TWO quote levels a fence past a quoted div's column, after the item it leaves, reads as paragraph text: the second quote marker's continuation does not hand the line to the div the way one quote level does. One quote level is read correctly (the sibling document of this category)."
     }
   },
   "oracleGoldenDisagreements": {},
   "errorFamilies": {},
   "inlineReadingGaps": {
-    "an-unterminated-fence-on-a-nested-lead-in-a-description-body-owns-its-body-3": {
-      "reading": "code html=1 tree=0",
-      "reason": "spec 21879d7 changes how a flush-left or below-column fence folds into a description body; the grammar keeps the earlier reading. Follow-up to the spec bump."
-    },
-    "an-unterminated-fence-on-a-nested-lead-in-a-description-body-owns-its-body": {
-      "reading": "code html=1 tree=0",
-      "reason": "spec 21879d7 changes how a flush-left or below-column fence folds into a description body; the grammar keeps the earlier reading. Follow-up to the spec bump."
-    },
-    "an-info-string-does-not-change-how-a-flush-left-fence-folds-into-a-description-body-2": {
-      "reading": "code html=0 tree=1",
-      "reason": "spec 21879d7 changes how a flush-left or below-column fence folds into a description body; the grammar keeps the earlier reading. Follow-up to the spec bump."
-    },
-    "an-info-string-does-not-change-how-a-flush-left-fence-folds-into-a-description-body": {
-      "reading": "code html=0 tree=1",
-      "reason": "spec 21879d7 changes how a flush-left or below-column fence folds into a description body; the grammar keeps the earlier reading. Follow-up to the spec bump."
-    },
-    "a-below-column-line-continues-a-paragraph-only-where-one-is-open-19": {
-      "reading": "code html=0 tree=1",
-      "reason": "spec 21879d7 places a fence or opener by the column it lands at inside quoted or nested marker-line containers; the grammar does not model that placement yet, so the block lands in another container or stays text. Follow-up to the spec bump."
-    },
-    "a-line-retained-after-a-comment-opens-a-paragraph": {
-      "reading": "code html=0 tree=1",
-      "reason": "spec 21879d7 places a fence or opener by the column it lands at inside quoted or nested marker-line containers; the grammar does not model that placement yet, so the block lands in another container or stays text. Follow-up to the spec bump."
-    },
-    "a-line-block-payload-span-pairs-past-the-content-column-3": {
-      "reading": "code#1 html=\"\" tree=\"paratail\"",
-      "reason": "spec 21879d7 places a fence or opener by the column it lands at inside quoted or nested marker-line containers; the grammar does not model that placement yet, so the block lands in another container or stays text. Follow-up to the spec bump."
-    },
-    "a-quoted-item-that-ends-on-a-block-past-its-column-holds-no-paragraph-2": {
-      "reading": "code#1 html=\"\" tree=\"codetail\"",
-      "reason": "spec 21879d7 places a fence or opener by the column it lands at inside quoted or nested marker-line containers; the grammar does not model that placement yet, so the block lands in another container or stays text. Follow-up to the spec bump."
-    },
-    "a-tab-is-content-in-a-heading-key-and-in-a-cross-reference-id-4": {
-      "reading": "strong html=0 tree=1",
-      "reason": "the engine at carve-js 26ccd5a reads this span differently after the spec 21879d7 inline changes; the inline scanner keeps the earlier reading. Follow-up for the inline scanner."
-    },
     "a-shifted-fence-in-a-quoted-container-s-body-stores-no-continuation-claim-2": {
       "reading": "code html=0 tree=1",
-      "reason": "spec 21879d7 places a fence or opener by the column it lands at inside quoted or nested marker-line containers; the grammar does not model that placement yet, so the block lands in another container or stays text. Follow-up to the spec bump."
-    },
-    "a-shifted-fence-in-a-quoted-container-s-body-stores-no-continuation-claim": {
-      "reading": "code html=0 tree=1",
-      "reason": "spec 21879d7 places a fence or opener by the column it lands at inside quoted or nested marker-line containers; the grammar does not model that placement yet, so the block lands in another container or stays text. Follow-up to the spec bump."
-    },
-    "an-opener-past-a-hosted-container-s-column-interrupts-its-open-paragraph-2": {
-      "reading": "code html=0 tree=1",
-      "reason": "spec 21879d7 places a fence or opener by the column it lands at inside quoted or nested marker-line containers; the grammar does not model that placement yet, so the block lands in another container or stays text. Follow-up to the spec bump."
-    },
-    "a-closed-fence-at-a-marker-line-note-s-body-column-opens-in-the-note-2": {
-      "reading": "code html=0 tree=1",
-      "reason": "spec 21879d7 places a fence or opener by the column it lands at inside quoted or nested marker-line containers; the grammar does not model that placement yet, so the block lands in another container or stays text. Follow-up to the spec bump."
-    },
-    "a-fence-that-leaves-a-closed-nested-item-opens-in-the-host-it-lands-in-10": {
-      "reading": "code html=0 tree=1",
-      "reason": "spec 21879d7 places a fence or opener by the column it lands at inside quoted or nested marker-line containers; the grammar does not model that placement yet, so the block lands in another container or stays text. Follow-up to the spec bump."
-    },
-    "a-fence-that-leaves-a-closed-nested-item-opens-in-the-host-it-lands-in-2": {
-      "reading": "code html=1 tree=2",
-      "reason": "spec 21879d7 places a fence or opener by the column it lands at inside quoted or nested marker-line containers; the grammar does not model that placement yet, so the block lands in another container or stays text. Follow-up to the spec bump."
-    },
-    "a-fence-that-leaves-a-closed-nested-item-opens-in-the-host-it-lands-in-8": {
-      "reading": "code html=0 tree=1",
-      "reason": "spec 21879d7 places a fence or opener by the column it lands at inside quoted or nested marker-line containers; the grammar does not model that placement yet, so the block lands in another container or stays text. Follow-up to the spec bump."
-    },
-    "a-fence-that-leaves-a-closed-nested-item-opens-in-the-host-it-lands-in-9": {
-      "reading": "code html=0 tree=1",
-      "reason": "spec 21879d7 places a fence or opener by the column it lands at inside quoted or nested marker-line containers; the grammar does not model that placement yet, so the block lands in another container or stays text. Follow-up to the spec bump."
-    },
-    "an-explicitly-delimited-row-of-blank-cells-is-a-table-12": {
-      "reading": "strong html=1 tree=0",
-      "reason": "the engine at carve-js 26ccd5a reads this span differently after the spec 21879d7 inline changes; the inline scanner keeps the earlier reading. Follow-up for the inline scanner."
-    },
-    "a-description-body-whose-own-block-is-a-fence-keeps-no-line-below-its-column": {
-      "reading": "code html=1 tree=0",
-      "reason": "the flush-left `code` line and the closing fence row below the description body belong to the document, not to the body's fence: the reference reading ends the body's fence empty and reads the two leftover rows as a paragraph whose backtick run is an empty code span. The grammar instead keeps `code` as the body fence's content and opens a second code block on the backtick row, so it reads no inline code span at all."
+      "reason": "Under TWO quote levels a fence past a quoted div's column, after the item it leaves, reads as paragraph text: the second quote marker's continuation does not hand the line to the div the way one quote level does. One quote level is read correctly (the sibling document of this category)."
     }
   },
   "lineTerminatorGaps": {},

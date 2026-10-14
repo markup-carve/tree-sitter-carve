@@ -3264,7 +3264,7 @@ a `b
       end_marker: (verbatim_marker_end))))
 
 ==================
-An unterminated fence on a nested lead in a description body owns its body
+An unterminated fence on a nested lead in a description body keeps no line below its column
 ==================
 :: t
 : - ```
@@ -3285,11 +3285,15 @@ code
           marker: (list_marker_dash)
           content: (list_item_content
             (code_block
-              (code_block_marker_begin)
-              code: (code))))))))
+              (code_block_marker_begin)))))))
+  (paragraph
+    (verbatim
+      begin_marker: (verbatim_marker_begin)
+      content: (content)
+      end_marker: (verbatim_marker_end))))
 
 ==================
-A tilde fence on a nested lead in a description body owns its body
+A tilde fence on a nested lead keeps no line below the body's column
 ==================
 :: t
 : - ~~~ x
@@ -3311,8 +3315,8 @@ code
           content: (list_item_content
             (code_block
               (code_block_marker_begin)
-              language: (language)
-              code: (code))))))))
+              language: (language)))))))
+  (paragraph))
 
 ==================
 A nested-lead fence with a closer at the item's column closes there
@@ -3341,7 +3345,7 @@ A nested-lead fence with a closer at the item's column closes there
               (code_block_marker_end))))))))
 
 ==================
-A flush-left fence with no closer folds into the body after a closed nested fence
+A flush-left fence with no closer after a closed nested fence opens at document level
 ==================
 :: t
 :  - ```
@@ -3363,15 +3367,13 @@ A flush-left fence with no closer folds into the body after a closed nested fenc
           content: (list_item_content
             (code_block
               (code_block_marker_begin)
-              (code_block_marker_end)))))
-      definition: (definition
-        (verbatim
-          begin_marker: (verbatim_marker_begin)
-          content: (content)
-          end_marker: (verbatim_marker_end))))))
+              (code_block_marker_end)))))))
+  (code_block
+    (code_block_marker_begin)
+    language: (language)))
 
 ==================
-The info string does not change how that fence folds
+The info string does not change where that fence opens
 ==================
 :: t
 :  - ```
@@ -3393,12 +3395,9 @@ The info string does not change how that fence folds
           content: (list_item_content
             (code_block
               (code_block_marker_begin)
-              (code_block_marker_end)))))
-      definition: (definition
-        (verbatim
-          begin_marker: (verbatim_marker_begin)
-          content: (content)
-          end_marker: (verbatim_marker_end))))))
+              (code_block_marker_end)))))))
+  (code_block
+    (code_block_marker_begin)))
 
 ==================
 A TERMINATED flush-left fence ends the body at that column
@@ -3463,7 +3462,7 @@ A marker-shaped line in the flush-left fence's body is fence body, not a sibling
     (code_block_marker_end)))
 
 ==================
-The same run with no closer folds in and keeps both its lines
+The same run with no closer opens at document level and keeps both its lines
 ==================
 :: t
 :  - ```
@@ -3486,15 +3485,14 @@ The same run with no closer folds in and keeps both its lines
           content: (list_item_content
             (code_block
               (code_block_marker_begin)
-              (code_block_marker_end)))))
-      definition: (definition
-        (verbatim
-          begin_marker: (verbatim_marker_begin)
-          content: (content)
-          end_marker: (verbatim_marker_end))))))
+              (code_block_marker_end)))))))
+  (code_block
+    (code_block_marker_begin)
+    language: (language)
+    code: (code)))
 
 ==================
-A nested-lead fence owns its body only up to the next entry
+A flush-left line after a nested-lead fence ends the body before the next entry
 ==================
 :: t
 : - ```
@@ -3516,8 +3514,9 @@ code
           marker: (list_marker_dash)
           content: (list_item_content
             (code_block
-              (code_block_marker_begin)
-              code: (code))))))
+              (code_block_marker_begin)))))))
+  (paragraph)
+  (definition_list
     (list_item
       marker: (list_marker_definition)
       term: (term))
@@ -3526,7 +3525,7 @@ code
       definition: (definition))))
 
 ==================
-A nested-lead fence owns its body only up to a blank line that ends it
+A flush-left line after a nested-lead fence ends the body before a blank line
 ==================
 :: t
 : - ```
@@ -3548,8 +3547,8 @@ tail
           marker: (list_marker_dash)
           content: (list_item_content
             (code_block
-              (code_block_marker_begin)
-              code: (code)))))))
+              (code_block_marker_begin)))))))
+  (paragraph)
   (paragraph))
 
 ==================
@@ -3619,7 +3618,7 @@ An empty braced pair stays literal text
   (paragraph))
 
 ==================
-A fence on a description marker keeps flush-left lines as its content
+A fence on a description marker keeps no flush-left line
 ==================
 :: t
 : ```
@@ -3636,8 +3635,8 @@ more
     (list_item
       marker: (list_marker_description)
       (code_block
-        (code_block_marker_begin)
-        code: (code)))))
+        (code_block_marker_begin))))
+  (paragraph))
 
 ==================
 A flush-left fence run under a description fence opens a new fence
@@ -3657,10 +3656,12 @@ code
     (list_item
       marker: (list_marker_description)
       (code_block
-        (code_block_marker_begin)
-        code: (code))))
-  (code_block
-    (code_block_marker_begin)))
+        (code_block_marker_begin))))
+  (paragraph
+    (verbatim
+      begin_marker: (verbatim_marker_begin)
+      content: (content)
+      end_marker: (verbatim_marker_end))))
 
 ==================
 A flush-left heading under a description fence ends the body
@@ -3680,8 +3681,8 @@ code
     (list_item
       marker: (list_marker_description)
       (code_block
-        (code_block_marker_begin)
-        code: (code))))
+        (code_block_marker_begin))))
+  (paragraph)
   (section
     heading: (heading
       marker: (marker)
@@ -3705,14 +3706,11 @@ code
     (list_item
       marker: (list_marker_description)
       (code_block
-        (code_block_marker_begin)
-        code: (code)))
-    (list_item
-      marker: (list_marker_description)
-      definition: (definition))))
+        (code_block_marker_begin))))
+  (paragraph))
 
 ==================
-A flush-left colon fence stays description fence content
+A flush-left colon fence under a description fence opens at document level
 ==================
 :: t
 : ```
@@ -3729,8 +3727,11 @@ code
     (list_item
       marker: (list_marker_description)
       (code_block
-        (code_block_marker_begin)
-        code: (code)))))
+        (code_block_marker_begin))))
+  (paragraph)
+  (div
+    (div_marker_begin)
+    type: (admonition_type)))
 
 ==================
 A flush-left comment line under a description fence ends the body
@@ -3750,8 +3751,8 @@ code
     (list_item
       marker: (list_marker_description)
       (code_block
-        (code_block_marker_begin)
-        code: (code))))
+        (code_block_marker_begin))))
+  (paragraph)
   (comment_line))
 
 ==================
@@ -3773,8 +3774,8 @@ tail
     (list_item
       marker: (list_marker_description)
       (code_block
-        (code_block_marker_begin)
-        code: (code))))
+        (code_block_marker_begin))))
+  (paragraph)
   (paragraph))
 
 ==================

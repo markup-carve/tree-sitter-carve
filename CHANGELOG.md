@@ -6,21 +6,6 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-### Fixed
-
-- Keep a braced span open across a bracket that holds its closer, as in `{*a [x *}] b*}`; the closer is bracket content when the bracket closes.
-- Read an explicitly delimited row of blank cells, `||` and `| |` included, as a table row (#551).
-- Read `---` directly over `---` as empty frontmatter (#551).
-- Keep a comment at a list item's content column from retaining the line below it, and let a description body keep a below-column comment as a list item does (#551).
-- Read a tab inside a block attribute line, or after a definition's `]:`, as text, and a destination starting with Unicode whitespace as no definition (#551).
-- Let a list item that hosts a div collect a definition written past the div's content column (#551).
-- Keep a closed container on a quoted marker line, and a definition list there, from turning the lines below into errors (#551).
-- Let a braced emphasis span open a child of its own kind, as in `{*a {*b*} c*}` and `*a {*b*} c*`; the empty `{**}` stays text. An enclosing braced closer inside an inline extension's payload is content unless an unterminated code run reaches it (#551).
-
-### Changed
-
-- Move the spec pin to `21879d7` and the engine oracle to `26ccd5a` (#551).
-
 ## [0.1.9] - 2026-10-14
 
 This release aligns caption, autolink, attribute, include-option, list, quote, table and nesting readings with carve-js, parses long lines in near-linear time, reads very wide fences at full width, and simplifies the editor queries.
@@ -64,10 +49,20 @@ This release aligns caption, autolink, attribute, include-option, list, quote, t
 - Count a blank line taken by a paragraph's end toward a list's blank-line run, so two blank lines after a closed fence no longer split the list (#546).
 - Read headings, quotes, fences and tables inside a line block as text (#546).
 - Read a `+` at the content column of the item holding the open paragraph as text, and let a `+` before an indented line attach nothing (#546).
+- Keep a braced span open across a bracket that holds its closer, as in `{*a [x *}] b*}`; the closer is bracket content when the bracket closes (#553).
+- Read an explicitly delimited row of blank cells, `||` and `| |` included, as a table row (#551).
+- Read `---` directly over `---` as empty frontmatter (#551).
+- Keep a comment at a list item's content column from retaining the line below it, and let a description body keep a below-column comment as a list item does (#551).
+- Read a tab inside a block attribute line, or after a definition's `]:`, as text, and a destination starting with Unicode whitespace as no definition (#551).
+- Let a list item that hosts a div collect a definition written past the div's content column (#551).
+- Keep a closed container on a quoted marker line, and a definition list there, from turning the lines below into errors (#551).
+- Let a braced emphasis span open a child of its own kind, as in `{*a {*b*} c*}` and `*a {*b*} c*`; the empty `{**}` stays text. An enclosing braced closer inside an inline extension's payload is content unless an unterminated code run reaches it (#551).
+- Read the remaining spec 0.1.9 readings as carve-js 0.1.11 does: a description body keeps no line below its column, a fence or heading past a quoted div's column opens in it, `>  - a` opens a list, a tab is part of a cross-reference id, and `|{#x}|` is a table row (#555).
 
 ### Changed
 
 - Inject YAML into frontmatter without a language, and the `comment` language into `%%`, `%%%` and `{% %}` comments. `TODO`, `NOTE` and `FIXME` in prose are no longer highlighted, a description body is no longer italic, and captures of list markers the grammar never builds are removed (#540).
+- Move the spec pin to the 0.1.9 tag (`5484177a`) and the engine oracle to carve-js 0.1.11 (#551, #555).
 
 ## [0.1.8] - 2026-10-05
 

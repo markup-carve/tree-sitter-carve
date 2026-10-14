@@ -6333,7 +6333,7 @@
           },
           {
             "type": "PATTERN",
-            "value": "[^>\\s]+"
+            "value": "[^> \\r\\n]+"
           },
           {
             "type": "STRING",

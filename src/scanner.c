@@ -1821,10 +1821,9 @@ static uint32_t quoted_div_column(Scanner *s, uint8_t marker_count) {
 
 static bool close_paragraph(Scanner *s, TSLexer *lexer);
 
-/// Is this line, short of a description body's content column, content of the
-/// code fence open in that body? It is, unless a blank line came before it or
-/// it would interrupt a paragraph in the body: a fence-shaped run always does.
-/// Returns 1 to keep the line, 0 when it closes the fence, -1 when the
+/// Does this line, short of a description body's content column, close the
+/// code fence open in that body? It always does: a body keeps no line below
+/// its column (spec 548). Returns 0 when it closes the fence, -1 when the
 /// question does not arise (the lexer has not moved then).
 static int description_fence_keeps_line(Scanner *s, TSLexer *lexer) {
   Block *top = peek_block(s);
@@ -1838,34 +1837,7 @@ static int description_fence_keeps_line(Scanner *s, TSLexer *lexer) {
       lexer->eof(lexer)) {
     return -1;
   }
-  if (top->flags & BLOCK_FLAG_DESCRIPTION_FENCE_HAS_CLOSER) return 0;
-  if (lexer->lookahead == '`' || lexer->lookahead == '~') {
-    int32_t c = lexer->lookahead;
-    uint8_t run = 0;
-    while (lexer->lookahead == c) {
-      advance(s, lexer);
-      ++run;
-    }
-    return run < 3 ? 1 : 0;
-  }
-  // A new entry ends the body. A colon fence does not: the reference keeps
-  // `::: x` in the code, since that body may hold a paragraph.
-  if (lexer->lookahead == ':') {
-    uint16_t colons = consume_colons(s, lexer);
-    return colons <= 2 && lexer->lookahead == ' ' ? 0 : 1;
-  }
-  // A comment line (`%%`, or a `%%%` fence) ends the body too.
-  if (lexer->lookahead == '%') {
-    return consume_percents(s, lexer) >= 2 ? 0 : 1;
-  }
-  uint8_t indent = s->indent;
-  uint16_t state = s->state;
-  uint8_t level = s->block_quote_level;
-  bool interrupts = close_paragraph(s, lexer);
-  s->indent = indent;
-  s->state = state;
-  s->block_quote_level = level;
-  return interrupts ? 0 : 1;
+  return 0;
 }
 
 static Block *find_description_body(Scanner *s) {
@@ -1983,9 +1955,16 @@ static bool close_list_nested_block_if_needed(Scanner *s, TSLexer *lexer,
                    : line_column(s, lexer) < list->content_col)
             : s->indent < margin;
     if (short_of_list) {
-      s->state &= ~STATE_QUOTED_LINE_SHORT_OF_ITEM;
       lexer->result_symbol = BLOCK_CLOSE;
       remove_block(s);
+      // A fence closing inside a quoted div leaves the div to close on the
+      // same announcement.
+      Block *next = peek_block(s);
+      if (!next || next == list ||
+          (next->type != DIV && next->type != FIGURE_GROUP &&
+           next->type != CODE_BLOCK)) {
+        s->state &= ~STATE_QUOTED_LINE_SHORT_OF_ITEM;
+      }
       return true;
     }
   }
@@ -2426,6 +2405,15 @@ static bool verbatim_line_continues(Scanner *s, TSLexer *lexer) {
     return !code_fence_info_is_modeled(s, lexer) ||
            !code_fence_has_closer_ahead(s, lexer, '`', run, line_indent, false);
   }
+  // A tilde fence with a closer ahead interrupts the paragraph the same way.
+  if (lexer->lookahead == '~' && top != NULL) {
+    uint16_t run = consume_fence_run(s, lexer, '~');
+    if (run < 3) {
+      return true;
+    }
+    return !code_fence_info_is_modeled(s, lexer) ||
+           !code_fence_has_closer_ahead(s, lexer, '~', run, line_indent, false);
+  }
   // A comment-only line (the block-level `comment_line` shape, `%%` with
   // nothing before it on the line) inside a line block does not end the run:
   // the reference strips the comment and reads on past it
@@ -2545,10 +2533,45 @@ static bool parse_verbatim_content(Scanner *s, TSLexer *lexer, bool end_valid,
   // width there, which leaves the newline to the decision on the next call.
   if (!in_table_row && at_line_end(lexer)) {
     consume_line_end(s, lexer);
-    consume_whitespace(s, lexer);
+    uint8_t line_indent = consume_whitespace(s, lexer);
     if (lexer->eof(lexer) || at_line_end(lexer)) {
       lexer->result_symbol = VERBATIM_CONTENT;
       return true;
+    }
+    // In a line block the closer below the opener line ends the run too; the
+    // token stays zero width so the next decision closes it.
+    if (inside_line_block(s) &&
+        verbatim_line_ends_paragraph(s, lexer, line_indent)) {
+      lexer->result_symbol = VERBATIM_CONTENT;
+      return true;
+    }
+    // A tilde fence with a closer ahead interrupts the paragraph, and with it
+    // the run (I4), as it does on any later line of the run. In a quote it
+    // stands after the quote's markers.
+    uint32_t fence_column = line_indent;
+    if (lexer->lookahead == '>' && count_blocks(s, BLOCK_QUOTE) > 0) {
+      bool quoted_newline = false;
+      uint8_t quoted = scan_block_quote_markers(s, lexer, &quoted_newline);
+      // A quoted blank line ends the paragraph, and the run with it.
+      if (quoted == count_blocks(s, BLOCK_QUOTE) &&
+          (quoted_newline || at_line_end(lexer) || lexer->eof(lexer))) {
+        lexer->result_symbol = VERBATIM_CONTENT;
+        return true;
+      }
+      if (quoted == count_blocks(s, BLOCK_QUOTE)) {
+        while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+          advance(s, lexer);
+        }
+        fence_column = line_column(s, lexer);
+      }
+    }
+    if (lexer->lookahead == '~') {
+      uint16_t run = consume_fence_run(s, lexer, '~');
+      if (run >= 3 && code_fence_info_is_modeled(s, lexer) &&
+          code_fence_has_closer_ahead(s, lexer, '~', run, fence_column, false)) {
+        lexer->result_symbol = VERBATIM_CONTENT;
+        return true;
+      }
     }
     mark_end(s, lexer);
   }
@@ -2944,81 +2967,6 @@ static bool code_fence_info_is_modeled(Scanner *s, TSLexer *lexer) {
   return false;
 }
 
-/// A line starting a new description-list entry (`:: t` or `:  d`) at the
-/// document margin.
-static bool at_description_entry(Scanner *s, TSLexer *lexer) {
-  if (lexer->lookahead != ':') {
-    return false;
-  }
-  advance(s, lexer);
-  if (lexer->lookahead == ':') {
-    advance(s, lexer);
-  }
-  return lexer->lookahead == ' ';
-}
-
-/// An unterminated code fence on a NESTED item's lead line in a description
-/// body (`:: t` / `: - ```` ) owns the rest of that body, flush-left lines and
-/// fence-shaped ones included; only a closer at the nested item's content
-/// column ends it (spec: "An unterminated fence on a nested lead in a
-/// description body owns its body"). A top-level item's fence does not. Read
-/// as a peek past the opener, whose token end is already marked.
-static int fence_owns_description_body(Scanner *s, TSLexer *lexer,
-                                        uint16_t width, char fence_char,
-                                        uint32_t column) {
-  if (s->marker_end_col == 0 || column != s->marker_end_col) {
-    return -1;
-  }
-  int n = (int)s->open_blocks->size;
-  if (n < 2) {
-    return -1;
-  }
-  Block *item = *array_get(s->open_blocks, n - 1);
-  Block *body = *array_get(s->open_blocks, n - 2);
-  if (!is_list(item->type) || item->type == LIST_DEFINITION ||
-      body->type != LIST_DEFINITION || body->content_col == 0) {
-    return -1;
-  }
-  uint32_t body_col = body->content_col;
-  while (!lexer->eof(lexer) && !at_line_end(lexer)) {
-    advance(s, lexer);
-  }
-  while (!lexer->eof(lexer)) {
-    consume_line_end(s, lexer);
-    if (lexer->eof(lexer)) {
-      break;
-    }
-    uint8_t indent = consume_whitespace(s, lexer);
-    if (at_line_end(lexer)) {
-      // A blank line ends the body unless the next line continues it.
-      consume_line_end(s, lexer);
-      uint8_t next = consume_whitespace(s, lexer);
-      if (lexer->eof(lexer) || at_line_end(lexer) || next < body_col) {
-        break;
-      }
-      indent = next;
-    } else if (indent == 0 && lexer->lookahead == ':') {
-      if (at_description_entry(s, lexer)) {
-        break;
-      }
-      continue;
-    }
-    if (indent == column && lexer->lookahead == fence_char &&
-        consume_fence_run(s, lexer, fence_char) >= width) {
-      while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
-        advance(s, lexer);
-      }
-      if (at_line_end(lexer) || lexer->eof(lexer)) {
-        return false;
-      }
-    }
-    while (!lexer->eof(lexer) && !at_line_end(lexer)) {
-      advance(s, lexer);
-    }
-  }
-  return true;
-}
-
 static bool try_begin_code_block(Scanner *s, TSLexer *lexer, uint16_t width,
                                  char fence_char, uint32_t column) {
   Block *top = peek_block(s);
@@ -3035,12 +2983,12 @@ static bool try_begin_code_block(Scanner *s, TSLexer *lexer, uint16_t width,
   bool comment_restored = host_list &&
       (host_list->flags & BLOCK_FLAG_COMMENT_RESTORES_LAZY);
   uint32_t advances_before = s->advances;
-  int description_ownership = fence_owns_description_body(s, lexer, width, fence_char,
-                                                         column);
-  bool owns_body = description_ownership == 1;
-  bool description_has_closer = description_ownership == 0;
-  bool description_probe = description_ownership < 0 &&
-      (comment_restored || (host_list && host_list->type == LIST_DEFINITION));
+  // A description body keeps no line below its column (spec 548), so no
+  // fence owns the rest of a body any more.
+  bool owns_body = false;
+  bool description_has_closer = false;
+  bool description_probe =
+      comment_restored || (host_list && host_list->type == LIST_DEFINITION);
   // A fence with no closer ahead is no opaque span in a colon container: the
   // container's closer stays structural (PART 9 section 12).
   bool in_div = top && (top->type == DIV || top->type == FIGURE_GROUP) &&
@@ -3233,6 +3181,18 @@ static bool parse_comment_fence_begin(Scanner *s, TSLexer *lexer,
   bool below_content = host_list && host_list->type != LIST_DEFINITION &&
       s->indent >= host_list->data &&
       s->indent < list_item_margin(s, host_list);
+  // A list item holding the fence directly keeps no body line below its
+  // content column: that line ends the item, and a closer past it closes
+  // nothing (spec 583). Measured only where no quote or container intervenes.
+  uint8_t item_margin = 0;
+  Block *innermost = peek_block(s);
+  if (host_list && innermost == host_list && !below_content &&
+      count_blocks(s, BLOCK_QUOTE) == 0) {
+    item_margin = list_item_margin(s, host_list);
+    // An opener short of the margin is the comment-retention case; it keeps
+    // its own reading.
+    if (line_column(s, lexer) < item_margin) item_margin = 0;
+  }
   uint16_t percents = consume_percents(s, lexer);
   if (percents < 3 || percents == COMMENT_FENCE_CAP) {
     return false;
@@ -3250,7 +3210,19 @@ static bool parse_comment_fence_begin(Scanner *s, TSLexer *lexer,
     if (lexer->eof(lexer)) {
       return false;
     }
-    if (scan_comment_fence_line_width(s, lexer) == percents) {
+    bool leaves_item = false;
+    if (item_margin > 0) {
+      while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+        advance(s, lexer);
+      }
+      leaves_item = !at_line_end(lexer) && !lexer->eof(lexer) &&
+                    line_column(s, lexer) < item_margin;
+    }
+    uint16_t run = scan_comment_fence_line_width(s, lexer);
+    if (leaves_item && run != percents) {
+      return false;
+    }
+    if (run == percents) {
       if (below_content) {
         host_list->flags |= BLOCK_FLAG_COMMENT_RESTORES_LAZY;
       }
@@ -4157,7 +4129,10 @@ static void open_marker_line_quote(Scanner *s, uint32_t marker_start_col) {
 
 static bool parse_block_quote(Scanner *s, TSLexer *lexer,
                               const bool *valid_symbols) {
-  if (line_block_body(s)) {
+  // A line block's body is its own text, except for the markers of the
+  // quotes that hold it: those still continue the quote.
+  if (line_block_body(s) &&
+      s->block_quote_level >= count_blocks(s, BLOCK_QUOTE)) {
     return false;
   }
   if (!valid_symbols[BLOCK_QUOTE_BEGIN] &&
@@ -4265,9 +4240,9 @@ static bool parse_block_quote(Scanner *s, TSLexer *lexer,
     while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
       run = lexer->lookahead == ' ' ? run + 1 : 0;
       advance(s, lexer);
-      if (div_col != 0 && lexer->lookahead != '\t' &&
-          line_column(s, lexer) <= div_col) {
-        // The pin follows the run up to the quoted div's column.
+      if (div_col != 0 && lexer->lookahead != '\t') {
+        // The pin follows the run up to the quoted div's column and past it:
+        // an opener past the column opens there (spec 566, 581).
         mark_end(s, lexer);
         s->indent = (uint8_t)line_column(s, lexer);
       }
@@ -5361,8 +5336,12 @@ static bool parse_list_marker_or_thematic_break(
   // COLUMN ZERO. An indented `***` is a paragraph, not a break (corpus
   // 130-thematic-break-requires-contiguous-markers). The list marker below is
   // deliberately NOT guarded: a list may be indented, a block opener may not.
+  // Indented past a quote's column with no item open, `***` is text.
+  Block *break_quote = find_block(s, BLOCK_QUOTE);
+  bool past_quote_column = break_quote && break_quote->content_col != 0 &&
+                           start_col > break_quote->content_col && !find_list(s);
   bool can_be_thematic_break = valid_symbols[thematic_break_type] &&
-                               !marker_attribute &&
+                               !marker_attribute && !past_quote_column &&
                                (opener_reaches_item_margin(s, start_col) ||
                                 (s->marker_end_col != 0 &&
                                  start_col == s->marker_end_col)) &&
@@ -5940,61 +5919,6 @@ static bool parse_star(Scanner *s, TSLexer *lexer, const bool *valid_symbols,
                                              THEMATIC_BREAK_STAR, declined_run);
 }
 
-/// A fence-shaped run with no closer ahead is the description body's content,
-/// not a block of its own, so the item does not end on it (carve#2741).
-///
-/// `scan_code_fence_at_paragraph_end` already says such a run does not
-/// interrupt an open PARAGRAPH, which is why `:: t` / `:  body` / a flush-left
-/// fence folds the fence into the body as an inline run. The clause does not
-/// turn on whether a paragraph happens to be open, and after a CLOSED nested
-/// fence none is, so the boundary has to ask the same question.
-///
-/// Asked HERE because this is the last point at which the body is still on the
-/// stack. By the time the fence scanner runs the item and its content column
-/// are gone, and the terminated and unterminated halves of the clause arrive
-/// in identical state (tree-sitter-carve#514).
-///
-/// The CHEAP tests come first and move nothing: only once they all hold does
-/// this advance, and the caller then answers from here rather than falling
-/// through with a moved lexer.
-static bool description_fence_line_is_body_content(Scanner *s,
-                                                   TSLexer *lexer) {
-  uint32_t column = line_column(s, lexer);
-  int32_t fence_char = lexer->lookahead;
-  uint16_t width = consume_fence_run(s, lexer, (char)fence_char);
-  if (width < 3) {
-    return false;
-  }
-  // An info string the grammar cannot model is not a fence at all, the same
-  // test the opener and the paragraph peek both apply.
-  if (!code_fence_info_is_modeled(s, lexer)) {
-    return false;
-  }
-  // Asked WITHOUT the body's list scope. This candidate stands below the
-  // body's content column, so if it opens a block at all that block is the
-  // document's: a `- x` among its body lines is fence body, not a sibling
-  // marker ending an item. With the scope left on, a TERMINATED fence whose
-  // body holds a marker-shaped line read as unterminated and folded in, where
-  // the reference keeps it at document level.
-  return !code_fence_has_closer_ahead(s, lexer, fence_char, width, column, true);
-}
-
-/// The no-advance half of the test above: is this line even a candidate?
-static bool description_body_may_keep_line(Scanner *s, TSLexer *lexer,
-                                           Block *list) {
-  return list->type == LIST_DEFINITION && list->content_col != 0 &&
-         // A body a fence OWNED ends where that fence does, and what the line
-         // after it reads as is a separate question nobody has ruled: the
-         // oracle puts it in a document-level paragraph together with the
-         // fence's last body line, which no engine here builds
-         // (markup-carve/carve#2747). Left exactly as it was.
-         !(list->flags & BLOCK_FLAG_BODY_OWNED_BY_FENCE) &&
-         !(s->state & (STATE_AFTER_BLANK_LINE | STATE_LIST_CONTINUATION)) &&
-         count_blocks(s, BLOCK_QUOTE) == 0 &&
-         (lexer->lookahead == '`' || lexer->lookahead == '~') &&
-         line_column(s, lexer) < list->content_col;
-}
-
 static bool parse_list_item_end(Scanner *s, TSLexer *lexer,
                                 const bool *valid_symbols, bool at_eof) {
   // Captured before the block-quote / list-marker scans below advance the
@@ -6077,23 +6001,6 @@ static bool parse_list_item_end(Scanner *s, TSLexer *lexer,
     }
   }
 
-  // A line short of a description body, shaped like a fence and closing
-  // nothing, stays the body's content (carve#2741). Nothing else can reach the
-  // final fall-through from this state, so both outcomes are answered here
-  // rather than falling through with the lexer moved by the lookahead.
-  if (valid_symbols[LAZY_DESCRIPTION_FENCE] &&
-      description_body_may_keep_line(s, lexer, list)) {
-    mark_end(s, lexer);
-    if (description_fence_line_is_body_content(s, lexer)) {
-      lexer->result_symbol = LAZY_DESCRIPTION_FENCE;
-      return true;
-    }
-    // A terminated fence at that column ends the body, the other half of the
-    // clause: exactly what the fall-through below would have done.
-    lexer->result_symbol = LIST_ITEM_END;
-    s->blocks_to_close = 1;
-    return true;
-  }
 
   // Scanning the block prefix markers are necessary so we can
   // tell if we should end a list item or not.
@@ -7067,6 +6974,9 @@ static bool scan_table_row(Scanner *s, TSLexer *lexer, TokenType *row_type,
       // 453-a-row-whose-every-cell-is-blank-is-not-a-table-6).
       attr_after_pipe = false;
       any_content = true;
+      // A cell that carries a block, or a brace run read as its text when no
+      // space follows (`|{#x}|`), is never a separator cell.
+      all_separators = false;
     }
     if (!scan_table_cell(s, lexer, &curr_separator, &curr_empty,
                          &curr_meaningful, &unterminated,
@@ -8937,9 +8847,21 @@ static bool close_paragraph(Scanner *s, TSLexer *lexer) {
     return true;
   }
 
-  // A line block's paragraph runs to a blank line or a colon fence.
-  if (line_block_body(s) && lexer->lookahead != ':') {
-    return false;
+  // A line block's paragraph runs to a blank line or a colon fence. In a
+  // quote the fence stands after the quote's markers.
+  if (line_block_body(s)) {
+    if (lexer->lookahead == '>' && count_blocks(s, BLOCK_QUOTE) > 0) {
+      int quoted = -1;
+      if (end_paragraph_in_block_quote(s, lexer, &quoted)) {
+        return true;
+      }
+      while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+        advance(s, lexer);
+      }
+    }
+    if (lexer->lookahead != ':') {
+      return false;
+    }
   }
 
   // Between an item's marker and content columns no block opens: the line
@@ -8952,7 +8874,22 @@ static bool close_paragraph(Scanner *s, TSLexer *lexer) {
       !at_line_end(lexer) && !lexer->eof(lexer)) {
     uint32_t column = s->next_line_indent >= 0 ? (uint32_t)s->next_line_indent
                                                 : s->indent;
-    if (column >= item->data && column < item->content_col) {
+    // Unless an enclosing item, note or div reaches the line: then it lands
+    // there, and an opener on it opens in that host (spec 553, 578, 581).
+    uint32_t host_margin = 0;
+    for (int i = (int)s->open_blocks->size - 2; i >= 0; --i) {
+      Block *b = *array_get(s->open_blocks, i);
+      if (is_list(b->type) || b->type == DIV || b->type == FIGURE_GROUP) {
+        host_margin = b->content_col;
+        break;
+      }
+      if (b->type == FOOTNOTE) {
+        host_margin = b->data;
+        break;
+      }
+    }
+    bool host_reached = host_margin != 0 && column >= host_margin;
+    if (column >= item->data && column < item->content_col && !host_reached) {
       return false;
     }
   }
@@ -13442,6 +13379,22 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     // new line rather than on how the previous line's last token happened
     // to be shaped.
     s->block_quote_level = 0;
+  } else if (lexer->lookahead == ' ' && s->block_quote_level > 0 &&
+             s->block_quote_level == count_blocks(s, BLOCK_QUOTE)) {
+    // Indentation right after the quote's markers, before a list marker, is
+    // the line's indent, as it is outside a quote: `>  - a` opens a list.
+    Block *quote = find_block(s, BLOCK_QUOTE);
+    if (quote && quote == peek_block(s) && quote->content_col != 0 &&
+        line_column(s, lexer) == quote->content_col) {
+      consume_whitespace(s, lexer);
+      s->indent = (uint8_t)line_column(s, lexer);
+      // Anything else keeps the reading it had: the run is the line's text.
+      int32_t c = lexer->lookahead;
+      if (c != '-' && c != '*' && c != '+' && c != '(' &&
+          !(c >= '0' && c <= '9')) {
+        return false;
+      }
+    }
   }
   Block *pending_list = find_list(s);
   Block *pending_top = peek_block(s);
