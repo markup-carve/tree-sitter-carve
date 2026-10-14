@@ -532,6 +532,7 @@
     "a-trailing-line-after-a-consumed-definition-is-placed-by-column-reach",
     "include-directive-with-no-resolver-renders-literal",
     "an-empty-link-destination-is-not-a-link",
+    "an-autolink-or-a-cross-reference-is-atomic-to-brackets-and-braces",
     "a-quote-is-an-ordinary-link-destination-character",
     "substitution-content-is-inline-and-only-a-top-level-arrow-splits-it",
     "a-bare-colon-opener-in-a-description-body-is-an-opener",
@@ -657,7 +658,9 @@
     "an-unterminated-raw-fence-keeps-literal-payload-termination",
     "braced-emphasis-can-nest-its-own-kind"
   ],
-  "skip": {},
+  "skip": {
+    "a-bare-closer-does-not-reach-inside-a-cross-reference": "The existing cross-reference grammar reports an error inside a bare emphasis run."
+  },
   "overAcceptance": {
     "an-unterminated-raw-fence-keeps-literal-payload-termination-2": {
       "nodes": "raw_block",

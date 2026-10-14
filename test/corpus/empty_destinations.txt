@@ -1,0 +1,57 @@
+===============================================================================
+Empty inline link and image destinations
+===============================================================================
+[t]() []() [t]( ) [t]( "T") [t]( "T" ) [t]( "T"	) ![a]() ![a]( "T")
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (inline_link
+      text: (link_text)
+      destination: (inline_link_destination))
+    (inline_link
+      text: (link_text)
+      destination: (inline_link_destination))
+    (inline_link
+      text: (link_text)
+      destination: (inline_link_destination))
+    (inline_link
+      text: (link_text)
+      destination: (inline_link_destination
+        title: (link_title)))
+    (inline_link
+      text: (link_text)
+      destination: (inline_link_destination
+        title: (link_title)))
+    (inline_link
+      text: (link_text)
+      destination: (inline_link_destination
+        title: (link_title)))
+    (inline_image
+      description: (image_description)
+      destination: (inline_link_destination))
+    (inline_image
+      description: (image_description)
+      destination: (inline_link_destination
+        title: (link_title)))))
+
+===============================================================================
+Bare empty reference definitions
+===============================================================================
+[r]:
+[s]:  	
+
+[t][r]
+
+-------------------------------------------------------------------------------
+
+(document
+  (link_reference_definition
+    label: (link_label))
+  (link_reference_definition
+    label: (link_label))
+  (paragraph
+    (full_reference_link
+      text: (link_text)
+      label: (link_label))))
