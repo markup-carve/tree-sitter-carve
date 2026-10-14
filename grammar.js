@@ -316,6 +316,9 @@ module.exports = grammar({
     // marker or the enclosing quote's; only the end marker after it decides.
     [$.code_block],
     [$.raw_block],
+    // An attribute line after `+` is either the attached block or the
+    // attribute of the block after it; only that next line decides.
+    [$._nonparagraph_block, $._list_continuation],
     // Every conflict naming `_symbol_fallback` is mirrored for the note's
     // variant of it, `_note_symbol_fallback` - same rules, same ambiguity, one
     // alternative fewer - EXCEPT where the note's shorter alternative list
@@ -800,7 +803,12 @@ module.exports = grammar({
     // after its first row.
     _list_continuation: ($) =>
       choice(
-        seq($.list_continuation_marker, $._block_with_heading),
+        // An attribute line after the marker attributes the attached block.
+        seq(
+          $.list_continuation_marker,
+          repeat($.block_attribute),
+          $._block_with_heading,
+        ),
         alias($._empty_list_continuation_marker, $.list_continuation_marker),
       ),
 
@@ -932,11 +940,14 @@ module.exports = grammar({
         $._indented_content_spacer,
         optional(
           repeat(
-            seq(
-              optional($._block_quote_prefix),
-              $._footnote_continuation,
-              $._block_with_heading,
-              $._indented_content_spacer,
+            choice(
+              seq(
+                optional($._block_quote_prefix),
+                $._footnote_continuation,
+                $._block_with_heading,
+                $._indented_content_spacer,
+              ),
+              $._list_continuation,
             ),
           ),
         ),

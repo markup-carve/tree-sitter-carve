@@ -1,0 +1,352 @@
+================================================================================
+A continuation marker joins a second paragraph to a footnote
+================================================================================
+See[^n]
+
+[^n]: First paragraph.
++
+A second paragraph.
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (footnote_reference
+      (footnote_marker_begin)
+      (reference_label)
+      (footnote_marker_end)))
+  (footnote
+    (footnote_marker_begin)
+    (reference_label)
+    (footnote_marker_end)
+    (footnote_content
+      (paragraph)
+      (list_continuation_marker)
+      (paragraph))))
+
+================================================================================
+A continuation marker before an indented line attaches nothing to a footnote
+================================================================================
+[^a]: intro
++
+ more
+
+see[^a]
+
+--------------------------------------------------------------------------------
+
+(document
+  (footnote
+    (footnote_marker_begin)
+    (reference_label)
+    (footnote_marker_end)
+    (footnote_content
+      (paragraph)
+      (list_continuation_marker)))
+  (paragraph)
+  (paragraph
+    (footnote_reference
+      (footnote_marker_begin)
+      (reference_label)
+      (footnote_marker_end))))
+
+================================================================================
+An attribute line after a continuation marker attributes the attached block
+================================================================================
+- a
++
+{.x}
+> q
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph)
+        (list_continuation_marker)
+        (block_attribute
+          (args
+            (class)))
+        (block_quote
+          (block_quote_marker)
+          (content
+            (paragraph)))))))
+
+================================================================================
+A continuation row needs a body row above it
+================================================================================
+| a | b |
+| - | - |
++ cont |
+
+--------------------------------------------------------------------------------
+
+(document
+  (table
+    (table_header
+      (table_cell)
+      (table_cell))
+    (table_separator
+      (table_cell_alignment)
+      (table_cell_alignment)))
+  (paragraph))
+
+================================================================================
+A continuation row may start with a tab
+================================================================================
+| a | b |
++	x | y |
+
+--------------------------------------------------------------------------------
+
+(document
+  (table
+    (table_row
+      (table_cell)
+      (table_cell))
+    (table_continuation_row)))
+
+================================================================================
+A continuation row joins a table in a list item
+================================================================================
+- | a |
+  + b |
+tail
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (table
+          (table_row
+            (table_cell))
+          (table_continuation_row)))))
+  (paragraph))
+
+================================================================================
+A continuation row does not join a table in a quote it leaves
+================================================================================
+- > | a |
+  + b |
+tail
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (block_quote
+          (block_quote_marker)
+          (content
+            (table
+              (table_row
+                (table_cell)))))
+        (paragraph)))))
+
+================================================================================
+A list marker folds into a quoted paragraph in a list item
+================================================================================
+- a
+  > - x
+  - m
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph)
+        (block_quote
+          (block_quote_marker)
+          (content
+            (list
+              (list_item
+                (list_marker_dash)
+                (list_item_content
+                  (paragraph))))))))))
+
+================================================================================
+A list marker folds into a raised div paragraph in a list item
+================================================================================
+- head
+
+      :::
+      a
+  - second
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph)
+        (div
+          (div_marker_begin)
+          (content
+            (paragraph)))))))
+
+================================================================================
+A heading past the item column under a quote folds into the quote
+================================================================================
+- a
+  > q
+   # h
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph)
+        (block_quote
+          (block_quote_marker)
+          (content
+            (paragraph)))))))
+
+================================================================================
+A quote marker between the item columns folds into the item paragraph
+================================================================================
+- one
+ > q
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph)))))
+
+================================================================================
+A nested list in a quote in a list item keeps its later items
+================================================================================
+- a
+  > - x
+  > - y
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph)
+        (block_quote
+          (block_quote_marker)
+          (content
+            (list
+              (list_item
+                (list_marker_dash)
+                (list_item_content
+                  (paragraph)))
+              (list_item
+                (block_quote_marker)
+                (list_marker_dash)
+                (list_item_content
+                  (paragraph))))))))))
+
+================================================================================
+A colon with only whitespace after a term is term text
+================================================================================
+:: t
+: 
+
+flush
+
+--------------------------------------------------------------------------------
+
+(document
+  (definition_list
+    (list_item
+      (list_marker_definition)
+      (term)))
+  (paragraph))
+
+================================================================================
+An empty term marker in a description body is text
+================================================================================
+:: t
+: a
+:: 
+c
+
+--------------------------------------------------------------------------------
+
+(document
+  (definition_list
+    (list_item
+      (list_marker_definition)
+      (term))
+    (list_item
+      (list_marker_description)
+      (definition))))
+
+================================================================================
+A continuation marker attaches a flush-left fence to a footnote
+================================================================================
+[^f]: n
++
+```
+a
+```
+
+see[^f]
+
+--------------------------------------------------------------------------------
+
+(document
+  (footnote
+    (footnote_marker_begin)
+    (reference_label)
+    (footnote_marker_end)
+    (footnote_content
+      (paragraph)
+      (list_continuation_marker)
+      (code_block
+        (code_block_marker_begin)
+        (code)
+        (code_block_marker_end))))
+  (paragraph
+    (footnote_reference
+      (footnote_marker_begin)
+      (reference_label)
+      (footnote_marker_end))))
+
+================================================================================
+A sibling item after a table in a list item is no separator row
+================================================================================
+- | a |
+- | b |
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (table
+          (table_row
+            (table_cell)))))
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (table
+          (table_row
+            (table_cell)))))))

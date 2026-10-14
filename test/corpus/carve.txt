@@ -3577,7 +3577,7 @@ x
   (paragraph))
 
 ===============================================================================
-A content-less description marker ends the item above it
+A content-less description marker is term text
 ===============================================================================
 :: t
 :  
@@ -3589,11 +3589,10 @@ x
   (definition_list
     (list_item
       marker: (list_marker_definition)
-      term: (term)))
-  (paragraph))
+      term: (term))))
 
 ===============================================================================
-A content-less definition marker ends an open description too
+A content-less definition marker in a description is its text
 ===============================================================================
 :: t
 :  d
@@ -3609,8 +3608,7 @@ x
       term: (term))
     (list_item
       marker: (list_marker_description)
-      definition: (definition)))
-  (paragraph))
+      definition: (definition))))
 
 ===============================================================================
 A bare definition marker with no separator continues the term
@@ -8111,8 +8109,12 @@ An open code run's carry-over needs the continuation line's own quote depth (#43
             (verbatim
               begin_marker: (verbatim_marker_begin)
               content: (content)
-              end_marker: (verbatim_marker_end))))
-        (table_continuation_row)))))
+              end_marker: (verbatim_marker_end)))))))
+  (paragraph
+    (verbatim
+      begin_marker: (verbatim_marker_begin)
+      content: (content)
+      end_marker: (verbatim_marker_end))))
 
 ===============================================================================
 A one-cell row's span crosses a matching-depth continuation under a quote (#437)

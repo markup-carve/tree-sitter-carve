@@ -1870,7 +1870,7 @@ See [r][].
       text: (link_text))))
 
 ==================
-An unmarked heading line leaves a quote for the list item outside it
+An unmarked heading line past the item column folds into the quote
 ==================
 - > x
     # H
@@ -1885,10 +1885,7 @@ An unmarked heading line leaves a quote for the list item outside it
         (block_quote
           (block_quote_marker)
           content: (content
-            (paragraph)))
-        (heading
-          marker: (marker)
-          content: (content))))))
+            (paragraph)))))))
 
 ==================
 Unmarked text under a quote in a list item still folds into the quote

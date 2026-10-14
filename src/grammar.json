@@ -1862,6 +1862,13 @@
               "name": "list_continuation_marker"
             },
             {
+              "type": "REPEAT",
+              "content": {
+                "type": "SYMBOL",
+                "name": "block_attribute"
+              }
+            },
+            {
               "type": "SYMBOL",
               "name": "_block_with_heading"
             }
@@ -2794,31 +2801,40 @@
             {
               "type": "REPEAT",
               "content": {
-                "type": "SEQ",
+                "type": "CHOICE",
                 "members": [
                   {
-                    "type": "CHOICE",
+                    "type": "SEQ",
                     "members": [
                       {
-                        "type": "SYMBOL",
-                        "name": "_block_quote_prefix"
+                        "type": "CHOICE",
+                        "members": [
+                          {
+                            "type": "SYMBOL",
+                            "name": "_block_quote_prefix"
+                          },
+                          {
+                            "type": "BLANK"
+                          }
+                        ]
                       },
                       {
-                        "type": "BLANK"
+                        "type": "SYMBOL",
+                        "name": "_footnote_continuation"
+                      },
+                      {
+                        "type": "SYMBOL",
+                        "name": "_block_with_heading"
+                      },
+                      {
+                        "type": "SYMBOL",
+                        "name": "_indented_content_spacer"
                       }
                     ]
                   },
                   {
                     "type": "SYMBOL",
-                    "name": "_footnote_continuation"
-                  },
-                  {
-                    "type": "SYMBOL",
-                    "name": "_block_with_heading"
-                  },
-                  {
-                    "type": "SYMBOL",
-                    "name": "_indented_content_spacer"
+                    "name": "_list_continuation"
                   }
                 ]
               }
@@ -10119,6 +10135,10 @@
     ],
     [
       "raw_block"
+    ],
+    [
+      "_nonparagraph_block",
+      "_list_continuation"
     ],
     [
       "include_directive",
