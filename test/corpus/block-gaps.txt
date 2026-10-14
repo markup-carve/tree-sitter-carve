@@ -125,42 +125,6 @@ after
   (paragraph))
 
 ================================================================================
-A marker-line colon opener whose body folds in opens nothing
-================================================================================
-- ::: d
-tail
-
-after
-
---------------------------------------------------------------------------------
-
-(document
-  (list
-    (list_item
-      (list_marker_dash)
-      (list_item_content
-        (paragraph))))
-  (paragraph))
-
-================================================================================
-A marker-line colon opener with a lazy body leaves a later closer to open a div
-================================================================================
-- :::
- y
-  :::
-
---------------------------------------------------------------------------------
-
-(document
-  (list
-    (list_item
-      (list_marker_dash)
-      (list_item_content
-        (paragraph)
-        (div
-          (div_marker_begin))))))
-
-================================================================================
 A continuation marker at the item's content column is paragraph text
 ================================================================================
 - a

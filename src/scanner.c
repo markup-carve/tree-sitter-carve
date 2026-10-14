@@ -6485,28 +6485,6 @@ static bool parse_colon(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     if (ok && bare && (s->state & STATE_FENCE_ABSORBS)) {
       ok = false;
     }
-    // A marker-line opener whose next line folds in lazily, below the item's
-    // content column, opens nothing (corpus 364, 482, 161).
-    Block *opener_item = find_list(s);
-    if (ok && marker_line_nested && opener_item &&
-        opener_item->type != LIST_DEFINITION && opener_item->content_col != 0 &&
-        valid_symbols[NOT_A_CONTAINER_OPENER]) {
-      scan_to_line_end(s, lexer);
-      if (!lexer->eof(lexer)) {
-        consume_line_end(s, lexer);
-        uint8_t next_indent = consume_whitespace(s, lexer);
-        bool lazy = !at_line_end(lexer) && !lexer->eof(lexer) &&
-                    next_indent < opener_item->content_col;
-        if (lazy && next_indent + 1 == opener_item->data &&
-            scan_list_marker_token(s, lexer) != IGNORED) {
-          lazy = false;
-        }
-        if (lazy) {
-          lexer->result_symbol = NOT_A_CONTAINER_OPENER;
-          return true;
-        }
-      }
-    }
     if (!ok) {
       // EMIT rather than refuse. Refusing leaves the lexer past the colons -
       // `mark_end` above already committed the token to them - and the `{`
