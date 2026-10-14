@@ -644,12 +644,7 @@
   "batteryDisagreements": {},
   "underAcceptance": {},
   "oracleGoldenDisagreements": {},
-  "errorFamilies": {
-    "\"-\" + \"---\"": {
-      "documents": 3,
-      "reason": "a `---` after a content-less marker errors; carve-js renders a paragraph then a thematic break (tree-sitter-carve#96)"
-    }
-  },
+  "errorFamilies": {},
   "inlineReadingGaps": {
     "a-description-body-whose-own-block-is-a-fence-keeps-no-line-below-its-column": {
       "reading": "code html=1 tree=0",
