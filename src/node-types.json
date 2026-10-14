@@ -1862,6 +1862,10 @@
           "named": true
         },
         {
+          "type": "list_continuation_marker",
+          "named": true
+        },
+        {
           "type": "math",
           "named": true
         },

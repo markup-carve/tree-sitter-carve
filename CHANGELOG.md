@@ -20,6 +20,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Read a colon fence of 256 or more colons at its full width, so `:::...` with 256 colons opens a container instead of a paragraph. A block holding such a width takes two more bytes of scanner state.
 - Read a code fence of 128 or more backticks or tildes at its full width. A backtick run of 128 to 255 read as a tilde fence and never closed, and 256 read as no fence at all.
 - Read a comment fence of 256 or more percent signs at its full width, so it hides its body and closes only on a run of exactly its width.
+- Let a `+` continuation marker attach a block to a footnote body, and an attribute line after the marker attribute the attached block (#542).
+- Accept a `+` table continuation row only after a body row, with a tab after the marker, inside a list item, and not across a quote it leaves; read `| - |` as a separator row (#542).
+- Fold a list marker into a paragraph held by a quote or div inside a list item, and an unmarked opener past the item's content column into the quoted paragraph (#542).
+- Fold a block-opener line between a list item's marker and content columns into the item's paragraph (#542).
+- Read a `:` followed only by whitespace as term text, and an empty `:: ` in a description body as description text (#542).
 
 ## [0.1.9] - 2026-10-14
 
