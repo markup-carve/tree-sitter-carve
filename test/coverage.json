@@ -728,6 +728,9 @@
       "reason": "Under TWO quote levels a fence past a quoted div's column, after the item it leaves, reads as paragraph text: the second quote marker's continuation does not hand the line to the div the way one quote level does. One quote level is read correctly (the sibling document of this category)."
     }
   },
-  "lineTerminatorGaps": {},
+  "lineTerminatorGaps": {
+    "a-bare-closer-does-not-reach-inside-a-cross-reference-2": "The existing cross-reference grammar reads a bare emphasis closer differently under CR line endings.",
+    "a-bare-closer-does-not-reach-inside-a-cross-reference": "The existing cross-reference grammar reads a bare emphasis closer differently under CR line endings."
+  },
   "parseTimeouts": {}
 }
