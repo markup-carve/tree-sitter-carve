@@ -39,6 +39,10 @@ This release aligns caption, autolink, attribute, include-option and nesting rea
 - Split a table row the way the engine does around escapes: an escaped tick opens no code run, and in `\\|` the pipe splits the cell (#528).
 - End an unquoted include option value at the next `@`, so `{{ c.crv@shift:1@lines:1-2 }}` reads as two options (#533).
 - Read an include option with no value, such as `{{ c.crv @k }}`, as an extra part instead of breaking the directive (#534).
+- Keep `[t][@a]` as text when the bracket text holds markup too: a citation key cannot label a reference link.
+- Read a braced comment directly after an inline attribute block as a comment.
+- Join quote lines past the nesting cap into the deepest paragraph, as carve-js does.
+- Keep list markers and indentation past column 240 as text instead of letting their columns wrap into an ERROR.
 
 ### Changed
 

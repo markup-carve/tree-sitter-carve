@@ -578,6 +578,9 @@ typedef struct {
   uint8_t caption_gap;
   // The current scan call started on a blank line. Transient.
   bool line_blank;
+  // The bracket probe found `[...]` followed by a `[@...]` label, and the host
+  // lexer stands right after that label. Transient.
+  bool citation_label_tail;
   // An attribute block standing on its own line may pad with tabs and wrap; an
   // inline one is space-only (CARVE-P4-001) and stays on its line. Transient,
   // set around the block reads.
@@ -729,6 +732,9 @@ static const uint8_t CAPTION_GAP_FENCE = 3;
 
 // The reference engine's MAX_NESTING_DEPTH (PART 9 §25).
 static const uint32_t MAX_NESTING_DEPTH = 200;
+// List columns are stored in a byte, so a marker past this column is text
+// rather than a list whose columns wrap.
+static const uint32_t MAX_LIST_MARKER_COLUMN = 240;
 
 static TokenType scan_list_marker_token(Scanner *s, TSLexer *lexer);
 static uint8_t scan_block_quote_markers(Scanner *s, TSLexer *lexer,
@@ -1042,7 +1048,8 @@ static uint16_t consume_fence_run(Scanner *s, TSLexer *lexer, char c) {
 }
 
 static uint8_t consume_whitespace(Scanner *s, TSLexer *lexer) {
-  uint8_t indent = 0;
+  // Saturates rather than wrapping: 256 spaces must not read as column 0.
+  uint32_t indent = 0;
   for (;;) {
     if (lexer->lookahead == ' ') {
       advance(s, lexer);
@@ -1062,7 +1069,7 @@ static uint8_t consume_whitespace(Scanner *s, TSLexer *lexer) {
       break;
     }
   }
-  return indent;
+  return indent > UINT8_MAX ? UINT8_MAX : (uint8_t)indent;
 }
 
 /// Append to one of the scanner's two open-element stacks, growing it when it
@@ -5034,7 +5041,8 @@ static bool ensure_list_open(Scanner *s, BlockType type, uint8_t indent) {
 static bool handle_ordered_list_marker(Scanner *s, TSLexer *lexer,
                                        const bool *valid_symbols,
                                        TokenType marker) {
-  if (marker != IGNORED && valid_symbols[marker]) {
+  if (marker != IGNORED && valid_symbols[marker] &&
+      line_column(s, lexer) <= MAX_LIST_MARKER_COLUMN) {
     // Mark the token end (after the marker's space) before the content probe,
     // so the scratch advances in `marker_line_has_content` cannot extend it.
     mark_end(s, lexer);
@@ -5264,6 +5272,9 @@ static bool parse_list_marker_or_thematic_break(
   // 103-marker-line-nested-lists): its list nests at the marker's own column
   // instead of continuing the outer list at the line indent.
   uint32_t start_col = line_column(s, lexer);
+  if (start_col > MAX_LIST_MARKER_COLUMN) {
+    return false;
+  }
   uint8_t list_indent = s->indent;
   if (start_col > s->indent && s->marker_end_col != 0 &&
       start_col == s->marker_end_col) {
@@ -6231,6 +6242,9 @@ static bool parse_colon(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   uint32_t start_col = line_column(s, lexer);
   bool marker_line_nested = start_col > s->indent && s->marker_end_col != 0 &&
                             start_col == s->marker_end_col;
+  if (start_col > MAX_LIST_MARKER_COLUMN) {
+    return false;
+  }
   uint8_t list_indent = marker_line_nested ? (uint8_t)start_col : s->indent;
   advance(s, lexer);
 
@@ -8034,7 +8048,7 @@ static bool end_paragraph_in_block_quote(Scanner *s, TSLexer *lexer,
   // than beside the depth-0 case below, because this function has already
   // consumed the markers the check needs.
   //
-  if (marker_count > count_blocks(s, BLOCK_QUOTE)) {
+  if (marker_count > count_blocks(s, BLOCK_QUOTE) && !at_nesting_cap(s)) {
     return true;
   }
 
@@ -8490,7 +8504,7 @@ static bool scan_deeper_block_quote_at_paragraph_end(Scanner *s,
   uint8_t open_depth = count_blocks(s, BLOCK_QUOTE);
   bool ending_newline = false;
   uint8_t marker_count = scan_block_quote_markers(s, lexer, &ending_newline);
-  return marker_count > open_depth;
+  return marker_count > open_depth && !at_nesting_cap(s);
 }
 
 /// A definition line interrupts an open paragraph (PART 9 §10 I5). Answers
@@ -10740,6 +10754,7 @@ static bool probe_square_bracket_lookahead_states(Scanner *s, BracketProbe *prob
   // Reset flags so we can set them later if the scanning succeeds.
   s->state &= ~STATE_BRACKET_STARTS_INLINE_LINK;
   s->state &= ~STATE_BRACKET_STARTS_SPAN;
+  s->citation_label_tail = false;
 
   InlineType *top_type = NULL;
   // An enclosing bracket's `]` is also this one's, and the depth count below
@@ -10780,8 +10795,13 @@ static bool probe_square_bracket_lookahead_states(Scanner *s, BracketProbe *prob
     }
   } else if (lexer->lookahead == '[') {
     advance(s, lexer);
-    if (!scan_until_no_newline(s, lexer, ']', top_type) &&
-        at_line_end(lexer)) {
+    bool citation_label = lexer->lookahead == '@';
+    if (scan_until_no_newline(s, lexer, ']', top_type)) {
+      if (citation_label && probe->position + 1 == probe->characters.size) {
+        advance(s, lexer);
+        s->citation_label_tail = true;
+      }
+    } else if (at_line_end(lexer)) {
       s->state |= STATE_MULTILINE_IDENTIFIER;
     }
   } else if (lexer->lookahead == '{') {
@@ -10941,6 +10961,15 @@ static bool parse_attributed_span_mark_begin(Scanner *s, TSLexer *lexer,
   Inline *top = peek_inline(s);
   bool balanced = update_square_bracket_lookahead_states(s, lexer,
       top && (top->flags & INLINE_BRACED) && top->type != INLINE_NOTE ? top : NULL);
+  // `[*b*][@a]`: a label may not start with `@`, so carve-js keeps the whole
+  // reference-link shape as text, markup included (corpus 334).
+  if (balanced && s->citation_label_tail && valid_symbols[IN_FALLBACK]) {
+    s->citation_label_tail = false;
+    s->state &= ~(STATE_BRACKET_STARTS_INLINE_LINK | STATE_BRACKET_STARTS_SPAN);
+    mark_end(s, lexer);
+    lexer->result_symbol = IN_FALLBACK;
+    return true;
+  }
   if (balanced && (s->state & STATE_BRACKET_STARTS_SPAN)) {
     push_inline_flagged(s, SQUARE_BRACKET_SPAN, 0, INLINE_BRACED);
     // Qualification belongs to the opener; its content may contain braces.
@@ -11066,6 +11095,14 @@ static bool mark_span_begin(Scanner *s, TSLexer *lexer,
       // pair of literal brackets there (`[t[z]](/u)`), not a competing opener,
       // and that `]` is text rather than the enclosing close.
       bool balanced = update_square_bracket_lookahead_states(s, lexer, top);
+      // `![*b*][@a]` is text, as `[*b*][@a]` is above.
+      if (balanced && s->citation_label_tail && valid_symbols[IN_FALLBACK]) {
+        s->citation_label_tail = false;
+        s->state &= ~(STATE_BRACKET_STARTS_INLINE_LINK | STATE_BRACKET_STARTS_SPAN);
+        mark_end(s, lexer);
+        lexer->result_symbol = IN_FALLBACK;
+        return true;
+      }
       if (balanced && (s->state & (STATE_BRACKET_STARTS_SPAN | STATE_BRACKET_STARTS_INLINE_LINK))) {
         push_inline_flagged(s, SQUARE_BRACKET_SPAN, 0, INLINE_BRACED);
         lexer->result_symbol = token;
@@ -12570,6 +12607,12 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       lexer->lookahead == '{') {
     advance(s, lexer);
     mark_end(s, lexer);
+    // `[x]{.a}{% c %}`: the brace opens a comment, not another block.
+    if (lexer->lookahead == '%' && valid_symbols[BRACED_COMMENT_BEGIN]) {
+      if (!scan_braced_comment_to_close(s, lexer)) return false;
+      lexer->result_symbol = BRACED_COMMENT_BEGIN;
+      return true;
+    }
     if (!scan_inline_attribute_body(s, lexer)) return false;
     lexer->result_symbol = INLINE_ATTRIBUTE_CONTINUE;
     return true;
@@ -13978,6 +14021,7 @@ static void init_scalars(Scanner *s) {
   s->missing_closers = 0;
   s->caption_gap = 0;
   s->line_blank = false;
+  s->citation_label_tail = false;
   s->attribute_block_line = false;
   s->braced_probe_marker = 0;
   s->braced_probe_raw_closer = false;

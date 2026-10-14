@@ -57,6 +57,10 @@ const CASES = [
   ['a braced comment line is still a comment', '{% c %}\n', { braced_comment: 1 }],
   ['a citation key cannot label a reference link', '[t][@a]\n', { citation_group: 0 }],
   ['nor an image reference', '![t][@a]\n', { citation_group: 0 }],
+  ['markup in the text does not make it a citation', '[*b*][@a]\n', { citation_group: 0, strong: 0 }],
+  ['nor code in an image reference', '![`c`][@a]\n', { citation_group: 0, verbatim: 0 }],
+  ['the text shape inside a strong run', '*a [*b*][@a] c*\n', { strong: 1, citation_group: 0 }],
+  ['a braced comment after an attribute block', '[x]{.a}{% c %} y\n', { span: 1, braced_comment: 1 }],
   ['a bracketed citation stays a citation', 'x [@doe] y\n', { citation_group: 1 }],
   ['a citation behind a stray bracket', 'a][@a]\n', { citation_group: 1 }],
   ['Djot quote braces are text', 'say {"hi"} and {\'x\'}\n', { quotation_marks: 0 }],
@@ -90,6 +94,29 @@ for (const [source, want] of [
     assert.equal(root.descendantsOfType(type).length, count, `mixed nesting cap: ${type}`);
     ++checks;
   }
+}
+
+// Quote lines past the cap continue the deepest paragraph, as in carve-js.
+{
+  const source = Array.from({ length: 203 }, (_, i) => '> '.repeat(i + 1) + 'x').join('\n') + '\n';
+  const root = parser.parse(source).rootNode;
+  assert.equal(root.hasError, false, 'quote lines past the cap');
+  assert.equal(root.descendantsOfType('block_quote').length, 200, 'quote lines: quotes');
+  assert.equal(root.descendantsOfType('paragraph').length, 200, 'quote lines: paragraphs');
+  checks += 2;
+}
+
+// Columns past a byte: list markers there are text, never an ERROR.
+for (const source of [
+  '- '.repeat(203) + 'x\n',
+  '* '.repeat(203) + 'x\n',
+  ':: '.repeat(203) + 'x\n',
+  Array.from({ length: 203 }, (_, i) => '  '.repeat(i) + '- x').join('\n') + '\n',
+  Array.from({ length: 203 }, (_, i) => '   '.repeat(i) + '1. x').join('\n') + '\n',
+  Array.from({ length: 203 }, (_, i) => '    '.repeat(i) + ': x').join('\n') + '\n',
+]) {
+  assert.equal(parser.parse(source).rootNode.hasError, false, `wide columns: ${source.slice(0, 12)}`);
+  ++checks;
 }
 
 // 203 openers past MAX_NESTING_DEPTH = 200: the last three join the paragraph.
