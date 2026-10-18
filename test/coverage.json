@@ -1,5 +1,5 @@
 {
-  "_comment": "Coverage matrix for the shared Carve spec corpus (spec/tests/corpus/*.crv). Every NN-slug base category must appear in covered or skip; the coverage-matrix test fails otherwise so a new spec category forces a classify decision. covered = grammar parses every file in the category with no ERROR/MISSING node. skip = at least one file currently produces an ERROR/MISSING node; reason records the unmodeled construct (a grammar gap to surface, not to hack around). A skip key is a CATEGORY (NN-slug) or a single EXAMPLE (NN-slug-2) — use the example form when the rest of the category parses cleanly, so one gap does not drop assertion for its siblings. A key equal to a category name is read as the CATEGORY, so the first example of a category cannot be skipped on its own. REASONS: a ledger entry's `reason` may be `ref:<key>`, resolving against the top-level `reasons` map, so one grammar gap spanning a whole category states its explanation once. coverage-matrix gates it both ways - a ref with no entry fails, and a reasons entry nothing references fails, because a reason nobody points at is an excuse that outlived the gap it excused.",
+  "_comment": "Coverage matrix for the shared Carve spec corpus (spec/tests/corpus/*.crv). Every NN-slug base category must appear in covered or skip; the coverage-matrix test fails otherwise so a new spec category forces a classify decision. covered = grammar parses every file in the category with no ERROR/MISSING node. skip = at least one file currently produces an ERROR/MISSING node; reason records the unmodeled construct (a grammar gap to surface, not to hack around). A skip key is a CATEGORY (NN-slug) or a single EXAMPLE (NN-slug-2) \u2014 use the example form when the rest of the category parses cleanly, so one gap does not drop assertion for its siblings. A key equal to a category name is read as the CATEGORY, so the first example of a category cannot be skipped on its own. REASONS: a ledger entry's `reason` may be `ref:<key>`, resolving against the top-level `reasons` map, so one grammar gap spanning a whole category states its explanation once. coverage-matrix gates it both ways - a ref with no entry fails, and a reasons entry nothing references fails, because a reason nobody points at is an excuse that outlived the gap it excused.",
   "comparisonPopulation": {
     "thematic_break": {
       "documents": 18,
@@ -10,16 +10,16 @@
       "nodes": 470
     },
     "table": {
-      "documents": 216,
-      "nodes": 219
+      "documents": 224,
+      "nodes": 227
     },
     "heading": {
-      "documents": 182,
-      "nodes": 216
+      "documents": 183,
+      "nodes": 217
     },
     "code_block": {
-      "documents": 272,
-      "nodes": 291
+      "documents": 268,
+      "nodes": 287
     },
     "list": {
       "documents": 879,
@@ -34,8 +34,8 @@
       "nodes": 53
     },
     "div": {
-      "documents": 82,
-      "nodes": 88
+      "documents": 80,
+      "nodes": 94
     },
     "raw_block": {
       "documents": 49,
@@ -725,33 +725,44 @@
   "invisibleUnderAcceptance": {},
   "batteryDisagreements": {},
   "underAcceptance": {
-    "a-line-is-read-in-the-container-whose-column-it-reaches-7": {
-      "gaps": "list: want 2 have 1",
-      "reason": "The grammar leaves one list in paragraph content when a continuation line reaches a different container column; tree-sitter-carve#561."
-    },
-    "a-line-is-read-in-the-container-whose-column-it-reaches-9": {
-      "gaps": "code_block: want 1 have 0",
-      "reason": "The grammar leaves a code fence in paragraph content when the line reaches a different container column; tree-sitter-carve#561."
-    },
     "a-shifted-fence-in-a-quoted-container-s-body-stores-no-continuation-claim-2": {
       "gaps": "code_block: want 1 have 0; list: want 3 have 2",
       "reason": "Under TWO quote levels a fence past a quoted div's column, after the item it leaves, reads as paragraph text: the second quote marker's continuation does not hand the line to the div the way one quote level does. One quote level is read correctly (the sibling document of this category)."
+    },
+    "csv-and-tsv-table-bodies": {
+      "gaps": "table: want 1 have 0",
+      "reason": "The engine recognizes a CSV/TSV fenced table; this grammar has no table node for that spelling. Tracked by tree-sitter-carve#561."
+    },
+    "csv-and-tsv-table-bodies-10": {
+      "gaps": "table: want 1 have 0",
+      "reason": "The engine recognizes a CSV/TSV fenced table; this grammar has no table node for that spelling. Tracked by tree-sitter-carve#561."
+    },
+    "csv-and-tsv-table-bodies-2": {
+      "gaps": "table: want 1 have 0",
+      "reason": "The engine recognizes a CSV/TSV fenced table; this grammar has no table node for that spelling. Tracked by tree-sitter-carve#561."
+    },
+    "csv-and-tsv-table-bodies-4": {
+      "gaps": "table: want 1 have 0",
+      "reason": "The engine recognizes a CSV/TSV fenced table; this grammar has no table node for that spelling. Tracked by tree-sitter-carve#561."
+    },
+    "csv-and-tsv-table-bodies-5": {
+      "gaps": "table: want 1 have 0",
+      "reason": "The engine recognizes a CSV/TSV fenced table; this grammar has no table node for that spelling. Tracked by tree-sitter-carve#561."
+    },
+    "csv-and-tsv-table-bodies-6": {
+      "gaps": "table: want 1 have 0",
+      "reason": "The engine recognizes a CSV/TSV fenced table; this grammar has no table node for that spelling. Tracked by tree-sitter-carve#561."
+    },
+    "csv-and-tsv-table-bodies-8": {
+      "gaps": "table: want 1 have 0",
+      "reason": "The engine recognizes a CSV/TSV fenced table; this grammar has no table node for that spelling. Tracked by tree-sitter-carve#561."
+    },
+    "csv-and-tsv-table-bodies-9": {
+      "gaps": "table: want 1 have 0",
+      "reason": "The engine recognizes a CSV/TSV fenced table; this grammar has no table node for that spelling. Tracked by tree-sitter-carve#561."
     }
   },
-  "oracleGoldenDisagreements": {
-    "reference-link-8": "Published carve-js 0.1.11 predates bare empty reference definitions (#2878).",
-    "reference-link-9": "Published carve-js 0.1.11 predates bare empty reference definitions (#2878).",
-    "a-reference-definition-cannot-take-its-destination-from-the-next-line-2": "Published carve-js 0.1.11 predates bare empty reference definitions (#2878).",
-    "a-reference-definition-cannot-take-its-destination-from-the-next-line": "Published carve-js 0.1.11 predates bare empty reference definitions (#2878).",
-    "an-empty-link-destination-is-not-a-link-2": "Published carve-js 0.1.11 predates empty inline destinations (#2878).",
-    "an-empty-link-destination-is-not-a-link-3": "Published carve-js 0.1.11 predates empty inline destinations (#2878).",
-    "an-empty-link-destination-is-not-a-link": "Published carve-js 0.1.11 predates empty inline destinations (#2878).",
-    "a-bare-closer-does-not-reach-inside-a-cross-reference-2": "Published carve-js 0.1.11 predates the new cross-reference closer reading (#2878 spec pin).",
-    "a-bare-closer-does-not-reach-inside-a-cross-reference": "Published carve-js 0.1.11 predates the new cross-reference closer reading (#2878 spec pin).",
-    "an-autolink-or-a-cross-reference-is-atomic-to-brackets-and-braces-2": "Published carve-js 0.1.11 predates the new atomic autolink reading (#2878 spec pin).",
-    "an-autolink-or-a-cross-reference-is-atomic-to-brackets-and-braces-3": "Published carve-js 0.1.11 predates the new atomic cross-reference reading (#2878 spec pin).",
-    "an-autolink-or-a-cross-reference-is-atomic-to-brackets-and-braces": "Published carve-js 0.1.11 predates the new atomic autolink reading (#2878 spec pin)."
-  },
+  "oracleGoldenDisagreements": {},
   "errorFamilies": {},
   "inlineReadingGaps": {
     "a-definition-or-attribute-line-in-a-nested-container-leaves-no-paragraph-for-an-unmarked-line-10": {
