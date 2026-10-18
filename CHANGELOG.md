@@ -15,14 +15,14 @@ This release follows the Carve 0.1.10 corpus and adds CSV and TSV fenced tables 
 - Parse empty link and image destinations, their titles, and bare reference definitions (#559).
 - Match combined delimiter and grapheme boundaries, nested block attributes, and quoted container ownership (#563).
 - Keep a shifted fence after a nested item in its quoted div (#563).
+- Keep outer inline delimiters outside autolinks, cross-references, and balanced link brackets (#568).
+- Recover from parse errors in six lone-CR inputs with the same tree as their LF and CRLF forms (#566, #568).
 
 ### Improved
 
 - Parse attributed CSV and TSV fences as `table` nodes with `language` and `code` fields, at top level and inside quotes, lists, and divs; they were code blocks before (#563).
 - Color reserved `kbd`, `abbr`, `time`, `table`, and `loose` attributes only where they apply (#564).
 - Inject CSV and TSV into delimited table code and select its body as one textobject while retaining pipe table selections (#564).
-
-Six lone-CR error-recovery shapes on inputs that already fail with LF remain tracked in #566.
 
 ## [0.1.9] - 2026-10-14
 
