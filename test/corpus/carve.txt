@@ -7797,7 +7797,7 @@ A) z
         (paragraph)))))
 
 ===============================================================================
-The bold-italic opener may follow a word (#320)
+A combined opener after a word leaves the slash literal (spec 130)
 ===============================================================================
 x a/*y*/b
 
@@ -7805,10 +7805,10 @@ x a/*y*/b
 
 (document
   (paragraph
-    (bold_italic
-      begin_marker: (bold_italic_begin)
+    (strong
+      begin_marker: (strong_begin)
       content: (content)
-      end_marker: (bold_italic_end))))
+      end_marker: (strong_end))))
 
 ===============================================================================
 A balanced bracket pair inside link text is literal (#422)
