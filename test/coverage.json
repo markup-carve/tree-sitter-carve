@@ -6,36 +6,36 @@
       "nodes": 22
     },
     "block_quote": {
-      "documents": 354,
-      "nodes": 421
+      "documents": 401,
+      "nodes": 470
     },
     "table": {
-      "documents": 212,
-      "nodes": 215
+      "documents": 216,
+      "nodes": 219
     },
     "heading": {
-      "documents": 178,
-      "nodes": 212
+      "documents": 182,
+      "nodes": 216
     },
     "code_block": {
-      "documents": 224,
-      "nodes": 243
+      "documents": 272,
+      "nodes": 291
     },
     "list": {
-      "documents": 824,
-      "nodes": 1064
+      "documents": 879,
+      "nodes": 1132
     },
     "definition_list": {
-      "documents": 263,
-      "nodes": 277
+      "documents": 289,
+      "nodes": 303
     },
     "line_block": {
       "documents": 53,
       "nodes": 53
     },
     "div": {
-      "documents": 69,
-      "nodes": 72
+      "documents": 82,
+      "nodes": 88
     },
     "raw_block": {
       "documents": 49,
@@ -50,8 +50,8 @@
       "nodes": 0
     },
     "admonition": {
-      "documents": 148,
-      "nodes": 364
+      "documents": 191,
+      "nodes": 412
     },
     "directive": {
       "documents": 6,
@@ -725,6 +725,14 @@
   "invisibleUnderAcceptance": {},
   "batteryDisagreements": {},
   "underAcceptance": {
+    "a-line-is-read-in-the-container-whose-column-it-reaches-7": {
+      "gaps": "list: want 2 have 1",
+      "reason": "The grammar leaves one list in paragraph content when a continuation line reaches a different container column; tree-sitter-carve#561."
+    },
+    "a-line-is-read-in-the-container-whose-column-it-reaches-9": {
+      "gaps": "code_block: want 1 have 0",
+      "reason": "The grammar leaves a code fence in paragraph content when the line reaches a different container column; tree-sitter-carve#561."
+    },
     "a-shifted-fence-in-a-quoted-container-s-body-stores-no-continuation-claim-2": {
       "gaps": "code_block: want 1 have 0; list: want 3 have 2",
       "reason": "Under TWO quote levels a fence past a quoted div's column, after the item it leaves, reads as paragraph text: the second quote marker's continuation does not hand the line to the div the way one quote level does. One quote level is read correctly (the sibling document of this category)."
