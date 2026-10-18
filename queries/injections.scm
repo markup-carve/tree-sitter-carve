@@ -20,6 +20,10 @@
   (language) @injection.language
   (code) @injection.content)
 
+(table
+  (language) @injection.language
+  (code) @injection.content)
+
 (raw_block
   (raw_block_info
     (language) @injection.language)

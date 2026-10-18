@@ -31,9 +31,19 @@
 (list
   (_) @function.inner) @function.outer
 
-; Inner selects row, outer selects whole table
+; A delimited table selects its code body. Pipe tables select their rows.
 (table
-  (_) @function.inner) @function.outer
+  (language)
+  (code) @function.inner) @function.outer
+
+(table
+  [
+    (table_header)
+    (table_row)
+    (table_separator)
+    (table_continuation_row)
+    (table_caption)
+  ] @function.inner) @function.outer
 
 (footnote
   (footnote_content) @function.inner) @function.outer

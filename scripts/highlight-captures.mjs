@@ -182,13 +182,13 @@ const CASES = [
         expect: 'property',
     },
     ...['csv', 'tsv'].map((language) => ({
-        name: `table before a ${language} code block is builtin`,
+        name: `table before a ${language} table node is builtin`,
         source: `{table}\n\`\`\`${language}\na,b\n\`\`\`\n`,
         at: [0, 1],
         expect: 'attribute.builtin',
     })),
     {
-        name: 'table across a blank line before a csv code block is builtin',
+        name: 'table across a blank line before a csv table is builtin',
         source: '{table}\n\n```csv\na,b\n```\n',
         at: [0, 1],
         expect: 'attribute.builtin',
@@ -230,7 +230,7 @@ const CASES = [
         expect: 'property',
     },
     {
-        name: 'table must be adjacent to the code block',
+        name: 'table must be adjacent to its table node',
         source: '{table}\nparagraph\n\n```csv\na,b\n```\n',
         at: [0, 1],
         expect: 'property',

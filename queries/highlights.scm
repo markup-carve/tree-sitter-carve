@@ -38,10 +38,19 @@
 ] @markup.raw.block
   (#set! priority 90))
 
+((table
+  (language)) @markup.raw.block
+  (#set! priority 90))
+
 ; Remove @markup.raw for code with a language spec
 (code_block
   .
   (code_block_marker_begin)
+  (language)
+  (code) @none
+  (#set! priority 90))
+
+(table
   (language)
   (code) @none
   (#set! priority 90))
@@ -338,7 +347,7 @@
   .
   (block_attribute)*
   .
-  (code_block
+  (table
     language: (language) @_language))
   (#eq? @attribute.builtin "table")
   (#any-of? @_language "csv" "tsv"))
@@ -522,6 +531,9 @@
   (key_value)
   (frontmatter)
 ] @nospell
+
+(table
+  (code) @nospell)
 
 (full_reference_link
   (link_label) @nospell)
