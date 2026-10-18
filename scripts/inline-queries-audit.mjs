@@ -152,6 +152,8 @@ for (const [source, lang, type] of [
   ['a %% FIXME tail\n', 'comment', 'trailing_comment'],
   ['%%%\nTODO x\n%%%\n', 'comment', 'content'],
   ['a {% NOTE x %} b\n', 'comment', 'content'],
+  ['{table}\n```csv\na,b\n```\n', 'csv', 'code'],
+  ['{table}\n```tsv\na\tb\n```\n', 'tsv', 'code'],
 ]) {
   const found = injected(source);
   assert.ok(found.some(([l, t]) => l === lang && t === type),

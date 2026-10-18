@@ -28,6 +28,7 @@ for (const [source, type] of [
   ['---\na: b\n---\n', 'frontmatter'],
   ['%%%\nhidden\n%%%\n', 'fenced_comment_block'],
 ]) has(fold, source, 'fold', type, source);
+has(fold, '{table}\n```csv\na,b\n```\n', 'fold', 'table', '```csv\na,b\n```\n');
 
 has(objects, ':: term\n: body\n', 'block.inner', 'term', 'term\n');
 has(objects, ':: term\n: body\n', 'block.inner', 'definition', 'body\n');
@@ -38,6 +39,18 @@ for (const text of [':: term\n', ': body\n']) {
 }
 has(objects, ':abbr[word]\n', 'attribute.inner', 'content', 'word');
 has(objects, ':abbr[word]\n', 'attribute.outer', 'extension_inline', ':abbr[word]');
+const csvTable = '{table}\n```csv\na,b\n```\n';
+has(objects, csvTable, 'function.inner', 'code', 'a,b\n');
+const tableCaptures = objects.captures(parser.parse(csvTable).rootNode);
+assert.equal(tableCaptures.filter(c => c.name === 'function.inner').length, 1,
+  'a delimited table has exactly one inner textobject');
+const captionedCsv = '{table}\n```csv\na,b\n```\n^ Caption\n';
+const captionedCaptures = objects.captures(parser.parse(captionedCsv).rootNode);
+assert.equal(captionedCaptures.filter(c => c.name === 'function.inner').length, 1,
+  'a delimited table caption does not add a second inner textobject');
+const pipeTable = '| a | b |\n|---|---|\n| 1 | 2 |\n^ Caption\n';
+has(objects, pipeTable, 'function.inner', 'table_row', '| 1 | 2 |\n');
+has(objects, pipeTable, 'function.inner', 'table_caption', '^ Caption\n');
 for (const [source, type, body] of [
   ['{% hidden %}\n', 'braced_comment', ' hidden '],
   ['{# hidden #}\n', 'editorial_comment', ' hidden '],
