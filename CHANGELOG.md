@@ -6,6 +6,23 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.1.10] - 2026-10-18
+
+This release follows the Carve 0.1.10 corpus and expands CSV/TSV table support in the parser and editor queries.
+
+### Fixed
+
+- Parse empty link and image destinations, their titles, and bare reference definitions (#559).
+- Match combined delimiter and grapheme boundaries, nested block attributes, and quoted container ownership (#563).
+- Read attributed CSV and TSV fences as tables inside quotes, lists, and divs; keep a shifted fence after a nested item in its quoted div (#563).
+
+### Improved
+
+- Color reserved `kbd`, `abbr`, `time`, `table`, and `loose` attributes only where they apply (#564).
+- Inject CSV and TSV into delimited table code and select its body as one textobject while retaining pipe table selections (#564).
+
+Six lone-CR error-recovery shapes on inputs that already fail with LF remain tracked in #566.
+
 ## [0.1.9] - 2026-10-14
 
 This release aligns caption, autolink, attribute, include-option, list, quote, table and nesting readings with carve-js, parses long lines in near-linear time, reads very wide fences at full width, and simplifies the editor queries.
