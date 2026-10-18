@@ -728,38 +728,6 @@
     "a-shifted-fence-in-a-quoted-container-s-body-stores-no-continuation-claim-2": {
       "gaps": "code_block: want 1 have 0; list: want 3 have 2",
       "reason": "Under TWO quote levels a fence past a quoted div's column, after the item it leaves, reads as paragraph text: the second quote marker's continuation does not hand the line to the div the way one quote level does. One quote level is read correctly (the sibling document of this category)."
-    },
-    "csv-and-tsv-table-bodies": {
-      "gaps": "table: want 1 have 0",
-      "reason": "The engine recognizes a CSV/TSV fenced table; this grammar has no table node for that spelling. Tracked by tree-sitter-carve#561."
-    },
-    "csv-and-tsv-table-bodies-10": {
-      "gaps": "table: want 1 have 0",
-      "reason": "The engine recognizes a CSV/TSV fenced table; this grammar has no table node for that spelling. Tracked by tree-sitter-carve#561."
-    },
-    "csv-and-tsv-table-bodies-2": {
-      "gaps": "table: want 1 have 0",
-      "reason": "The engine recognizes a CSV/TSV fenced table; this grammar has no table node for that spelling. Tracked by tree-sitter-carve#561."
-    },
-    "csv-and-tsv-table-bodies-4": {
-      "gaps": "table: want 1 have 0",
-      "reason": "The engine recognizes a CSV/TSV fenced table; this grammar has no table node for that spelling. Tracked by tree-sitter-carve#561."
-    },
-    "csv-and-tsv-table-bodies-5": {
-      "gaps": "table: want 1 have 0",
-      "reason": "The engine recognizes a CSV/TSV fenced table; this grammar has no table node for that spelling. Tracked by tree-sitter-carve#561."
-    },
-    "csv-and-tsv-table-bodies-6": {
-      "gaps": "table: want 1 have 0",
-      "reason": "The engine recognizes a CSV/TSV fenced table; this grammar has no table node for that spelling. Tracked by tree-sitter-carve#561."
-    },
-    "csv-and-tsv-table-bodies-8": {
-      "gaps": "table: want 1 have 0",
-      "reason": "The engine recognizes a CSV/TSV fenced table; this grammar has no table node for that spelling. Tracked by tree-sitter-carve#561."
-    },
-    "csv-and-tsv-table-bodies-9": {
-      "gaps": "table: want 1 have 0",
-      "reason": "The engine recognizes a CSV/TSV fenced table; this grammar has no table node for that spelling. Tracked by tree-sitter-carve#561."
     }
   },
   "oracleGoldenDisagreements": {},
