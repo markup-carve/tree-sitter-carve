@@ -1,0 +1,338 @@
+=======================
+CSV table with a caption
+=======================
+{table}
+```csv
+a,b
+```
+^ Caption
+
+---
+
+(document
+  (block_attribute
+    (args
+      (boolean_attribute
+        (key))))
+  (table
+    (code_block_marker_begin)
+    (language)
+    (code)
+    (code_block_marker_end)
+    (table_caption
+      (marker)
+      (content))))
+
+========================
+Malformed CSV remains code
+========================
+{table}
+```csv
+a"b,c
+```
+
+---
+
+(document
+  (block_attribute
+    (args
+      (boolean_attribute
+        (key))))
+  (code_block
+    (code_block_marker_begin)
+    (language)
+    (code)
+    (code_block_marker_end)))
+
+====================================
+A heading uses the pending attribute
+====================================
+{table}
+# Heading
+```csv
+a,b
+```
+
+---
+
+(document
+  (block_attribute
+    (args
+      (boolean_attribute
+        (key))))
+  (section
+    (heading
+      (marker)
+      (content))
+    (section_content
+      (code_block
+        (code_block_marker_begin)
+        (language)
+        (code)
+        (code_block_marker_end)))))
+
+============================
+Empty table flag over TSV
+============================
+{table=""}
+```tsv
+a	b
+```
+
+---
+
+(document
+  (block_attribute
+    (args
+      (key_value
+        (key)
+        (value))))
+  (table
+    (code_block_marker_begin)
+    (language)
+    (code)
+    (code_block_marker_end)))
+
+=========================
+CSV table inside a quote
+=========================
+> {table}
+> ```csv
+> a,b
+> ```
+
+---
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (block_attribute
+        (args
+          (boolean_attribute
+            (key))))
+      (block_quote_marker)
+      (table
+        (code_block_marker_begin)
+        (language)
+        (code
+          (block_quote_marker))
+        (block_quote_marker)
+        (code_block_marker_end)))))
+
+========================
+CSV table inside a list
+========================
+- item
+  {table}
+  ```csv
+  a,b
+  ```
+
+---
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph)
+        (block_attribute
+          (args
+            (boolean_attribute
+              (key))))
+        (table
+          (code_block_marker_begin)
+          (language)
+          (code)
+          (code_block_marker_end))))))
+
+=======================
+CSV table inside a div
+=======================
+::: note
+{table}
+```csv
+a,b
+```
+:::
+
+---
+
+(document
+  (div
+    (div_marker_begin)
+    (admonition_type)
+    (content
+      (block_attribute
+        (args
+          (boolean_attribute
+            (key))))
+      (table
+        (code_block_marker_begin)
+        (language)
+        (code)
+        (code_block_marker_end)))
+    (div_marker_end)))
+
+=========================================
+Table attribute stays inside its div
+=========================================
+::: note
+{table}
+:::
+```csv
+a,b
+```
+
+---
+
+(document
+  (div
+    (div_marker_begin)
+    (admonition_type)
+    (content
+      (block_attribute
+        (args
+          (boolean_attribute
+            (key)))))
+    (div_marker_end))
+  (code_block
+    (code_block_marker_begin)
+    (language)
+    (code)
+    (code_block_marker_end)))
+
+=========================================
+Table attribute stays inside its quote
+=========================================
+> {table}
+
+```csv
+a,b
+```
+
+---
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (block_attribute
+        (args
+          (boolean_attribute
+            (key))))))
+  (code_block
+    (code_block_marker_begin)
+    (language)
+    (code)
+    (code_block_marker_end)))
+
+=======================================
+Unclosed list table ends at its margin
+=======================================
+- item
+
+  {table}
+  ```csv
+  a,b
+outer
+
+```
+
+---
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph)
+        (block_attribute
+          (args
+            (boolean_attribute
+              (key))))
+        (table
+          (code_block_marker_begin)
+          (language)
+          (code)))))
+  (paragraph)
+  (code_block
+    (code_block_marker_begin)))
+
+==============================================
+Outside malformed CSV cannot spoil list table
+==============================================
+- item
+
+  {table}
+  ```csv
+  a,b
+x "y
+
+```
+
+---
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph)
+        (block_attribute
+          (args
+            (boolean_attribute
+              (key))))
+        (table
+          (code_block_marker_begin)
+          (language)
+          (code)))))
+  (paragraph)
+  (code_block
+    (code_block_marker_begin)))
+
+======================
+Unclosed root CSV table
+======================
+{table}
+```csv
+a,b
+
+---
+
+(document
+  (block_attribute
+    (args
+      (boolean_attribute
+        (key))))
+  (table
+    (code_block_marker_begin)
+    (language)
+    (code)))
+
+========================
+Unclosed quoted CSV table
+========================
+> {table}
+> ```csv
+> a,b
+plain
+
+---
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (block_attribute
+        (args
+          (boolean_attribute
+            (key))))
+      (block_quote_marker)
+      (table
+        (code_block_marker_begin)
+        (language)
+        (code
+          (block_quote_marker)))))
+  (paragraph))

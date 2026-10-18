@@ -1,0 +1,172 @@
+============================================================
+A shifted fence leaves an inner item inside two quoted levels
+============================================================
+> > - ::: box
+> >   - inner
+> >     %% c
+> >    ```
+> >    code
+- tail
+
+---
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (block_quote
+        (block_quote_marker)
+        (content
+          (list
+            (list_item
+              (list_marker_dash)
+              (list_item_content
+                (div
+                  (div_marker_begin)
+                  (admonition_type)
+                  (content
+                    (list
+                      (list_item
+                        (block_quote_marker)
+                        (block_quote_marker)
+                        (list_marker_dash)
+                        (list_item_content
+                          (paragraph)
+                          (block_quote_marker)
+                          (comment_line))))
+                    (block_quote_marker)
+                    (code_block
+                      (code_block_marker_begin)
+                      (code
+                        (block_quote_marker)
+                        (block_quote_marker))))))))))))
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph)))))
+
+=========================================
+Quoted div closer leaves following prose
+=========================================
+> > :::
+> > :::
+y
+
+---
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (block_quote
+        (block_quote_marker)
+        (content
+          (div
+            (div_marker_begin)
+            (block_quote_marker)
+            (block_quote_marker)
+            (div_marker_end))))))
+  (paragraph))
+
+============================================
+Single quote div closer leaves following prose
+============================================
+> quote
+> :::
+>
+> :::
+tail
+
+---
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (paragraph)
+      (block_quote_marker)
+      (div
+        (div_marker_begin)
+        (block_quote_marker)
+        (block_quote_marker)
+        (div_marker_end))))
+  (paragraph))
+
+===========================================
+Quoted div keeps prose after its inner list
+===========================================
+> ::: box
+> - a
+>
+> text
+> :::
+
+---
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (div
+        (div_marker_begin)
+        (admonition_type)
+        (content
+          (list
+            (list_item
+              (block_quote_marker)
+              (list_marker_dash)
+              (list_item_content
+                (paragraph))))
+          (paragraph
+            (block_quote_marker)
+            (block_quote_marker)))
+        (block_quote_marker)
+        (div_marker_end)))))
+
+====================================================
+One quoted level keeps a fence after its inner list
+====================================================
+> - ::: box
+>   - inner
+>     %%%
+>     hidden
+>     %%%
+>    ```
+>    code
+- tail
+
+---
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (list
+        (list_item
+          (list_marker_dash)
+          (list_item_content
+            (div
+              (div_marker_begin)
+              (admonition_type)
+              (content
+                (list
+                  (list_item
+                    (block_quote_marker)
+                    (list_marker_dash)
+                    (list_item_content
+                      (paragraph)
+                      (block_quote_marker)
+                      (fenced_comment_block
+                        (comment_fence_marker_begin)
+                        (content)
+                        (comment_fence_marker_end)))))
+                (code_block
+                  (code_block_marker_begin)
+                  (code
+                    (block_quote_marker))))))))))
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph)))))

@@ -71,6 +71,11 @@
     "fields": {}
   },
   {
+    "type": "backslash_escape",
+    "named": true,
+    "fields": {}
+  },
+  {
     "type": "block_attribute",
     "named": true,
     "fields": {
@@ -3930,13 +3935,62 @@
   {
     "type": "table",
     "named": true,
-    "fields": {},
+    "fields": {
+      "code": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "code",
+            "named": true
+          }
+        ]
+      },
+      "header": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "code_block_header",
+            "named": true
+          }
+        ]
+      },
+      "label": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "code_block_label",
+            "named": true
+          }
+        ]
+      },
+      "language": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "language",
+            "named": true
+          }
+        ]
+      }
+    },
     "children": {
       "multiple": true,
       "required": true,
       "types": [
         {
           "type": "block_quote_marker",
+          "named": true
+        },
+        {
+          "type": "code_block_marker_begin",
+          "named": true
+        },
+        {
+          "type": "code_block_marker_end",
           "named": true
         },
         {
@@ -4714,10 +4768,6 @@
   },
   {
     "type": "auto_text_link",
-    "named": true
-  },
-  {
-    "type": "backslash_escape",
     "named": true
   },
   {
