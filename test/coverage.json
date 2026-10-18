@@ -789,6 +789,7 @@
   "lineTerminatorGaps": {
     "a-bare-closer-does-not-reach-inside-a-cross-reference": "The existing cross-reference grammar reads a bare emphasis closer differently under CR line endings.",
     "a-bare-closer-does-not-reach-inside-a-cross-reference-2": "The existing cross-reference grammar reads a bare emphasis closer differently under CR line endings.",
+    "a-delimiter-that-is-part-of-a-larger-character-is-text-2": "The scanner reads a delimiter beside a grapheme extender differently on CR lines; tree-sitter-carve#561.",
     "an-autolink-a-cross-reference-or-a-comment-is-atomic-to-every-outside-delimiter": "The grammar reads an atomic inline construct differently with CR line endings; tree-sitter-carve#561.",
     "an-autolink-a-cross-reference-or-a-comment-is-atomic-to-every-outside-delimiter-3": "The grammar reads an atomic inline construct differently with CR line endings; tree-sitter-carve#561.",
     "editorial-markup-closes-outside-a-cross-reference-or-a-bracket-run-4": "The grammar reads editorial markup across a bracket run differently with CR line endings; tree-sitter-carve#561.",
