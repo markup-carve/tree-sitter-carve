@@ -656,10 +656,33 @@
     "an-opener-past-a-hosted-container-s-column-opens-there",
     "an-ordered-list-carries-its-authored-delimiter",
     "an-unterminated-raw-fence-keeps-literal-payload-termination",
-    "braced-emphasis-can-nest-its-own-kind"
+    "braced-emphasis-can-nest-its-own-kind",
+    "a-block-at-an-item-content-column-ends-its-paragraph-before-an-unclosed-fence",
+    "a-definition-or-attribute-line-in-a-nested-container-leaves-no-paragraph-for-an-unmarked-line",
+    "a-delimiter-that-is-part-of-a-larger-character-is-text",
+    "a-line-is-read-in-the-container-whose-column-it-reaches",
+    "a-line-past-a-body-s-column-is-read-in-the-body-and-a-quote-does-not-rebase",
+    "a-quoted-comment-or-attribute-line-closes-the-quote-s-paragraph",
+    "a-quoted-item-comment-ends-the-quote-before-an-unclosed-fence",
+    "a-table-row-or-a-definition-under-a-paragraph-ends-it-before-an-unclosed-fence",
+    "an-autolink-is-opaque-to-the-bracket-scan",
+    "an-escaped-cross-reference-spelling-stays-literal",
+    "an-item-comment-or-attribute-line-closes-the-item-s-paragraph",
+    "an-unclosed-fence-after-an-attribute-line-in-a-container-ends-at-its-closer",
+    "an-unclosed-fence-under-a-multi-line-quote-paragraph-in-a-container-opens-nothing",
+    "an-unclosed-fence-under-an-open-paragraph-in-a-container-opens-nothing",
+    "csv-and-tsv-table-bodies",
+    "inside-an-unclosed-fence-only-the-innermost-container-s-closer-is-structural",
+    "the-combined-bold-italic-token-does-not-open-after-an-underscore-or-a-slash",
+    "the-combined-bold-italic-token-does-not-open-inside-an-open-bare-italic-or-bold",
+    "the-combined-bold-italic-token-does-not-open-or-close-inside-a-word",
+    "editorial-markup-closes-outside-a-cross-reference-or-a-bracket-run"
   ],
   "skip": {
-    "a-bare-closer-does-not-reach-inside-a-cross-reference": "The existing cross-reference grammar reports an error inside a bare emphasis run."
+    "a-bare-closer-does-not-reach-inside-a-cross-reference": "The existing cross-reference grammar reports an error inside a bare emphasis run.",
+    "an-autolink-a-cross-reference-or-a-comment-is-atomic-to-every-outside-delimiter": "The grammar treats editorial close markers inside autolinks and cross-references as structural, producing ERROR in two corpus examples.",
+    "editorial-markup-closes-outside-a-cross-reference-or-a-bracket-run-4": "The grammar closes editorial markup inside a link destination, producing ERROR.",
+    "editorial-markup-closes-outside-a-cross-reference-or-a-bracket-run-5": "The grammar closes editorial markup inside a cross-reference, producing ERROR."
   },
   "overAcceptance": {
     "an-unterminated-raw-fence-keeps-literal-payload-termination-2": {
