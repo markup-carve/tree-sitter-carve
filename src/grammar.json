@@ -111,62 +111,36 @@
       ]
     },
     "_block_with_heading": {
-      "type": "CHOICE",
+      "type": "SEQ",
       "members": [
         {
-          "type": "SEQ",
+          "type": "CHOICE",
           "members": [
             {
-              "type": "CHOICE",
-              "members": [
-                {
-                  "type": "SYMBOL",
-                  "name": "_block_quote_continuation"
-                },
-                {
-                  "type": "BLANK"
-                }
-              ]
+              "type": "SYMBOL",
+              "name": "_block_quote_continuation"
             },
             {
-              "type": "CHOICE",
-              "members": [
-                {
-                  "type": "SYMBOL",
-                  "name": "heading"
-                },
-                {
-                  "type": "SYMBOL",
-                  "name": "_block_element"
-                },
-                {
-                  "type": "SYMBOL",
-                  "name": "_newline"
-                }
-              ]
+              "type": "BLANK"
             }
           ]
         },
         {
-          "type": "PREC",
-          "value": 1,
-          "content": {
-            "type": "SEQ",
-            "members": [
-              {
-                "type": "SYMBOL",
-                "name": "_block_quote_continuation"
-              },
-              {
-                "type": "SYMBOL",
-                "name": "_block_quote_prefix"
-              },
-              {
-                "type": "SYMBOL",
-                "name": "code_block"
-              }
-            ]
-          }
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "heading"
+            },
+            {
+              "type": "SYMBOL",
+              "name": "_block_element"
+            },
+            {
+              "type": "SYMBOL",
+              "name": "_newline"
+            }
+          ]
         }
       ]
     },
@@ -3228,8 +3202,38 @@
             "content": {
               "type": "REPEAT",
               "content": {
-                "type": "SYMBOL",
-                "name": "_block_with_heading"
+                "type": "CHOICE",
+                "members": [
+                  {
+                    "type": "SYMBOL",
+                    "name": "_block_with_heading"
+                  },
+                  {
+                    "type": "PREC_DYNAMIC",
+                    "value": 1,
+                    "content": {
+                      "type": "SEQ",
+                      "members": [
+                        {
+                          "type": "SYMBOL",
+                          "name": "list"
+                        },
+                        {
+                          "type": "SYMBOL",
+                          "name": "_block_quote_continuation"
+                        },
+                        {
+                          "type": "SYMBOL",
+                          "name": "_block_quote_prefix"
+                        },
+                        {
+                          "type": "SYMBOL",
+                          "name": "code_block"
+                        }
+                      ]
+                    }
+                  }
+                ]
               }
             },
             "named": true,
@@ -10547,64 +10551,8 @@
   ],
   "conflicts": [
     [
-      "_list_item_definition"
-    ],
-    [
-      "_list_item_description"
-    ],
-    [
-      "_list_item_task"
-    ],
-    [
-      "_list_item_upper_roman_parens"
-    ],
-    [
-      "_list_item_lower_roman_parens"
-    ],
-    [
-      "_list_item_upper_alpha_parens"
-    ],
-    [
-      "_list_item_lower_alpha_parens"
-    ],
-    [
-      "_list_item_decimal_parens"
-    ],
-    [
-      "_list_item_upper_roman_paren"
-    ],
-    [
-      "_list_item_lower_roman_paren"
-    ],
-    [
-      "_list_item_upper_alpha_paren"
-    ],
-    [
-      "_list_item_lower_alpha_paren"
-    ],
-    [
-      "_list_item_decimal_paren"
-    ],
-    [
-      "_list_item_upper_roman_period"
-    ],
-    [
-      "_list_item_lower_roman_period"
-    ],
-    [
-      "_list_item_upper_alpha_period"
-    ],
-    [
-      "_list_item_lower_alpha_period"
-    ],
-    [
-      "_list_item_decimal_period"
-    ],
-    [
-      "_list_item_star"
-    ],
-    [
-      "_list_item_dash"
+      "_nonparagraph_block",
+      "div"
     ],
     [
       "code_block"

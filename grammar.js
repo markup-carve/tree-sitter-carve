@@ -415,28 +415,7 @@ module.exports = grammar({
   extras: (_) => ["\r"],
 
   conflicts: ($) => [
-    // A quoted fence can leave a nested item and open in its enclosing div.
-    // Keep both readings until the fence token decides which host owns it.
-    [$._list_item_definition],
-    [$._list_item_description],
-    [$._list_item_task],
-    [$._list_item_upper_roman_parens],
-    [$._list_item_lower_roman_parens],
-    [$._list_item_upper_alpha_parens],
-    [$._list_item_lower_alpha_parens],
-    [$._list_item_decimal_parens],
-    [$._list_item_upper_roman_paren],
-    [$._list_item_lower_roman_paren],
-    [$._list_item_upper_alpha_paren],
-    [$._list_item_lower_alpha_paren],
-    [$._list_item_decimal_paren],
-    [$._list_item_upper_roman_period],
-    [$._list_item_lower_roman_period],
-    [$._list_item_upper_alpha_period],
-    [$._list_item_lower_alpha_period],
-    [$._list_item_decimal_period],
-    [$._list_item_star],
-    [$._list_item_dash],
+    [$._nonparagraph_block, $.div],
     // After a quoted fence's `_block_close`, a `>` is either the closer's own
     // marker or the enclosing quote's; only the end marker after it decides.
     [$.code_block],
@@ -523,17 +502,9 @@ module.exports = grammar({
         $._newline,
       ),
     _block_with_heading: ($) =>
-      choice(
-        seq(
-          optional($._block_quote_continuation),
-          choice($.heading, $._block_element, $._newline),
-        ),
-        // The first marker continues the outer quote; the remaining markers
-        // belong to the fence's host after a nested item closes.
-        prec(
-          1,
-          seq($._block_quote_continuation, $._block_quote_prefix, $.code_block),
-        ),
+      seq(
+        optional($._block_quote_continuation),
+        choice($.heading, $._block_element, $._newline),
       ),
     _block_element: ($) => choice($._nonparagraph_block, $._paragraph),
     _nonparagraph_block: ($) =>
@@ -1105,7 +1076,28 @@ module.exports = grammar({
       seq(
         $._div_marker_begin,
         choice($._newline, $._eof_or_newline),
-        field("content", alias(repeat($._block_with_heading), $.content)),
+        field(
+          "content",
+          alias(
+            repeat(
+              choice(
+                $._block_with_heading,
+                // After an inner list ends, a marked fence can open in the
+                // containing quoted div at a shallower column.
+                prec.dynamic(
+                  1,
+                  seq(
+                    $.list,
+                    $._block_quote_continuation,
+                    $._block_quote_prefix,
+                    $.code_block,
+                  ),
+                ),
+              ),
+            ),
+            $.content,
+          ),
+        ),
         optional($._block_quote_prefix),
         $._block_close,
         optional(

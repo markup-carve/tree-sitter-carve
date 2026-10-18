@@ -27,16 +27,16 @@ int main(void) {
   }
 
   // A block now serializes as 4 bytes (type, data, content_col, flags), so
-  // the largest count that still fits the fixed buffer is 251, not the
-  // count byte's own UINT8_MAX=255 - the buffer-size guard binds first.
+  // the largest count that still fits the fixed buffer is 251. The added
+  // table-attribute state byte fills the last available byte at that count.
   for (unsigned i = 0; i < 5; ++i) {
     Block *last = array_pop(scanner->open_blocks);
     ts_free(last);
   }
   unsigned length = tree_sitter_carve_external_scanner_serialize(scanner, buffer);
-  if (length != 1023 || (uint8_t)buffer[15] != 251) {
+  if (length != 1024 || (uint8_t)buffer[16] != 251) {
     fprintf(stderr, "251 blocks encoded as %u bytes with count %u\n", length,
-            (uint8_t)buffer[15]);
+            (uint8_t)buffer[16]);
     return 1;
   }
 
@@ -144,7 +144,7 @@ int main(void) {
   Scanner *row_back = tree_sitter_carve_external_scanner_create();
   tree_sitter_carve_external_scanner_deserialize(row_back, buffer, row_length);
   Block *restored_row = peek_block(row_back);
-  if (!restored_row || restored_row->type != TABLE_ROW || row_length != 35 ||
+  if (!restored_row || restored_row->type != TABLE_ROW || row_length != 36 ||
       restored_row->cell_boundary_col != 0x12345678 || restored_row->cell_carry_ticks != 257 ||
       restored_row->bracket_cell_col != 0x23456789 ||
       restored_row->flags != BLOCK_FLAG_TABLE_ROW_BOUNDARY_SAFE) {
@@ -162,7 +162,7 @@ int main(void) {
   tree_sitter_carve_external_scanner_deserialize(label_back, buffer, label_length);
   Inline *restored_label = peek_inline(label_back);
   if (!restored_label || restored_label->flags != INLINE_LABEL ||
-      restored_label->literal_closes != 0x12345678 || label_length != 25) {
+      restored_label->literal_closes != 0x12345678 || label_length != 26) {
     fputs("wide label bracket depth did not survive serialization\n", stderr);
     return 1;
   }
@@ -175,7 +175,7 @@ int main(void) {
   unsigned literal_length = tree_sitter_carve_external_scanner_serialize(literal_state, buffer);
   Scanner *literal_back = tree_sitter_carve_external_scanner_create();
   tree_sitter_carve_external_scanner_deserialize(literal_back, buffer, literal_length);
-  if (peek_inline(literal_back)->literal_closes != 16384 || literal_length != 25) {
+  if (peek_inline(literal_back)->literal_closes != 16384 || literal_length != 26) {
     fputs("literal bracket depth did not survive serialization\n", stderr);
     return 1;
   }
@@ -210,12 +210,14 @@ int main(void) {
   notes->no_closer_scope = 0xbeef;
   notes->link_tail_open_line = true;
   notes->missing_closers = 1 << 3;
+  notes->table_attribute_pending = 2;
   unsigned notes_length = tree_sitter_carve_external_scanner_serialize(notes, buffer);
   Scanner *notes_back = tree_sitter_carve_external_scanner_create();
   tree_sitter_carve_external_scanner_deserialize(notes_back, buffer, notes_length);
-  if (notes_length != 26 || !notes_back->mid_line || notes_back->no_closer_kinds != 0x0105 ||
+  if (notes_length != 27 || !notes_back->mid_line || notes_back->no_closer_kinds != 0x0105 ||
       notes_back->no_closer_scope != 0xbeef || !notes_back->link_tail_open_line ||
-      notes_back->missing_closers != 1 << 3 || notes_back->open_inline->size != 1 ||
+      notes_back->missing_closers != 1 << 3 || notes_back->table_attribute_pending != 2 ||
+      notes_back->open_inline->size != 1 ||
       peek_inline(notes_back)->type != STRONG) {
     fprintf(stderr, "inline notes did not survive serialization (%u bytes)\n", notes_length);
     return 1;
@@ -231,7 +233,7 @@ int main(void) {
   unsigned wide_length = tree_sitter_carve_external_scanner_serialize(wide, buffer);
   Scanner *wide_back = tree_sitter_carve_external_scanner_create();
   tree_sitter_carve_external_scanner_deserialize(wide_back, buffer, wide_length);
-  if (wide_back->open_blocks->size != 6 || wide_length != 15 + 1 + 6 * 4 + 4 * 2 + 3) {
+  if (wide_back->open_blocks->size != 6 || wide_length != 16 + 1 + 6 * 4 + 4 * 2 + 3) {
     fprintf(stderr, "wide fences encoded as %u bytes, restored %u blocks\n", wide_length,
             wide_back->open_blocks->size);
     return 1;
