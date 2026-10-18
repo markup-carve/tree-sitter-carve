@@ -1,0 +1,120 @@
+================================================================
+a bare closer does not reach inside a cross reference
+================================================================
+{#intro}
+# Intro
+
+x /a </#intro> y
+
+---
+
+(document
+  (block_attribute
+    args: (args
+      (identifier)))
+  (section
+    heading: (heading
+      marker: (marker)
+      content: (content))
+    content: (section_content
+      (paragraph
+        (auto_text_link)))))
+
+================================================================
+a bare closer does not reach inside a cross reference 2
+================================================================
+x /a </#nothing> y
+
+---
+
+(document
+  (paragraph
+    (auto_text_link)))
+
+================================================================
+an autolink a cross reference or a comment is atomic to every outside delimiter
+================================================================
+{~a <https://x~>y> b~}
+
+---
+
+(document
+  (paragraph
+    (strikethrough
+      begin_marker: (strikethrough_begin)
+      content: (content
+        (autolink))
+      end_marker: (strikethrough_end))))
+
+================================================================
+an autolink a cross reference or a comment is atomic to every outside delimiter 3
+================================================================
+{~a </#x~> b~}
+
+---
+
+(document
+  (paragraph
+    (strikethrough
+      begin_marker: (strikethrough_begin)
+      content: (content
+        (auto_text_link))
+      end_marker: (strikethrough_end))))
+
+================================================================
+a slash inside an autolink does not close emphasis outside it
+================================================================
+x /a <https://x/y> z
+
+---
+
+(document
+  (paragraph
+    (autolink)))
+
+================================================================
+emphasis can close after an autolink containing a slash
+================================================================
+x /a <https://x/y> z/
+
+---
+
+(document
+  (paragraph
+    (emphasis
+      begin_marker: (emphasis_begin)
+      content: (content
+        (autolink))
+      end_marker: (emphasis_end))))
+
+================================================================
+editorial markup closes outside a cross reference or a bracket run 4
+================================================================
+{~a [x~>y](u) b~}
+
+---
+
+(document
+  (paragraph
+    (strikethrough
+      begin_marker: (strikethrough_begin)
+      content: (content
+        (inline_link
+          text: (link_text)
+          destination: (inline_link_destination)))
+      end_marker: (strikethrough_end))))
+
+================================================================
+editorial markup closes outside a cross reference or a bracket run 5
+================================================================
+{~a </#x~>y> b~}
+
+---
+
+(document
+  (paragraph
+    (strikethrough
+      begin_marker: (strikethrough_begin)
+      content: (content
+        (auto_text_link))
+      end_marker: (strikethrough_end))))

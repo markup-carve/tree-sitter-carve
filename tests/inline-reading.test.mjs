@@ -88,6 +88,12 @@ test("parsed trailing comments do not contribute visible span text", () => {
   assert.equal(reading("<p><ins>a</ins></p>", "(document [0, 0] - [1, 0]\n(paragraph [0, 0] - [1, 0]\n(insert [0, 0] - [0, 15]\n(insert_begin [0, 0] - [0, 2]\n)\n(content [0, 2] - [0, 13]\n(trailing_comment [0, 3] - [0, 13]\n))\n(insert_end [0, 13] - [0, 15]\n))))", "{+a %% secret+}\n"), '');
 });
 
+test('editorial comment payload contributes visible span text', () => {
+  const source = '{+a {#x+}#} b+}\n';
+  const tree = '(document [0, 0] - [1, 0]\n  (paragraph [0, 0] - [1, 0]\n    (insert [0, 0] - [0, 15]\n      begin_marker: (insert_begin [0, 0] - [0, 2])\n      content: (content [0, 2] - [0, 13]\n        (editorial_comment [0, 3] - [0, 11]\n          content: (content [0, 6] - [0, 9])))\n      end_marker: (insert_end [0, 13] - [0, 15]))))';
+  assert.equal(reading('<p><ins>a <span class="critic-comment">x+}</span> b</ins></p>', tree, source), '');
+});
+
 test("a code span keeps comment-like text literal", () => {
   assert.equal(reading("<p><code>a %% secret</code></p>", "(document [0, 0] - [1, 0]\n(paragraph [0, 0] - [1, 0]\n(verbatim [0, 0] - [0, 13]\n(verbatim_marker_begin [0, 0] - [0, 1]\n)\n(content [0, 1] - [0, 12]\n)\n(verbatim_marker_end [0, 12] - [0, 13]\n))))", "`a %% secret`\n"), '');
 });
