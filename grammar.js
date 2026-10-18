@@ -299,110 +299,105 @@ function symbolFallback($, options) {
 
 function codeBlock($, beginToken) {
   return seq(
-        alias(beginToken, $.code_block_marker_begin),
-        // `fenced_code_block = code_fence_open, [space], [code_fence_info]`:
-        // exactly one space, never a tab and never a run, which
-        // `code_fence_info_is_modeled` in `src/scanner.c` is what enforces.
-        //
-        // THIS TOKEN CANNOT SAY SO, because the same characters are TRAILING
-        // whitespace on a bare fence - `[ \t]*` here is the two roles at once,
-        // and only lookahead tells them apart. Narrowing it to the separator
-        // alone turned ``` ```<TAB> ```, ``` ```<SP><SP> ``` and
-        // ``` ```<SP><TAB><SP> ``` from code blocks into ERRORs, which no corpus
-        // document, sweep or battery could see; `a_whitespace_only_code_fence_tail_is_still_bare`
-        // in `bindings/rust/lib.rs` is what sees it now.
-        $._whitespace,
-        // Info string (PART 9 §2): an optional language, then an optional
-        // quoted "header", then an optional bracketed [label] -- in that order,
-        // each whitespace-separated from the preceding token. The first token
-        // may sit against the fence, so a bare header or label is also valid.
-        optional(
-          choice(
+    alias(beginToken, $.code_block_marker_begin),
+    // `fenced_code_block = code_fence_open, [space], [code_fence_info]`:
+    // exactly one space, never a tab and never a run, which
+    // `code_fence_info_is_modeled` in `src/scanner.c` is what enforces.
+    //
+    // THIS TOKEN CANNOT SAY SO, because the same characters are TRAILING
+    // whitespace on a bare fence - `[ \t]*` here is the two roles at once,
+    // and only lookahead tells them apart. Narrowing it to the separator
+    // alone turned ``` ```<TAB> ```, ``` ```<SP><SP> ``` and
+    // ``` ```<SP><TAB><SP> ``` from code blocks into ERRORs, which no corpus
+    // document, sweep or battery could see; `a_whitespace_only_code_fence_tail_is_still_bare`
+    // in `bindings/rust/lib.rs` is what sees it now.
+    $._whitespace,
+    // Info string (PART 9 §2): an optional language, then an optional
+    // quoted "header", then an optional bracketed [label] -- in that order,
+    // each whitespace-separated from the preceding token. The first token
+    // may sit against the fence, so a bare header or label is also valid.
+    optional(
+      choice(
+        seq(
+          field("language", $.language),
+          // `code_fence_info = language_info, [space+, quoted_title],
+          // [space+, label]`: the two metadata slots take a RUN, and still
+          // no tab.
+          optional(
             seq(
-              field("language", $.language),
-              // `code_fence_info = language_info, [space+, quoted_title],
-              // [space+, label]`: the two metadata slots take a RUN, and still
-              // no tab.
-              optional(
+              $._padding_spaces,
+              choice(
                 seq(
-                  $._padding_spaces,
-                  choice(
-                    seq(
-                      field("header", $.code_block_header),
-                      optional(
-                        seq(
-                          $._padding_spaces,
-                          field("label", $.code_block_label),
-                        ),
-                      ),
-                    ),
-                    field("label", $.code_block_label),
+                  field("header", $.code_block_header),
+                  optional(
+                    seq($._padding_spaces, field("label", $.code_block_label)),
                   ),
                 ),
+                field("label", $.code_block_label),
               ),
-            ),
-            seq(
-              field("header", $.code_block_header),
-              optional(
-                seq($._padding_spaces, field("label", $.code_block_label)),
-              ),
-            ),
-            field("label", $.code_block_label),
-          ),
-        ),
-        // TRAILING WHITESPACE ON THE OPENER LINE, for every info-string shape.
-        //
-        // PART 2 drops trailing whitespace on a content line before the line is
-        // read, so ```` ```js ```` and ```` ```js ```` with a trailing space are
-        // the SAME opener - which is exactly the reading grammar.ebnf gives the
-        // tab case (carve#1295: a tab with nothing after it "is trailing
-        // whitespace on a content line, PART 2 drops it"). The scanner already
-        // agrees: `code_fence_info_is_modeled` consumes the run after each
-        // token and returns true at the line end, ahead of every spelling and
-        // cardinality test.
-        //
-        // The GRAMMAR had nowhere to put those characters, so an opener the
-        // scanner had already committed to came back as an ERROR node covering
-        // the rest of the document, and the whole body went to inline parsing
-        // as live prose. That is the `_div_marker_begin` defect one construct
-        // over, and the same fix: the bare fence needs no slot because
-        // `_whitespace` above already holds its run, and every opener that
-        // carries an info string needs one.
-        //
-        // Spelled the same two disjoint tokens the colon fence uses.
-        // `_padding_spaces` is already the metadata separator inside the info
-        // string, so a run of spaces here is one token the parser resolves by
-        // lookahead - a quote or a bracket opens a padding slot, a line ending
-        // closes the opener - rather than a lexer ambiguity no conflict
-        // declaration could settle. A run CARRYING A TAB is the second token:
-        // a padding slot never takes a tab (`code_fence_info_is_modeled`
-        // returns false for ```` ```js<TAB>"T" ````), so at this position such
-        // a run can only be trailing whitespace.
-        optional(choice($._padding_spaces, $._opener_trailing_tabs)),
-        choice($._newline, $._eof_or_newline),
-        optional(field("code", $.code)),
-        $._block_close,
-        optional(
-          // The reading that took the end marker wins. Both readings of the
-          // quoted closer's `>` can parse to the end of the document, and
-          // without this the one that left the fence unclosed was kept
-          // whenever the quote ended after it.
-          prec.dynamic(
-            1,
-            seq(
-              // A closer inside a quote keeps its `>` markers as marker nodes;
-              // the scanner decided at the newline that this line closes.
-              optional($._block_quote_prefix),
-              alias($._code_block_end, $.code_block_marker_end),
-              // A closer may carry trailing whitespace: the scanner's own
-              // closer test treats a whitespace-only tail as blank (#96), and
-              // every engine closes `\u0060\u0060\u0060   ` as a fence.
-              $._whitespace,
-              choice($._newline, $._eof_or_newline),
             ),
           ),
         ),
-      );
+        seq(
+          field("header", $.code_block_header),
+          optional(seq($._padding_spaces, field("label", $.code_block_label))),
+        ),
+        field("label", $.code_block_label),
+      ),
+    ),
+    // TRAILING WHITESPACE ON THE OPENER LINE, for every info-string shape.
+    //
+    // PART 2 drops trailing whitespace on a content line before the line is
+    // read, so ```` ```js ```` and ```` ```js ```` with a trailing space are
+    // the SAME opener - which is exactly the reading grammar.ebnf gives the
+    // tab case (carve#1295: a tab with nothing after it "is trailing
+    // whitespace on a content line, PART 2 drops it"). The scanner already
+    // agrees: `code_fence_info_is_modeled` consumes the run after each
+    // token and returns true at the line end, ahead of every spelling and
+    // cardinality test.
+    //
+    // The GRAMMAR had nowhere to put those characters, so an opener the
+    // scanner had already committed to came back as an ERROR node covering
+    // the rest of the document, and the whole body went to inline parsing
+    // as live prose. That is the `_div_marker_begin` defect one construct
+    // over, and the same fix: the bare fence needs no slot because
+    // `_whitespace` above already holds its run, and every opener that
+    // carries an info string needs one.
+    //
+    // Spelled the same two disjoint tokens the colon fence uses.
+    // `_padding_spaces` is already the metadata separator inside the info
+    // string, so a run of spaces here is one token the parser resolves by
+    // lookahead - a quote or a bracket opens a padding slot, a line ending
+    // closes the opener - rather than a lexer ambiguity no conflict
+    // declaration could settle. A run CARRYING A TAB is the second token:
+    // a padding slot never takes a tab (`code_fence_info_is_modeled`
+    // returns false for ```` ```js<TAB>"T" ````), so at this position such
+    // a run can only be trailing whitespace.
+    optional(choice($._padding_spaces, $._opener_trailing_tabs)),
+    choice($._newline, $._eof_or_newline),
+    optional(field("code", $.code)),
+    $._block_close,
+    optional(
+      // The reading that took the end marker wins. Both readings of the
+      // quoted closer's `>` can parse to the end of the document, and
+      // without this the one that left the fence unclosed was kept
+      // whenever the quote ended after it.
+      prec.dynamic(
+        1,
+        seq(
+          // A closer inside a quote keeps its `>` markers as marker nodes;
+          // the scanner decided at the newline that this line closes.
+          optional($._block_quote_prefix),
+          alias($._code_block_end, $.code_block_marker_end),
+          // A closer may carry trailing whitespace: the scanner's own
+          // closer test treats a whitespace-only tail as blank (#96), and
+          // every engine closes `\u0060\u0060\u0060   ` as a fence.
+          $._whitespace,
+          choice($._newline, $._eof_or_newline),
+        ),
+      ),
+    ),
+  );
 }
 
 module.exports = grammar({
@@ -420,6 +415,28 @@ module.exports = grammar({
   extras: (_) => ["\r"],
 
   conflicts: ($) => [
+    // A quoted fence can leave a nested item and open in its enclosing div.
+    // Keep both readings until the fence token decides which host owns it.
+    [$._list_item_definition],
+    [$._list_item_description],
+    [$._list_item_task],
+    [$._list_item_upper_roman_parens],
+    [$._list_item_lower_roman_parens],
+    [$._list_item_upper_alpha_parens],
+    [$._list_item_lower_alpha_parens],
+    [$._list_item_decimal_parens],
+    [$._list_item_upper_roman_paren],
+    [$._list_item_lower_roman_paren],
+    [$._list_item_upper_alpha_paren],
+    [$._list_item_lower_alpha_paren],
+    [$._list_item_decimal_paren],
+    [$._list_item_upper_roman_period],
+    [$._list_item_lower_roman_period],
+    [$._list_item_upper_alpha_period],
+    [$._list_item_lower_alpha_period],
+    [$._list_item_decimal_period],
+    [$._list_item_star],
+    [$._list_item_dash],
     // After a quoted fence's `_block_close`, a `>` is either the closer's own
     // marker or the enclosing quote's; only the end marker after it decides.
     [$.code_block],
@@ -506,9 +523,17 @@ module.exports = grammar({
         $._newline,
       ),
     _block_with_heading: ($) =>
-      seq(
-        optional($._block_quote_continuation),
-        choice($.heading, $._block_element, $._newline),
+      choice(
+        seq(
+          optional($._block_quote_continuation),
+          choice($.heading, $._block_element, $._newline),
+        ),
+        // The first marker continues the outer quote; the remaining markers
+        // belong to the fence's host after a nested item closes.
+        prec(
+          1,
+          seq($._block_quote_continuation, $._block_quote_prefix, $.code_block),
+        ),
       ),
     _block_element: ($) => choice($._nonparagraph_block, $._paragraph),
     _nonparagraph_block: ($) =>
@@ -933,7 +958,10 @@ module.exports = grammar({
           ),
         ),
         prec.right(
-          seq(codeBlock($, $._delimited_table_begin), optional($.table_caption)),
+          seq(
+            codeBlock($, $._delimited_table_begin),
+            optional($.table_caption),
+          ),
         ),
       ),
     _table_row: ($) =>

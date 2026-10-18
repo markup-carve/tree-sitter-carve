@@ -724,20 +724,10 @@
   "invisibleOverAcceptance": {},
   "invisibleUnderAcceptance": {},
   "batteryDisagreements": {},
-  "underAcceptance": {
-    "a-shifted-fence-in-a-quoted-container-s-body-stores-no-continuation-claim-2": {
-      "gaps": "code_block: want 1 have 0; list: want 3 have 2",
-      "reason": "Under TWO quote levels a fence past a quoted div's column, after the item it leaves, reads as paragraph text: the second quote marker's continuation does not hand the line to the div the way one quote level does. One quote level is read correctly (the sibling document of this category)."
-    }
-  },
+  "underAcceptance": {},
   "oracleGoldenDisagreements": {},
   "errorFamilies": {},
-  "inlineReadingGaps": {
-    "a-shifted-fence-in-a-quoted-container-s-body-stores-no-continuation-claim-2": {
-      "reading": "code html=0 tree=1",
-      "reason": "Under TWO quote levels a fence past a quoted div's column, after the item it leaves, reads as paragraph text: the second quote marker's continuation does not hand the line to the div the way one quote level does. One quote level is read correctly (the sibling document of this category)."
-    }
-  },
+  "inlineReadingGaps": {},
   "lineTerminatorGaps": {
     "a-bare-closer-does-not-reach-inside-a-cross-reference": "The existing cross-reference grammar reads a bare emphasis closer differently under CR line endings.",
     "a-bare-closer-does-not-reach-inside-a-cross-reference-2": "The existing cross-reference grammar reads a bare emphasis closer differently under CR line endings.",
