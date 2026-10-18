@@ -144,6 +144,122 @@ function effectiveCapture(text, row, column) {
  */
 const CASES = [
     {
+        name: 'kbd on a span is builtin',
+        source: '[Tab]{kbd}\n',
+        at: [0, 6],
+        expect: 'attribute.builtin',
+    },
+    {
+        name: 'abbr on a span is builtin',
+        source: '[ABC]{abbr=ABC}\n',
+        at: [0, 6],
+        expect: 'attribute.builtin',
+    },
+    {
+        name: 'time on a span is builtin',
+        source: '[10:00]{time=10:00}\n',
+        at: [0, 8],
+        expect: 'attribute.builtin',
+    },
+    ...[
+        ['samp', 4], ['var', 9], ['cite', 13], ['dfn', 18],
+    ].map(([key, column]) => ({
+        name: `${key} on a span stays a property`,
+        source: '[x]{samp var cite dfn}\n',
+        at: [0, column],
+        expect: 'property',
+    })),
+    {
+        name: 'kbd above a paragraph stays a property',
+        source: '{kbd}\nparagraph\n',
+        at: [0, 1],
+        expect: 'property',
+    },
+    {
+        name: 'abbr above a paragraph stays a property',
+        source: '{abbr=x}\nparagraph\n',
+        at: [0, 1],
+        expect: 'property',
+    },
+    ...['csv', 'tsv'].map((language) => ({
+        name: `table before a ${language} code block is builtin`,
+        source: `{table}\n\`\`\`${language}\na,b\n\`\`\`\n`,
+        at: [0, 1],
+        expect: 'attribute.builtin',
+    })),
+    {
+        name: 'table across a blank line before a csv code block is builtin',
+        source: '{table}\n\n```csv\na,b\n```\n',
+        at: [0, 1],
+        expect: 'attribute.builtin',
+    },
+    {
+        name: 'loose across a blank line before a list is builtin',
+        source: '{loose}\n\n- item\n',
+        at: [0, 1],
+        expect: 'attribute.builtin',
+    },
+    {
+        name: 'table through a stacked attribute line is builtin',
+        source: '{table}\n{#id}\n```csv\na,b\n```\n',
+        at: [0, 1],
+        expect: 'attribute.builtin',
+    },
+    {
+        name: 'loose through a stacked attribute line is builtin',
+        source: '{loose}\n{.c}\n- item\n',
+        at: [0, 1],
+        expect: 'attribute.builtin',
+    },
+    {
+        name: 'table through a stacked line before a paragraph stays a property',
+        source: '{table}\n{#id}\nparagraph\n',
+        at: [0, 1],
+        expect: 'property',
+    },
+    {
+        name: 'table before a paragraph stays a property',
+        source: '{table}\nparagraph\n',
+        at: [0, 1],
+        expect: 'property',
+    },
+    {
+        name: 'table before a different code language stays a property',
+        source: '{table}\n```js\nx\n```\n',
+        at: [0, 1],
+        expect: 'property',
+    },
+    {
+        name: 'table must be adjacent to the code block',
+        source: '{table}\nparagraph\n\n```csv\na,b\n```\n',
+        at: [0, 1],
+        expect: 'property',
+    },
+    {
+        name: 'loose before a list is builtin',
+        source: '{loose}\n- item\n',
+        at: [0, 1],
+        expect: 'attribute.builtin',
+    },
+    {
+        name: 'loose before a definition list is builtin',
+        source: '{loose}\n:: term\n: definition\n',
+        at: [0, 1],
+        expect: 'attribute.builtin',
+    },
+    {
+        name: 'loose before a block quote stays a property',
+        source: '{loose}\n> quote\n',
+        at: [0, 1],
+        expect: 'property',
+    },
+    {
+        name: 'loose on a span stays a property',
+        source: '[x]{loose}\n',
+        at: [0, 4],
+        expect: 'property',
+    },
+    {
         // A quoted fence's closing line keeps its `>` as a marker node, so it
         // paints like the `>` on every other line of the quote.
         name: "a quoted fence closer's marker paints as a quote marker",

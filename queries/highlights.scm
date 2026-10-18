@@ -318,6 +318,44 @@
 
 (boolean_attribute) @property
 
+((span
+  attribute: (inline_attribute
+    (args
+      (boolean_attribute) @attribute.builtin)))
+  (#eq? @attribute.builtin "kbd"))
+
+((span
+  attribute: (inline_attribute
+    (args
+      (key_value
+        key: (key) @attribute.builtin))))
+  (#any-of? @attribute.builtin "abbr" "time"))
+
+((_
+  (block_attribute
+    args: (args
+      (boolean_attribute) @attribute.builtin))
+  .
+  (block_attribute)*
+  .
+  (code_block
+    language: (language) @_language))
+  (#eq? @attribute.builtin "table")
+  (#any-of? @_language "csv" "tsv"))
+
+((_
+  (block_attribute
+    args: (args
+      (boolean_attribute) @attribute.builtin))
+  .
+  (block_attribute)*
+  .
+  [
+    (list)
+    (definition_list)
+  ])
+  (#eq? @attribute.builtin "loose"))
+
 (language_attribute) @attribute
 
 (link_text
