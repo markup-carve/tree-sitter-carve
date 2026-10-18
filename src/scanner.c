@@ -7720,6 +7720,7 @@ static bool parse_open_curly_bracket(Scanner *s, TSLexer *lexer,
   // though the line's indent still reads what the line began with. A marker
   // attribute (`-{#k} {#h}`) counts zero toward that column, so the block can
   // sit past it; nothing else on a marker line reaches here in block position.
+  uint32_t brace_column = line_column(s, lexer);
   bool on_marker_line =
       s->marker_end_col != 0 && line_column(s, lexer) >= s->marker_end_col;
   uint8_t quote_markers = s->block_quote_level;
@@ -7914,7 +7915,9 @@ static bool parse_open_curly_bracket(Scanner *s, TSLexer *lexer,
                  // `{.c}` one space past a list item's content column opened a
                  // real attribute where the corpus says literal text (#84).
                  (on_marker_line ||
-                  (!has_extra_indent(s) && !has_surplus_indent(s)))) {
+                  (!has_extra_indent(s) && !has_surplus_indent(s)) ||
+                  (list_item_open(s) &&
+                   at_block_opener_margin(s, brace_column)))) {
         // A block attribute must stand alone on its line: after the closing
         // `}` only trailing whitespace and a newline (or EOF) may follow.
         // Otherwise (e.g. `{.c} text`, `para {.c} more`) the braces are
