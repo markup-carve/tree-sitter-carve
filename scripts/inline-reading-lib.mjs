@@ -40,13 +40,13 @@ const skeleton = (s) =>
 // The spec's lookup key for a reference label (scripts/spec/label-key.mjs).
 const labelKey = (s) => s.replace(/[ \t\n\f\r]+/g, ' ').replace(/^ | $/g, '');
 
-// Source a reader never sees inside a non-code span: comments, link
+// Source a reader never sees inside a non-code span: hidden comments, link
 // destinations, a reference link's label and attribute blocks. Inside a code
 // span every one of those is literal text, so code spans keep them.
 const visible = (s) =>
   s
     .replace(/\{%[\s\S]*?%\}/g, '')
-    .replace(/\{#[\s\S]*?#\}/g, '')
+    .replace(/\{#([\s\S]*?)#\}/g, '$1')
     .replace(/\]\([^)]*\)/g, ']')
     .replace(/\]\[[^\]]*\]/g, ']')
     .replace(/\{[.#:][^}]*\}/g, '')

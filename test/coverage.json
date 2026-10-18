@@ -14,8 +14,8 @@
       "nodes": 227
     },
     "heading": {
-      "documents": 183,
-      "nodes": 217
+      "documents": 184,
+      "nodes": 218
     },
     "code_block": {
       "documents": 268,
@@ -658,6 +658,7 @@
     "an-unterminated-raw-fence-keeps-literal-payload-termination",
     "braced-emphasis-can-nest-its-own-kind",
     "a-block-at-an-item-content-column-ends-its-paragraph-before-an-unclosed-fence",
+    "a-bare-closer-does-not-reach-inside-a-cross-reference",
     "a-definition-or-attribute-line-in-a-nested-container-leaves-no-paragraph-for-an-unmarked-line",
     "a-delimiter-that-is-part-of-a-larger-character-is-text",
     "a-line-is-read-in-the-container-whose-column-it-reaches",
@@ -666,6 +667,7 @@
     "a-quoted-item-comment-ends-the-quote-before-an-unclosed-fence",
     "a-table-row-or-a-definition-under-a-paragraph-ends-it-before-an-unclosed-fence",
     "an-autolink-is-opaque-to-the-bracket-scan",
+    "an-autolink-a-cross-reference-or-a-comment-is-atomic-to-every-outside-delimiter",
     "an-escaped-cross-reference-spelling-stays-literal",
     "an-item-comment-or-attribute-line-closes-the-item-s-paragraph",
     "an-unclosed-fence-after-an-attribute-line-in-a-container-ends-at-its-closer",
@@ -678,12 +680,7 @@
     "the-combined-bold-italic-token-does-not-open-or-close-inside-a-word",
     "editorial-markup-closes-outside-a-cross-reference-or-a-bracket-run"
   ],
-  "skip": {
-    "a-bare-closer-does-not-reach-inside-a-cross-reference": "The existing cross-reference grammar reports an error inside a bare emphasis run.",
-    "an-autolink-a-cross-reference-or-a-comment-is-atomic-to-every-outside-delimiter": "The grammar treats editorial close markers inside autolinks and cross-references as structural, producing ERROR in two corpus examples.",
-    "editorial-markup-closes-outside-a-cross-reference-or-a-bracket-run-4": "The grammar closes editorial markup inside a link destination, producing ERROR.",
-    "editorial-markup-closes-outside-a-cross-reference-or-a-bracket-run-5": "The grammar closes editorial markup inside a cross-reference, producing ERROR."
-  },
+  "skip": {},
   "overAcceptance": {
     "an-unterminated-raw-fence-keeps-literal-payload-termination-2": {
       "nodes": "raw_block",
@@ -728,13 +725,6 @@
   "oracleGoldenDisagreements": {},
   "errorFamilies": {},
   "inlineReadingGaps": {},
-  "lineTerminatorGaps": {
-    "a-bare-closer-does-not-reach-inside-a-cross-reference": "The existing cross-reference grammar reads a bare emphasis closer differently under CR line endings.",
-    "a-bare-closer-does-not-reach-inside-a-cross-reference-2": "The existing cross-reference grammar reads a bare emphasis closer differently under CR line endings.",
-    "an-autolink-a-cross-reference-or-a-comment-is-atomic-to-every-outside-delimiter": "The grammar reads an atomic inline construct differently with CR line endings; tree-sitter-carve#561.",
-    "an-autolink-a-cross-reference-or-a-comment-is-atomic-to-every-outside-delimiter-3": "The grammar reads an atomic inline construct differently with CR line endings; tree-sitter-carve#561.",
-    "editorial-markup-closes-outside-a-cross-reference-or-a-bracket-run-4": "The grammar reads editorial markup across a bracket run differently with CR line endings; tree-sitter-carve#561.",
-    "editorial-markup-closes-outside-a-cross-reference-or-a-bracket-run-5": "The grammar reads editorial markup across a cross-reference boundary differently with CR line endings; tree-sitter-carve#561."
-  },
+  "lineTerminatorGaps": {},
   "parseTimeouts": {}
 }

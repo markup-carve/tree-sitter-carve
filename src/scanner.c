@@ -10925,6 +10925,52 @@ static bool probe_bare_closer_skips_brackets(Scanner *s, BracketProbe *probe, ch
       ++characters;
       continue;
     }
+    if (c == '<') {
+      uint32_t start = probe->position;
+      uint32_t base = s->col_base;
+      advance(s, lexer);
+      bool crossref = false;
+      if (lexer->lookahead == '/') {
+        advance(s, lexer);
+        if (lexer->lookahead == '#') {
+          crossref = true;
+          advance(s, lexer);
+        }
+      }
+      bool body = false;
+      bool scheme = false;
+      bool scheme_prefix = !crossref &&
+          ((lexer->lookahead >= 'a' && lexer->lookahead <= 'z') ||
+           (lexer->lookahead >= 'A' && lexer->lookahead <= 'Z'));
+      bool email = false;
+      bool email_dot = false;
+      bool email_invalid = false;
+      while (!lexer->eof(lexer) && !at_line_end(lexer) &&
+             lexer->lookahead != '>' && lexer->lookahead != ' ') {
+        int32_t current = lexer->lookahead;
+        body = true;
+        if (current == ':' && scheme_prefix) scheme = true;
+        else if (!scheme && !carve_is_alnum_ascii(current) &&
+                 current != '+' && current != '.' && current != '-') scheme_prefix = false;
+        if (current == '@') email = true;
+        if (current == '.' && email) email_dot = true;
+        if (current == '~' && email) email_invalid = true;
+        advance(s, lexer);
+      }
+      if (body && lexer->lookahead == '>' &&
+          (crossref || scheme || (email && email_dot && !email_invalid))) {
+        advance(s, lexer);
+        s->probe_skipped_opaque = true;
+        previous = 'x';
+        ++characters;
+        continue;
+      }
+      bracket_probe_rewind(probe, start + 1);
+      s->col_base = base;
+      previous = '<';
+      ++characters;
+      continue;
+    }
     if (c == ']' && in_bracket) return false;
     if (c == (int32_t)(unsigned char)bare &&
         (previous != 0 && previous != ' ' && previous != '\t' && previous != '\n')) {
@@ -11329,15 +11375,58 @@ static bool probe_substitution_arrow_ahead(Scanner *s, TSLexer *lexer, bool *clo
       }
       continue;
     }
+    if (lexer->lookahead == '<') {
+      advance(s, lexer);
+      bool crossref = false;
+      if (lexer->lookahead == '/') {
+        advance(s, lexer);
+        if (lexer->lookahead == '#') {
+          crossref = true;
+          advance(s, lexer);
+        }
+      }
+      bool body = false;
+      bool scheme = false;
+      bool email = false;
+      bool email_dot = false;
+      bool email_invalid = false;
+      bool inner_arrow = false;
+      bool inner_closer = false;
+      while (!lexer->eof(lexer) && !at_line_end(lexer) &&
+             lexer->lookahead != '>' && lexer->lookahead != ' ') {
+        int32_t current = lexer->lookahead;
+        body = true;
+        if (current == ':') scheme = true;
+        if (current == '@') email = true;
+        if (current == '.' && email) email_dot = true;
+        if (current == '~' && email) email_invalid = true;
+        advance(s, lexer);
+        if (current == '~' && lexer->lookahead == '>') inner_arrow = true;
+        if (current == '~' && lexer->lookahead == '}') inner_closer = true;
+      }
+      bool closed_angle = lexer->lookahead == '>';
+      if (closed_angle) advance(s, lexer);
+      if (closed_angle && body && (crossref || scheme || (email && email_dot && !email_invalid)))
+        continue;
+      if (inner_arrow) return true;
+      if (inner_closer) {
+        *closed = true;
+        return arrow;
+      }
+      continue;
+    }
     if (lexer->lookahead == '[') ++brackets;
     if (lexer->lookahead == ']') {
-      if (brackets) --brackets;
+      if (brackets) {
+        --brackets;
+        if (!brackets) arrow = false;
+      }
       else if (in_bracket) return false;
     }
     if (lexer->lookahead == '~') {
       advance(s, lexer);
       if (lexer->lookahead == '>') {
-        if (!in_bracket) return true;
+        if (!in_bracket && !brackets) return true;
         arrow = true;
       }
       if (lexer->lookahead == '}') {
@@ -13188,6 +13277,51 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
         if (end == VerbatimRunReachesSpanCloser) { combined_pair = true; break; }
         if (end != VerbatimRunCloses) break;
         previous = 'x';
+        ++characters;
+        continue;
+      }
+      if (current == '<') {
+        uint32_t angle_restart = decision_probe.position;
+        uint32_t angle_base = s->col_base;
+        advance(s, lexer);
+        bool crossref = false;
+        if (lexer->lookahead == '/') {
+          advance(s, lexer);
+          if (lexer->lookahead == '#') {
+            crossref = true;
+            advance(s, lexer);
+          }
+        }
+        bool body = false;
+        bool scheme = false;
+        bool scheme_prefix = !crossref &&
+            ((lexer->lookahead >= 'a' && lexer->lookahead <= 'z') ||
+             (lexer->lookahead >= 'A' && lexer->lookahead <= 'Z'));
+        bool email = false;
+        bool email_dot = false;
+        bool email_invalid = false;
+        while (!lexer->eof(lexer) && !at_line_end(lexer) &&
+               lexer->lookahead != '>' && lexer->lookahead != ' ') {
+          int32_t angle_char = lexer->lookahead;
+          body = true;
+          if (angle_char == ':' && scheme_prefix) scheme = true;
+          else if (!scheme && !carve_is_alnum_ascii(angle_char) &&
+                   angle_char != '+' && angle_char != '.' && angle_char != '-') scheme_prefix = false;
+          if (angle_char == '@') email = true;
+          if (angle_char == '.' && email) email_dot = true;
+          if (angle_char == '~' && email) email_invalid = true;
+          advance(s, lexer);
+        }
+        if (body && lexer->lookahead == '>' &&
+            (crossref || scheme || (email && email_dot && !email_invalid))) {
+          advance(s, lexer);
+          previous = 'x';
+          ++characters;
+          continue;
+        }
+        bracket_probe_rewind(&decision_probe, angle_restart + 1);
+        s->col_base = angle_base;
+        previous = '<';
         ++characters;
         continue;
       }
