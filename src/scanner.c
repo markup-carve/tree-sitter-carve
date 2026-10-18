@@ -10758,7 +10758,8 @@ static bool probe_bare_closer_skips_brackets(Scanner *s, BracketProbe *probe, ch
     if (c == (int32_t)(unsigned char)bare &&
         (previous != 0 && previous != ' ' && previous != '\t' && previous != '\n')) {
       advance(s, lexer);
-      if (carve_is_alnum_ascii(lexer->lookahead)) {
+      if (carve_is_alnum_ascii(lexer->lookahead) ||
+          carve_is_grapheme_extender(lexer->lookahead)) {
         previous = c;
         ++characters;
         continue;
@@ -11261,7 +11262,11 @@ static bool parse_substitution_or_strikethrough(Scanner *s, TSLexer *lexer,
                                               const bool *valid_symbols) {
   // Zero-width, whatever the reader below advances over.
   mark_end(s, lexer);
-  if (carve_is_grapheme_extender(lexer->lookahead)) return false;
+  if (carve_is_grapheme_extender(lexer->lookahead)) {
+    if (!valid_symbols[BRACED_FALLBACK]) return false;
+    lexer->result_symbol = BRACED_FALLBACK;
+    return true;
+  }
   bool closed = false;
   if (substitution_arrow_ahead(s, lexer, &closed)) {
     push_inline_flagged(s, SUBSTITUTION, 0, INLINE_BRACED);
