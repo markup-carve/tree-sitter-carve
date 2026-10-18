@@ -188,6 +188,18 @@ const CASES = [
         expect: 'attribute.builtin',
     })),
     {
+        name: 'table inside a quote is builtin',
+        source: '> {table}\n> ```csv\n> a,b\n> ```\n',
+        at: [0, 3],
+        expect: 'attribute.builtin',
+    },
+    {
+        name: 'table through a stacked quoted attribute is builtin',
+        source: '> {table}\n> {#id}\n> ```csv\n> a,b\n> ```\n',
+        at: [0, 3],
+        expect: 'attribute.builtin',
+    },
+    {
         name: 'table across a blank line before a csv table is builtin',
         source: '{table}\n\n```csv\na,b\n```\n',
         at: [0, 1],
@@ -197,6 +209,12 @@ const CASES = [
         name: 'loose across a blank line before a list is builtin',
         source: '{loose}\n\n- item\n',
         at: [0, 1],
+        expect: 'attribute.builtin',
+    },
+    {
+        name: 'loose inside a quote is builtin',
+        source: '> {loose}\n> - a\n',
+        at: [0, 3],
         expect: 'attribute.builtin',
     },
     {

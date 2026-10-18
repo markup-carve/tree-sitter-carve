@@ -44,6 +44,13 @@ has(objects, csvTable, 'function.inner', 'code', 'a,b\n');
 const tableCaptures = objects.captures(parser.parse(csvTable).rootNode);
 assert.equal(tableCaptures.filter(c => c.name === 'function.inner').length, 1,
   'a delimited table has exactly one inner textobject');
+const captionedCsv = '{table}\n```csv\na,b\n```\n^ Caption\n';
+const captionedCaptures = objects.captures(parser.parse(captionedCsv).rootNode);
+assert.equal(captionedCaptures.filter(c => c.name === 'function.inner').length, 1,
+  'a delimited table caption does not add a second inner textobject');
+const pipeTable = '| a | b |\n|---|---|\n| 1 | 2 |\n^ Caption\n';
+has(objects, pipeTable, 'function.inner', 'table_row', '| 1 | 2 |\n');
+has(objects, pipeTable, 'function.inner', 'table_caption', '^ Caption\n');
 for (const [source, type, body] of [
   ['{% hidden %}\n', 'braced_comment', ' hidden '],
   ['{# hidden #}\n', 'editorial_comment', ' hidden '],

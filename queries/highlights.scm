@@ -38,19 +38,10 @@
 ] @markup.raw.block
   (#set! priority 90))
 
-((table
-  (language)) @markup.raw.block
-  (#set! priority 90))
-
 ; Remove @markup.raw for code with a language spec
 (code_block
   .
   (code_block_marker_begin)
-  (language)
-  (code) @none
-  (#set! priority 90))
-
-(table
   (language)
   (code) @none
   (#set! priority 90))
@@ -345,7 +336,7 @@
     args: (args
       (boolean_attribute) @attribute.builtin))
   .
-  (block_attribute)*
+  [(block_attribute) (block_quote_marker)]*
   .
   (table
     language: (language) @_language))
@@ -357,7 +348,7 @@
     args: (args
       (boolean_attribute) @attribute.builtin))
   .
-  (block_attribute)*
+  [(block_attribute) (block_quote_marker)]*
   .
   [
     (list)

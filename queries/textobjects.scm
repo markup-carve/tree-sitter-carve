@@ -37,6 +37,7 @@
   (code) @function.inner) @function.outer
 
 (table
+  !language
   [
     (table_header)
     (table_row)
