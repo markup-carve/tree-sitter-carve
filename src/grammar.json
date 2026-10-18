@@ -6282,8 +6282,17 @@
       ]
     },
     "backslash_escape": {
-      "type": "PATTERN",
-      "value": "\\\\[^\\r\\n]"
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "PATTERN",
+          "value": "\\\\<\\/#[^\\r\\n>]*>"
+        },
+        {
+          "type": "PATTERN",
+          "value": "\\\\[^\\r\\n]"
+        }
+      ]
     },
     "autolink": {
       "type": "SEQ",

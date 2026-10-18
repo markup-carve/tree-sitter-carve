@@ -1,6 +1,7 @@
 #include "tree_sitter/alloc.h"
 #include "tree_sitter/array.h"
 #include "tree_sitter/parser.h"
+#include "unicode_marks.h"
 
 // `_Static_assert` is a C11 keyword some MSVC toolchains (e.g. the Windows
 // Python wheel build's cp38-win32 target) don't recognize by default,
@@ -19,6 +20,19 @@ static inline bool carve_is_alnum_ascii(int32_t c) {
     return (c >= '0' && c <= '9')
         || (c >= 'A' && c <= 'Z')
         || (c >= 'a' && c <= 'z');
+}
+
+static bool carve_is_grapheme_extender(int32_t c) {
+    size_t low = 0;
+    size_t high = sizeof(carve_grapheme_extender_ranges) /
+                  sizeof(carve_grapheme_extender_ranges[0]);
+    while (low < high) {
+        size_t mid = low + (high - low) / 2;
+        if (c < (int32_t)carve_grapheme_extender_ranges[mid][0]) high = mid;
+        else if (c > (int32_t)carve_grapheme_extender_ranges[mid][1]) low = mid + 1;
+        else return true;
+    }
+    return false;
 }
 
 // #define DEBUG
@@ -7595,6 +7609,7 @@ static bool scan_value(Scanner *s, TSLexer *lexer) {
 /// x` / blank / `y %} z` renders as two paragraphs with the braces literal.
 static bool probe_scan_braced_comment_to_close(Scanner *s, TSLexer *lexer, BracketProbe *probe) {
   advance(s, lexer);
+  if (carve_is_grapheme_extender(lexer->lookahead)) return false;
   while (!lexer->eof(lexer)) {
     if (lexer->lookahead == '%') {
       advance(s, lexer);
@@ -7806,6 +7821,7 @@ static bool parse_open_curly_bracket(Scanner *s, TSLexer *lexer,
   if (hash_glued) {
     // The `#` that opens the body.
     advance(s, lexer);
+    if (carve_is_grapheme_extender(lexer->lookahead)) return false;
     if (lexer->lookahead == '#') {
       advance(s, lexer);
       // `{##}` is the EMPTY braced pair (carve#1447) and so literal text. The
@@ -9880,6 +9896,10 @@ static bool scan_bold_italic_span_end(Scanner *s, TSLexer *lexer) {
     return false;
   }
   advance(s, lexer);
+  if (carve_is_alnum_ascii(lexer->lookahead) ||
+      carve_is_grapheme_extender(lexer->lookahead)) {
+    return false;
+  }
   return true;
 }
 
@@ -11238,6 +11258,7 @@ static bool parse_substitution_or_strikethrough(Scanner *s, TSLexer *lexer,
                                               const bool *valid_symbols) {
   // Zero-width, whatever the reader below advances over.
   mark_end(s, lexer);
+  if (carve_is_grapheme_extender(lexer->lookahead)) return false;
   bool closed = false;
   if (substitution_arrow_ahead(s, lexer, &closed)) {
     push_inline_flagged(s, SUBSTITUTION, 0, INLINE_BRACED);
@@ -11289,6 +11310,8 @@ static bool mark_span_begin(Scanner *s, TSLexer *lexer,
       s->after_closer_char == '*' && s->after_closer_col == line_column(s, lexer);
   bool bare = (s->state & STATE_BARE_SPAN_OPENER) != 0;
   s->state &= ~STATE_BARE_SPAN_OPENER;
+  if (!valid_symbols[IN_FALLBACK] &&
+      carve_is_grapheme_extender(lexer->lookahead)) return false;
   if (bare && inline_type != BOLD_ITALIC && !valid_symbols[IN_FALLBACK] &&
       lexer->lookahead == inline_marker(inline_type)) return false;
   if (bare && (inline_type == STRONG || inline_type == EMPHASIS) &&
@@ -11674,7 +11697,8 @@ static bool scan_span_end_by_form(Scanner *s, TSLexer *lexer,
     advance(s, lexer);
     // bare_closer(d) = <&(non_ws), d, !(alnum). A bare marker glued to
     // the word that follows it closes nothing: `/usr/local/` is one emphasis.
-    if (carve_is_alnum_ascii(lexer->lookahead)) {
+    if (carve_is_alnum_ascii(lexer->lookahead) ||
+        carve_is_grapheme_extender(lexer->lookahead)) {
       return false;
     }
     return true;
@@ -12186,7 +12210,8 @@ static int parse_literal_run(Scanner *s, TSLexer *lexer,
     Inline *open = find_inline_in_scope(s, k);
     bool open_bare = open != NULL && (open->flags & INLINE_BRACED) == 0;
     bool open_braced = open != NULL && (open->flags & INLINE_BRACED) != 0;
-    bool may_close = prev != 0 && ((open_bare && !carve_is_alnum_ascii(next)) ||
+    bool may_close = prev != 0 && ((open_bare && !carve_is_alnum_ascii(next) &&
+                                    !carve_is_grapheme_extender(next)) ||
                                    (open_braced && next == '}') ||
                                    open_closer_starts_here(s, c, next));
     // bare_opener(d) = <!(alnum | d | slash_if(d)), d, !(ws | d)
@@ -12194,13 +12219,14 @@ static int parse_literal_run(Scanner *s, TSLexer *lexer,
                       prev2 != 0;
     bool may_open = !carve_is_alnum_ascii(prev) && prev != c &&
                     prev != '_' && !path_guard &&
-                    !next_ws && next != c;
-    // The bold-italic opener `/*` may follow a word (`a/*y*/b`), unlike a bare
-    // `/`, so it is left to the span machinery.
+                    !next_ws && next != c && !carve_is_grapheme_extender(next);
+    // A combined opener uses the same left boundary as a bare delimiter.
     Inline *enclosing_em = find_inline_in_scope(s, EMPHASIS);
     bool em_path = enclosing_em && (enclosing_em->flags & INLINE_BRACED) &&
                    prev != 0 && prev != ' ' && prev != '\t' && prev != '\n';
     bool bold_italic_opener = c == '/' && next == '*' && !em_path &&
+                             !carve_is_alnum_ascii(prev) && prev != '_' &&
+                             prev != '/' &&
                              !find_inline_in_scope(s, BOLD_ITALIC);
     if (find_inline_in_scope(s, BOLD_ITALIC) && (k == EMPHASIS || k == STRONG))
       may_open = false;
@@ -12286,6 +12312,7 @@ static bool parse_bold_italic_star(Scanner *s, TSLexer *lexer) {
   default:
     break;
   }
+  if (carve_is_grapheme_extender(lexer->lookahead)) return false;
   if (lexer->lookahead == '*') {
     advance(s, lexer);
     if (lexer->lookahead == '/') {
@@ -13071,7 +13098,8 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       }
       if (characters == 1 && lexer->lookahead == '*') strong_opener_has_content = false;
       if (characters == 1 && (lexer->lookahead == ' ' || lexer->lookahead == '\t' ||
-                              at_line_end(lexer) || lexer->eof(lexer))) opener_has_content = false;
+                              at_line_end(lexer) || lexer->eof(lexer) ||
+                              carve_is_grapheme_extender(lexer->lookahead))) opener_has_content = false;
       if (scope && scope_type != BOLD_ITALIC && characters > 1 && current == scope_marker &&
           ((scope_braced && lexer->lookahead == '}') ||
            (!scope_braced && previous != ' ' && previous != '\t' && previous != '\n' &&
@@ -13085,12 +13113,14 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       if (current == '*' && lexer->lookahead == '/') {
         bool invalid_pair = characters <= 2 || previous == 0 || previous == ' ' ||
                             previous == '\t' || previous == '\n';
-        if (!invalid_pair && opener_has_content) {
+        advance(s, lexer);
+        bool right_boundary = !carve_is_alnum_ascii(lexer->lookahead) &&
+                              !carve_is_grapheme_extender(lexer->lookahead);
+        if (!invalid_pair && opener_has_content && right_boundary) {
           combined_pair = true;
           break;
         }
-        advance(s, lexer);
-        if (!carve_is_alnum_ascii(lexer->lookahead)) emphasis_closer = true;
+        if (right_boundary) emphasis_closer = true;
         previous = '/';
         ++characters;
         continue;
@@ -13318,7 +13348,8 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       s->state &= ~STATE_BARE_SPAN_OPENER;
       int32_t first_content = lexer->lookahead;
       uint32_t content_column = line_column(s, lexer);
-      bool opens = !braced_same_kind_blocked(s, kind) &&
+      bool opens = !carve_is_grapheme_extender(first_content) &&
+                   !braced_same_kind_blocked(s, kind) &&
                    braced_closer_ahead(s, lexer, inline_marker(kind));
       if (opens) {
         push_inline_flagged(s, kind, 0, INLINE_BRACED);

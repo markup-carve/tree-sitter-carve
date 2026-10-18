@@ -1986,7 +1986,7 @@ module.exports = grammar({
     em_dash: ($) => choice("---", $._em_dash_in_delete),
     en_dash: ($) => choice("--", $._en_dash_in_delete),
 
-    backslash_escape: (_) => /\\[^\r\n]/,
+    backslash_escape: (_) => choice(/\\<\/#[^\r\n>]*>/, /\\[^\r\n]/),
 
     // `autolink = '<', (url_autolink | email_autolink), '>'`. The body outranks
     // a glued mention, which otherwise took `a@b.com` from `<a@b.com>`.

@@ -71,6 +71,11 @@
     "fields": {}
   },
   {
+    "type": "backslash_escape",
+    "named": true,
+    "fields": {}
+  },
+  {
     "type": "block_attribute",
     "named": true,
     "fields": {
@@ -4714,10 +4719,6 @@
   },
   {
     "type": "auto_text_link",
-    "named": true
-  },
-  {
-    "type": "backslash_escape",
     "named": true
   },
   {

@@ -773,50 +773,6 @@
       "reading": "strong html=0 tree=1",
       "reason": "The grammar keeps an inline strong span after the nested definition or attribute line closes its paragraph; tree-sitter-carve#561."
     },
-    "a-delimiter-that-is-part-of-a-larger-character-is-text": {
-      "reading": "strong html=0 tree=1",
-      "reason": "The inline scanner accepts a delimiter embedded in a larger character or extends its span across that character; tree-sitter-carve#561."
-    },
-    "a-delimiter-that-is-part-of-a-larger-character-is-text-12": {
-      "reading": "ins html=1 tree=2, ins#1 html=\"y\" tree=\"x\"",
-      "reason": "The inline scanner accepts a delimiter embedded in a larger character or extends its span across that character; tree-sitter-carve#561."
-    },
-    "a-delimiter-that-is-part-of-a-larger-character-is-text-13": {
-      "reading": "del html=1 tree=2, del#1 html=\"y\" tree=\"x\"",
-      "reason": "The inline scanner accepts a delimiter embedded in a larger character or extends its span across that character; tree-sitter-carve#561."
-    },
-    "a-delimiter-that-is-part-of-a-larger-character-is-text-14": {
-      "reading": "ins html=1 tree=2, ins#1 html=\"d\" tree=\"b\", del html=1 tree=2, del#1 html=\"c\" tree=\"a\"",
-      "reason": "The inline scanner accepts a delimiter embedded in a larger character or extends its span across that character; tree-sitter-carve#561."
-    },
-    "a-delimiter-that-is-part-of-a-larger-character-is-text-2": {
-      "reading": "strong html=0 tree=1",
-      "reason": "The inline scanner accepts a delimiter embedded in a larger character or extends its span across that character; tree-sitter-carve#561."
-    },
-    "a-delimiter-that-is-part-of-a-larger-character-is-text-3": {
-      "reading": "strong#1 html=\"ab\" tree=\"a\"",
-      "reason": "The inline scanner accepts a delimiter embedded in a larger character or extends its span across that character; tree-sitter-carve#561."
-    },
-    "a-delimiter-that-is-part-of-a-larger-character-is-text-4": {
-      "reading": "u#1 html=\"y\" tree=\"xy\"",
-      "reason": "The inline scanner accepts a delimiter embedded in a larger character or extends its span across that character; tree-sitter-carve#561."
-    },
-    "a-delimiter-that-is-part-of-a-larger-character-is-text-5": {
-      "reading": "s#1 html=\"ab\" tree=\"a\"",
-      "reason": "The inline scanner accepts a delimiter embedded in a larger character or extends its span across that character; tree-sitter-carve#561."
-    },
-    "a-delimiter-that-is-part-of-a-larger-character-is-text-7": {
-      "reading": "strong html=0 tree=1",
-      "reason": "The inline scanner accepts a delimiter embedded in a larger character or extends its span across that character; tree-sitter-carve#561."
-    },
-    "a-delimiter-that-is-part-of-a-larger-character-is-text-8": {
-      "reading": "strong html=0 tree=1",
-      "reason": "The inline scanner accepts a delimiter embedded in a larger character or extends its span across that character; tree-sitter-carve#561."
-    },
-    "a-delimiter-that-is-part-of-a-larger-character-is-text-9": {
-      "reading": "strong#1 html=\"y\" tree=\"xy\"",
-      "reason": "The inline scanner accepts a delimiter embedded in a larger character or extends its span across that character; tree-sitter-carve#561."
-    },
     "a-line-past-a-body-s-column-is-read-in-the-body-and-a-quote-does-not-rebase-13": {
       "reading": "strong html=0 tree=1",
       "reason": "The grammar keeps an inline strong span after the line leaves the nested body column; tree-sitter-carve#561."
@@ -828,50 +784,6 @@
     "a-shifted-fence-in-a-quoted-container-s-body-stores-no-continuation-claim-2": {
       "reading": "code html=0 tree=1",
       "reason": "Under TWO quote levels a fence past a quoted div's column, after the item it leaves, reads as paragraph text: the second quote marker's continuation does not hand the line to the div the way one quote level does. One quote level is read correctly (the sibling document of this category)."
-    },
-    "an-escaped-cross-reference-spelling-stays-literal": {
-      "reading": "strong html=0 tree=2",
-      "reason": "The escaped cross-reference spelling is read as strong emphasis rather than literal text; tree-sitter-carve#561."
-    },
-    "bold-italic-delimiter-needs-content-4": {
-      "reading": "em html=0 tree=1",
-      "reason": "The scanner opens a combined delimiter with no content, where the spec keeps the marker literal; tree-sitter-carve#561."
-    },
-    "the-combined-bold-italic-token-does-not-open-after-an-underscore-or-a-slash": {
-      "reading": "em html=0 tree=1",
-      "reason": "The inline scanner opens a combined bold/italic token at a word, underscore or slash boundary where the spec keeps it literal; tree-sitter-carve#561."
-    },
-    "the-combined-bold-italic-token-does-not-open-after-an-underscore-or-a-slash-2": {
-      "reading": "em html=0 tree=1",
-      "reason": "The inline scanner opens a combined bold/italic token at a word, underscore or slash boundary where the spec keeps it literal; tree-sitter-carve#561."
-    },
-    "the-combined-bold-italic-token-does-not-open-after-an-underscore-or-a-slash-3": {
-      "reading": "em html=0 tree=1",
-      "reason": "The inline scanner opens a combined bold/italic token at a word, underscore or slash boundary where the spec keeps it literal; tree-sitter-carve#561."
-    },
-    "the-combined-bold-italic-token-does-not-open-or-close-inside-a-word": {
-      "reading": "em html=0 tree=1",
-      "reason": "The inline scanner opens a combined bold/italic token at a word, underscore or slash boundary where the spec keeps it literal; tree-sitter-carve#561."
-    },
-    "the-combined-bold-italic-token-does-not-open-or-close-inside-a-word-2": {
-      "reading": "em html=0 tree=1",
-      "reason": "The inline scanner opens a combined bold/italic token at a word, underscore or slash boundary where the spec keeps it literal; tree-sitter-carve#561."
-    },
-    "the-combined-bold-italic-token-does-not-open-or-close-inside-a-word-3": {
-      "reading": "em html=0 tree=2",
-      "reason": "The inline scanner opens a combined bold/italic token at a word, underscore or slash boundary where the spec keeps it literal; tree-sitter-carve#561."
-    },
-    "the-combined-bold-italic-token-does-not-open-or-close-inside-a-word-4": {
-      "reading": "em html=0 tree=1",
-      "reason": "The inline scanner opens a combined bold/italic token at a word, underscore or slash boundary where the spec keeps it literal; tree-sitter-carve#561."
-    },
-    "the-combined-bold-italic-token-does-not-open-or-close-inside-a-word-5": {
-      "reading": "em html=0 tree=1",
-      "reason": "The inline scanner opens a combined bold/italic token at a word, underscore or slash boundary where the spec keeps it literal; tree-sitter-carve#561."
-    },
-    "the-combined-bold-italic-token-does-not-open-or-close-inside-a-word-6": {
-      "reading": "strong#1 html=\"abc\" tree=\"a\", em#1 html=\"abc\" tree=\"a\"",
-      "reason": "The inline scanner opens a combined bold/italic token at a word, underscore or slash boundary where the spec keeps it literal; tree-sitter-carve#561."
     }
   },
   "lineTerminatorGaps": {
