@@ -2360,13 +2360,14 @@ module.exports = grammar({
         alias($._include_option_without_value, $.include_extra),
       ),
     include_extra: (_) => token(/[^\s}]+/),
-    // `@k:` and `@k` with nothing after them. The `include_extra` token cannot
-    // take these: `include_option_name` outranks it at the `@`, so without
-    // this arm the directive fails and `@k` reads as a mention.
+    // `@k:` with nothing after the colon. The `include_extra` token cannot
+    // take it: `include_option_name` outranks it at the `@`, so without this
+    // arm the directive fails and `@k` reads as a mention. A bare `@k` is an
+    // `include_option` with no value (I1c).
     _include_option_without_value: ($) =>
       seq(
         alias($.include_option_name, "@"),
-        optional(alias($._include_option_colon, ":")),
+        alias($._include_option_colon, ":"),
       ),
     // Outranks `include_extra`, which is valid glued after a bare name and
     // would otherwise take `:v` whole on length.
@@ -2404,11 +2405,17 @@ module.exports = grammar({
     // selector is reported as "something else".
     include_section: (_) =>
       token(prec(1, seq("#", /[A-Za-z0-9_][A-Za-z0-9_-]*/))),
+    // The value is optional in `include_options`, so a bare `@code` (I1c) is
+    // an option with a name and no value.
     include_option: ($) =>
       seq(
         field("name", $.include_option_name),
-        alias($._include_option_colon, $.include_option_separator),
-        field("value", $.include_option_value),
+        optional(
+          seq(
+            alias($._include_option_colon, $.include_option_separator),
+            field("value", $.include_option_value),
+          ),
+        ),
       ),
     include_option_name: (_) =>
       token(prec(1, seq("@", /[A-Za-z_][A-Za-z0-9_-]*/))),
