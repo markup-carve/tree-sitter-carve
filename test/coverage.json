@@ -724,12 +724,7 @@
   "invisibleOverAcceptance": {},
   "invisibleUnderAcceptance": {},
   "batteryDisagreements": {},
-  "underAcceptance": {
-    "captions-in-list-items-do-not-create-a-paragraph-gap-22": {
-      "gaps": "block_quote: want 2 have 1",
-      "reason": "Source > - - text / >   > q / > / >   ^ cap / > - c: the grammar consumes the inner > q as block_quote_marker inside the nested list paragraph and builds only the outer block_quote; the oracle AST and spec golden have a nested block_quote for q, captioned as a figure. Tracked in #573."
-    }
-  },
+  "underAcceptance": {},
   "oracleGoldenDisagreements": {
     "captions-in-list-items-do-not-create-a-paragraph-gap-10": "Pinned oracle 0.1.12 treats the blank line before the later caption as a list paragraph gap and adds <p> around item text; the spec golden keeps the list tight because that caption attaches to the preceding block.",
     "captions-in-list-items-do-not-create-a-paragraph-gap-12": "Pinned oracle 0.1.12 treats the blank line before the later caption as a list paragraph gap and adds <p> around item text; the spec golden keeps the list tight because that caption attaches to the preceding block.",
@@ -751,7 +746,7 @@
     "captions-in-list-items-do-not-create-a-paragraph-gap-7": "Pinned oracle 0.1.12 treats the blank line before the later caption as a list paragraph gap and adds <p> around item text; the spec golden keeps the list tight because that caption attaches to the preceding block.",
     "captions-in-list-items-do-not-create-a-paragraph-gap-8": "Pinned oracle 0.1.12 treats the blank line before the later caption as a list paragraph gap and adds <p> around item text; the spec golden keeps the list tight because that caption attaches to the preceding block.",
     "generated-container-documents-21": "Pinned oracle 0.1.12 closes the nested fenced code block before the blank line; the spec golden keeps that blank line in the code payload before the dedenting footnote definition.",
-    "generated-container-documents-22": "Pinned oracle 0.1.12 keeps the line > y inside the outer block quote; the spec golden closes the outer quote before this line and renders it as a top-level literal paragraph. The grammar also nests the paragraph inside the block quote (#573)."
+    "generated-container-documents-22": "Pinned oracle 0.1.12 keeps the line > y inside the outer block quote; the spec golden closes the outer quote before this line and renders it as a top-level literal paragraph."
   },
   "errorFamilies": {},
   "inlineReadingGaps": {},

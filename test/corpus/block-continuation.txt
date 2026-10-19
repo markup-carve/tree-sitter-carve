@@ -350,3 +350,180 @@ A sibling item after a table in a list item is no separator row
         (table
           (table_row
             (table_cell)))))))
+
+================================================================================
+A quote at an outer list item column interrupts an inner paragraph
+================================================================================
+> - - text
+>   > q
+>
+>   ^ cap
+> - c
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (list
+        (list_item
+          (list_marker_dash)
+          (list_item_content
+            (list
+              (list_item
+                (list_marker_dash)
+                (list_item_content
+                  (paragraph))))
+            (block_quote_marker)
+            (block_quote
+              (block_quote_marker)
+              (content
+                (paragraph)))
+            (block_quote_marker)
+            (caption
+              (caption_marker)
+              (caption_content))))
+        (list_item
+          (block_quote_marker)
+          (list_marker_dash)
+          (list_item_content
+            (paragraph)))))))
+
+================================================================================
+A missing outer quote marker ends the fence and quote
+================================================================================
+> - > ~~~
+  > y
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (list
+        (list_item
+          (list_marker_dash)
+          (list_item_content
+            (block_quote
+              (block_quote_marker)
+              (content
+                (code_block
+                  (code_block_marker_begin)))))))))
+  (paragraph))
+
+================================================================================
+A quote at a list item column interrupts its paragraph
+================================================================================
+> - text
+>   > q
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (list
+        (list_item
+          (list_marker_dash)
+          (list_item_content
+            (paragraph)
+            (block_quote_marker)
+            (block_quote
+              (block_quote_marker)
+              (content
+                (paragraph)))))))))
+
+================================================================================
+A short inner quote marker opens a sibling after the list
+================================================================================
+> - > ~~~
+> > y
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (list
+        (list_item
+          (list_marker_dash)
+          (list_item_content
+            (block_quote
+              (block_quote_marker)
+              (content
+                (code_block
+                  (code_block_marker_begin)))))))
+      (block_quote_marker)
+      (block_quote
+        (block_quote_marker)
+        (content
+          (paragraph))))))
+
+================================================================================
+A short quote marker folds lazily into an open paragraph
+================================================================================
+> - > x
+  > y
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (list
+        (list_item
+          (list_marker_dash)
+          (list_item_content
+            (block_quote
+              (block_quote_marker)
+              (content
+                (paragraph)))))))))
+
+================================================================================
+An item prefix can supply indentation before its quote marker
+================================================================================
+- > ~~~
+  > y
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (block_quote
+          (block_quote_marker)
+          (content
+            (code_block
+              (code_block_marker_begin)
+              (code
+                (block_quote_marker)))))))))
+
+================================================================================
+A quote in an outer item follows an inner list
+================================================================================
+- - text
+  > q
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (list
+          (list_item
+            (list_marker_dash)
+            (list_item_content
+              (paragraph))))
+        (block_quote
+          (block_quote_marker)
+          (content
+            (paragraph)))))))
