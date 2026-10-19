@@ -5281,7 +5281,7 @@ An option with an empty value keeps the glued option after it
       (include_close))))
 
 ==================
-An option name without a separator is an extra part
+An option name without a separator is an option without a value
 ==================
 
 {{ c.crv @k }}
@@ -5293,8 +5293,106 @@ An option name without a separator is an extra part
     (include_directive
       (include_open)
       path: (include_path)
-      (include_extra)
+      option: (include_option
+        name: (include_option_name))
       (include_close))))
+
+==================
+A bare code option is an option without a value
+==================
+
+{{ src/a.js @code }}
+
+---
+
+(document
+  (paragraph
+    (include_directive
+      (include_open)
+      path: (include_path)
+      option: (include_option
+        name: (include_option_name))
+      (include_close))))
+
+==================
+A bare code option glued between options
+==================
+
+{{ a.js@code@lines:1-2 }}
+
+---
+
+(document
+  (paragraph
+    (include_directive
+      (include_open)
+      path: (include_path)
+      option: (include_option
+        name: (include_option_name))
+      option: (include_option
+        name: (include_option_name)
+        (include_option_separator)
+        value: (include_option_value))
+      (include_close))))
+
+==================
+A glued region option and a valued code option
+==================
+
+{{ src/a.js@region:start @code:js }}
+
+---
+
+(document
+  (paragraph
+    (include_directive
+      (include_open)
+      path: (include_path)
+      option: (include_option
+        name: (include_option_name)
+        (include_option_separator)
+        value: (include_option_value))
+      option: (include_option
+        name: (include_option_name)
+        (include_option_separator)
+        value: (include_option_value))
+      (include_close))))
+
+==================
+A shift option keeps its value
+==================
+
+{{ c.crv @shift:1 }}
+
+---
+
+(document
+  (paragraph
+    (include_directive
+      (include_open)
+      path: (include_path)
+      option: (include_option
+        name: (include_option_name)
+        (include_option_separator)
+        value: (include_option_value))
+      (include_close))))
+
+==================
+Region marker lines are comment lines
+==================
+
+%% #region start
+
+Text.
+
+%% #endregion
+
+---
+
+(document
+  (comment_line)
+  (paragraph)
+  (comment_line))
 
 ==================
 A directive still needs its padding run on each side
