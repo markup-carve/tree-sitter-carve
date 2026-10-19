@@ -3866,8 +3866,12 @@ static bool scan_quoted_code_fence_closer(Scanner *s, TSLexer *lexer) {
   }
   consume_whitespace(s, lexer);
   bool ending_newline = false;
-  if (scan_block_quote_markers(s, lexer, &ending_newline) != quotes ||
-      ending_newline) {
+  uint8_t markers = scan_block_quote_markers(s, lexer, &ending_newline);
+  if (markers != quotes || ending_newline) {
+    Block *list = find_list(s);
+    if (markers != quotes && list && list_opened_in_quote(s, list)) {
+      s->state |= STATE_QUOTED_LINE_SHORT_OF_ITEM;
+    }
     return false;
   }
   consume_whitespace(s, lexer);
@@ -4181,12 +4185,40 @@ static bool scan_block_quote_marker(Scanner *s, TSLexer *lexer,
   }
 }
 
+static bool quote_marker_at_column(Scanner *s, uint8_t number,
+                                   uint32_t column) {
+  uint8_t seen = 0;
+  bool enclosing_list = false;
+  for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (is_list(b->type)) enclosing_list = true;
+    if (b->type != BLOCK_QUOTE) continue;
+    if (++seen == number) {
+      // Marker-line quotes in an outer list retain their existing band rule.
+      return b->content_col == 0 || (seen == 1 && enclosing_list) ||
+          (s->state & STATE_LIST_CONTINUATION) ||
+          column == b->content_col - 2;
+    }
+  }
+  return true;
+}
+
 static uint8_t scan_block_quote_markers(Scanner *s, TSLexer *lexer,
                                         bool *ending_newline) {
   // `scan_block_quote_marker` only ever sets this to true; the loop reads it.
   *ending_newline = false;
   uint8_t marker_count = 0;
-  while (scan_block_quote_marker(s, lexer, ending_newline)) {
+  while (lexer->lookahead == '>') {
+    uint32_t column = line_column(s, lexer);
+    if (!quote_marker_at_column(s, marker_count + 1, column)) {
+      return marker_count;
+    }
+    if (marker_count == 0 && count_blocks(s, BLOCK_QUOTE) == 0 &&
+        !list_item_open(s) &&
+        !find_block(s, FOOTNOTE) && column != 0) {
+      return 0;
+    }
+    if (!scan_block_quote_marker(s, lexer, ending_newline)) break;
     ++marker_count;
     if (*ending_newline) {
       break;
@@ -4304,7 +4336,10 @@ static bool parse_block_quote(Scanner *s, TSLexer *lexer,
 
   bool ending_newline = false;
   // A valid marker is a '> ' or '>\n'.
-  bool has_marker = scan_block_quote_marker(s, lexer, &ending_newline);
+  bool marker_at_owner = quote_marker_at_column(
+      s, s->block_quote_level + 1, marker_start_col);
+  bool has_marker = marker_at_owner &&
+      scan_block_quote_marker(s, lexer, &ending_newline);
 
   // The marker run is not over: another `>` follows this marker on the same
   // line, so `marker_count` below is this line's depth SO FAR, not its depth.
@@ -4330,6 +4365,8 @@ static bool parse_block_quote(Scanner *s, TSLexer *lexer,
   // `>` this looks for is the one directly after the separator; `>   >` is not a
   // run, and nothing the probe walks over can be this character.
   bool run_continues = has_marker && !ending_newline && lexer->lookahead == '>';
+  if (run_continues) run_continues = quote_marker_at_column(
+      s, s->block_quote_level + 2, line_column(s, lexer));
 
   // A marker followed by only whitespace is content-less whatever that
   // whitespace is: carve-js renders `>`, `> `, `>  ` and `> <TAB>` as the same
@@ -4484,7 +4521,8 @@ static bool parse_block_quote(Scanner *s, TSLexer *lexer,
   // recovery with the tail line dropped. Held in the deeper quote it is a
   // paragraph there, one line off carve-js, which continues the paragraph above
   // it (`a\n>x`) rather than starting a second one.
-  bool run_stopped_short = !has_marker && s->block_quote_level > 0;
+  bool run_stopped_short = !has_marker && marker_at_owner &&
+      s->block_quote_level > 0;
 
   // There's an open block quote with a higher nesting level.
   if (highest_block_quote && marker_count < highest_block_quote->data &&
@@ -8270,6 +8308,18 @@ static bool end_paragraph_in_block_quote(Scanner *s, TSLexer *lexer,
   //
   if (marker_count > count_blocks(s, BLOCK_QUOTE) && !at_nesting_cap(s)) {
     return true;
+  }
+
+  if (marker_count == count_blocks(s, BLOCK_QUOTE) &&
+      find_list(s) != NULL) {
+    consume_whitespace(s, lexer);
+    if (lexer->lookahead == '>') {
+      uint32_t column = line_column(s, lexer);
+      for (int i = s->open_blocks->size - 1; i >= 0; --i) {
+        Block *item = *array_get(s->open_blocks, i);
+        if (is_list(item->type) && item->content_col == column) return true;
+      }
+    }
   }
 
   // Blank first: the marker probe below consumes before it declines, and a
@@ -13933,9 +13983,15 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
         return true;
       }
     }
-    if (closing && is_list(closing->type) && valid_symbols[LIST_ITEM_END]) {
-      lexer->result_symbol = LIST_ITEM_END;
-      return true;
+    if (closing && is_list(closing->type)) {
+      if (valid_symbols[INDENTED_CONTENT_SPACER]) {
+        lexer->result_symbol = INDENTED_CONTENT_SPACER;
+        return true;
+      }
+      if (valid_symbols[LIST_ITEM_END]) {
+        lexer->result_symbol = LIST_ITEM_END;
+        return true;
+      }
     }
   }
   if (valid_symbols[BLOCK_CLOSE] && handle_blocks_to_close(s, lexer)) {

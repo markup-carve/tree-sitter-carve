@@ -1144,7 +1144,6 @@ Block ownership boundary 10
       (paragraph)
       (list_continuation_marker)
       (paragraph
-        (block_quote_marker)
         (block_quote_marker)))))
 
 ================================================================================
