@@ -527,3 +527,124 @@ A quote in an outer item follows an inner list
           (block_quote_marker)
           (content
             (paragraph)))))))
+
+================================================================================
+A flush plus after a blank line is a continuation marker
+================================================================================
+- a
+
++
+b
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph)
+        (list_continuation_marker)
+        (paragraph)))))
+
+================================================================================
+An indented plus after a blank line is paragraph text
+================================================================================
+- a
+
+  +
+  b
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph)
+        (paragraph)))))
+
+================================================================================
+An indented plus in a nested item is paragraph text
+================================================================================
+- a
+  - b
+
+  +
+  c
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph)
+        (list
+          (list_item
+            (list_marker_dash)
+            (list_item_content
+              (paragraph))))
+        (paragraph)))))
+
+================================================================================
+A plus right after a decimal marker is a continuation marker
+================================================================================
+1. +
+   x
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_decimal_period)
+      (list_item_content
+        (list_continuation_marker)
+        (paragraph)))))
+
+================================================================================
+A plus right after a nested dash marker is a continuation marker
+================================================================================
+- a
+  - +
+    x
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph)
+        (list
+          (list_item
+            (list_marker_dash)
+            (list_item_content
+              (list_continuation_marker)
+              (paragraph))))))))
+
+================================================================================
+A plus inside an indented fence is code
+================================================================================
+- a
+
+  ```
+  +
+  ```
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph)
+        (code_block
+          (code_block_marker_begin)
+          (code)
+          (code_block_marker_end))))))
