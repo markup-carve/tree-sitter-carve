@@ -564,6 +564,18 @@ const CASES = [
         at: [0, 4],
         expect: 'punctuation.special',
     },
+    {
+        name: 'a task list marker keeps its list capture',
+        source: '- [ ] +\n```sh\nnpm test\n```\n',
+        at: [0, 0],
+        expect: 'markup.list.unchecked',
+    },
+    {
+        name: 'a task continuation marker is an operator',
+        source: '- [ ] +\n```sh\nnpm test\n```\n',
+        at: [0, 6],
+        expect: 'operator',
+    },
 ];
 
 const fails = [];
