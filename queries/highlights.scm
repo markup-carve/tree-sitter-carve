@@ -114,8 +114,8 @@
   (list_marker_upper_roman_paren)
 ] @markup.list
 
-; The `+` list/block-quote continuation marker (PART 9 §17).
-(list_continuation_marker) @markup.list
+; The `+` continuation operator attaches the next block to its container.
+(list_continuation_marker) @operator
 
 (list_marker_task
   (unchecked)) @markup.list.unchecked
