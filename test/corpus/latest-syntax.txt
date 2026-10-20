@@ -4364,7 +4364,7 @@ A continuation before sibling list items attaches no block (#459)
 (document (list (list_item (list_marker_dash) (list_item_content (paragraph) (list_continuation_marker))) (list_item (list_marker_dash) (list_item_content (paragraph))) (list_item (list_marker_dash) (list_item_content (paragraph)))))
 
 =============================
-A continuation at the item margin can end the document (#459)
+An indented plus after an item quote is paragraph text (#459)
 =============================
 - x
   > q
@@ -4372,7 +4372,7 @@ A continuation at the item margin can end the document (#459)
 
 ---
 
-(document (list (list_item (list_marker_dash) (list_item_content (paragraph) (block_quote (block_quote_marker) (content (paragraph) (list_continuation_marker)))))))
+(document (list (list_item (list_marker_dash) (list_item_content (paragraph) (block_quote (block_quote_marker) (content (paragraph)))))))
 
 =============================
 A flush continuation after an item quote can end the document (#459)

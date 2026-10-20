@@ -7336,32 +7336,16 @@ static bool parse_table_begin(Scanner *s, TSLexer *lexer,
   return true;
 }
 
-/// WHERE A `+` IS A CONTINUATION MARKER: at the document margin, or at the
-/// content column of an open container, and nowhere else. One column off and the
-/// `+` is ordinary lazy text of the paragraph above it - spec corpus 435 pins
-/// that with a `ZZZ` control on the same column, which reads as lazy text too.
+/// WHERE A `+` IS A CONTINUATION MARKER: at column 0, or directly after the
+/// prefix of an open block quote. Any indentation before it makes it ordinary
+/// text (carve#3421); the after-opener form (`- +`) is parsed elsewhere.
 static bool continuation_marker_column(Scanner *s, uint32_t column) {
-  if (column == 0) {
+  if (column == 0 || (s->marker_end_col != 0 && column == s->marker_end_col)) {
     return true;
   }
   for (int i = s->open_blocks->size - 1; i >= 0; --i) {
     Block *b = *array_get(s->open_blocks, i);
-    uint32_t margin;
-    // WHICH FIELD HOLDS THE MARGIN IS PER TYPE: a footnote's is `data`, a list's
-    // is `content_col` because `data` cannot tell `- ` from `1. ` - the split
-    // `item_outside_quotes_reached` documents. Every other type is skipped rather
-    // than guessed at. A code fence's `content_col` is the FENCE's own column,
-    // not a margin anything continues at, and the grammar offers this marker only
-    // inside a list item, a description and a footnote body, so a div or a
-    // caption cannot host one; including them changed no corpus document.
-    if (is_list(b->type) || b->type == BLOCK_QUOTE) {
-      margin = b->content_col;
-    } else if (b->type == FOOTNOTE) {
-      margin = b->data;
-    } else {
-      continue;
-    }
-    if (margin != 0 && column == margin) {
+    if (b->type == BLOCK_QUOTE && b->content_col != 0 && column == b->content_col) {
       return true;
     }
   }
