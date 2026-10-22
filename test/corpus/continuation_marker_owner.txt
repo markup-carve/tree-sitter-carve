@@ -46,7 +46,7 @@ A refused plus after an open fence stays visible
         (paragraph)))))
 
 ================================================================================
-Compact quote prefixes own a first block
+A plus after an unseparated quote prefix run is text
 ================================================================================
 >>+
 q
@@ -54,14 +54,7 @@ q
 --------------------------------------------------------------------------------
 
 (document
-  (block_quote
-    (block_quote_marker)
-    (content
-      (block_quote
-        (block_quote_marker)
-        (content
-          (list_continuation_marker)
-          (paragraph))))))
+  (paragraph))
 
 ================================================================================
 A list marker column attaches a quote
@@ -108,7 +101,7 @@ x
               (code))))))))
 
 ================================================================================
-A compact quote marker allows trailing space
+A plus glued to a quote prefix is text, trailing space included
 ================================================================================
 >+ 
 q
@@ -116,11 +109,7 @@ q
 --------------------------------------------------------------------------------
 
 (document
-  (block_quote
-    (block_quote_marker)
-    (content
-      (list_continuation_marker)
-      (paragraph))))
+  (paragraph))
 
 ================================================================================
 An unseparated quote with other text stays a paragraph
@@ -287,3 +276,82 @@ A refused plus on a quote's opening line stays text
     (content
       (paragraph
         (block_quote_marker)))))
+
+================================================================================
+A plus glued to the inner prefix of a spaced run is text
+================================================================================
+> >+
+q
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (paragraph))))
+
+================================================================================
+A spaced plus after an unseparated quote prefix run is text
+================================================================================
+>> +
+q
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph))
+
+================================================================================
+A plus glued to a quote prefix leaves the next fence outside
+================================================================================
+>+
+```
+x
+```
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph)
+  (code_block
+    (code_block_marker_begin)
+    (code)
+    (code_block_marker_end)))
+
+================================================================================
+A plus after a spaced nested quote prefix attaches an unprefixed block
+================================================================================
+> > +
+q
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (block_quote
+        (block_quote_marker)
+        (content
+          (list_continuation_marker)
+          (paragraph))))))
+
+================================================================================
+A plus after a spaced quote prefix attaches an unprefixed fence
+================================================================================
+> +
+```
+x
+```
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (list_continuation_marker)
+      (code_block
+        (code_block_marker_begin)
+        (code)))))
