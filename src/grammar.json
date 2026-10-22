@@ -734,6 +734,10 @@
           "type": "CHOICE",
           "members": [
             {
+              "type": "SYMBOL",
+              "name": "_list_continuation"
+            },
+            {
               "type": "SEQ",
               "members": [
                 {
@@ -1897,24 +1901,8 @@
       "type": "CHOICE",
       "members": [
         {
-          "type": "SEQ",
-          "members": [
-            {
-              "type": "SYMBOL",
-              "name": "list_continuation_marker"
-            },
-            {
-              "type": "REPEAT",
-              "content": {
-                "type": "SYMBOL",
-                "name": "block_attribute"
-              }
-            },
-            {
-              "type": "SYMBOL",
-              "name": "_block_with_heading"
-            }
-          ]
+          "type": "SYMBOL",
+          "name": "_attached_list_continuation"
         },
         {
           "type": "ALIAS",
@@ -1924,6 +1912,26 @@
           },
           "named": true,
           "value": "list_continuation_marker"
+        }
+      ]
+    },
+    "_attached_list_continuation": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "list_continuation_marker"
+        },
+        {
+          "type": "REPEAT",
+          "content": {
+            "type": "SYMBOL",
+            "name": "block_attribute"
+          }
+        },
+        {
+          "type": "SYMBOL",
+          "name": "_block_with_heading"
         }
       ]
     },
@@ -3146,12 +3154,26 @@
       "type": "SEQ",
       "members": [
         {
-          "type": "SYMBOL",
-          "name": "_block_with_heading"
-        },
-        {
-          "type": "SYMBOL",
-          "name": "_indented_content_spacer"
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SEQ",
+              "members": [
+                {
+                  "type": "SYMBOL",
+                  "name": "_block_with_heading"
+                },
+                {
+                  "type": "SYMBOL",
+                  "name": "_indented_content_spacer"
+                }
+              ]
+            },
+            {
+              "type": "SYMBOL",
+              "name": "_attached_list_continuation"
+            }
+          ]
         },
         {
           "type": "CHOICE",
@@ -10623,7 +10645,7 @@
     ],
     [
       "_nonparagraph_block",
-      "_list_continuation"
+      "_attached_list_continuation"
     ],
     [
       "include_directive",
