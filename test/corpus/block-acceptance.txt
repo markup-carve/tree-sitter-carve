@@ -1141,8 +1141,6 @@ Block ownership boundary 10
   (block_quote
     (block_quote_marker)
     (content
-      (paragraph)
-      (list_continuation_marker)
       (paragraph
         (block_quote_marker)))))
 

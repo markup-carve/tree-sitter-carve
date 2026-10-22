@@ -509,6 +509,7 @@ module.exports = grammar({
     _block_element: ($) => choice($._nonparagraph_block, $._paragraph),
     _nonparagraph_block: ($) =>
       choice(
+        alias($._refused_plus_line, $.paragraph),
         $.list,
         $.definition_list,
         $.table,
@@ -884,7 +885,7 @@ module.exports = grammar({
           // The item may begin directly with a `+` continuation marker
           // (e.g. `- +`), giving an item whose only content is the attached
           // flush-left block (corpus 83-list-continuation-marker-3).
-          $._list_continuation,
+          $._checked_list_continuation,
         ),
         optional(
           repeat(
@@ -895,12 +896,15 @@ module.exports = grammar({
                 $._block_with_heading,
                 $._indented_content_spacer,
               ),
-              $._list_continuation,
+              $._checked_list_continuation,
             ),
           ),
         ),
+        optional($._plus_owner_check),
         $._list_item_end,
       ),
+    _checked_list_continuation: ($) =>
+      seq($._plus_owner_check, $._list_continuation),
     // A `+` continuation marker (PART 9 §17) plus the single flush-left block it
     // attaches to the enclosing list item (corpus 83-list-continuation-marker).
     // No `_indented_content_spacer` here: the attached block sits flush left, and
@@ -1424,7 +1428,11 @@ module.exports = grammar({
       ),
     _block_quote_content: ($) =>
       seq(
-        choice($.heading, $._block_element),
+        choice(
+          $.heading,
+          $._block_element,
+          seq($.list_continuation_marker, choice($.heading, $._block_element)),
+        ),
         repeat(
           choice(
             seq(
@@ -3296,5 +3304,7 @@ module.exports = grammar({
     // ASCII pad is an empty URL only when the next byte closes the tail.
     $._empty_link_padding,
     $._delimited_table_begin,
+    $._plus_owner_check,
+    $._refused_plus_line,
   ],
 });
