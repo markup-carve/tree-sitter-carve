@@ -422,7 +422,7 @@ module.exports = grammar({
     [$.raw_block],
     // An attribute line after `+` is either the attached block or the
     // attribute of the block after it; only that next line decides.
-    [$._nonparagraph_block, $._list_continuation],
+    [$._nonparagraph_block, $._attached_list_continuation],
     // Every conflict naming `_symbol_fallback` is mirrored for the note's
     // variant of it, `_note_symbol_fallback` - same rules, same ambiguity, one
     // alternative fewer - EXCEPT where the note's shorter alternative list
@@ -647,6 +647,7 @@ module.exports = grammar({
         optional($._block_quote_prefix),
         field("marker", $.list_marker_description),
         choice(
+          $._list_continuation,
           seq(
             field("definition", alias($._paragraph_content, $.definition)),
             choice($._eof_or_newline, $._close_paragraph),
@@ -912,13 +913,14 @@ module.exports = grammar({
     // after its first row.
     _list_continuation: ($) =>
       choice(
-        // An attribute line after the marker attributes the attached block.
-        seq(
-          $.list_continuation_marker,
-          repeat($.block_attribute),
-          $._block_with_heading,
-        ),
+        $._attached_list_continuation,
         alias($._empty_list_continuation_marker, $.list_continuation_marker),
+      ),
+    _attached_list_continuation: ($) =>
+      seq(
+        $.list_continuation_marker,
+        repeat($.block_attribute),
+        $._block_with_heading,
       ),
 
     table: ($) =>
@@ -1058,8 +1060,10 @@ module.exports = grammar({
       ),
     footnote_content: ($) =>
       seq(
-        $._block_with_heading,
-        $._indented_content_spacer,
+        choice(
+          seq($._block_with_heading, $._indented_content_spacer),
+          $._attached_list_continuation,
+        ),
         optional(
           repeat(
             choice(

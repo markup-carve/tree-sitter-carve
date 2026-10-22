@@ -1,0 +1,1261 @@
+============================================================
+Attached table in a list quote
+============================================================
+- > +
+| a |
+| b |
+
+---
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (block_quote
+          (block_quote_marker)
+          (content
+            (list_continuation_marker)
+            (table
+              (table_row
+                (table_cell))
+              (table_row
+                (table_cell)))))))))
+
+============================================================
+Description marker before a bullet
+============================================================
+:: t
+: +
+- b
+
+---
+
+(document
+  (definition_list
+    (list_item
+      (list_marker_definition)
+      (term))
+    (list_item
+      (list_marker_description)
+      (list_continuation_marker)))
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph)))))
+
+============================================================
+Description marker before an ordered item
+============================================================
+:: t
+: +
+1. b
+
+---
+
+(document
+  (definition_list
+    (list_item
+      (list_marker_definition)
+      (term))
+    (list_item
+      (list_marker_description)
+      (list_continuation_marker)))
+  (list
+    (list_item
+      (list_marker_decimal_period)
+      (list_item_content
+        (paragraph)))))
+
+============================================================
+First footnote block as a paragraph
+============================================================
+r[^a]
+
+[^a]: +
+z
+
+---
+
+(document
+  (paragraph
+    (footnote_reference
+      (footnote_marker_begin)
+      (reference_label)
+      (footnote_marker_end)))
+  (footnote
+    (footnote_marker_begin)
+    (reference_label)
+    (footnote_marker_end)
+    (footnote_content
+      (list_continuation_marker)
+      (paragraph))))
+
+============================================================
+First footnote block as a quote
+============================================================
+r[^a]
+
+[^a]: +
+> q
+
+---
+
+(document
+  (paragraph
+    (footnote_reference
+      (footnote_marker_begin)
+      (reference_label)
+      (footnote_marker_end)))
+  (footnote
+    (footnote_marker_begin)
+    (reference_label)
+    (footnote_marker_end)
+    (footnote_content
+      (list_continuation_marker)
+      (block_quote
+        (block_quote_marker)
+        (content
+          (paragraph))))))
+
+============================================================
+First footnote block as a fence
+============================================================
+r[^a]
+
+[^a]: +
+```
+c
+```
+
+---
+
+(document
+  (paragraph
+    (footnote_reference
+      (footnote_marker_begin)
+      (reference_label)
+      (footnote_marker_end)))
+  (footnote
+    (footnote_marker_begin)
+    (reference_label)
+    (footnote_marker_end)
+    (footnote_content
+      (list_continuation_marker)
+      (code_block
+        (code_block_marker_begin)
+        (code)
+        (code_block_marker_end)))))
+
+============================================================
+Description marker before a quote
+============================================================
+:: t
+: +
+> q
+
+---
+
+(document
+  (definition_list
+    (list_item
+      (list_marker_definition)
+      (term))
+    (list_item
+      (list_marker_description)
+      (list_continuation_marker)
+      (block_quote
+        (block_quote_marker)
+        (content
+          (paragraph))))))
+
+============================================================
+Attached table keeps three rows
+============================================================
+- > +
+| a |
+| b |
+| c |
+
+---
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (block_quote
+          (block_quote_marker)
+          (content
+            (list_continuation_marker)
+            (table
+              (table_row
+                (table_cell))
+              (table_row
+                (table_cell))
+              (table_row
+                (table_cell)))))))))
+
+============================================================
+First footnote block as a table
+============================================================
+r[^a]
+
+[^a]: +
+| a |
+| b |
+
+---
+
+(document
+  (paragraph
+    (footnote_reference
+      (footnote_marker_begin)
+      (reference_label)
+      (footnote_marker_end)))
+  (footnote
+    (footnote_marker_begin)
+    (reference_label)
+    (footnote_marker_end)
+    (footnote_content
+      (list_continuation_marker)
+      (table
+        (table_row
+          (table_cell))
+        (table_row
+          (table_cell))))))
+
+============================================================
+First footnote block as a heading
+============================================================
+r[^a]
+
+[^a]: +
+# h
+
+---
+
+(document
+  (paragraph
+    (footnote_reference
+      (footnote_marker_begin)
+      (reference_label)
+      (footnote_marker_end)))
+  (footnote
+    (footnote_marker_begin)
+    (reference_label)
+    (footnote_marker_end)
+    (footnote_content
+      (list_continuation_marker)
+      (heading
+        (marker)
+        (content)))))
+
+============================================================
+Description marker before a fence
+============================================================
+:: t
+: +
+```
+c
+```
+
+---
+
+(document
+  (definition_list
+    (list_item
+      (list_marker_definition)
+      (term))
+    (list_item
+      (list_marker_description)
+      (list_continuation_marker)
+      (code_block
+        (code_block_marker_begin)
+        (code)
+        (code_block_marker_end)))))
+
+============================================================
+Description marker before a table
+============================================================
+:: t
+: +
+| a |
+
+---
+
+(document
+  (definition_list
+    (list_item
+      (list_marker_definition)
+      (term))
+    (list_item
+      (list_marker_description)
+      (list_continuation_marker)
+      (table
+        (table_row
+          (table_cell))))))
+
+============================================================
+Description marker before a heading
+============================================================
+:: t
+: +
+# h
+
+---
+
+(document
+  (definition_list
+    (list_item
+      (list_marker_definition)
+      (term))
+    (list_item
+      (list_marker_description)
+      (list_continuation_marker)
+      (heading
+        (marker)
+        (content)))))
+
+============================================================
+Blank after description marker
+============================================================
+:: t
+: +
+
+- b
+
+---
+
+(document
+  (definition_list
+    (list_item
+      (list_marker_definition)
+      (term))
+    (list_item
+      (list_marker_description)
+      (list_continuation_marker)))
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph)))))
+
+============================================================
+Nested description before a list
+============================================================
+- a
+  :: t
+  : +
+  - b
+
+---
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph)
+        (definition_list
+          (list_item
+            (list_marker_definition)
+            (term))
+          (list_item
+            (list_marker_description)
+            (list_continuation_marker)))
+        (list
+          (list_item
+            (list_marker_dash)
+            (list_item_content
+              (paragraph))))))))
+
+============================================================
+Attached table with trailing spaces
+============================================================
+- > +  
+| a |  
+| b |  
+
+---
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (block_quote
+          (block_quote_marker)
+          (content
+            (list_continuation_marker)
+            (table
+              (table_row
+                (table_cell))
+              (table_row
+                (table_cell)))))))))
+
+============================================================
+Quote table after a definition
+============================================================
+:: term
+:  detail
+  [^n]: note
+> +  
+| a |
+| b |
+
+---
+
+(document
+  (definition_list
+    (list_item
+      (list_marker_definition)
+      (term))
+    (list_item
+      (list_marker_description)
+      (definition
+        (footnote_reference
+          (footnote_marker_begin)
+          (reference_label)
+          (footnote_marker_end)))))
+  (block_quote
+    (block_quote_marker)
+    (content
+      (list_continuation_marker)
+      (table
+        (table_row
+          (table_cell))
+        (table_row
+          (table_cell))))))
+
+============================================================
+Quote table after nested items
+============================================================
+* [ ] task
+  - a
+    1. ordered
+      [^n]: note
+> +  
+| a |
+| b |
+
+---
+
+(document
+  (list
+    (list_item
+      (list_marker_task
+        (unchecked))
+      (list_item_content
+        (paragraph)
+        (list
+          (list_item
+            (list_marker_dash)
+            (list_item_content
+              (paragraph)
+              (list
+                (list_item
+                  (list_marker_decimal_period)
+                  (list_item_content
+                    (paragraph))))
+              (footnote
+                (footnote_marker_begin)
+                (reference_label)
+                (footnote_marker_end)
+                (footnote_content
+                  (paragraph)))))))))
+  (block_quote
+    (block_quote_marker)
+    (content
+      (list_continuation_marker)
+      (table
+        (table_row
+          (table_cell))
+        (table_row
+          (table_cell))))))
+
+============================================================
+Quote table after a nested task
+============================================================
+1. ordered
+  [^n]: note
+    * [ ] task
+      - a
+> +
+| a |
+| b |
+
+---
+
+(document
+  (list
+    (list_item
+      (list_marker_decimal_period)
+      (list_item_content
+        (paragraph
+          (footnote_reference
+            (footnote_marker_begin)
+            (reference_label)
+            (footnote_marker_end)))
+        (list
+          (list_item
+            (list_marker_task
+              (unchecked))
+            (list_item_content
+              (paragraph)
+              (list
+                (list_item
+                  (list_marker_dash)
+                  (list_item_content
+                    (paragraph))))))))))
+  (block_quote
+    (block_quote_marker)
+    (content
+      (list_continuation_marker)
+      (table
+        (table_row
+          (table_cell))
+        (table_row
+          (table_cell))))))
+
+============================================================
+Quote table after nested ordered items
+============================================================
+1. ordered
+  1. ordered
+    - a
+> +
+| a |
+| b |
+
+---
+
+(document
+  (list
+    (list_item
+      (list_marker_decimal_period)
+      (list_item_content
+        (paragraph)
+        (list
+          (list_item
+            (list_marker_dash)
+            (list_item_content
+              (paragraph)))))))
+  (block_quote
+    (block_quote_marker)
+    (content
+      (list_continuation_marker)
+      (table
+        (table_row
+          (table_cell))
+        (table_row
+          (table_cell))))))
+
+============================================================
+Blank ends a quoted list before flush marker
+============================================================
+> - a
+
++
+  ```
+  x
+  ```
+
+---
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (list
+        (list_item
+          (list_marker_dash)
+          (list_item_content
+            (paragraph))))))
+  (paragraph
+    (verbatim
+      (verbatim_marker_begin)
+      (content)
+      (verbatim_marker_end))))
+
+============================================================
+Blank ends a quoted list before indented marker
+============================================================
+> - a
+
+  +
+  ```
+  x
+  ```
+
+---
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (list
+        (list_item
+          (list_marker_dash)
+          (list_item_content
+            (paragraph))))))
+  (paragraph
+    (verbatim
+      (verbatim_marker_begin)
+      (content)
+      (verbatim_marker_end))))
+
+============================================================
+First task block stops before a sibling list
+============================================================
+- [ ] +
+- x
+
+---
+
+(document
+  (list
+    (list_item
+      (list_marker_task
+        (unchecked))
+      (list_item_content
+        (list_continuation_marker))))
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph)))))
+
+============================================================
+First bullet block stops before an ordered list
+============================================================
+- +
+1. x
+
+---
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (list_continuation_marker))))
+  (list
+    (list_item
+      (list_marker_decimal_period)
+      (list_item_content
+        (paragraph)))))
+
+============================================================
+First footnote block stops before a letter list
+============================================================
+r[^a]
+
+[^a]: +
+a. b
+
+---
+
+(document
+  (paragraph
+    (footnote_reference
+      (footnote_marker_begin)
+      (reference_label)
+      (footnote_marker_end)))
+  (footnote
+    (footnote_marker_begin)
+    (reference_label)
+    (footnote_marker_end)
+    (footnote_content
+      (paragraph)))
+  (list
+    (list_item
+      (list_marker_lower_alpha_period)
+      (list_item_content
+        (paragraph)))))
+
+============================================================
+First footnote block stops before a bare dot list
+============================================================
+r[^a]
+
+[^a]: +
+. b
+
+---
+
+(document
+  (paragraph
+    (footnote_reference
+      (footnote_marker_begin)
+      (reference_label)
+      (footnote_marker_end)))
+  (footnote
+    (footnote_marker_begin)
+    (reference_label)
+    (footnote_marker_end)
+    (footnote_content
+      (paragraph)))
+  (list
+    (list_item
+      (list_marker_decimal_period)
+      (list_item_content
+        (paragraph)))))
+
+============================================================
+Attached footnote paragraph continues lazily
+============================================================
+r[^a]
+
+[^a]: +
+z
+y
+
+---
+
+(document
+  (paragraph
+    (footnote_reference
+      (footnote_marker_begin)
+      (reference_label)
+      (footnote_marker_end)))
+  (footnote
+    (footnote_marker_begin)
+    (reference_label)
+    (footnote_marker_end)
+    (footnote_content
+      (list_continuation_marker)
+      (paragraph))))
+
+============================================================
+Attached footnote quote continues lazily
+============================================================
+r[^a]
+
+[^a]: +
+> q
+z
+
+---
+
+(document
+  (paragraph
+    (footnote_reference
+      (footnote_marker_begin)
+      (reference_label)
+      (footnote_marker_end)))
+  (footnote
+    (footnote_marker_begin)
+    (reference_label)
+    (footnote_marker_end)
+    (footnote_content
+      (list_continuation_marker)
+      (block_quote
+        (block_quote_marker)
+        (content
+          (paragraph))))))
+
+============================================================
+Footnote paragraph ends before a new quote
+============================================================
+r[^a]
+
+[^a]: +
+z
+> q
+
+---
+
+(document
+  (paragraph
+    (footnote_reference
+      (footnote_marker_begin)
+      (reference_label)
+      (footnote_marker_end)))
+  (footnote
+    (footnote_marker_begin)
+    (reference_label)
+    (footnote_marker_end)
+    (footnote_content
+      (list_continuation_marker)
+      (paragraph)))
+  (block_quote
+    (block_quote_marker)
+    (content
+      (paragraph))))
+
+============================================================
+Single table row attaches at footnote end
+============================================================
+r[^a]
+
+[^a]: +
+| a |
+
+---
+
+(document
+  (paragraph
+    (footnote_reference
+      (footnote_marker_begin)
+      (reference_label)
+      (footnote_marker_end)))
+  (footnote
+    (footnote_marker_begin)
+    (reference_label)
+    (footnote_marker_end)
+    (footnote_content
+      (list_continuation_marker)
+      (table
+        (table_row
+          (table_cell))))))
+
+============================================================
+Footnote table ends before a quote
+============================================================
+r[^a]
+
+[^a]: +
+| a |
+| b |
+> q
+
+---
+
+(document
+  (paragraph
+    (footnote_reference
+      (footnote_marker_begin)
+      (reference_label)
+      (footnote_marker_end)))
+  (footnote
+    (footnote_marker_begin)
+    (reference_label)
+    (footnote_marker_end)
+    (footnote_content
+      (list_continuation_marker)
+      (table
+        (table_row
+          (table_cell))
+        (table_row
+          (table_cell)))))
+  (block_quote
+    (block_quote_marker)
+    (content
+      (paragraph))))
+
+============================================================
+Footnote table followed by indented content
+============================================================
+r[^a]
+
+[^a]: +
+| a |
+
+  more
+
+---
+
+(document
+  (paragraph
+    (footnote_reference
+      (footnote_marker_begin)
+      (reference_label)
+      (footnote_marker_end)))
+  (footnote
+    (footnote_marker_begin)
+    (reference_label)
+    (footnote_marker_end)
+    (footnote_content
+      (list_continuation_marker)
+      (table
+        (table_row
+          (table_cell)))
+      (paragraph))))
+
+============================================================
+Ordered first block stops before a bullet
+============================================================
+1. +
+- x
+
+---
+
+(document
+  (list
+    (list_item
+      (list_marker_decimal_period)
+      (list_item_content
+        (list_continuation_marker))))
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph)))))
+
+============================================================
+Letter first block stops before a bullet
+============================================================
+a. +
+- x
+
+---
+
+(document
+  (list
+    (list_item
+      (list_marker_lower_alpha_period)
+      (list_item_content
+        (list_continuation_marker))))
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph)))))
+
+============================================================
+Single table row attaches to a footnote
+============================================================
+[^a]: +
+| a |
+
+---
+
+(document
+  (footnote
+    (footnote_marker_begin)
+    (reference_label)
+    (footnote_marker_end)
+    (footnote_content
+      (list_continuation_marker)
+      (table
+        (table_row
+          (table_cell))))))
+
+============================================================
+Empty footnote first marker stays text
+============================================================
+[^a]: +
+
+---
+
+(document
+  (footnote
+    (footnote_marker_begin)
+    (reference_label)
+    (footnote_marker_end)
+    (footnote_content
+      (paragraph))))
+
+============================================================
+Blank after footnote first marker detaches
+============================================================
+[^a]: +
+
+z
+
+---
+
+(document
+  (footnote
+    (footnote_marker_begin)
+    (reference_label)
+    (footnote_marker_end)
+    (footnote_content
+      (paragraph)))
+  (paragraph))
+
+============================================================
+Indented list after footnote first marker detaches
+============================================================
+[^a]: +
+ - b
+
+---
+
+(document
+  (footnote
+    (footnote_marker_begin)
+    (reference_label)
+    (footnote_marker_end)
+    (footnote_content
+      (paragraph)))
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph)))))
+
+============================================================
+Malformed row ends a footnote table
+============================================================
+[^a]: +
+| a |
+| b
+
+---
+
+(document
+  (footnote
+    (footnote_marker_begin)
+    (reference_label)
+    (footnote_marker_end)
+    (footnote_content
+      (list_continuation_marker)
+      (table
+        (table_row
+          (table_cell)))))
+  (paragraph))
+
+============================================================
+Malformed row ends a list quote table
+============================================================
+- > +
+| a |
+|b
+
+---
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (block_quote
+          (block_quote_marker)
+          (content
+            (list_continuation_marker)
+            (table
+              (table_row
+                (table_cell))))))))
+  (paragraph))
+
+============================================================
+Quoted footnote table keeps both rows
+============================================================
+> [^a]: +
+> | a |
+> | b |
+
+---
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (footnote
+        (footnote_marker_begin)
+        (reference_label)
+        (footnote_marker_end)
+        (footnote_content
+          (list_continuation_marker)
+          (table
+            (block_quote_marker)
+            (table_row
+              (table_cell))
+            (block_quote_marker)
+            (table_row
+              (table_cell))))))))
+
+============================================================
+Quoted row after an attached table starts a new quote
+============================================================
+- > +
+| a |
+| b |
+> | c |
+
+---
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (block_quote
+          (block_quote_marker)
+          (content
+            (list_continuation_marker)
+            (table
+              (table_row
+                (table_cell))
+              (table_row
+                (table_cell))))))))
+  (block_quote
+    (block_quote_marker)
+    (content
+      (table
+        (table_row
+          (table_cell))))))
+
+============================================================
+Quote marker attaches text at its own column
+============================================================
+- > +
+  x
+
+---
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (block_quote
+          (block_quote_marker)
+          (content
+            (list_continuation_marker)
+            (paragraph)))))))
+
+============================================================
+Footnote first block inside a list attaches a quote
+============================================================
+- a
+
+  [^a]: +
+  > q
+
+---
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph)
+        (footnote
+          (footnote_marker_begin)
+          (reference_label)
+          (footnote_marker_end)
+          (footnote_content
+            (list_continuation_marker)
+            (block_quote
+              (block_quote_marker)
+              (content
+                (paragraph)))))))))
+
+============================================================
+Footnote first block inside a list attaches a table
+============================================================
+- a
+
+  [^a]: +
+  | a |
+  | b |
+
+---
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph)
+        (footnote
+          (footnote_marker_begin)
+          (reference_label)
+          (footnote_marker_end)
+          (footnote_content
+            (list_continuation_marker)
+            (table
+              (table_row
+                (table_cell))
+              (table_row
+                (table_cell)))))))))
+
+============================================================
+Quoted attached footnote paragraph continues across quote lines
+============================================================
+> [^a]: +
+> z
+> y
+
+---
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (footnote
+        (footnote_marker_begin)
+        (reference_label)
+        (footnote_marker_end)
+        (footnote_content
+          (list_continuation_marker)
+          (paragraph
+            (block_quote_marker)
+            (block_quote_marker)))))))
+
+============================================================
+Quoted footnote marker does not attach an unquoted paragraph
+============================================================
+r[^a]
+
+> [^a]: +
+z
+
+---
+
+(document
+  (paragraph
+    (footnote_reference
+      (footnote_marker_begin)
+      (reference_label)
+      (footnote_marker_end)))
+  (block_quote
+    (block_quote_marker)
+    (content
+      (footnote
+        (footnote_marker_begin)
+        (reference_label)
+        (footnote_marker_end)
+        (footnote_content
+          (paragraph)))))
+  (paragraph))
+
+============================================================
+Quoted footnote marker does not attach an unquoted table
+============================================================
+r[^a]
+
+> [^a]: +
+| a |
+
+---
+
+(document
+  (paragraph
+    (footnote_reference
+      (footnote_marker_begin)
+      (reference_label)
+      (footnote_marker_end)))
+  (block_quote
+    (block_quote_marker)
+    (content
+      (footnote
+        (footnote_marker_begin)
+        (reference_label)
+        (footnote_marker_end)
+        (footnote_content
+          (paragraph)))))
+  (table
+    (table_row
+      (table_cell))))
+
+============================================================
+Blank line closes a quote before plus
+============================================================
+> a
+
++
+b
+
+---
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (paragraph)))
+  (paragraph))
