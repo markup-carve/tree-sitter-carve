@@ -681,7 +681,6 @@ typedef struct {
   bool combined_raw_pair;
   bool combined_raw_line_end;
   int32_t combined_raw_previous;
-  bool short_quote_prefix;
   // Set when a refused `+` already read past its own line: the scan stops so
   // no later probe emits a token from the moved lexer.
   bool plus_scan_spent;
@@ -4171,10 +4170,9 @@ static TokenType scan_definition_marker_token(Scanner *s, TSLexer *lexer) {
   return LIST_MARKER_DESCRIPTION;
 }
 
-// Scan a `> `, `>\n`, or a quote prefix directly before a lone `+`.
+// Scan a `> ` or `>\n`.
 static bool scan_block_quote_marker(Scanner *s, TSLexer *lexer,
-                                    bool *ending_newline,
-                                    bool allow_short_plus) {
+                                    bool *ending_newline) {
   if (lexer->lookahead != '>') {
     return false;
   }
@@ -4206,12 +4204,6 @@ static bool scan_block_quote_marker(Scanner *s, TSLexer *lexer,
       consume_line_end(s, lexer);
       *ending_newline = true;
     }
-    return true;
-  } else if (allow_short_plus &&
-             (lexer->lookahead == '+' || lexer->lookahead == '>')) {
-    // An unseparated prefix is valid only when the whole run ends in a lone
-    // plus. The caller checks that before emitting this marker.
-    s->short_quote_prefix = true;
     return true;
   } else if (at_line_end(lexer)) {
     consume_line_end(s, lexer);
@@ -4255,7 +4247,7 @@ static uint8_t scan_block_quote_markers(Scanner *s, TSLexer *lexer,
         !find_block(s, FOOTNOTE) && column != 0) {
       return 0;
     }
-    if (!scan_block_quote_marker(s, lexer, ending_newline, false)) break;
+    if (!scan_block_quote_marker(s, lexer, ending_newline)) break;
     ++marker_count;
     if (*ending_newline) {
       break;
@@ -4381,12 +4373,11 @@ static bool parse_block_quote(Scanner *s, TSLexer *lexer,
   uint32_t marker_start_col = line_column(s, lexer);
 
   bool ending_newline = false;
-  s->short_quote_prefix = false;
   // A valid marker is a '> ' or '>\n'.
   bool marker_at_owner = quote_marker_at_column(
       s, s->block_quote_level + 1, marker_start_col);
   bool has_marker = marker_at_owner &&
-      scan_block_quote_marker(s, lexer, &ending_newline, true);
+      scan_block_quote_marker(s, lexer, &ending_newline);
 
   // The marker run is not over: another `>` follows this marker on the same
   // line, so `marker_count` below is this line's depth SO FAR, not its depth.
@@ -4415,19 +4406,6 @@ static bool parse_block_quote(Scanner *s, TSLexer *lexer,
   if (run_continues) run_continues = quote_marker_at_column(
       s, s->block_quote_level + 2, line_column(s, lexer));
 
-  bool short_plus_prefix = has_marker && s->short_quote_prefix;
-  if (short_plus_prefix) {
-    // Keep this marker's token end before the rest of the prefix run.
-    mark_end(s, lexer);
-    while (lexer->lookahead == '>') advance(s, lexer);
-    if (lexer->lookahead == ' ') advance(s, lexer);
-    if (lexer->lookahead != '+') return false;
-    advance(s, lexer);
-    while (lexer->lookahead == ' ' || lexer->lookahead == '\t')
-      advance(s, lexer);
-    if (!at_line_end(lexer) && !lexer->eof(lexer)) return false;
-  }
-
   // A marker followed by only whitespace is content-less whatever that
   // whitespace is: carve-js renders `>`, `> `, `>  ` and `> <TAB>` as the same
   // empty `<blockquote>`. #130 could only report the newline DIRECTLY after the
@@ -4454,7 +4432,7 @@ static bool parse_block_quote(Scanner *s, TSLexer *lexer,
   // separator. `>` followed directly by a tab never reaches this probe:
   // `scan_block_quote_marker` refuses it, so `>\t` stays a paragraph, matching
   // carve-js and the rule that a marker separator is a literal space.
-  bool marker_end_pinned = short_plus_prefix;
+  bool marker_end_pinned = false;
   // Only where a token this pin belongs to can follow: a pin taken on a line
   // whose only valid close is another block's (a heading ending at its
   // newline) widened that zero-width close over the `> ` and lost the quote.
@@ -4658,11 +4636,7 @@ static bool parse_block_quote(Scanner *s, TSLexer *lexer,
         s->indent > margin_col) {
       margin_col = s->indent;
     }
-    Block *prefix_quote = find_block(s, BLOCK_QUOTE);
-    bool compact_quote_column = short_plus_prefix && prefix_quote &&
-        prefix_quote->content_col != 0 &&
-        marker_start_col + 1 == prefix_quote->content_col;
-    if (!compact_quote_column && !at_block_opener_margin(s, margin_col)) {
+    if (!at_block_opener_margin(s, margin_col)) {
       return false;
     }
     s->state &= ~STATE_AFTER_BLANK_LINE;
@@ -7565,8 +7539,7 @@ static bool continuation_marker_column(Scanner *s, uint32_t column) {
     Block *b = *array_get(s->open_blocks, i);
     if (is_list(b->type) && b->data == column + 1) return true;
     if (b->type == BLOCK_QUOTE && b->content_col != 0 &&
-        (column == b->content_col ||
-         (s->block_quote_level > 0 && column + 1 == b->content_col))) {
+        column == b->content_col) {
       return true;
     }
   }
@@ -7604,7 +7577,7 @@ static void plus_owner(Scanner *s, uint32_t column, uint8_t markers,
     }
     if (b->type == BLOCK_QUOTE) {
       if (markers > 0 && level == markers && b->content_col != 0 &&
-          (column == b->content_col || column + 1 == b->content_col)) {
+          column == b->content_col) {
         quote_owner = b;
         reach = (uint32_t)i + 1;
         break;
@@ -15327,7 +15300,6 @@ static void init_scalars(Scanner *s) {
   s->probe_reached_end = false;
   s->probe_skipped_opaque = false;
   s->combined_probe = false;
-  s->short_quote_prefix = false;
   s->plus_scan_spent = false;
   s->row_capture = false;
   s->state = 0;
