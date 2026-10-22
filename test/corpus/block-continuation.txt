@@ -566,7 +566,7 @@ An indented plus after a blank line is paragraph text
         (paragraph)))))
 
 ================================================================================
-An indented plus in a nested item is paragraph text
+A plus at a nested item's marker column attaches the block at that column
 ================================================================================
 - a
   - b
@@ -586,8 +586,9 @@ An indented plus in a nested item is paragraph text
           (list_item
             (list_marker_dash)
             (list_item_content
-              (paragraph))))
-        (paragraph)))))
+              (paragraph)
+              (list_continuation_marker)
+              (paragraph))))))))
 
 ================================================================================
 A plus right after a decimal marker is a continuation marker

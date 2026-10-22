@@ -161,6 +161,15 @@
       "type": "CHOICE",
       "members": [
         {
+          "type": "ALIAS",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_refused_plus_line"
+          },
+          "named": true,
+          "value": "paragraph"
+        },
+        {
           "type": "SYMBOL",
           "name": "list"
         },
@@ -1800,7 +1809,7 @@
             },
             {
               "type": "SYMBOL",
-              "name": "_list_continuation"
+              "name": "_checked_list_continuation"
             }
           ]
         },
@@ -1843,7 +1852,7 @@
                   },
                   {
                     "type": "SYMBOL",
-                    "name": "_list_continuation"
+                    "name": "_checked_list_continuation"
                   }
                 ]
               }
@@ -1854,8 +1863,33 @@
           ]
         },
         {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "_plus_owner_check"
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        },
+        {
           "type": "SYMBOL",
           "name": "_list_item_end"
+        }
+      ]
+    },
+    "_checked_list_continuation": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "_plus_owner_check"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "_list_continuation"
         }
       ]
     },
@@ -4298,6 +4332,28 @@
             {
               "type": "SYMBOL",
               "name": "_block_element"
+            },
+            {
+              "type": "SEQ",
+              "members": [
+                {
+                  "type": "SYMBOL",
+                  "name": "list_continuation_marker"
+                },
+                {
+                  "type": "CHOICE",
+                  "members": [
+                    {
+                      "type": "SYMBOL",
+                      "name": "heading"
+                    },
+                    {
+                      "type": "SYMBOL",
+                      "name": "_block_element"
+                    }
+                  ]
+                }
+              ]
             }
           ]
         },
@@ -11276,6 +11332,14 @@
     {
       "type": "SYMBOL",
       "name": "_delimited_table_begin"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_plus_owner_check"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_refused_plus_line"
     }
   ],
   "inline": [],

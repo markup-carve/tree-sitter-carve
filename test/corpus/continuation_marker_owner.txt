@@ -1,0 +1,289 @@
+================================================================================
+A refused plus separates sibling lists
+================================================================================
+- a
+
++
+- s
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph))))
+  (paragraph)
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph)))))
+
+
+================================================================================
+A refused plus after an open fence stays visible
+================================================================================
+- ```
++
+- s
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (code_block
+          (code_block_marker_begin)))))
+  (paragraph)
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph)))))
+
+================================================================================
+Compact quote prefixes own a first block
+================================================================================
+>>+
+q
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (block_quote
+        (block_quote_marker)
+        (content
+          (list_continuation_marker)
+          (paragraph))))))
+
+================================================================================
+A list marker column attaches a quote
+================================================================================
+ - a
+ +
+ > q
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph)
+        (list_continuation_marker)
+        (block_quote
+          (block_quote_marker)
+          (content
+            (paragraph)))))))
+
+================================================================================
+A stacked quote owns its attached fence
+================================================================================
+- > +
+```
+x
+```
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (block_quote
+          (block_quote_marker)
+          (content
+            (list_continuation_marker)
+            (code_block
+              (code_block_marker_begin)
+              (code))))))))
+
+================================================================================
+A compact quote marker allows trailing space
+================================================================================
+>+ 
+q
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (list_continuation_marker)
+      (paragraph))))
+
+================================================================================
+An unseparated quote with other text stays a paragraph
+================================================================================
+>+ text
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph))
+
+================================================================================
+A stacked task item owns its first block fence
+================================================================================
+- - [ ] +
+```
+code
+```
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (list
+          (list_item
+            marker: (list_marker_task
+              checkmark: (unchecked))
+            content: (list_item_content
+              (list_continuation_marker)
+              (code_block
+                (code_block_marker_begin)
+                code: (code)
+                (code_block_marker_end)))))))))
+
+================================================================================
+A closed fence before a nested item does not affect its plus
+================================================================================
+```
+code
+```
+
+- a
+  - b
+  +
+  > q
+
+--------------------------------------------------------------------------------
+
+(document
+  (code_block
+    (code_block_marker_begin)
+    (code)
+    (code_block_marker_end))
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph)
+        (list
+          (list_item
+            (list_marker_dash)
+            (list_item_content
+              (paragraph)
+              (list_continuation_marker)
+              (block_quote
+                (block_quote_marker)
+                (content
+                  (paragraph))))))))))
+
+================================================================================
+A plus that re-enters its quote through the prefix is text
+================================================================================
+> a
+> +
+> - s
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (paragraph
+        (block_quote_marker)
+        (block_quote_marker)))))
+
+================================================================================
+A plus after a quote prefix attaches an unprefixed block
+================================================================================
+> +
+flush
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (list_continuation_marker)
+      (paragraph))))
+
+================================================================================
+A refused plus in a quoted list is a paragraph a sibling item interrupts
+================================================================================
+> - ```
+> +
+> - s
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (list
+        (list_item
+          (list_marker_dash)
+          (list_item_content
+            (code_block
+              (code_block_marker_begin)))))
+      (block_quote_marker)
+      (paragraph)
+      (block_quote_marker)
+      (list
+        (list_item
+          (list_marker_dash)
+          (list_item_content
+            (paragraph)))))))
+
+================================================================================
+A refused plus folds into the item paragraph before a block at another column
+================================================================================
+- a
++
+  > q
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph)
+        (block_quote
+          (block_quote_marker)
+          (content
+            (paragraph)))))))
+
+================================================================================
+A refused plus on a quote's opening line stays text
+================================================================================
+> +
+> - s
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (paragraph
+        (block_quote_marker)))))
