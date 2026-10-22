@@ -1840,10 +1840,13 @@ static uint32_t quoted_div_column(Scanner *s, uint8_t marker_count) {
 
 static bool close_paragraph(Scanner *s, TSLexer *lexer);
 
-/// Does this line, short of a description body's content column, close the
-/// code fence open in that body? It always does: a body keeps no line below
-/// its column (spec 548). Returns 0 when it closes the fence, -1 when the
-/// question does not arise (the lexer has not moved then).
+static bool description_fence_claims_plain_line(Scanner *s, Block *fence,
+                                                Block *body, TSLexer *lexer,
+                                                uint32_t column);
+
+/// Return 0 when a line below the description body closes its fence (spec
+/// 548), 1 when the fence keeps plain text, or -1 when this boundary does not
+/// apply.
 static int description_fence_keeps_line(Scanner *s, TSLexer *lexer) {
   Block *top = peek_block(s);
   Block *list = find_list(s);
@@ -1855,6 +1858,10 @@ static int description_fence_keeps_line(Scanner *s, TSLexer *lexer) {
       line_column(s, lexer) >= list->content_col || at_line_end(lexer) ||
       lexer->eof(lexer)) {
     return -1;
+  }
+  if (description_fence_claims_plain_line(s, top, list, lexer,
+                                          line_column(s, lexer))) {
+    return 1;
   }
   return 0;
 }
@@ -2791,10 +2798,15 @@ static bool code_fence_run_matches_open_block(Scanner *s, uint16_t width,
   // opener is guarded by `has_extra_indent` at the call site; the closer is the
   // other half of the same rule, and it is `has_surplus_indent` because the
   // question here is indentation PAST the margin rather than short of it.
-  // A fence opened PAST that margin measures its closer from its own column
-  // (the authored base, PART 0 CARVE-P0-004), which the block records.
+  // A fence opened past that margin closes at its own authored column or at
+  // the enclosing item's content column when the closer leaves the child.
+  Block *owner = find_list(s);
+  bool owner_closer = owner && count_blocks(s, BLOCK_QUOTE) == 0 &&
+      owner->content_col != 0 && top->content_col > owner->content_col &&
+      column == owner->content_col;
   if (has_surplus_indent(s) &&
-      !(top->content_col != 0 && column == top->content_col)) {
+      !(top->content_col != 0 && column == top->content_col) &&
+      !owner_closer) {
     return false;
   }
   bool opened_with_tilde = (top->data & CODE_FENCE_TILDE) != 0;
@@ -3952,9 +3964,12 @@ static bool parse_code_fence(Scanner *s, TSLexer *lexer,
   // Where the run STARTS, read before it is consumed: the opener guard below
   // asks whether the fence stands at a list item's content column, and by then
   // the lexer sits past the ticks.
-  uint32_t fence_col = valid_symbols[CODE_BLOCK_BEGIN] ||
-                               valid_symbols[DELIMITED_TABLE_BEGIN] || closer_possible
-                           ? line_column(s, lexer) : 0;
+  bool measure_fence_col = valid_symbols[CODE_BLOCK_BEGIN] ||
+                           valid_symbols[DELIMITED_TABLE_BEGIN] || closer_possible;
+  uint32_t fence_col = measure_fence_col ? line_column(s, lexer) : 0;
+  if (measure_fence_col && s->indent > fence_col && s->marker_end_col == 0) {
+    fence_col = s->indent;
+  }
   uint16_t width = consume_fence_run(s, lexer, fence_char);
   if (width == 0) {
     return false;
@@ -4967,6 +4982,74 @@ static bool marker_line_has_content(Scanner *s, TSLexer *lexer) {
   return !lexer->eof(lexer) && !at_line_end(lexer);
 }
 
+// An over-indented description fence with a closer keeps plain text below the
+// body column. A block opener there ends the body before it reaches the fence.
+static bool description_fence_claims_plain_line(Scanner *s, Block *fence,
+                                                Block *body, TSLexer *lexer,
+                                                uint32_t column) {
+  if (!fence || fence->type != CODE_BLOCK || !body ||
+      body->type != LIST_DEFINITION ||
+      !(fence->flags & BLOCK_FLAG_DESCRIPTION_FENCE_HAS_CLOSER) ||
+      fence->content_col <= body->content_col ||
+      column >= body->content_col || at_line_end(lexer) || lexer->eof(lexer)) {
+    return false;
+  }
+  int32_t c = lexer->lookahead;
+  if (c == '#' || c == '>' || c == ':' || c == '%' || c == '`' || c == '~') {
+    int32_t host_previous = s->host_previous;
+    bool host_crossed_line = s->host_crossed_line;
+    BracketProbe probe = bracket_probe_new(s, lexer);
+    uint8_t run = consume_chars(s, &probe.lexer, (char)c);
+    // A heading opener needs a space and then content.
+    bool heading_space = c == '#' && probe.lexer.lookahead == ' ';
+    while (heading_space &&
+           (probe.lexer.lookahead == ' ' || probe.lexer.lookahead == '\t'))
+      advance(s, &probe.lexer);
+    bool opens = c == '#' ? heading_space && !at_line_end(&probe.lexer) &&
+                            !probe.lexer.eof(&probe.lexer) :
+                 c == '>' ? probe.lexer.lookahead == ' ' ||
+                            probe.lexer.lookahead == '+' ||
+                            at_line_end(&probe.lexer) :
+                 c == ':' ? run >= 3 || probe.lexer.lookahead == ' ' :
+                 c == '%' ? run >= 2 : run >= 3;
+    array_delete(&probe.characters);
+    s->host_previous = host_previous;
+    s->host_crossed_line = host_crossed_line;
+    return !opens;
+  }
+  if (c == '+' || c == '[' || c == '|' || c == '{') {
+    return false;
+  }
+  if (c == '-' || c == '*' || c == '_' || c == '(' ||
+      carve_is_alnum_ascii(c)) {
+    bool ordered_word_end = s->ordered_word_end;
+    int32_t host_previous = s->host_previous;
+    bool host_crossed_line = s->host_crossed_line;
+    BracketProbe probe = bracket_probe_new(s, lexer);
+    bool opens = false;
+    if (c == '-' || c == '*' || c == '_') {
+      uint32_t run = 0;
+      while (probe.lexer.lookahead == c || probe.lexer.lookahead == ' ' ||
+             probe.lexer.lookahead == '\t') {
+        if (probe.lexer.lookahead == c) ++run;
+        advance(s, &probe.lexer);
+      }
+      opens = run >= 3 && at_line_end(&probe.lexer);
+      bracket_probe_rewind(&probe, 0);
+    }
+    if (!opens && c != '_') {
+      TokenType marker = scan_list_marker_token(s, &probe.lexer);
+      opens = marker != IGNORED && marker_line_has_content(s, &probe.lexer);
+    }
+    array_delete(&probe.characters);
+    s->ordered_word_end = ordered_word_end;
+    s->host_previous = host_previous;
+    s->host_crossed_line = host_crossed_line;
+    if (opens) return false;
+  }
+  return true;
+}
+
 static bool scan_eof_or_blankline(Scanner *s, TSLexer *lexer) {
   if (lexer->eof(lexer)) {
     return true;
@@ -4993,6 +5076,17 @@ static bool marker_folds_into_item(Scanner *s, uint32_t column) {
     Block *b = *array_get(s->open_blocks, i);
     if (!is_list(b->type) || column + 1 < b->data) {
       continue;
+    }
+    // A description reached only through its parent item cannot claim a
+    // marker short of its own body column. The parent can open a new block.
+    if (b->type == LIST_DEFINITION && column < b->content_col) {
+      for (int j = i - 1; j >= 0; --j) {
+        Block *parent = *array_get(s->open_blocks, j);
+        if (is_list(parent->type) && parent->type != LIST_DEFINITION &&
+            column >= parent->content_col) {
+          return false;
+        }
+      }
     }
     if (b->type == LIST_DEFINITION &&
         (b->flags & BLOCK_FLAG_DEFINITION_TERM)) {
@@ -5436,6 +5530,9 @@ static bool list_text_line(Scanner *s) {
          (top->flags & BLOCK_FLAG_LIST_TEXT_LINE);
 }
 
+static uint8_t list_column_u8(uint32_t column) {
+  return column > UINT8_MAX ? UINT8_MAX : (uint8_t)column;
+}
 
 static bool parse_list_marker_or_thematic_break(
     Scanner *s, TSLexer *lexer, const bool *valid_symbols, char marker,
@@ -5464,6 +5561,11 @@ static bool parse_list_marker_or_thematic_break(
   // 103-marker-line-nested-lists): its list nests at the marker's own column
   // instead of continuing the outer list at the line indent.
   uint32_t start_col = line_column(s, lexer);
+  uint32_t raw_start_col = start_col;
+  if (s->indent > start_col && s->marker_end_col == 0) {
+    start_col = s->indent;
+  }
+  uint32_t column_offset = start_col - raw_start_col;
   if (start_col > MAX_LIST_MARKER_COLUMN) {
     return false;
   }
@@ -5548,7 +5650,7 @@ static bool parse_list_marker_or_thematic_break(
   // probe below advances the lexer as scratch - reading the column after it
   // returns wherever that probe stopped, which broke `- - A` (corpus
   // 103-marker-line-nested-lists) while this was being written.
-  uint8_t marker_content_col = (uint8_t)line_column(s, lexer);
+  uint8_t marker_content_col = list_column_u8(line_column(s, lexer) + column_offset);
   // The item's content starts after the WHOLE space run: `-   lead` puts it at
   // column 4. Counted before the thematic-break probe, which can eat an inner
   // marker too (`* * u`) and would then report a column past it.
@@ -5557,7 +5659,7 @@ static bool parse_list_marker_or_thematic_break(
       advance(s, lexer);
     }
     if (!at_line_end(lexer) && !lexer->eof(lexer)) {
-      marker_content_col = (uint8_t)line_column(s, lexer);
+      marker_content_col = list_column_u8(line_column(s, lexer) + column_offset);
       // The token takes the run too, so the content (`-   # H`) starts at a
       // block start rather than behind padding no opener accepts.
       mark_end(s, lexer);
@@ -5652,7 +5754,7 @@ static bool parse_list_marker_or_thematic_break(
         if (!ensure_list_open(s, LIST_TASK, list_indent + 1)) return false;
         record_list_marker_margin(s, marker_content_col, false);
         while (lexer->lookahead == ' ') advance(s, lexer);
-        s->marker_end_col = (uint8_t)line_column(s, lexer);
+        s->marker_end_col = list_column_u8(line_column(s, lexer) + column_offset);
         lexer->result_symbol = LIST_MARKER_TASK_BEGIN;
         return true;
       }
@@ -8678,10 +8780,11 @@ static bool code_fence_has_closer_ahead(Scanner *s, TSLexer *lexer, int32_t c,
         return false;
       }
     }
-    while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
-      advance(s, lexer);
-    }
+    uint8_t leading_indent = consume_whitespace(s, lexer);
     uint32_t current_column = line_column(s, lexer);
+    if (quotes == 0 && leading_indent > current_column) {
+      current_column = leading_indent;
+    }
     bool blank_line = at_line_end(lexer);
     if (host_list && current_column < host_list->content_col &&
         !at_line_end(lexer) && !lexer->eof(lexer)) {
@@ -8694,7 +8797,10 @@ static bool code_fence_has_closer_ahead(Scanner *s, TSLexer *lexer, int32_t c,
       }
     }
     after_blank = blank_line;
-    if (line_column(s, lexer) != column) {
+    bool owner_closer = host_list && count_blocks(s, BLOCK_QUOTE) == 0 &&
+        host_list->content_col != 0 && column > host_list->content_col &&
+        current_column == host_list->content_col;
+    if (current_column != column && !owner_closer) {
       // Not at the opener's column: whatever it is, it is fence body. Fall
       // round to the top, which skips the rest of the line.
       continue;
@@ -8709,6 +8815,20 @@ static bool code_fence_has_closer_ahead(Scanner *s, TSLexer *lexer, int32_t c,
       }
     }
   }
+}
+
+// Use the tab-expanded leading column while probing the next line. A marker
+// chain has its own column and must not inherit the line's leading indent.
+static uint32_t paragraph_end_line_column(Scanner *s, TSLexer *lexer) {
+  uint32_t column = line_column(s, lexer);
+  if (s->next_line_indent >= 0) {
+    if ((uint32_t)s->next_line_indent > column) {
+      column = (uint32_t)s->next_line_indent;
+    }
+  } else if (s->marker_end_col == 0 && s->indent > column) {
+    column = s->indent;
+  }
+  return column;
 }
 
 /// A FENCED CODE opener with a closer ahead interrupts an open paragraph
@@ -8729,7 +8849,7 @@ static bool scan_code_fence_at_paragraph_end(Scanner *s, TSLexer *lexer,
   if (fence_char != '`' && fence_char != '~') {
     return false;
   }
-  uint32_t column = line_column(s, lexer);
+  uint32_t column = paragraph_end_line_column(s, lexer);
   if (markers_seen == 0 && !escapes_open_block_quote(s, column)) {
     return false;
   }
@@ -8937,6 +9057,10 @@ static bool marker_folds_into_nested_paragraph(Scanner *s, uint32_t column) {
   if (!host || find_list(s) == NULL) {
     return false;
   }
+  if (count_blocks(s, BLOCK_QUOTE) == 0 && is_list(host->type) &&
+      host->content_col != 0 && column >= host->content_col) {
+    return false;
+  }
   // An unmarked line under a quote is lazy for every list inside the quote.
   bool lazy_quote = s->paragraph_markers_seen == 0;
   if (!lazy_quote && (s->paragraph_markers_seen > 0 ||
@@ -8956,7 +9080,7 @@ static bool scan_row_or_break_at_paragraph_end(Scanner *s, TSLexer *lexer) {
   if (c != '|' && line_block_body(s)) {
     return false;
   }
-  uint32_t column = line_column(s, lexer);
+  uint32_t column = paragraph_end_line_column(s, lexer);
   bool at_margin = opener_reaches_item_margin(s, column);
   if (c == '|') {
     if (!at_margin) {
