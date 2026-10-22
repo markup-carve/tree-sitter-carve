@@ -1,0 +1,453 @@
+================================================================================
+A tab-expanded column opens a nested list
+================================================================================
+- a
+	- b
+	c
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph)
+        (list
+          (list_item
+            (list_marker_dash)
+            (list_item_content
+              (paragraph))))))))
+
+================================================================================
+Two tab-indented markers at the same column are siblings
+================================================================================
+- a
+	- b
+	- c
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph)
+        (list
+          (list_item
+            (list_marker_dash)
+            (list_item_content
+              (paragraph)))
+          (list_item
+            (list_marker_dash)
+            (list_item_content
+              (paragraph))))))))
+
+================================================================================
+A tab-indented task marker opens in its parent item
+================================================================================
+- a
+	- [ ] b
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph)
+        (list
+          (list_item
+            (list_marker_task
+              (unchecked))
+            (list_item_content
+              (paragraph))))))))
+
+================================================================================
+A list marker outside a description enters its parent item
+================================================================================
+- :: t
+  : para
+   - li
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (definition_list
+          (list_item
+            (list_marker_definition)
+            (term))
+          (list_item
+            (list_marker_description)
+            (definition)))
+        (list
+          (list_item
+            (list_marker_dash)
+            (list_item_content
+              (paragraph))))))))
+
+================================================================================
+A child fence closes at its reached owner column
+================================================================================
+- outer
+  - head
+     ```
+     a
+    ```
+
+  tail
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph)
+        (list
+          (list_item
+            (list_marker_dash)
+            (list_item_content
+              (paragraph)
+              (code_block
+                (code_block_marker_begin)
+                (code)
+                (code_block_marker_end)))))
+        (paragraph)))))
+
+================================================================================
+A closer with trailing text stays in the child fence
+================================================================================
+- outer
+  - head
+     ```
+     a
+    ``` trailing
+     b
+    ```
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph)
+        (list
+          (list_item
+            (list_marker_dash)
+            (list_item_content
+              (paragraph)
+              (code_block
+                (code_block_marker_begin)
+                (code)
+                (code_block_marker_end)))))))))
+
+================================================================================
+A tab-indented definition fence closes at the body column
+================================================================================
+:: t
+: a
+	```
+  ```
+
+--------------------------------------------------------------------------------
+
+(document
+  (definition_list
+    (list_item
+      (list_marker_definition)
+      (term))
+    (list_item
+      (list_marker_description)
+      (definition)
+      (code_block
+        (code_block_marker_begin)
+        (code_block_marker_end)))))
+
+================================================================================
+An over-indented definition fence keeps a root-column payload line
+================================================================================
+:: m
+: l
+     ```
+e
+     ```
+
+--------------------------------------------------------------------------------
+
+(document
+  (definition_list
+    (list_item
+      (list_marker_definition)
+      (term))
+    (list_item
+      (list_marker_description)
+      (definition)
+      (code_block
+        (code_block_marker_begin)
+        (code)
+        (code_block_marker_end)))))
+
+================================================================================
+A plain line below a description body stays in its over-indented fence
+================================================================================
+:: m
+: l
+     ```
+ e
+     ```
+
+--------------------------------------------------------------------------------
+
+(document
+  (definition_list
+    (list_item
+      (list_marker_definition)
+      (term))
+    (list_item
+      (list_marker_description)
+      (definition)
+      (code_block
+        (code_block_marker_begin)
+        (code)
+        (code_block_marker_end)))))
+
+================================================================================
+Inline asterisks below a description body stay in its fence
+================================================================================
+:: m
+: l
+     ```
+*bold* x
+     ```
+
+--------------------------------------------------------------------------------
+
+(document
+  (definition_list
+    (list_item
+      (list_marker_definition)
+      (term))
+    (list_item
+      (list_marker_description)
+      (definition)
+      (code_block
+        (code_block_marker_begin)
+        (code)
+        (code_block_marker_end)))))
+
+================================================================================
+A dash without a list separator stays in the description fence
+================================================================================
+:: m
+: l
+     ```
+-foo
+     ```
+
+--------------------------------------------------------------------------------
+
+(document
+  (definition_list
+    (list_item
+      (list_marker_definition)
+      (term))
+    (list_item
+      (list_marker_description)
+      (definition)
+      (code_block
+        (code_block_marker_begin)
+        (code)
+        (code_block_marker_end)))))
+
+================================================================================
+A hash without a heading separator stays in the description fence
+================================================================================
+:: m
+: l
+     ```
+#foo
+     ```
+
+--------------------------------------------------------------------------------
+
+(document
+  (definition_list
+    (list_item
+      (list_marker_definition)
+      (term))
+    (list_item
+      (list_marker_description)
+      (definition)
+      (code_block
+        (code_block_marker_begin)
+        (code)
+        (code_block_marker_end)))))
+
+================================================================================
+A colon without a definition separator stays in the fence
+================================================================================
+:: m
+: l
+     ```
+:foo
+     ```
+
+--------------------------------------------------------------------------------
+
+(document
+  (definition_list
+    (list_item
+      (list_marker_definition)
+      (term))
+    (list_item
+      (list_marker_description)
+      (definition)
+      (code_block
+        (code_block_marker_begin)
+        (code)
+        (code_block_marker_end)))))
+
+================================================================================
+A thematic break below the body ends an over-indented fence
+================================================================================
+:: m
+: l
+     ```
+***
+     ```
+
+--------------------------------------------------------------------------------
+
+(document
+  (definition_list
+    (list_item
+      (list_marker_definition)
+      (term))
+    (list_item
+      (list_marker_description)
+      (definition)
+      (code_block
+        (code_block_marker_begin))))
+  (thematic_break)
+  (paragraph
+    (verbatim
+      (verbatim_marker_begin)
+      (content)
+      (verbatim_marker_end))))
+
+================================================================================
+A heading below a description body interrupts its fence
+================================================================================
+:: m
+: l
+     ```
+# h
+     ```
+
+--------------------------------------------------------------------------------
+
+(document
+  (definition_list
+    (list_item
+      (list_marker_definition)
+      (term))
+    (list_item
+      (list_marker_description)
+      (definition)
+      (code_block
+        (code_block_marker_begin))))
+  (section
+    (heading
+      (marker)
+      (content))
+    (section_content
+      (paragraph
+        (verbatim
+          (verbatim_marker_begin)
+          (content)
+          (verbatim_marker_end))))))
+
+================================================================================
+A quote below a description body interrupts its fence
+================================================================================
+:: m
+: l
+     ```
+> q
+     ```
+
+--------------------------------------------------------------------------------
+
+(document
+  (definition_list
+    (list_item
+      (list_marker_definition)
+      (term))
+    (list_item
+      (list_marker_description)
+      (definition)
+      (code_block
+        (code_block_marker_begin))))
+  (block_quote
+    (block_quote_marker)
+    (content
+      (paragraph
+        (verbatim
+          (verbatim_marker_begin)
+          (content)
+          (verbatim_marker_end))))))
+
+================================================================================
+A tab-indented fence in a list closes at its expanded column
+================================================================================
+- a
+	```
+	x
+	```
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph)
+        (code_block
+          (code_block_marker_begin)
+          (code)
+          (code_block_marker_end))))))
+
+================================================================================
+An empty heading marker below a description body stays in its over-indented fence
+================================================================================
+:: m
+: l
+     ```
+# 
+     ```
+
+--------------------------------------------------------------------------------
+
+(document
+  (definition_list
+    (list_item
+      (list_marker_definition)
+      (term))
+    (list_item
+      (list_marker_description)
+      (definition)
+      (code_block
+        (code_block_marker_begin)
+        (code)
+        (code_block_marker_end)))))
