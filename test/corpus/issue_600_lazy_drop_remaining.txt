@@ -309,3 +309,183 @@ An ordered quoted item keeps its unprefixed plus (#600)
                       (paragraph))))))
             (list_continuation_marker)
             (paragraph)))))))
+
+================================================================================
+A plus at a nested list marker column attaches below its quote (#600)
+================================================================================
+> - - > q
+>   r
+>   +
+>   b
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (list
+        (list_item
+          (list_marker_dash)
+          (list_item_content
+            (list
+              (list_item
+                (list_marker_dash)
+                (list_item_content
+                  (block_quote
+                    (block_quote_marker)
+                    (content
+                      (paragraph
+                        (block_quote_marker))))
+                  (list_continuation_marker)
+                  (paragraph
+                    (block_quote_marker)))))))))))
+
+================================================================================
+A plus at a nested list marker column closes two item quotes (#600)
+================================================================================
+> - - > > q
+>   r
+>   +
+>   b
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (list
+        (list_item
+          (list_marker_dash)
+          (list_item_content
+            (list
+              (list_item
+                (list_marker_dash)
+                (list_item_content
+                  (block_quote
+                    (block_quote_marker)
+                    (content
+                      (block_quote
+                        (block_quote_marker)
+                        (content
+                          (paragraph
+                            (block_quote_marker))))))
+                  (list_continuation_marker)
+                  (paragraph
+                    (block_quote_marker)))))))))))
+
+================================================================================
+A plus with an indented second quote marker closes only the deepest quote (#600)
+================================================================================
+> - > > > q
+>   > r
+>   > +
+>   > b
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (list
+        (list_item
+          (list_marker_dash)
+          (list_item_content
+            (block_quote
+              (block_quote_marker)
+              (content
+                (block_quote
+                  (block_quote_marker)
+                  (content
+                    (block_quote
+                      (block_quote_marker)
+                      (content
+                        (paragraph
+                          (block_quote_marker)
+                          (block_quote_marker))))
+                    (block_quote_marker)
+                    (block_quote_marker)
+                    (list_continuation_marker)
+                    (paragraph
+                      (block_quote_marker)
+                      (block_quote_marker))))))))))))
+
+================================================================================
+A plus with three quote markers stays in the innermost item quote (#600)
+================================================================================
+> - > > > q
+>   > > r
+>   > > +
+>   > > b
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (list
+        (list_item
+          (list_marker_dash)
+          (list_item_content
+            (block_quote
+              (block_quote_marker)
+              (content
+                (block_quote
+                  (block_quote_marker)
+                  (content
+                    (block_quote
+                      (block_quote_marker)
+                      (content
+                        (paragraph
+                          (block_quote_marker)
+                          (block_quote_marker)
+                          (block_quote_marker))
+                        (block_quote_marker)
+                        (block_quote_marker)
+                        (block_quote_marker)
+                        (list_continuation_marker)
+                        (paragraph
+                          (block_quote_marker)
+                          (block_quote_marker)
+                          (block_quote_marker))))))))))))))
+
+================================================================================
+A plus after a nested list keeps its item quote open (#600)
+================================================================================
+> - > - > q
+>   >   r
+>   >   +
+>   >   b
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (list
+        (list_item
+          (list_marker_dash)
+          (list_item_content
+            (block_quote
+              (block_quote_marker)
+              (content
+                (list
+                  (list_item
+                    (list_marker_dash)
+                    (list_item_content
+                      (block_quote
+                        (block_quote_marker)
+                        (content
+                          (paragraph
+                            (block_quote_marker)
+                            (block_quote_marker))
+                          (block_quote_marker)
+                          (block_quote_marker)
+                          (list_continuation_marker)
+                          (paragraph
+                            (block_quote_marker)
+                            (block_quote_marker)))))))))))))))
