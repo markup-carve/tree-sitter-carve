@@ -9469,8 +9469,9 @@ static bool list_above_block(Scanner *s, Block *list, Block *block) {
   return false;
 }
 
-/// A lone `+` short of the paragraph's quote that attaches marks the innermost
-/// list, so `parse_block_quote` keeps the quote one level past its prefix.
+/// A lone `+` short of the paragraph's quote that attaches marks the list that
+/// stays open, so `parse_block_quote` keeps the quote one level past its
+/// prefix. FALSE when the `+` line is paragraph text.
 static bool note_short_plus(Scanner *s, TSLexer *lexer, uint8_t markers,
                             bool lone_is_enough) {
   // The list that stays open once the blocks inside the next quote close.
@@ -9482,12 +9483,14 @@ static bool note_short_plus(Scanner *s, TSLexer *lexer, uint8_t markers,
     if (is_list(b->type)) list = b;
   }
   if (!list) return false;
-  if (list->type == LIST_DEFINITION) return true;
   uint32_t column = line_column(s, lexer);
   advance(s, lexer);
   while (lexer->lookahead == ' ' || lexer->lookahead == '\t') advance(s, lexer);
+  // `+ x`, or a `+` with nothing after it, is paragraph text.
   if (!at_line_end(lexer)) return false;
   consume_line_end(s, lexer);
+  if (lexer->eof(lexer)) return false;
+  if (list->type == LIST_DEFINITION) return true;
   if (lone_is_enough ||
       plus_follower(s, lexer, column, markers, NULL, NULL, NULL, NULL,
                     NULL) == PLUS_ATTACHES) {
@@ -9655,7 +9658,25 @@ keep_reading:
   // opens a block, which `close_paragraph` asks at the shallower depth.
   if (marker_count < block->data && after_markers != '+') {
     // A `>` right at the shallower quote's content column opens a quote there.
-    if (after_markers == '>') return true;
+    // So does one at the content column of an item the line still reaches.
+    if (after_markers == '>') {
+      Block *reached = nth_quote(s, marker_count);
+      uint32_t at = line_column(s, lexer);
+      if (!reached || reached->content_col == 0 || at == reached->content_col) {
+        return true;
+      }
+      Block *missing = nth_quote(s, marker_count + 1);
+      bool past_reached = false;
+      for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
+        Block *b = *array_get(s->open_blocks, i);
+        if (b == missing) break;
+        if (b == reached) past_reached = true;
+        else if (past_reached && is_list(b->type) && b->content_col == at) {
+          s->drop_close_markers = marker_count;
+          return true;
+        }
+      }
+    }
     consume_whitespace(s, lexer);
     if (lexer->lookahead == '+') {
       // An indented `+` on the shallower line is the paragraph's text.

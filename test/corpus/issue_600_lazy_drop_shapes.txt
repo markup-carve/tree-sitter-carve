@@ -1,0 +1,160 @@
+================================================================================
+An indented > on a shallower quoted line is paragraph text (#600)
+================================================================================
+> > - > q
+>   > r
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (block_quote
+        (block_quote_marker)
+        content: (content
+          (list
+            (list_item
+              marker: (list_marker_dash)
+              content: (list_item_content
+                (block_quote
+                  (block_quote_marker)
+                  content: (content
+                    (paragraph
+                      (block_quote_marker))))))))))))
+
+================================================================================
+An indented > two quotes short continues the paragraph (#600)
+================================================================================
+> - > > q
+>     > r
+>     > d
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (block_quote
+              (block_quote_marker)
+              content: (content
+                (block_quote
+                  (block_quote_marker)
+                  content: (content
+                    (paragraph
+                      (block_quote_marker)
+                      (block_quote_marker))))))))))))
+
+================================================================================
+A > at a reached item content column opens a quote in that item (#600)
+================================================================================
+> - - > q
+>   > r
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (list
+              (list_item
+                marker: (list_marker_dash)
+                content: (list_item_content
+                  (block_quote
+                    (block_quote_marker)
+                    content: (content
+                      (paragraph))))))
+            (block_quote_marker)
+            (block_quote
+              (block_quote_marker)
+              content: (content
+                (paragraph)))))))))
+
+================================================================================
+A double > at a reached item content column opens nested quotes (#600)
+================================================================================
+> - - > q
+>   > > r
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (list
+              (list_item
+                marker: (list_marker_dash)
+                content: (list_item_content
+                  (block_quote
+                    (block_quote_marker)
+                    content: (content
+                      (paragraph))))))
+            (block_quote_marker)
+            (block_quote
+              (block_quote_marker)
+              content: (content
+                (block_quote
+                  (block_quote_marker)
+                  content: (content
+                    (paragraph)))))))))))
+
+================================================================================
+A dangling + on a shallower item quote line is text (#600)
+================================================================================
+- > > q
+  > +
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (block_quote
+          (block_quote_marker)
+          content: (content
+            (block_quote
+              (block_quote_marker)
+              content: (content
+                (paragraph
+                  (block_quote_marker))))))))))
+
+================================================================================
+A worded + after a lazy line in an item quote is text (#600)
+================================================================================
+- > > q
+  > r
+  > + x
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (block_quote
+          (block_quote_marker)
+          content: (content
+            (block_quote
+              (block_quote_marker)
+              content: (content
+                (paragraph
+                  (block_quote_marker)
+                  (block_quote_marker))))))))))
