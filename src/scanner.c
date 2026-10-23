@@ -9655,7 +9655,13 @@ keep_reading:
   // opens a block, which `close_paragraph` asks at the shallower depth.
   if (marker_count < block->data && after_markers != '+') {
     // A `>` right at the shallower quote's content column opens a quote there.
-    if (after_markers == '>') return true;
+    if (after_markers == '>') {
+      Block *reached = nth_quote(s, marker_count);
+      if (!reached || reached->content_col == 0 ||
+          line_column(s, lexer) == reached->content_col) {
+        return true;
+      }
+    }
     consume_whitespace(s, lexer);
     if (lexer->lookahead == '+') {
       // An indented `+` on the shallower line is the paragraph's text.
