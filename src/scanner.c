@@ -8010,11 +8010,19 @@ static PlusFollow plus_follower(Scanner *s, TSLexer *lexer, uint32_t column,
     bool item = marker != IGNORED && marker_line_has_content(s, lexer);
     if (item_follows && next_col == column) *item_follows = item;
     // A quote can attach a list just like any other block.
+    // A follower at column 0 is outside a list item holding the quote.
+    uint32_t owner_margin = 0;
+    for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
+      Block *b = *array_get(s->open_blocks, i);
+      if (b == quote_owner) break;
+      if (is_list(b->type) && b->type != LIST_DEFINITION) owner_margin = b->content_col;
+    }
     bool attaches =
         (((quote_owner->flags & BLOCK_FLAG_QUOTE_DEDENT_PLUS) == 0 &&
           count_blocks(s, BLOCK_QUOTE) == markers &&
           reentered < markers &&
-          (next_col == 0 || (reentered + 1 == markers &&
+          ((next_col == 0 && owner_margin == 0) ||
+           (reentered + 1 == markers &&
                              next_col + 2 == quote_owner->content_col))) ||
          ((count_blocks(s, BLOCK_QUOTE) > markers ||
            (quote_owner->flags & BLOCK_FLAG_QUOTE_DEDENT_PLUS)) &&
