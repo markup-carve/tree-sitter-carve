@@ -551,6 +551,9 @@ typedef struct {
   // marker-line nested list (`- - A`, corpus 103-marker-line-nested-lists):
   // its list opens at the marker's own column instead of the line indent.
   uint8_t marker_end_col;
+  // Indent of the first list marker on the current line (UINT8_MAX = none):
+  // the opener line's own column for a stacked first-block `+`.
+  uint8_t chain_col;
   // Column of the single block selected by a `+` marker.
   uint8_t continuation_col;
   // Quote-prefix count of the next row of an attached table, or UINT8_MAX.
@@ -5381,6 +5384,7 @@ static void record_list_marker_margin(Scanner *s, uint8_t col,
   if (top && (replace_content_col || top->content_col == 0)) {
     top->content_col = col;
   }
+  if (s->chain_col == UINT8_MAX) s->chain_col = s->indent;
   s->marker_end_col = col;
 }
 
@@ -7606,10 +7610,26 @@ static PlusFollow plus_follower(Scanner *s, TSLexer *lexer, uint32_t column,
   Block *quote_owner = NULL;
   uint32_t reach = 0;
   plus_owner(s, column, markers, &list_owner, &quote_owner, &reach);
+  // A quote opened after a list marker on this line is a stacked first-block
+  // `+`: its follower may not re-enter the quotes of that chain, and it
+  // attaches only at column 0, the line's own column or the quote's column.
+  int32_t chain_start = -1;
+  if (quote_owner && s->chain_col != UINT8_MAX) {
+    for (int32_t i = (int32_t)reach - 2; i >= 0; --i) {
+      Block *b = *array_get(s->open_blocks, i);
+      if (is_list(b->type)) {
+        if (b->data < s->chain_col + 1) break;
+        if (b->data == s->chain_col + 1) chain_start = i;
+      } else if (b->type == BLOCK_QUOTE && chain_start >= 0) {
+        break;
+      }
+    }
+  }
+  uint32_t reenter_limit = chain_start >= 0 ? (uint32_t)chain_start : reach;
   // Re-enter the open quotes the follower's prefix reaches, outermost first.
   uint8_t reentered = 0;
   uint32_t prefix_end = 0;
-  for (uint32_t i = 0; i < reach; ++i) {
+  for (uint32_t i = 0; i < reenter_limit; ++i) {
     Block *b = *array_get(s->open_blocks, i);
     if (b->type != BLOCK_QUOTE) continue;
     while (lexer->lookahead == ' ') advance(s, lexer);
@@ -7645,6 +7665,11 @@ static PlusFollow plus_follower(Scanner *s, TSLexer *lexer, uint32_t column,
     bool attaches = !item && reentered < markers &&
         (next_col == 0 || (reentered + 1 == markers &&
                            next_col + 2 == quote_owner->content_col));
+    if (chain_start >= 0 && reentered == 0) {
+      uint32_t rel = next_col >= prefix_end ? next_col - prefix_end : 0;
+      attaches = !item && (rel == 0 || rel == s->chain_col ||
+                           next_col + 2 == quote_owner->content_col);
+    }
     return attaches ? PLUS_ATTACHES : PLUS_REFUSED;
   }
   if (!list_owner) {
@@ -7787,7 +7812,9 @@ static bool emit_plus_line(Scanner *s, TSLexer *lexer,
     if (b->type == BLOCK_QUOTE && ++seen == level) line_prefix_end = b->content_col;
   }
   if (attachment_col >= line_prefix_end) attachment_col -= line_prefix_end;
-  if (first_block && list) attachment_col = list->data - 1;
+  if (first_block && list) {
+    attachment_col = s->chain_col != UINT8_MAX ? s->chain_col : list->data - 1;
+  }
   uint32_t prefix_end = 0;
   uint8_t follower_prefixes = 0;
   if (!owner_quote && level > 0) {
@@ -14380,6 +14407,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     s->indent = consume_whitespace(s, lexer);
     // A new line starts a new marker chain (see `marker_end_col`).
     s->marker_end_col = 0;
+    s->chain_col = UINT8_MAX;
     // A new line also starts a fresh block-quote marker count. Normally a
     // trailing NEWLINE token clears `block_quote_level` (below) before the
     // next line is scanned, but a construct whose own token swallows its
@@ -15279,6 +15307,7 @@ static void init_scalars(Scanner *s) {
   s->block_quote_level = 0;
   s->indent = 0;
   s->marker_end_col = 0;
+  s->chain_col = UINT8_MAX;
   s->continuation_col = 0;
   s->attached_row_prefix = UINT8_MAX;
   s->plus_decision = 0;
@@ -15382,8 +15411,9 @@ unsigned tree_sitter_carve_external_scanner_serialize(void *payload,
   bool plus_extension = s->continuation_col || s->plus_decision ||
                         s->refused_plus_column;
   bool row_extension = s->attached_row_prefix != UINT8_MAX;
+  bool chain_extension = s->chain_col != UINT8_MAX;
   const size_t scalar_bytes = 19 + (plus_extension ? 3 : 0) +
-                              (row_extension ? 1 : 0);
+                              (row_extension ? 1 : 0) + (chain_extension ? 1 : 0);
   const size_t block_count_bytes = 1;
   const size_t block_bytes = 4;
   const size_t inline_bytes = 3;
@@ -15473,7 +15503,7 @@ unsigned tree_sitter_carve_external_scanner_serialize(void *payload,
   // when the buffer cannot hold them.
   bool notes = (s->no_closer_kinds || s->link_tail_open_line) &&
                size + 4 + (plus_extension ? 3 : 0) +
-                   (row_extension ? 1 : 0) + 3 <=
+                   (row_extension ? 1 : 0) + (chain_extension ? 1 : 0) + 3 <=
                    TREE_SITTER_SERIALIZATION_BUFFER_SIZE;
   if (notes) {
     buffer[size++] = (char)(s->no_closer_kinds & 0xff);
@@ -15487,9 +15517,11 @@ unsigned tree_sitter_carve_external_scanner_serialize(void *payload,
     buffer[size++] = (char)s->refused_plus_column;
   }
   if (row_extension) buffer[size++] = (char)s->attached_row_prefix;
+  if (chain_extension) buffer[size++] = (char)s->chain_col;
   buffer[size++] = (char)((s->mid_line ? 1 : 0) | (notes ? 2 : 0) |
                           (notes && s->link_tail_open_line ? 4 : 0) |
-                          (plus_extension ? 8 : 0) | (row_extension ? 16 : 0));
+                          (plus_extension ? 8 : 0) | (row_extension ? 16 : 0) |
+                          (chain_extension ? 32 : 0));
   // Bits 9..10 of the tail carry the caption gap; missing closers use 0..8.
   uint16_t tail = s->missing_closers | (uint16_t)((s->caption_gap & 3) << 9) |
                   (s->after_literal_star ? 1 << 14 : 0) |
@@ -15515,6 +15547,10 @@ void tree_sitter_carve_external_scanner_deserialize(void *payload, char *buffer,
     uint8_t notes = (uint8_t)buffer[length - 3];
     length -= 3;
     s->mid_line = (notes & 1) != 0;
+    if (notes & 32) {
+      if (length < 18) return;
+      s->chain_col = (uint8_t)buffer[--length];
+    }
     if (notes & 16) {
       if (length < 18) return;
       s->attached_row_prefix = (uint8_t)buffer[--length];
