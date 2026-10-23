@@ -1857,6 +1857,24 @@
                   {
                     "type": "SYMBOL",
                     "name": "_checked_list_continuation"
+                  },
+                  {
+                    "type": "SEQ",
+                    "members": [
+                      {
+                        "type": "ALIAS",
+                        "content": {
+                          "type": "SYMBOL",
+                          "name": "_block_quote_continuation"
+                        },
+                        "named": true,
+                        "value": "block_quote_marker"
+                      },
+                      {
+                        "type": "SYMBOL",
+                        "name": "_checked_list_continuation"
+                      }
+                    ]
                   }
                 ]
               }

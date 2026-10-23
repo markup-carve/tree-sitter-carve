@@ -898,6 +898,10 @@ module.exports = grammar({
                 $._indented_content_spacer,
               ),
               $._checked_list_continuation,
+              seq(
+                alias($._block_quote_continuation, $.block_quote_marker),
+                $._checked_list_continuation,
+              ),
             ),
           ),
         ),

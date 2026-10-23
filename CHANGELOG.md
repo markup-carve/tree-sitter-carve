@@ -16,6 +16,7 @@ This release follows the Carve 0.1.11 corpus, mainly the column rules for the `+
 - A `+` glued to a quote prefix (`>+`, `>>+`) is text: a quote-prefixed marker needs one space after each `>` (#581).
 - A stacked first-block `+` (`- - +`, `- > +`) takes its follower only at column 0, its line's column or its quote's column (#582).
 - A first-block `+` in a footnote or description attaches the next flush-left block, and a following list stays at document level (#580).
+- A quote-prefixed `+` reads like its unquoted twin, also after a blank quote line (`> - a` / `>` / `> +` / `> b` keeps `b` in the item), and a dangling `+` or one inside a fence's payload stays text (#584).
 - Each quote marker in a nested container is matched at its own column, so indentation no longer stands in for a `>` (#574).
 - List and fence ownership is read at the tab-expanded column, and a list marker past a description's marker column no longer folds into the description (#578).
 - A valueless include option such as `{{ src/a.js @code }}` parses as `include_option` and gets the option highlight; its `value` field is optional in `node-types.json` (#572).

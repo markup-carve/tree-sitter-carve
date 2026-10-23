@@ -4383,7 +4383,7 @@ A flush continuation after an item quote can end the document (#459)
 
 ---
 
-(document (list (list_item (list_marker_dash) (list_item_content (paragraph) (block_quote (block_quote_marker) (content (paragraph))) (list_continuation_marker)))))
+(document (list (list_item (list_marker_dash) (list_item_content (paragraph) (block_quote (block_quote_marker) (content (paragraph)))))))
 
 =============================
 A continuation after a quote can end at EOF (#459)
@@ -4392,7 +4392,7 @@ A continuation after a quote can end at EOF (#459)
 +
 ---
 
-(document (block_quote (block_quote_marker) (content (paragraph) (list_continuation_marker))))
+(document (block_quote (block_quote_marker) (content (paragraph))))
 
 =============================
 A quote continuation can still attach a list (#459)
@@ -4415,7 +4415,7 @@ para
 
 ---
 
-(document (list (list_item (list_marker_dash) (list_item_content (paragraph) (list_continuation_marker)))) (paragraph))
+(document (list (list_item (list_marker_dash) (list_item_content (paragraph)))) (paragraph))
 
 =============================
 A continuation attaches a list of a different type (#459)
@@ -4426,7 +4426,7 @@ A continuation attaches a list of a different type (#459)
 
 ---
 
-(document (list (list_item (list_marker_dash) (list_item_content (paragraph) (list_continuation_marker) (list (list_item (list_marker_decimal_period) (list_item_content (paragraph))))))))
+(document (list (list_item (list_marker_dash) (list_item_content (paragraph)))) (list (list_item (list_marker_decimal_period) (list_item_content (paragraph)))))
 
 =============================
 A continuation attaches a star list (#459)
@@ -4437,7 +4437,7 @@ A continuation attaches a star list (#459)
 
 ---
 
-(document (list (list_item (list_marker_dash) (list_item_content (paragraph) (list_continuation_marker) (list (list_item (list_marker_star) (list_item_content (paragraph))))))))
+(document (list (list_item (list_marker_dash) (list_item_content (paragraph)))) (list (list_item (list_marker_star) (list_item_content (paragraph)))))
 
 =============================
 A continuation attaches a task list (#459)
@@ -4448,7 +4448,7 @@ A continuation attaches a task list (#459)
 
 ---
 
-(document (list (list_item (list_marker_dash) (list_item_content (paragraph) (list_continuation_marker) (list (list_item (list_marker_task (unchecked)) (list_item_content (paragraph))))))))
+(document (list (list_item (list_marker_dash) (list_item_content (paragraph)))) (list (list_item (list_marker_task (unchecked)) (list_item_content (paragraph)))))
 
 =============================
 A continuation attaches a definition-like paragraph (#459)
@@ -4471,7 +4471,7 @@ A blank continuation preserves ordered siblings (#459)
 
 ---
 
-(document (list (list_item (list_marker_decimal_period) (list_item_content (paragraph) (list_continuation_marker))) (list_item (list_marker_decimal_period) (list_item_content (paragraph)))))
+(document (list (list_item (list_marker_decimal_period) (list_item_content (paragraph))) (list_item (list_marker_decimal_period) (list_item_content (paragraph)))))
 
 =============================
 A blank continuation preserves bullet siblings (#459)
@@ -4483,7 +4483,7 @@ A blank continuation preserves bullet siblings (#459)
 
 ---
 
-(document (list (list_item (list_marker_dash) (list_item_content (paragraph) (list_continuation_marker))) (list_item (list_marker_dash) (list_item_content (paragraph)))))
+(document (list (list_item (list_marker_dash) (list_item_content (paragraph))) (list_item (list_marker_dash) (list_item_content (paragraph)))))
 
 =============================
 A container label publishes inline emphasis (#459)

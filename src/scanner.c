@@ -387,6 +387,8 @@ static const uint8_t BLOCK_FLAG_FOOTNOTE_ATTACHED = 1 << 1;
 // FOOTNOTE only: the attached block has begun as a table, whose rows may
 // continue at column zero until a different line starts.
 static const uint8_t BLOCK_FLAG_FOOTNOTE_ATTACHED_TABLE = 1 << 2;
+static const uint8_t BLOCK_FLAG_FOOTNOTE_DANGLING_PLUS = 1 << 6;
+static const uint8_t BLOCK_FLAG_FOOTNOTE_BLANK_BEFORE_PLUS = 1 << 3;
 // CODE_BLOCK only: no closer follows, and the fence sits directly in a div.
 static const uint8_t BLOCK_FLAG_FENCE_UNCLOSED_IN_DIV = 1 << 1;
 // Lists only: three or more blank lines stand before the current line.
@@ -416,6 +418,11 @@ static const uint8_t BLOCK_FLAG_QUOTE_OPENING_LINE = 1 << 2;
 static const uint8_t BLOCK_FLAG_OPAQUE_QUOTE_TAIL = 1 << 3;
 static const uint8_t BLOCK_FLAG_LATER_OPAQUE_FENCE = 1 << 4;
 static const uint8_t BLOCK_FLAG_QUOTE_CONTINUATION_PENDING = 1 << 5;
+static const uint8_t BLOCK_FLAG_QUOTE_BLANK_PLUS = 1 << 1;
+// A quote-prefixed `+` can be scanned before its enclosing item closes.
+static const uint8_t BLOCK_FLAG_PLUS_AHEAD = 1 << 5;
+// The attached block starts outside the quote prefix.
+static const uint8_t BLOCK_FLAG_QUOTE_DEDENT_PLUS = 1 << 0;
 static const uint8_t BLOCK_FLAG_COMMENT_RESTORES_LAZY = 1 << 6;
 static const uint8_t BLOCK_FLAG_DESCRIPTION_FENCE_HAS_CLOSER = 1 << 7;
 
@@ -811,6 +818,7 @@ static bool braced_closer_ahead(Scanner *s, TSLexer *lexer, char marker);
 static bool at_block_opener_margin(Scanner *s, uint32_t column);
 static bool marker_line_has_content(Scanner *s, TSLexer *lexer);
 static bool continuation_marker_column(Scanner *s, uint32_t column);
+static void note_fence_blank_quote_plus(Scanner *s, TSLexer *lexer);
 static bool opener_reaches_item_margin(Scanner *s, uint32_t column);
 static bool list_item_open(Scanner *s);
 static bool quoted_item_column_reached(Scanner *s, uint32_t column);
@@ -3636,6 +3644,9 @@ typedef enum {
 /// `substitution_arrow_ahead` needs the same reading of the same run, or a
 /// `{~` commits to a substitution whose arrow no token can produce.
 static bool paragraph_block_opener_ahead(Scanner *s, TSLexer *lexer, int markers_seen);
+static bool scan_continuation_marker_at_paragraph_end(Scanner *s,
+                                                      TSLexer *lexer,
+                                                      uint8_t markers);
 
 static bool in_caption(Scanner *s) {
   return find_block(s, TABLE_CAPTION) || (s->state & STATE_SINGLE_LINE_CAPTION);
@@ -3729,7 +3740,12 @@ static bool caption_line_ends_block(Scanner *s, BracketProbe *probe, uint8_t ind
     }
   }
   bool note_outdent = note && content_column < note_margin;
-  if (!ends && ((at_margin && !extra_quote_indent && !caret_indented) || comment_line || note_outdent)) {
+  if (!ends && seen == 0 && lexer->lookahead == '+' &&
+      find_list(s) != NULL) {
+    ends = scan_continuation_marker_at_paragraph_end(s, lexer, 0);
+  }
+  if (!ends && ((at_margin && !extra_quote_indent && !caret_indented) ||
+                comment_line || note_outdent)) {
     if (seen > 0 && !note_outdent) {
       bracket_probe_rewind(probe, content_position);
       s->indent = indent;
@@ -4014,6 +4030,7 @@ static bool parse_code_fence(Scanner *s, TSLexer *lexer,
         return false;
       }
       if (valid_symbols[CODE_BLOCK_END]) {
+        note_fence_blank_quote_plus(s, lexer);
         remove_block(s);
         lexer->result_symbol = CODE_BLOCK_END;
       } else {
@@ -4264,7 +4281,10 @@ static void output_block_quote_continuation(Scanner *s, TSLexer *lexer,
                                             bool ending_newline) {
   for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
     Block *b = *array_get(s->open_blocks, i);
-    if (b->type == BLOCK_QUOTE) b->flags &= (uint8_t)~BLOCK_FLAG_QUOTE_OPENING_LINE;
+    if (b->type == BLOCK_QUOTE) {
+      b->flags &= (uint8_t)~BLOCK_FLAG_QUOTE_OPENING_LINE;
+      if (ending_newline) b->flags &= (uint8_t)~BLOCK_FLAG_QUOTE_BLANK_PLUS;
+    }
   }
   // It's important to always clear the stored level on newlines.
   if (ending_newline) {
@@ -4381,6 +4401,36 @@ static bool parse_block_quote(Scanner *s, TSLexer *lexer,
       s, s->block_quote_level + 1, marker_start_col);
   bool has_marker = marker_at_owner &&
       scan_block_quote_marker(s, lexer, &ending_newline);
+  Block *quote_list_owner = find_list(s);
+  Block *holding_quote = find_block(s, BLOCK_QUOTE);
+  if (has_marker && lexer->lookahead == '>' && holding_quote &&
+      quote_list_owner && (s->state & STATE_LIST_CONTINUATION) &&
+      !list_opened_in_quote(s, quote_list_owner) &&
+      marker_start_col == quote_list_owner->content_col &&
+      valid_symbols[BLOCK_QUOTE_BEGIN] && !at_nesting_cap(s)) {
+    bool nested_line_end = false;
+    if (scan_block_quote_marker(s, lexer, &nested_line_end)) {
+      uint8_t depth = holding_quote->data + 1;
+      push_block(s, BLOCK_QUOTE, depth);
+      peek_block(s)->flags |= BLOCK_FLAG_QUOTE_OPENING_LINE;
+      uint32_t content_col = line_column(s, lexer);
+      if (content_col <= UINT8_MAX) {
+        record_container_content_column(s, (uint8_t)content_col);
+      }
+      mark_end(s, lexer);
+      s->block_quote_level = nested_line_end ? 0 : depth;
+      lexer->result_symbol = BLOCK_QUOTE_BEGIN;
+      return true;
+    }
+  }
+  if (has_marker && lexer->lookahead == '+' &&
+      valid_symbols[CLOSE_PARAGRAPH] &&
+      (find_list(s) != NULL || find_block(s, FOOTNOTE) != NULL) &&
+      scan_continuation_marker_at_paragraph_end(
+          s, lexer, s->block_quote_level + 1)) {
+    lexer->result_symbol = CLOSE_PARAGRAPH;
+    return true;
+  }
 
   // The marker run is not over: another `>` follows this marker on the same
   // line, so `marker_count` below is this line's depth SO FAR, not its depth.
@@ -4506,6 +4556,17 @@ static bool parse_block_quote(Scanner *s, TSLexer *lexer,
   // Store nesting level on the scanner, to keep it between runs
   // in the case of multiple `>`, like `> > > txt`.
   Block *continuation_quote = find_block(s, BLOCK_QUOTE);
+  if (has_marker && continuation_quote &&
+      !(continuation_quote->flags & BLOCK_FLAG_QUOTE_CONTINUATION_PENDING)) {
+    for (int i = s->open_blocks->size - 1; i >= 0; --i) {
+      Block *candidate = *array_get(s->open_blocks, i);
+      if (candidate->type == BLOCK_QUOTE &&
+          (candidate->flags & BLOCK_FLAG_QUOTE_CONTINUATION_PENDING)) {
+        continuation_quote = candidate;
+        break;
+      }
+    }
+  }
   bool attached_quote = has_marker && continuation_quote &&
       (continuation_quote->flags & BLOCK_FLAG_QUOTE_CONTINUATION_PENDING);
   uint8_t marker_count = s->block_quote_level + has_marker +
@@ -4588,9 +4649,14 @@ static bool parse_block_quote(Scanner *s, TSLexer *lexer,
   }
 
   // There's an open block quote with a higher nesting level.
+  Block *plus_list = lexer->lookahead == '+' ? find_list(s) : NULL;
+  bool plus_dedents_item_quote = plus_list && marker_count > 0 &&
+      !list_opened_in_quote(s, plus_list);
   if (highest_block_quote && marker_count < highest_block_quote->data &&
       !run_continues && !run_stopped_short && !attached_table_prefix &&
-      !any_open_inline) {
+      !any_open_inline &&
+      (lexer->lookahead != '+' || plus_dedents_item_quote ||
+       (s->state & STATE_AFTER_BLANK_LINE))) {
     // Close the paragraph, but allow lazy continuation (without any `>`).
     if (valid_symbols[CLOSE_PARAGRAPH] && has_marker) {
       clear_literal_brackets(s);
@@ -4602,6 +4668,15 @@ static bool parse_block_quote(Scanner *s, TSLexer *lexer,
       // divs, etc).
       size_t close_pos =
           number_of_blocks_from_top(s, BLOCK_QUOTE, marker_count + 1);
+      if (lexer->lookahead == '+' && marker_count > 0) {
+        for (int i = s->open_blocks->size - 1; i >= 0; --i) {
+          Block *b = *array_get(s->open_blocks, i);
+          if (b->type == BLOCK_QUOTE && b->data == marker_count) {
+            b->flags |= BLOCK_FLAG_QUOTE_DEDENT_PLUS;
+            break;
+          }
+        }
+      }
       s->state &= ~STATE_AFTER_BLANK_LINE;
       close_blocks(s, lexer, close_pos);
       return true;
@@ -4639,7 +4714,15 @@ static bool parse_block_quote(Scanner *s, TSLexer *lexer,
         s->indent > margin_col) {
       margin_col = s->indent;
     }
-    if (!at_block_opener_margin(s, margin_col)) {
+    bool attached_quote_at_owner =
+        (s->state & STATE_LIST_CONTINUATION) && quote_list &&
+        highest_block_quote &&
+        marker_start_col == highest_block_quote->content_col;
+    bool attached_list_quote =
+        (s->state & STATE_LIST_CONTINUATION) && quote_list &&
+        !highest_block_quote && marker_start_col == s->continuation_col;
+    if (!at_block_opener_margin(s, margin_col) &&
+        !attached_quote_at_owner && !attached_list_quote) {
       return false;
     }
     s->state &= ~STATE_AFTER_BLANK_LINE;
@@ -6307,6 +6390,10 @@ static bool parse_list_item_end(Scanner *s, TSLexer *lexer,
     s->blocks_to_close = 1;
     return true;
   }
+  Block *quote = find_block(s, BLOCK_QUOTE);
+  if (lexer->lookahead == '>' && quote &&
+      (quote->flags & BLOCK_FLAG_QUOTE_BLANK_PLUS) &&
+      (list->flags & BLOCK_FLAG_PLUS_AHEAD)) return false;
 
   // We're still inside the list, don't end it yet. An unmarked line under a
   // list opened in a quote is measured by column, as the continuation is.
@@ -6377,6 +6464,7 @@ static bool parse_list_item_end(Scanner *s, TSLexer *lexer,
   bool ending_newline;
   uint8_t block_quote_markers =
       scan_block_quote_markers(s, lexer, &ending_newline);
+
 
   // Delayed output of BLOCK_QUOTE_CONTINUATION, if necessary.
   uint8_t has_block_quote_continuation = false;
@@ -7068,13 +7156,22 @@ static bool parse_footnote_end(Scanner *s, TSLexer *lexer,
     return false;
   }
   // A lone `+` at column 0 continues the body (PART 9 section 17).
-  if (!at_eof && s->indent == 0 && lexer->lookahead == '+' &&
+  if (!at_eof && !(top->flags & BLOCK_FLAG_FOOTNOTE_BLANK_BEFORE_PLUS) &&
+      s->indent == 0 && lexer->lookahead == '+' &&
       (valid_symbols[LIST_CONTINUATION_MARKER] ||
        valid_symbols[EMPTY_LIST_CONTINUATION_MARKER])) {
+    if (top->flags & BLOCK_FLAG_FOOTNOTE_DANGLING_PLUS) {
+      remove_block(s);
+      lexer->result_symbol = FOOTNOTE_END;
+      return true;
+    }
     advance(s, lexer);
     while (lexer->lookahead == ' ' || lexer->lookahead == '\t') advance(s, lexer);
     if (at_line_end(lexer) || lexer->eof(lexer)) {
-      return emit_plus_line(s, lexer, valid_symbols, 0);
+      if (emit_plus_line(s, lexer, valid_symbols, 0)) return true;
+      remove_block(s);
+      lexer->result_symbol = FOOTNOTE_END;
+      return true;
     }
   }
 
@@ -7541,7 +7638,12 @@ static bool continuation_marker_column(Scanner *s, uint32_t column) {
   }
   for (int i = s->open_blocks->size - 1; i >= 0; --i) {
     Block *b = *array_get(s->open_blocks, i);
-    if (is_list(b->type) && b->data == column + 1) return true;
+    if (is_list(b->type) &&
+        (b->data == column + 1 ||
+         (s->indent > column && b->data == s->indent + 1) ||
+         (find_block(s, BLOCK_QUOTE) && b->content_col == column))) {
+      return true;
+    }
     if (b->type == BLOCK_QUOTE && b->content_col != 0 &&
         column == b->content_col) {
       return true;
@@ -7574,7 +7676,8 @@ static void plus_owner(Scanner *s, uint32_t column, uint8_t markers,
   for (int i = s->open_blocks->size - 1; i >= 0; --i) {
     Block *b = *array_get(s->open_blocks, i);
     if (is_list(b->type) && b->type != LIST_DEFINITION && level == markers &&
-        (b->data == relative + 1 || b->data == column + 1)) {
+        (list_opened_in_quote(s, b) ? b->data == relative + 1
+                                    : b->data == column + 1)) {
       list_owner = b;
       reach = (uint32_t)i;
       break;
@@ -7655,16 +7758,24 @@ static PlusFollow plus_follower(Scanner *s, TSLexer *lexer, uint32_t column,
   if (quote_owner) {
     // Recorded before the list-marker scan moves the lexer.
     if (attach_col) *attach_col = next_col >= prefix_end ? next_col - prefix_end : 0;
-    if (attach_char) *attach_char = lexer->lookahead;
+    int32_t follower_char = lexer->lookahead;
+    if (attach_char) *attach_char = follower_char;
     TokenType marker = scan_list_marker_token(s, lexer);
     bool item = marker != IGNORED && marker_line_has_content(s, lexer);
     if (item_follows && next_col == column) *item_follows = item;
-    // Attached: a non-list block at document column 0, or at the quote's own
-    // marker column behind the enclosing prefixes. Never a line that
-    // re-enters the quote.
-    bool attaches = !item && reentered < markers &&
-        (next_col == 0 || (reentered + 1 == markers &&
-                           next_col + 2 == quote_owner->content_col));
+    // Attach a non-list follower at the owner's column or inside its quote.
+    bool attaches = !item &&
+        (((quote_owner->flags & BLOCK_FLAG_QUOTE_DEDENT_PLUS) == 0 &&
+          count_blocks(s, BLOCK_QUOTE) == markers &&
+          reentered < markers &&
+          (next_col == 0 || (reentered + 1 == markers &&
+                             next_col + 2 == quote_owner->content_col))) ||
+         ((count_blocks(s, BLOCK_QUOTE) > markers ||
+           (quote_owner->flags & BLOCK_FLAG_QUOTE_DEDENT_PLUS)) &&
+          reentered == markers && next_col == column) ||
+         (reentered == markers && follower_char == '>' &&
+          (find_block(s, FOOTNOTE) != NULL ||
+           (find_list(s) && find_list(s)->type == LIST_DEFINITION))));
     if (chain_start >= 0 && reentered == 0) {
       uint32_t rel = next_col >= prefix_end ? next_col - prefix_end : 0;
       attaches = !item && (rel == 0 || rel == s->chain_col ||
@@ -7677,11 +7788,48 @@ static PlusFollow plus_follower(Scanner *s, TSLexer *lexer, uint32_t column,
   }
   if (next_col != column || reentered < markers) return PLUS_REFUSED;
   TokenType marker = scan_list_marker_token(s, lexer);
-  if (marker != IGNORED && list_marker_to_block(marker) == list_owner->type &&
+  if (marker != IGNORED && marker != LIST_MARKER_DESCRIPTION &&
       marker_line_has_content(s, lexer)) {
     return PLUS_REFUSED;
   }
   return PLUS_ATTACHES;
+}
+
+static void note_fence_blank_quote_plus(Scanner *s, TSLexer *lexer) {
+  Block *quote = find_block(s, BLOCK_QUOTE);
+  if (!quote || !find_list(s) || !at_line_end(lexer)) return;
+  uint8_t indent = s->indent;
+  uint8_t level = s->block_quote_level;
+  uint32_t col_base = s->col_base;
+  consume_line_end(s, lexer);
+  bool blank = false;
+  uint8_t quotes = count_blocks(s, BLOCK_QUOTE);
+  uint8_t first = scan_block_quote_markers(s, lexer, &blank);
+  if (first == quotes && blank) {
+    bool next_blank = false;
+    uint8_t second = scan_block_quote_markers(s, lexer, &next_blank);
+    consume_whitespace(s, lexer);
+    if (second == quotes && !next_blank && lexer->lookahead == '+') {
+      uint32_t column = line_column(s, lexer);
+      Block *owner_list = NULL;
+      Block *owner_quote = NULL;
+      uint32_t reach = 0;
+      plus_owner(s, column, quotes, &owner_list, &owner_quote, &reach);
+      advance(s, lexer);
+      while (lexer->lookahead == ' ' || lexer->lookahead == '\t') advance(s, lexer);
+      if (owner_list && owner_list->type != LIST_DEFINITION && at_line_end(lexer)) {
+        consume_line_end(s, lexer);
+        if (plus_follower(s, lexer, column, quotes,
+                          NULL, NULL, NULL, NULL, NULL) == PLUS_ATTACHES) {
+          owner_list->flags |= BLOCK_FLAG_PLUS_AHEAD;
+          quote->flags |= BLOCK_FLAG_QUOTE_BLANK_PLUS;
+        }
+      }
+    }
+  }
+  s->indent = indent;
+  s->block_quote_level = level;
+  s->col_base = col_base;
 }
 
 // Decide the list's `+` before taking its bytes. The zero-width check lets a
@@ -7693,7 +7841,21 @@ static bool scan_plus_owner_check(Scanner *s, TSLexer *lexer) {
   uint32_t column = line_column(s, lexer);
   bool first_block = s->marker_end_col != 0 &&
       column == s->marker_end_col;
+  if (!first_block) {
+    Block *owner_list = NULL;
+    Block *owner_quote = NULL;
+    uint32_t reach = 0;
+    plus_owner(s, column, s->block_quote_level, &owner_list,
+               &owner_quote, &reach);
+    if (owner_list) list = owner_list;
+    else if (s->indent <= column || list->data != s->indent + 1)
+      return false;
+  }
+  Block *quote = find_block(s, BLOCK_QUOTE);
   uint32_t owner_col = first_block ? list->data - 1 : column;
+  if (!first_block && s->block_quote_level > 0 &&
+      list_opened_in_quote(s, list) && quote && quote->content_col >= 2)
+    owner_col = quote->content_col - 2;
   mark_end(s, lexer);
   advance(s, lexer);
   while (lexer->lookahead == ' ' || lexer->lookahead == '\t') advance(s, lexer);
@@ -7707,14 +7869,25 @@ static bool scan_plus_owner_check(Scanner *s, TSLexer *lexer) {
       consume_line_end(s, lexer);
       consume_whitespace(s, lexer);
       uint32_t next_col = line_column(s, lexer);
-      refused = next_col != owner_col;
+      refused = at_line_end(lexer) || lexer->eof(lexer) ||
+          next_col != owner_col;
+      if (!refused) {
+        for (uint8_t i = 0; i < s->block_quote_level; ++i) {
+          if (lexer->lookahead != '>') {
+            refused = true;
+            break;
+          }
+          advance(s, lexer);
+          if (lexer->lookahead == ' ') advance(s, lexer);
+        }
+      }
       if (!refused) {
         TokenType marker = scan_list_marker_token(s, lexer);
-        sibling = marker != IGNORED &&
-            list_marker_to_block(marker) == list->type &&
+        bool item = marker != IGNORED &&
+            marker != LIST_MARKER_DESCRIPTION &&
             marker_line_has_content(s, lexer);
-        sibling = sibling && next_col == owner_col;
-        refused = sibling;
+        sibling = item && list_marker_to_block(marker) == list->type;
+        refused = item;
       }
     }
   }
@@ -7764,6 +7937,7 @@ static bool emit_plus_line(Scanner *s, TSLexer *lexer,
                                       &quote_owned, &item_follows,
                                       &attach_col, &attach_char,
                                       &attach_prefixes);
+    owner_quote->flags &= (uint8_t)~BLOCK_FLAG_QUOTE_DEDENT_PLUS;
     if (follow == PLUS_ATTACHES) {
       // The follower was read here; the generic path below would re-read a
       // lexer the list-marker probe has moved.
@@ -7777,6 +7951,9 @@ static bool emit_plus_line(Scanner *s, TSLexer *lexer,
       if (find_list(s) || attach_char != '>') {
         s->state |= STATE_LIST_CONTINUATION;
         s->continuation_col = attach_col <= UINT8_MAX ? (uint8_t)attach_col : 0;
+      }
+      if (attach_char == '>' && count_blocks(s, BLOCK_QUOTE) > level) {
+        owner_quote->flags |= BLOCK_FLAG_QUOTE_CONTINUATION_PENDING;
       }
       s->attached_row_prefix = attach_char == '|' ? attach_prefixes : UINT8_MAX;
       lexer->result_symbol = LIST_CONTINUATION_MARKER;
@@ -7798,6 +7975,7 @@ static bool emit_plus_line(Scanner *s, TSLexer *lexer,
     }
   }
   Block *list = find_list(s);
+  if (owner_list) list = owner_list;
   uint32_t attachment_col = marker_column;
   bool first_block = s->marker_end_col != 0 &&
       marker_column == s->marker_end_col;
@@ -7841,6 +8019,9 @@ static bool emit_plus_line(Scanner *s, TSLexer *lexer,
   int32_t next_char = lexer->lookahead;
   uint32_t footnote_follower_col = footnote_first && note->data >= 2
       ? note->data - 2 : 0;
+  if (note && note->type == FOOTNOTE && (next_eof || next_line_end)) {
+    return false;
+  }
   if (footnote_first &&
       (next_eof || next_line_end || follower_prefixes != level ||
        next_column != footnote_follower_col)) {
@@ -7862,22 +8043,40 @@ static bool emit_plus_line(Scanner *s, TSLexer *lexer,
       return false;
     }
   }
+  if (list && find_block(s, BLOCK_QUOTE) && level == 0 &&
+      next_char == '>' && next_column < marker_column) {
+    advance(s, lexer);
+    if (lexer->lookahead == ' ') advance(s, lexer);
+    TokenType marker = scan_list_marker_token(s, lexer);
+    if (marker != IGNORED && marker != LIST_MARKER_DESCRIPTION &&
+        marker_line_has_content(s, lexer)) {
+      s->plus_scan_spent = true;
+      return false;
+    }
+  }
   bool empty = next_eof || (!list && next_line_end) ||
                (next_column != attachment_col &&
                 !(first_block && next_column == 0) &&
                 !(footnote_first && next_column == footnote_follower_col) &&
                 !next_line_end &&
                 (list || (note && note->type == FOOTNOTE)));
+  bool sibling_item = false;
   if (!empty && list && !at_line_end(lexer)) {
     bool ending_newline = false;
     scan_block_quote_markers(s, lexer, &ending_newline);
     s->indent = consume_whitespace(s, lexer);
     uint32_t marker_column = line_column(s, lexer) - prefix_end;
     TokenType marker = scan_list_marker_token(s, lexer);
-    empty = marker != IGNORED &&
-            (list_marker_to_block(marker) == list->type || first_block) &&
-            marker_column + 1 == list->data &&
-            marker_line_has_content(s, lexer);
+    sibling_item = marker != IGNORED && marker != LIST_MARKER_DESCRIPTION &&
+                   marker_line_has_content(s, lexer) &&
+                   (marker_column + 1 == list->data ||
+                    (level == 0 && find_block(s, BLOCK_QUOTE) &&
+                     next_column == attachment_col));
+    empty = sibling_item;
+  }
+  if (sibling_item && find_block(s, BLOCK_QUOTE)) {
+    s->plus_scan_spent = true;
+    return false;
   }
   s->indent = indent;
   s->block_quote_level = level;
@@ -7918,6 +8117,61 @@ static bool emit_plus_line(Scanner *s, TSLexer *lexer,
   }
   lexer->result_symbol = token;
   return true;
+}
+
+// Scan a quoted marker while its list or footnote owner is still open.
+static bool scan_quoted_plus_owner(Scanner *s, TSLexer *lexer,
+                                   const bool *valid_symbols) {
+  if (lexer->lookahead != '>' ||
+      s->marker_end_col != 0 ||
+      line_column(s, lexer) != 0 ||
+      (!valid_symbols[PLUS_OWNER_CHECK] &&
+       !valid_symbols[LIST_CONTINUATION_MARKER])) {
+    return false;
+  }
+  Block *list = find_list(s);
+  Block *note = find_block(s, FOOTNOTE);
+  Block *owner = list ? list : note;
+  if (!owner || !(owner->flags & BLOCK_FLAG_PLUS_AHEAD)) return false;
+  bool ending_newline = false;
+  uint8_t markers = scan_block_quote_markers(s, lexer, &ending_newline);
+  if (markers == 0 && lexer->lookahead == '>') return false;
+  // Declines with the markers consumed: the `+` scans below read on from here.
+  if (markers == 0 || ending_newline || lexer->lookahead != '+') return false;
+  uint32_t column = line_column(s, lexer);
+  if (list && list->data + 2 * markers != column + 1) {
+    s->plus_scan_spent = true;
+    return false;
+  }
+  uint8_t old_level = s->block_quote_level;
+  s->block_quote_level = markers;
+  if (valid_symbols[PLUS_OWNER_CHECK]) {
+    bool checked = scan_plus_owner_check(s, lexer);
+    if (!checked || s->plus_decision >= 2) {
+      s->block_quote_level = old_level;
+      s->plus_decision = 0;
+      return false;
+    }
+    owner->flags &= (uint8_t)~BLOCK_FLAG_PLUS_AHEAD;
+    return true;
+  }
+  advance(s, lexer);
+  while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+    advance(s, lexer);
+  }
+  if (!at_line_end(lexer) && !lexer->eof(lexer)) {
+    s->block_quote_level = old_level;
+    s->plus_scan_spent = true;
+    return false;
+  }
+  bool attached = emit_plus_line(s, lexer, valid_symbols, column);
+  if (!attached) {
+    s->block_quote_level = old_level;
+    s->plus_scan_spent = true;
+  } else {
+    owner->flags &= (uint8_t)~BLOCK_FLAG_PLUS_AHEAD;
+  }
+  return attached;
 }
 
 static bool parse_plus_line(Scanner *s, TSLexer *lexer,
@@ -8835,6 +9089,35 @@ static bool end_paragraph_in_block_quote(Scanner *s, TSLexer *lexer,
   // only by `output_block_quote_continuation`, which this route never reaches,
   // so a stored count would describe a different line (the #114 trap).
   *markers_seen = marker_count;
+  if (ending_newline && lexer->lookahead == '>' && find_list(s)) {
+    uint8_t indent = s->indent;
+    uint8_t level = s->block_quote_level;
+    uint32_t col_base = s->col_base;
+    bool next_blank = false;
+    uint8_t next = scan_block_quote_markers(s, lexer, &next_blank);
+    consume_whitespace(s, lexer);
+    if (next == marker_count && !next_blank && lexer->lookahead == '+') {
+      uint32_t column = line_column(s, lexer);
+      Block *owner_list = NULL;
+      Block *owner_quote = NULL;
+      uint32_t reach = 0;
+      plus_owner(s, column, next, &owner_list, &owner_quote, &reach);
+      advance(s, lexer);
+      while (lexer->lookahead == ' ' || lexer->lookahead == '\t') advance(s, lexer);
+      if (owner_list && owner_list->type != LIST_DEFINITION &&
+          at_line_end(lexer)) {
+        consume_line_end(s, lexer);
+        if (plus_follower(s, lexer, column, next,
+                          NULL, NULL, NULL, NULL, NULL) == PLUS_ATTACHES) {
+          owner_list->flags |= BLOCK_FLAG_PLUS_AHEAD;
+          block->flags |= BLOCK_FLAG_QUOTE_BLANK_PLUS;
+        }
+      }
+    }
+    s->indent = indent;
+    s->block_quote_level = level;
+    s->col_base = col_base;
+  }
 
   // No blockquote marker.
   if (marker_count == 0) {
@@ -8842,7 +9125,8 @@ static bool end_paragraph_in_block_quote(Scanner *s, TSLexer *lexer,
   }
 
   // We've gone down a blockquote level, we need to close the paragraph.
-  if (marker_count < block->data || ending_newline) {
+  if ((marker_count < block->data && lexer->lookahead != '+') ||
+      ending_newline) {
     return true;
   }
 
@@ -8872,6 +9156,11 @@ static bool end_paragraph_in_block_quote(Scanner *s, TSLexer *lexer,
   // one-character line (`> y`) then read as blank (#411).
   consume_whitespace(s, lexer);
   if (at_line_end(lexer)) {
+    return true;
+  }
+  if (lexer->lookahead == '+' &&
+      (find_list(s) != NULL || find_block(s, FOOTNOTE) != NULL) &&
+      scan_continuation_marker_at_paragraph_end(s, lexer, marker_count)) {
     return true;
   }
   if (block == peek_block(s)) {
@@ -8963,7 +9252,8 @@ static bool scan_continuation_marker_at_paragraph_end(Scanner *s,
   if (lexer->lookahead != '+') {
     return false;
   }
-  if (find_list(s) == NULL && find_block(s, BLOCK_QUOTE) == NULL) {
+  if (find_list(s) == NULL && find_block(s, BLOCK_QUOTE) == NULL &&
+      find_block(s, FOOTNOTE) == NULL) {
     return false;
   }
   // The same column question the marker itself asks. If the two disagree, this
@@ -8977,7 +9267,7 @@ static bool scan_continuation_marker_at_paragraph_end(Scanner *s,
   // text of that paragraph (corpus 88, 246).
   Block *item = peek_block(s);
   if (column != 0 && item && is_list(item->type) &&
-      item->content_col == column) {
+      item->content_col == column && !find_block(s, BLOCK_QUOTE)) {
     return false;
   }
   advance(s, lexer);
@@ -8985,13 +9275,27 @@ static bool scan_continuation_marker_at_paragraph_end(Scanner *s,
     advance(s, lexer);
   }
   if (!lexer->eof(lexer) && !at_line_end(lexer)) return false;
+  if (lexer->eof(lexer)) return false;
   // A `+` the next line refuses folds into this paragraph as text (L3).
   if (at_line_end(lexer)) {
     consume_line_end(s, lexer);
-    if (plus_follower(s, lexer, column, markers, NULL, NULL, NULL, NULL,
-                      NULL) ==
-        PLUS_REFUSED) {
+    PlusFollow follow = plus_follower(s, lexer, column, markers,
+                                      NULL, NULL, NULL, NULL, NULL);
+    if (follow != PLUS_ATTACHES) {
+      Block *note = find_block(s, FOOTNOTE);
+      if (note && !find_list(s) && !find_block(s, BLOCK_QUOTE)) {
+        note->flags |= BLOCK_FLAG_FOOTNOTE_DANGLING_PLUS;
+      }
       return false;
+    }
+    if (markers > 0) {
+      Block *owner_list = NULL;
+      Block *owner_quote = NULL;
+      uint32_t reach = 0;
+      plus_owner(s, column, markers, &owner_list, &owner_quote, &reach);
+      Block *owner = owner_list ? owner_list : find_list(s);
+      if (!owner) owner = find_block(s, FOOTNOTE);
+      if (owner) owner->flags |= BLOCK_FLAG_PLUS_AHEAD;
     }
   }
   return true;
@@ -9733,6 +10037,21 @@ static bool close_paragraph(Scanner *s, TSLexer *lexer) {
         (column == s->continuation_col ||
          column == s->continuation_col + quote_prefix);
     if (column < margin && !attached_lazy_line) {
+      if (lexer->lookahead == '+') {
+        advance(s, lexer);
+        while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+          advance(s, lexer);
+        }
+        if (lexer->eof(lexer)) {
+          note->flags |= BLOCK_FLAG_FOOTNOTE_DANGLING_PLUS;
+        } else if (at_line_end(lexer)) {
+          consume_line_end(s, lexer);
+          if (plus_follower(s, lexer, column, 0, NULL, NULL, NULL, NULL,
+                            NULL) != PLUS_ATTACHES) {
+            note->flags |= BLOCK_FLAG_FOOTNOTE_DANGLING_PLUS;
+          }
+        }
+      }
       return true;
     }
   }
@@ -14458,6 +14777,10 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   }
   bool is_newline = at_line_end(lexer);
   if (at_line_start) s->line_blank = is_newline;
+  if (at_line_start && !is_newline && lexer->lookahead != '+') {
+    Block *note = find_block(s, FOOTNOTE);
+    if (note) note->flags &= (uint8_t)~BLOCK_FLAG_FOOTNOTE_BLANK_BEFORE_PLUS;
+  }
   // End-of-input, recorded HERE and not where it is read. The read is at the
   // very bottom of this function, after every probe has had its turn, and a
   // probe that advanced and then declined leaves the lexer wherever it stopped
@@ -14483,6 +14806,8 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   // repeated scanner calls tree-sitter makes at one position agree.
   if (at_line_start && is_newline) {
     s->state |= STATE_AFTER_BLANK_LINE;
+    Block *note = find_block(s, FOOTNOTE);
+    if (note) note->flags |= BLOCK_FLAG_FOOTNOTE_BLANK_BEFORE_PLUS;
     // A `+` CONTINUATION ATTACHES EXACTLY ONE BLOCK (PART 9 section 17), and a
     // blank line ends that block whatever it is. The flag has to go with it.
     //
@@ -14864,6 +15189,14 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   if (valid_symbols[CLOSE_PARAGRAPH] && parse_close_paragraph(s, lexer)) {
     return true;
   }
+  if (lexer->lookahead == '>' && find_block(s, FOOTNOTE) &&
+      scan_quoted_plus_owner(s, lexer, valid_symbols)) {
+    return true;
+  }
+  if (s->plus_scan_spent) {
+    s->plus_scan_spent = false;
+    return false;
+  }
   if (valid_symbols[FOOTNOTE_END] &&
       parse_footnote_end(s, lexer, valid_symbols, at_eof)) {
     return true;
@@ -14902,6 +15235,15 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
        valid_symbols[EMPTY_LIST_CONTINUATION_MARKER] ||
        valid_symbols[TABLE_CONTINUATION_ROW]) &&
       parse_plus_line(s, lexer, valid_symbols)) {
+    return true;
+  }
+  if (s->plus_scan_spent) {
+    s->plus_scan_spent = false;
+    return false;
+  }
+
+  if (lexer->lookahead == '>' &&
+      scan_quoted_plus_owner(s, lexer, valid_symbols)) {
     return true;
   }
   if (s->plus_scan_spent) {
