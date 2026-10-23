@@ -41,8 +41,7 @@ see[^a]
     (reference_label)
     (footnote_marker_end)
     (footnote_content
-      (paragraph)
-      (list_continuation_marker)))
+      (paragraph)))
   (paragraph)
   (paragraph
     (footnote_reference
