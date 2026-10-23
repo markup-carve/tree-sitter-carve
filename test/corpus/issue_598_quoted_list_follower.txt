@@ -157,3 +157,79 @@ A quoted plus past a nested list attaches a quoted list (#598)
                               marker: (list_marker_dash)
                               content: (list_item_content
                                 (paragraph)))))))))))))))))
+
+================================================================================
+A quoted plus inside an item refuses a quoted follower at column 0 (#598)
+================================================================================
+- > - a
+  > +
+> - b
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (block_quote
+          (block_quote_marker)
+          content: (content
+            (list
+              (list_item
+                marker: (list_marker_dash)
+                content: (list_item_content
+                  (paragraph
+                    (block_quote_marker))))))))))
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (paragraph)))))))
+
+================================================================================
+A quoted plus inside an item refuses a follower at the quote column (#598)
+================================================================================
+- > a
+  > +
+  b
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (block_quote
+          (block_quote_marker)
+          content: (content
+            (paragraph
+              (block_quote_marker))))))))
+
+================================================================================
+A quoted plus inside a nested item refuses a follower at the quote column (#598)
+================================================================================
+- > - a
+  > +
+  b
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (block_quote
+          (block_quote_marker)
+          content: (content
+            (list
+              (list_item
+                marker: (list_marker_dash)
+                content: (list_item_content
+                  (paragraph
+                    (block_quote_marker)))))))))))

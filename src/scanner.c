@@ -713,6 +713,8 @@ typedef struct {
   uint8_t drop_close_markers;
   // Column of the first `>` the paragraph-end quote probe read. Transient.
   uint32_t probe_first_marker_col;
+  // Set while the paragraph-end `+` probe asks `plus_follower`. Transient.
+  bool paragraph_plus_probe;
 } Scanner;
 
 // Tracks if a `[` starts an inline link.
@@ -8023,7 +8025,10 @@ static PlusFollow plus_follower(Scanner *s, TSLexer *lexer, uint32_t column,
           reentered < markers &&
           ((next_col == 0 && owner_margin == 0) ||
            (reentered + 1 == markers &&
-                             next_col + 2 == quote_owner->content_col))) ||
+            next_col + 2 == quote_owner->content_col &&
+            (owner_margin == 0 ||
+             ((quote_owner->flags & BLOCK_FLAG_QUOTE_OPENING_LINE) &&
+              !s->paragraph_plus_probe))))) ||
          ((count_blocks(s, BLOCK_QUOTE) > markers ||
            (quote_owner->flags & BLOCK_FLAG_QUOTE_DEDENT_PLUS)) &&
           !item_inside_quote_owner && reentered == markers &&
@@ -9800,8 +9805,11 @@ static bool scan_continuation_marker_at_paragraph_end(Scanner *s,
   // A `+` the next line refuses folds into this paragraph as text (L3).
   if (at_line_end(lexer)) {
     consume_line_end(s, lexer);
+    // A paragraph is open, so the quote's opening line is behind this `+`.
+    s->paragraph_plus_probe = true;
     PlusFollow follow = plus_follower(s, lexer, column, markers,
                                       NULL, NULL, NULL, NULL, NULL);
+    s->paragraph_plus_probe = false;
     if (follow != PLUS_ATTACHES) {
       Block *note = find_block(s, FOOTNOTE);
       if (note && !find_list(s) && !find_block(s, BLOCK_QUOTE)) {
@@ -16290,6 +16298,7 @@ static void init_scalars(Scanner *s) {
   s->lazy_drop_markers = 0;
   s->drop_close_markers = 0;
   s->probe_first_marker_col = 0;
+  s->paragraph_plus_probe = false;
   s->continuation_col = 0;
   s->attached_row_prefix = UINT8_MAX;
   s->plus_decision = 0;
