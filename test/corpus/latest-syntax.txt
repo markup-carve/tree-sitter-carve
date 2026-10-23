@@ -4338,7 +4338,7 @@ y[^f]
 
 ---
 
-(document (block_quote (block_quote_marker) (content (block_quote (block_quote_marker) (content (footnote (footnote_marker_begin) (reference_label) (footnote_marker_end) (footnote_content (paragraph))))))) (paragraph) (paragraph (footnote_reference (footnote_marker_begin) (reference_label) (footnote_marker_end))))
+(document (block_quote (block_quote_marker) (content (block_quote (block_quote_marker) (content (footnote (footnote_marker_begin) (reference_label) (footnote_marker_end) (footnote_content (paragraph))))) (block_quote_marker) (paragraph))) (paragraph (footnote_reference (footnote_marker_begin) (reference_label) (footnote_marker_end))))
 
 =============================
 A quoted blank line before a shallower quote ends the footnote (#459)

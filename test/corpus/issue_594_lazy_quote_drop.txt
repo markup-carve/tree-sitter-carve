@@ -331,3 +331,76 @@ A shallower lazy line keeps the deeper quote open (#594)
                 (block_quote_marker)
                 (block_quote_marker)
                 (block_quote_marker)))))))))
+
+================================================================================
+A list marker at a quoted item content column folds into the item quote paragraph (#594)
+================================================================================
+> - > a
+>   - b
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (block_quote
+              (block_quote_marker)
+              content: (content
+                (paragraph
+                  (block_quote_marker))))))))))
+
+================================================================================
+A heading at a quoted item content column ends the item quote (#594)
+================================================================================
+> - > a
+>   # h
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (block_quote
+              (block_quote_marker)
+              content: (content
+                (paragraph)))
+            (block_quote_marker)
+            (heading
+              marker: (marker)
+              content: (content))))))))
+
+================================================================================
+A sibling marker on a shallower quoted line starts the next item (#594)
+================================================================================
+> - > a
+> - b
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (block_quote
+              (block_quote_marker)
+              content: (content
+                (paragraph)))))
+        (list_item
+          (block_quote_marker)
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (paragraph)))))))

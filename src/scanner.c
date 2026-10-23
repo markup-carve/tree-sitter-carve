@@ -705,6 +705,9 @@ typedef struct {
   // The `>` markers of a line under a deeper quoted paragraph while
   // `close_paragraph` asks its openers; 0 otherwise. Transient.
   uint8_t lazy_drop_markers;
+  // Set by `close_paragraph` when an opener on such a line ended the
+  // paragraph: the quotes deeper than this many markers close with it.
+  uint8_t drop_close_markers;
 } Scanner;
 
 // Tracks if a `[` starts an inline link.
@@ -10199,7 +10202,7 @@ static bool marker_folds_into_nested_paragraph(Scanner *s, uint32_t column) {
     for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
       Block *b = *array_get(s->open_blocks, i);
       if (b == missing) break;
-      if (is_list(b->type)) reachable = true;
+      if (is_list(b->type) && column < b->content_col) reachable = true;
     }
     if (missing && !reachable) return true;
   }
@@ -10405,10 +10408,12 @@ static bool close_paragraph(Scanner *s, TSLexer *lexer) {
     uint8_t level = s->block_quote_level;
     s->block_quote_level = (uint8_t)markers_seen;
     s->lazy_drop_markers = (uint8_t)markers_seen;
+    bool plus_line = lexer->lookahead == '+';
     bool ends = close_paragraph_after_quote(s, lexer, markers_seen);
     s->lazy_drop_markers = 0;
     s->block_quote_level = level;
     if (!ends) lazy_quote->flags |= BLOCK_FLAG_QUOTE_LAZY_DROP;
+    else if (!plus_line) s->drop_close_markers = (uint8_t)markers_seen;
     return ends;
   }
   return close_paragraph_after_quote(s, lexer, markers_seen);
@@ -10529,8 +10534,17 @@ static bool parse_close_paragraph(Scanner *s, TSLexer *lexer) {
   if (has_open_span(s)) {
     return false;
   }
+  s->drop_close_markers = 0;
   if (!close_paragraph(s, lexer)) {
     return false;
+  }
+  // An opener on a shallower quoted line closes the deeper quotes before the
+  // line's markers are read, as it does after any other block.
+  if (s->drop_close_markers > 0) {
+    size_t deeper = number_of_blocks_from_top(s, BLOCK_QUOTE,
+                                              s->drop_close_markers + 1);
+    if (deeper > 0) s->blocks_to_close = (uint8_t)deeper;
+    s->drop_close_markers = 0;
   }
 
   // The paragraph is over, so whatever malformed fence it absorbed no longer
@@ -16070,6 +16084,7 @@ static void init_scalars(Scanner *s) {
   s->marker_end_col = 0;
   s->chain_col = UINT8_MAX;
   s->lazy_drop_markers = 0;
+  s->drop_close_markers = 0;
   s->continuation_col = 0;
   s->attached_row_prefix = UINT8_MAX;
   s->plus_decision = 0;
