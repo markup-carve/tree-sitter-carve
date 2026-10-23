@@ -9655,11 +9655,23 @@ keep_reading:
   // opens a block, which `close_paragraph` asks at the shallower depth.
   if (marker_count < block->data && after_markers != '+') {
     // A `>` right at the shallower quote's content column opens a quote there.
+    // So does one at the content column of an item the line still reaches.
     if (after_markers == '>') {
       Block *reached = nth_quote(s, marker_count);
-      if (!reached || reached->content_col == 0 ||
-          line_column(s, lexer) == reached->content_col) {
+      uint32_t at = line_column(s, lexer);
+      if (!reached || reached->content_col == 0 || at == reached->content_col) {
         return true;
+      }
+      Block *missing = nth_quote(s, marker_count + 1);
+      bool past_reached = false;
+      for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
+        Block *b = *array_get(s->open_blocks, i);
+        if (b == missing) break;
+        if (b == reached) past_reached = true;
+        else if (past_reached && is_list(b->type) && b->content_col == at) {
+          s->drop_close_markers = marker_count;
+          return true;
+        }
       }
     }
     consume_whitespace(s, lexer);
