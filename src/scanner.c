@@ -9762,6 +9762,19 @@ static bool scan_continuation_marker_at_paragraph_end(Scanner *s,
 /// and the clause kept as one quoted paragraph. Removing it moved 3 of 63
 /// lazy-shape documents onto carve-js and none off it, with no document newly
 /// erroring.
+/// The topmost open block a shallower quoted line reaches: below the first
+/// quote its markers stop short of. The stack top otherwise.
+static int drop_reach_top(Scanner *s) {
+  int top = (int)s->open_blocks->size - 1;
+  if (s->lazy_drop_markers == 0) return top;
+  uint8_t seen = 0;
+  for (int i = 0; i <= top; ++i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (b->type == BLOCK_QUOTE && ++seen > s->lazy_drop_markers) return i - 1;
+  }
+  return top;
+}
+
 static bool nested_quote_keeps_lazy_line(Scanner *s, uint32_t column) {
   Block *inner = find_block(s, BLOCK_QUOTE);
   return inner && count_blocks(s, BLOCK_QUOTE) > 1 &&
@@ -9779,11 +9792,13 @@ static bool at_block_opener_margin(Scanner *s, uint32_t column) {
   if (list_item_open(s)) {
     return opener_reaches_item_margin(s, column);
   }
-  for (int i = s->open_blocks->size - 1; i >= 0; --i) {
+  int top = drop_reach_top(s);
+  for (int i = top; i >= 0; --i) {
     Block *b = *array_get(s->open_blocks, i);
     if (b->type == BLOCK_QUOTE && b->content_col != 0 &&
         (column == b->content_col ||
-         (column > b->content_col && s->block_quote_level > 0))) {
+         (column > b->content_col && s->block_quote_level > 0 &&
+          (s->lazy_drop_markers == 0 || i != top)))) {
       return true;
     }
     if (is_list(b->type)) {
@@ -9826,12 +9841,18 @@ static bool opener_reaches_item_margin(Scanner *s, uint32_t column) {
   if (s->state & STATE_LIST_CONTINUATION) {
     return column == s->continuation_col;
   }
-  for (int i = s->open_blocks->size - 1; i >= 0; --i) {
+  int top = drop_reach_top(s);
+  for (int i = top; i >= 0; --i) {
     Block *b = *array_get(s->open_blocks, i);
     if (b->type == BLOCK_QUOTE && b->content_col != 0 &&
         (column == b->content_col ||
-         (column > b->content_col && s->block_quote_level > 0))) {
+         (column > b->content_col && s->block_quote_level > 0 &&
+          (s->lazy_drop_markers == 0 || i != top)))) {
       return true;
+    }
+    // A shallower line's margin is the quote it reaches, not a host past it.
+    if (b->type == BLOCK_QUOTE && s->lazy_drop_markers > 0 && i == top) {
+      return false;
     }
     if (is_list(b->type)) {
       if (b->content_col != 0 && column >= b->content_col) {
