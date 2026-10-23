@@ -413,6 +413,9 @@ static const uint8_t BLOCK_FLAG_TABLE_ROW_BOUNDARY_SAFE = 1 << 2;
 // Definition terms and description bodies use the same block type. Keep the
 // current item kind so nested terms and folded continuation lines stay scoped.
 static const uint8_t BLOCK_FLAG_DEFINITION_TERM = 1 << 2;
+// Lists other than LIST_DEFINITION, sharing bit 2: the paragraph-end probe
+// saw a quote-prefixed `+` short of the paragraph's quote attach.
+static const uint8_t BLOCK_FLAG_LIST_SHORT_PLUS = 1 << 2;
 // BLOCK_QUOTE only: no continuation line has reached the quote yet, so a `+`
 // in it stands on the quote's opening line.
 static const uint8_t BLOCK_FLAG_QUOTE_OPENING_LINE = 1 << 2;
@@ -708,6 +711,8 @@ typedef struct {
   // Set by `close_paragraph` when an opener on such a line ended the
   // paragraph: the quotes deeper than this many markers close with it.
   uint8_t drop_close_markers;
+  // Column of the first `>` the paragraph-end quote probe read. Transient.
+  uint32_t probe_first_marker_col;
 } Scanner;
 
 // Tracks if a `[` starts an inline link.
@@ -4771,11 +4776,36 @@ static bool parse_block_quote(Scanner *s, TSLexer *lexer,
   if (lazy_drop && !run_continues) {
     highest_block_quote->flags &= (uint8_t)~BLOCK_FLAG_QUOTE_LAZY_DROP;
   }
+  // A `+` one marker short of the quote holding the paragraph attaches in
+  // that quote (corpus 648); deeper quotes closed when it was probed, and a
+  // `+` read as text set BLOCK_FLAG_QUOTE_LAZY_DROP instead.
+  bool plus_one_deeper = lexer->lookahead == '+' && has_marker &&
+      !run_continues && marker_count > 0 &&
+      !(s->state & STATE_AFTER_BLANK_LINE) && highest_block_quote &&
+      marker_count + 1 == highest_block_quote->data &&
+      !list_between_quotes(s, marker_count);
+  if (plus_one_deeper) {
+    Block *own = nth_quote(s, marker_count);
+    plus_one_deeper = own && (own->content_col == 0 ||
+                              own->content_col == marker_start_col + 2);
+  }
+  // Under a list, only a `+` the paragraph-end probe saw attach.
+  if (plus_one_deeper && plus_list &&
+      (plus_list->type == LIST_DEFINITION ||
+       !(plus_list->flags & BLOCK_FLAG_LIST_SHORT_PLUS))) {
+    plus_one_deeper = false;
+  }
+  if (plus_list && plus_list->type != LIST_DEFINITION && has_marker &&
+      !run_continues) {
+    plus_list->flags &= (uint8_t)~BLOCK_FLAG_LIST_SHORT_PLUS;
+  }
+  int32_t lead = lexer->lookahead;
   if (highest_block_quote && marker_count < highest_block_quote->data &&
       !run_continues && !run_stopped_short && !attached_table_prefix &&
       !attached_code_prefix && !lazy_drop &&
       !any_open_inline &&
-      (lexer->lookahead != '+' || plus_list != NULL || marker_count == 0 ||
+      !plus_one_deeper &&
+      (lead != '+' || plus_list != NULL || marker_count == 0 ||
        (s->state & STATE_AFTER_BLANK_LINE))) {
     // Close the paragraph, but allow lazy continuation (without any `>`).
     if (valid_symbols[CLOSE_PARAGRAPH] && has_marker) {
@@ -4788,7 +4818,7 @@ static bool parse_block_quote(Scanner *s, TSLexer *lexer,
       // divs, etc).
       size_t close_pos =
           number_of_blocks_from_top(s, BLOCK_QUOTE, marker_count + 1);
-      if (lexer->lookahead == '+' && marker_count > 0) {
+      if (lead == '+' && marker_count > 0) {
         for (int i = s->open_blocks->size - 1; i >= 0; --i) {
           Block *b = *array_get(s->open_blocks, i);
           if (b->type == BLOCK_QUOTE && b->data == marker_count) {
@@ -9342,6 +9372,22 @@ static bool list_above_block(Scanner *s, Block *list, Block *block) {
   return false;
 }
 
+/// A lone `+` short of the paragraph's quote that attaches marks the innermost
+/// list, so `parse_block_quote` keeps the quote one level past its prefix.
+static void note_short_plus(Scanner *s, TSLexer *lexer, uint8_t markers) {
+  Block *list = find_list(s);
+  if (!list || list->type == LIST_DEFINITION) return;
+  uint32_t column = line_column(s, lexer);
+  advance(s, lexer);
+  while (lexer->lookahead == ' ' || lexer->lookahead == '\t') advance(s, lexer);
+  if (!at_line_end(lexer)) return;
+  consume_line_end(s, lexer);
+  if (plus_follower(s, lexer, column, markers, NULL, NULL, NULL, NULL,
+                    NULL) == PLUS_ATTACHES) {
+    list->flags |= BLOCK_FLAG_LIST_SHORT_PLUS;
+  }
+}
+
 static bool end_paragraph_in_block_quote(Scanner *s, TSLexer *lexer,
                                          int *markers_seen) {
   Block *block = find_block(s, BLOCK_QUOTE);
@@ -9352,6 +9398,7 @@ static bool end_paragraph_in_block_quote(Scanner *s, TSLexer *lexer,
   // Scan all `> ` markers we can find.
   bool ending_newline;
   uint32_t first_marker_col = lexer->lookahead == '>' ? line_column(s, lexer) : 0;
+  s->probe_first_marker_col = first_marker_col;
   bool skipped_indent = false;
   uint8_t marker_count = scan_quote_marker_run(s, lexer, &ending_newline,
                                                &skipped_indent);
@@ -9463,7 +9510,10 @@ static bool end_paragraph_in_block_quote(Scanner *s, TSLexer *lexer,
     s->indent = indent;
     s->block_quote_level = level;
     s->col_base = col_base;
-    if (lexer->lookahead == '+') return true;
+    if (lexer->lookahead == '+') {
+      note_short_plus(s, lexer, marker_count);
+      return true;
+    }
   }
 keep_reading:
 
@@ -9525,6 +9575,9 @@ keep_reading:
   Block *list = find_list(s);
   if (list && list_above_block(s, list, block) &&
       !list_opened_in_quote(s, list)) {
+    if (lexer->lookahead == '+' && marker_count < block->data) {
+      note_short_plus(s, lexer, marker_count);
+    }
     return true;
   }
   return scan_paragraph_closing_marker(s, lexer);
@@ -9654,6 +9707,19 @@ static bool scan_continuation_marker_at_paragraph_end(Scanner *s,
       Block *owner = owner_list ? owner_list : find_list(s);
       if (!owner) owner = find_block(s, FOOTNOTE);
       if (owner) owner->flags |= BLOCK_FLAG_PLUS_AHEAD;
+      Block *short_list = find_list(s);
+      if (short_list && short_list->type != LIST_DEFINITION &&
+          markers < count_blocks(s, BLOCK_QUOTE)) {
+        short_list->flags |= BLOCK_FLAG_LIST_SHORT_PLUS;
+      }
+      // Two or more quotes short: those past the next one close first.
+      Block *own = nth_quote(s, markers);
+      if (markers + 1 < count_blocks(s, BLOCK_QUOTE) && own &&
+          !list_between_quotes(s, markers) &&
+          (own->content_col == 0 ||
+           own->content_col == s->probe_first_marker_col + 2 * markers)) {
+        s->drop_close_markers = markers + 1;
+      }
     }
   }
   return true;
@@ -16085,6 +16151,7 @@ static void init_scalars(Scanner *s) {
   s->chain_col = UINT8_MAX;
   s->lazy_drop_markers = 0;
   s->drop_close_markers = 0;
+  s->probe_first_marker_col = 0;
   s->continuation_col = 0;
   s->attached_row_prefix = UINT8_MAX;
   s->plus_decision = 0;
