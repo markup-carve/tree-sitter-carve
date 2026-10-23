@@ -717,6 +717,10 @@ typedef struct {
   uint32_t probe_first_marker_col;
   // Set while the paragraph-end `+` probe asks `plus_follower`. Transient.
   bool paragraph_plus_probe;
+  // The last quote line outside a paragraph reached its marker-line quote
+  // only at that quote's content column, so a paragraph it opened keeps
+  // reading such markers as markers.
+  bool band_prefix;
 } Scanner;
 
 // Tracks if a `[` starts an inline link.
@@ -4349,7 +4353,8 @@ static uint8_t scan_quote_marker_run(Scanner *s, TSLexer *lexer,
   uint8_t marker_count = 0;
   while (lexer->lookahead == '>') {
     uint32_t column = line_column(s, lexer);
-    if (!quote_marker_at_column(s, marker_count + 1, column, false)) {
+    if (!quote_marker_at_column(s, marker_count + 1, column,
+                                skipped_indent != NULL && !s->band_prefix)) {
       return marker_count;
     }
     if (marker_count == 0 && count_blocks(s, BLOCK_QUOTE) == 0 &&
@@ -4504,6 +4509,12 @@ static bool parse_block_quote(Scanner *s, TSLexer *lexer,
   // A paragraph's continuation line offers the marker and nothing else.
   bool inside_paragraph = valid_symbols[BLOCK_QUOTE_CONTINUATION] &&
       !valid_symbols[BLOCK_QUOTE_BEGIN] && !valid_symbols[BLOCK_CLOSE];
+  if (!inside_paragraph && s->block_quote_level == 0 &&
+      lexer->lookahead == '>') {
+    s->band_prefix = quote_marker_at_column(s, 1, marker_start_col, false) &&
+        !quote_marker_at_column(s, 1, marker_start_col, true);
+  }
+  inside_paragraph = inside_paragraph && !s->band_prefix;
 
   bool ending_newline = false;
   // A valid marker is a '> ' or '>\n'.
@@ -16483,6 +16494,7 @@ static void init_scalars(Scanner *s) {
   s->drop_close_markers = 0;
   s->probe_first_marker_col = 0;
   s->paragraph_plus_probe = false;
+  s->band_prefix = false;
   s->continuation_col = 0;
   s->attached_row_prefix = UINT8_MAX;
   s->plus_decision = 0;
@@ -16696,7 +16708,8 @@ unsigned tree_sitter_carve_external_scanner_serialize(void *payload,
   buffer[size++] = (char)((s->mid_line ? 1 : 0) | (notes ? 2 : 0) |
                           (notes && s->link_tail_open_line ? 4 : 0) |
                           (plus_extension ? 8 : 0) | (row_extension ? 16 : 0) |
-                          (chain_extension ? 32 : 0));
+                          (chain_extension ? 32 : 0) |
+                          (s->band_prefix ? 64 : 0));
   // Bits 9..10 of the tail carry the caption gap; missing closers use 0..8.
   uint16_t tail = s->missing_closers | (uint16_t)((s->caption_gap & 3) << 9) |
                   (s->after_literal_star ? 1 << 14 : 0) |
@@ -16722,6 +16735,7 @@ void tree_sitter_carve_external_scanner_deserialize(void *payload, char *buffer,
     uint8_t notes = (uint8_t)buffer[length - 3];
     length -= 3;
     s->mid_line = (notes & 1) != 0;
+    s->band_prefix = (notes & 64) != 0;
     if (notes & 32) {
       if (length < 18) return;
       s->chain_col = (uint8_t)buffer[--length];
