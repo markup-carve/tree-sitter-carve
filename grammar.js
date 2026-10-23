@@ -1452,11 +1452,20 @@ module.exports = grammar({
                 ),
               ),
             ),
-            // A `+` continuation marker (PART 9 §17) attaches a flush-left block
-            // (not `>`-prefixed) to the quote (corpus 100-block-quote-continuation-marker).
+            // A `+` continuation marker can attach a block after a surviving
+            // outer quote prefix.
             seq(
               $.list_continuation_marker,
               choice($.heading, $._block_element),
+            ),
+            prec(
+              1,
+              seq(
+                $.list_continuation_marker,
+                alias($._attached_quote_prefix, $.block_quote_marker),
+                optional($._whitespace1),
+                choice($.heading, $._block_element),
+              ),
             ),
             alias(
               $._empty_list_continuation_marker,
@@ -3314,5 +3323,6 @@ module.exports = grammar({
     $._delimited_table_begin,
     $._plus_owner_check,
     $._refused_plus_line,
+    $._attached_quote_prefix,
   ],
 });
