@@ -6,28 +6,28 @@
       "nodes": 22
     },
     "block_quote": {
-      "documents": 426,
-      "nodes": 502
+      "documents": 533,
+      "nodes": 647
     },
     "table": {
-      "documents": 230,
-      "nodes": 233
+      "documents": 236,
+      "nodes": 239
     },
     "heading": {
-      "documents": 184,
-      "nodes": 218
+      "documents": 189,
+      "nodes": 223
     },
     "code_block": {
-      "documents": 289,
-      "nodes": 321
+      "documents": 348,
+      "nodes": 381
     },
     "list": {
-      "documents": 946,
-      "nodes": 1234
+      "documents": 1180,
+      "nodes": 1642
     },
     "definition_list": {
-      "documents": 298,
-      "nodes": 312
+      "documents": 313,
+      "nodes": 328
     },
     "line_block": {
       "documents": 54,
@@ -38,20 +38,20 @@
       "nodes": 95
     },
     "raw_block": {
-      "documents": 49,
-      "nodes": 49
+      "documents": 53,
+      "nodes": 53
     },
     "figure_group": {
-      "documents": 14,
-      "nodes": 14
+      "documents": 15,
+      "nodes": 15
     },
     "citation_definition": {
       "documents": 0,
       "nodes": 0
     },
     "admonition": {
-      "documents": 191,
-      "nodes": 412
+      "documents": 197,
+      "nodes": 418
     },
     "directive": {
       "documents": 6,
@@ -681,7 +681,43 @@
     "editorial-markup-closes-outside-a-cross-reference-or-a-bracket-run",
     "captions-in-list-items-do-not-create-a-paragraph-gap",
     "a-fence-run-that-dedents-out-of-a-child-keeps-the-outer-item-tight",
-    "generated-container-documents"
+    "generated-container-documents",
+    "a-caption-after-a-continuation-marker-fence-stays-with-the-fence",
+    "a-column-zero-marker-below-an-open-div-attaches-beside-the-div",
+    "a-comment-line-leaves-a-description-s-list-item-open-for-a-fence",
+    "a-continuation-marker-stands-alone-at-column-zero-or-right-after-a-block-opener",
+    "a-continuation-marker-uses-its-container-column",
+    "a-dangling-plus-marker-adds-nothing-and-a-nested-quote-reads-it-like-an-unnested-one",
+    "a-fence-closer-outside-the-child-folds-and-leaves-the-child-open",
+    "a-fence-run-folded-into-a-child-paragraph-loosens-the-outer-item",
+    "a-fence-run-folded-into-a-child-paragraph-loosens-the-outer-item-when-it-closes-at-the-outer-column",
+    "a-first-block-marker-does-not-pull-a-column-zero-list-into-a-note-or-description",
+    "a-first-block-marker-on-an-indented-opener-reads-two-columns",
+    "a-first-block-plus-refuses-a-follower-at-an-intervening-column",
+    "a-folded-child-fence-keeps-the-below-column-line-in-its-paragraph",
+    "a-folded-fence-run-leaves-a-later-paragraph-loose",
+    "a-hosted-quote-s-first-block-plus-attaches-any-non-list-block-at-column-zero",
+    "a-lazily-folded-fence-opener-line-does-not-keep-a-list-tight",
+    "a-lazy-colon-shaped-line-in-a-quote-paragraph-keeps-no-indentation",
+    "a-quote-follower-below-stacked-quote-openers-in-an-item-is-read-at-its-raw-column",
+    "a-quote-opened-on-an-item-s-marker-line-attaches-a-quote-at-its-own-depth",
+    "a-quote-opened-on-its-own-line-in-an-item-takes-the-first-block-form",
+    "a-quote-prefixed-plus-takes-one-space-after-each-quote-marker-and-attaches-a-quote",
+    "a-quote-s-first-block-plus-refuses-a-list-follower-in-every-host",
+    "a-refused-continuation-plus-remains-text",
+    "a-refused-marker-leaves-an-open-fence-s-blank-payload",
+    "a-refused-plus-without-the-inner-quote-prefix-renders-as-text",
+    "a-separate-plus-after-content-attaches-a-list-to-a-note-or-description",
+    "a-stacked-first-block-plus-takes-a-follower-only-at-column-zero-or-its-line-s-column",
+    "a-tab-indented-nested-list-starts-at-its-marker",
+    "a-task-item-takes-a-first-block-continuation-marker-after-its-checkbox",
+    "a-wrapped-attribute-line-interrupts-like-a-one-line-attribute-line",
+    "a-wrapped-attribute-line-opened-at-a-container-s-column-is-one-construct",
+    "an-indented-plus-below-a-nested-fence-stays-content-at-every-depth",
+    "an-unclosed-fence-run-with-no-closer-in-its-item-does-not-hide-a-blank-line",
+    "definition-body-note-and-fence-owner-boundaries",
+    "nested-plus-below-fence-and-description",
+    "the-column-of-the-quote-that-owns-a-first-block-plus-stays-eligible-at-every-depth"
   ],
   "skip": {},
   "overAcceptance": {
@@ -725,29 +761,7 @@
   "invisibleUnderAcceptance": {},
   "batteryDisagreements": {},
   "underAcceptance": {},
-  "oracleGoldenDisagreements": {
-    "captions-in-list-items-do-not-create-a-paragraph-gap-10": "Pinned oracle 0.1.12 treats the blank line before the later caption as a list paragraph gap and adds <p> around item text; the spec golden keeps the list tight because that caption attaches to the preceding block.",
-    "captions-in-list-items-do-not-create-a-paragraph-gap-12": "Pinned oracle 0.1.12 treats the blank line before the later caption as a list paragraph gap and adds <p> around item text; the spec golden keeps the list tight because that caption attaches to the preceding block.",
-    "captions-in-list-items-do-not-create-a-paragraph-gap-14": "Pinned oracle 0.1.12 treats the blank line before the later caption as a list paragraph gap and adds <p> around item text; the spec golden keeps the list tight because that caption attaches to the preceding block.",
-    "captions-in-list-items-do-not-create-a-paragraph-gap-17": "Pinned oracle 0.1.12 treats the blank line before the later caption as a list paragraph gap and adds <p> around item text; the spec golden keeps the list tight because that caption attaches to the preceding block.",
-    "captions-in-list-items-do-not-create-a-paragraph-gap-18": "Pinned oracle 0.1.12 treats the blank line before the later caption as a list paragraph gap and adds <p> around item text; the spec golden keeps the list tight because that caption attaches to the preceding block.",
-    "captions-in-list-items-do-not-create-a-paragraph-gap-19": "Pinned oracle 0.1.12 treats the blank line before the later caption as a list paragraph gap and adds <p> around item text; the spec golden keeps the list tight because that caption attaches to the preceding block.",
-    "captions-in-list-items-do-not-create-a-paragraph-gap-2": "Pinned oracle 0.1.12 treats the blank line before the later caption as a list paragraph gap and adds <p> around item text; the spec golden keeps the list tight because that caption attaches to the preceding block.",
-    "captions-in-list-items-do-not-create-a-paragraph-gap-20": "Pinned oracle 0.1.12 treats the blank line before the later caption as a list paragraph gap and adds <p> around item text; the spec golden keeps the list tight because that caption attaches to the preceding block.",
-    "captions-in-list-items-do-not-create-a-paragraph-gap-21": "Pinned oracle 0.1.12 treats the blank line before the later caption as a list paragraph gap and adds <p> around item text; the spec golden keeps the list tight because that caption attaches to the preceding block.",
-    "captions-in-list-items-do-not-create-a-paragraph-gap-22": "Pinned oracle 0.1.12 treats the blank line before the later caption as a list paragraph gap and adds <p> around item text; the spec golden keeps the list tight because that caption attaches to the preceding block.",
-    "captions-in-list-items-do-not-create-a-paragraph-gap-23": "Pinned oracle 0.1.12 treats the blank line before the later caption as a list paragraph gap and adds <p> around item text; the spec golden keeps the list tight because that caption attaches to the preceding block.",
-    "captions-in-list-items-do-not-create-a-paragraph-gap-24": "Pinned oracle 0.1.12 treats the blank line before the later caption as a list paragraph gap and adds <p> around item text; the spec golden keeps the list tight because that caption attaches to the preceding block.",
-    "captions-in-list-items-do-not-create-a-paragraph-gap-25": "Pinned oracle 0.1.12 treats the blank line before the later caption as a list paragraph gap and adds <p> around item text; the spec golden keeps the list tight because that caption attaches to the preceding block.",
-    "captions-in-list-items-do-not-create-a-paragraph-gap-26": "Pinned oracle 0.1.12 treats the blank line before the later caption as a list paragraph gap and adds <p> around item text; the spec golden keeps the list tight because that caption attaches to the preceding block.",
-    "captions-in-list-items-do-not-create-a-paragraph-gap-4": "Pinned oracle 0.1.12 treats the blank line before the later caption as a list paragraph gap and adds <p> around item text; the spec golden keeps the list tight because that caption attaches to the preceding block.",
-    "captions-in-list-items-do-not-create-a-paragraph-gap-5": "Pinned oracle 0.1.12 treats the blank line before the later caption as a list paragraph gap and adds <p> around item text; the spec golden keeps the list tight because that caption attaches to the preceding block.",
-    "captions-in-list-items-do-not-create-a-paragraph-gap-6": "Pinned oracle 0.1.12 treats the blank line before the later caption as a list paragraph gap and adds <p> around item text; the spec golden keeps the list tight because that caption attaches to the preceding block.",
-    "captions-in-list-items-do-not-create-a-paragraph-gap-7": "Pinned oracle 0.1.12 treats the blank line before the later caption as a list paragraph gap and adds <p> around item text; the spec golden keeps the list tight because that caption attaches to the preceding block.",
-    "captions-in-list-items-do-not-create-a-paragraph-gap-8": "Pinned oracle 0.1.12 treats the blank line before the later caption as a list paragraph gap and adds <p> around item text; the spec golden keeps the list tight because that caption attaches to the preceding block.",
-    "generated-container-documents-21": "Pinned oracle 0.1.12 closes the nested fenced code block before the blank line; the spec golden keeps that blank line in the code payload before the dedenting footnote definition.",
-    "generated-container-documents-22": "Pinned oracle 0.1.12 keeps the line > y inside the outer block quote; the spec golden closes the outer quote before this line and renders it as a top-level literal paragraph."
-  },
+  "oracleGoldenDisagreements": {},
   "errorFamilies": {},
   "inlineReadingGaps": {},
   "lineTerminatorGaps": {},
