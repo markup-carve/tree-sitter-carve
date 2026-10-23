@@ -187,6 +187,30 @@ const CASES = [
         at: [0, 1],
         expect: 'attribute.builtin',
     })),
+    ...['csv', 'tsv'].map((language) => ({
+        name: `table before a ${language} code include is builtin`,
+        source: `{table}\n{{ data.${language} @code:${language} }}\n`,
+        at: [0, 1],
+        expect: 'attribute.builtin',
+    })),
+    {
+        name: 'table before a quoted csv code include is builtin',
+        source: '> {table}\n> {{ data.csv @code:csv }}\n',
+        at: [0, 3],
+        expect: 'attribute.builtin',
+    },
+    {
+        name: 'table before a code include of another language stays a property',
+        source: '{table}\n{{ a.js @code:js }}\n',
+        at: [0, 1],
+        expect: 'property',
+    },
+    {
+        name: 'table before a plain csv include stays a property',
+        source: '{table}\n{{ data.csv }}\n',
+        at: [0, 1],
+        expect: 'property',
+    },
     {
         name: 'table inside a quote is builtin',
         source: '> {table}\n> ```csv\n> a,b\n> ```\n',
