@@ -1,0 +1,43 @@
+================================================================================
+An unmarked plus after lazy stacked quotes places its follower in the outer quote (#600)
+================================================================================
+> > q
+r
++
+b
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (block_quote
+        (block_quote_marker)
+        (content
+          (paragraph)))
+      (list_continuation_marker)
+      (paragraph))))
+
+================================================================================
+An unmarked plus in an item quote stays in the paragraph (#600)
+================================================================================
+> - > q
+  r
+  +
+  b
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (list
+        (list_item
+          (list_marker_dash)
+          (list_item_content
+            (block_quote
+              (block_quote_marker)
+              (content
+                (paragraph)))))))))
