@@ -717,6 +717,13 @@ typedef struct {
   uint32_t probe_first_marker_col;
   // Set while the paragraph-end `+` probe asks `plus_follower`. Transient.
   bool paragraph_plus_probe;
+  // The last quote line outside a paragraph reached its marker-line quote
+  // only at that quote's content column, so a paragraph it opened keeps
+  // reading such markers as markers.
+  bool band_prefix;
+  // Such a paragraph has been continued: the rest of the marker-line quote
+  // keeps reading those markers as markers.
+  bool band_sticky;
 } Scanner;
 
 // Tracks if a `[` starts an inline link.
@@ -830,6 +837,9 @@ static const uint32_t MAX_NESTING_DEPTH = 200;
 static const uint32_t MAX_LIST_MARKER_COLUMN = 240;
 
 static TokenType scan_list_marker_token(Scanner *s, TSLexer *lexer);
+static uint8_t scan_quote_marker_run(Scanner *s, TSLexer *lexer,
+                                     bool *ending_newline,
+                                     bool *skipped_indent, bool in_paragraph);
 static uint8_t scan_block_quote_markers(Scanner *s, TSLexer *lexer,
                                         bool *ending_newline);
 static TokenType scan_unordered_list_marker_token(Scanner *s, TSLexer *lexer);
@@ -2636,7 +2646,8 @@ static bool parse_verbatim_content(Scanner *s, TSLexer *lexer, bool end_valid,
     uint32_t fence_column = line_indent;
     if (lexer->lookahead == '>' && count_blocks(s, BLOCK_QUOTE) > 0) {
       bool quoted_newline = false;
-      uint8_t quoted = scan_block_quote_markers(s, lexer, &quoted_newline);
+      uint8_t quoted = scan_quote_marker_run(s, lexer, &quoted_newline, NULL,
+                                             true);
       // A quoted blank line ends the paragraph, and the run with it.
       if (quoted == count_blocks(s, BLOCK_QUOTE) &&
           (quoted_newline || at_line_end(lexer) || lexer->eof(lexer))) {
@@ -4318,8 +4329,10 @@ static bool list_between_quotes(Scanner *s, uint8_t number) {
   return false;
 }
 
+/// An open paragraph reads a `>` at a marker-line quote's content column as
+/// lazy text, not as the quote's marker (#600).
 static bool quote_marker_at_column(Scanner *s, uint8_t number,
-                                   uint32_t column) {
+                                   uint32_t column, bool in_paragraph) {
   uint8_t seen = 0;
   Block *enclosing_list = NULL;
   for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
@@ -4331,7 +4344,7 @@ static bool quote_marker_at_column(Scanner *s, uint8_t number,
       return b->content_col == 0 ||
           (seen == 1 && enclosing_list &&
            (column <= enclosing_list->content_col ||
-            column == b->content_col)) ||
+            (!in_paragraph && column == b->content_col))) ||
           (s->state & STATE_LIST_CONTINUATION) ||
           column == b->content_col - 2;
     }
@@ -4339,15 +4352,17 @@ static bool quote_marker_at_column(Scanner *s, uint8_t number,
   return true;
 }
 
+/// `in_paragraph`: the run continues an open paragraph's line.
 static uint8_t scan_quote_marker_run(Scanner *s, TSLexer *lexer,
                                      bool *ending_newline,
-                                     bool *skipped_indent) {
+                                     bool *skipped_indent, bool in_paragraph) {
   // `scan_block_quote_marker` only ever sets this to true; the loop reads it.
   *ending_newline = false;
   uint8_t marker_count = 0;
+  in_paragraph = in_paragraph && !s->band_prefix && !s->band_sticky;
   while (lexer->lookahead == '>') {
     uint32_t column = line_column(s, lexer);
-    if (!quote_marker_at_column(s, marker_count + 1, column)) {
+    if (!quote_marker_at_column(s, marker_count + 1, column, in_paragraph)) {
       return marker_count;
     }
     if (marker_count == 0 && count_blocks(s, BLOCK_QUOTE) == 0 &&
@@ -4378,7 +4393,7 @@ static uint8_t scan_quote_marker_run(Scanner *s, TSLexer *lexer,
 
 static uint8_t scan_block_quote_markers(Scanner *s, TSLexer *lexer,
                                         bool *ending_newline) {
-  return scan_quote_marker_run(s, lexer, ending_newline, NULL);
+  return scan_quote_marker_run(s, lexer, ending_newline, NULL, false);
 }
 
 static void output_block_quote_continuation(Scanner *s, TSLexer *lexer,
@@ -4499,11 +4514,23 @@ static bool parse_block_quote(Scanner *s, TSLexer *lexer,
   // nested list `- - A` that `parse_list_marker_or_thematic_break` already
   // models with the same two fields - see `open_marker_line_quote` below.
   uint32_t marker_start_col = line_column(s, lexer);
+  // A paragraph's continuation line offers the marker and inline tokens, but
+  // no block opener or close.
+  bool inside_paragraph = valid_symbols[BLOCK_QUOTE_CONTINUATION] &&
+      valid_symbols[NEWLINE_INLINE] && !valid_symbols[BLOCK_QUOTE_BEGIN] &&
+      !valid_symbols[BLOCK_CLOSE];
+  if (inside_paragraph && s->band_prefix) s->band_sticky = true;
+  if (!inside_paragraph && s->block_quote_level == 0 &&
+      lexer->lookahead == '>') {
+    s->band_prefix = quote_marker_at_column(s, 1, marker_start_col, false) &&
+        !quote_marker_at_column(s, 1, marker_start_col, true);
+  }
+  inside_paragraph = inside_paragraph && !s->band_prefix && !s->band_sticky;
 
   bool ending_newline = false;
   // A valid marker is a '> ' or '>\n'.
   bool marker_at_owner = quote_marker_at_column(
-      s, s->block_quote_level + 1, marker_start_col);
+      s, s->block_quote_level + 1, marker_start_col, inside_paragraph);
   bool has_marker = marker_at_owner &&
       scan_block_quote_marker(s, lexer, &ending_newline);
   Block *quote_list_owner = find_list(s);
@@ -4575,7 +4602,8 @@ static bool parse_block_quote(Scanner *s, TSLexer *lexer,
   // run, and nothing the probe walks over can be this character.
   bool run_continues = has_marker && !ending_newline && lexer->lookahead == '>';
   if (run_continues) run_continues = quote_marker_at_column(
-      s, s->block_quote_level + 2, line_column(s, lexer));
+      s, s->block_quote_level + 2, line_column(s, lexer),
+      inside_paragraph);
 
   // A marker followed by only whitespace is content-less whatever that
   // whitespace is: carve-js renders `>`, `> `, `>  ` and `> <TAB>` as the same
@@ -4919,6 +4947,7 @@ static bool parse_block_quote(Scanner *s, TSLexer *lexer,
       continuation_quote->flags &= ~BLOCK_FLAG_QUOTE_CONTINUATION_PENDING;
     }
     push_block(s, BLOCK_QUOTE, marker_count);
+    if (count_blocks(s, BLOCK_QUOTE) == 1) s->band_sticky = false;
     peek_block(s)->flags |= BLOCK_FLAG_QUOTE_OPENING_LINE;
     if (s->marker_end_col != 0 &&
         marker_start_col == s->marker_end_col) {
@@ -9554,6 +9583,7 @@ static bool end_paragraph_in_block_quote(Scanner *s, TSLexer *lexer,
   if (!block) {
     return false;
   }
+  if (s->band_prefix) s->band_sticky = true;
 
   // Scan all `> ` markers we can find.
   bool ending_newline;
@@ -9561,7 +9591,7 @@ static bool end_paragraph_in_block_quote(Scanner *s, TSLexer *lexer,
   s->probe_first_marker_col = first_marker_col;
   bool skipped_indent = false;
   uint8_t marker_count = scan_quote_marker_run(s, lexer, &ending_newline,
-                                               &skipped_indent);
+                                               &skipped_indent, true);
   int32_t after_markers = skipped_indent ? ' ' : lexer->lookahead;
   // Handed to the caller rather than stored: `block_quote_level` is written
   // only by `output_block_quote_continuation`, which this route never reaches,
@@ -16477,6 +16507,8 @@ static void init_scalars(Scanner *s) {
   s->drop_close_markers = 0;
   s->probe_first_marker_col = 0;
   s->paragraph_plus_probe = false;
+  s->band_prefix = false;
+  s->band_sticky = false;
   s->continuation_col = 0;
   s->attached_row_prefix = UINT8_MAX;
   s->plus_decision = 0;
@@ -16690,7 +16722,9 @@ unsigned tree_sitter_carve_external_scanner_serialize(void *payload,
   buffer[size++] = (char)((s->mid_line ? 1 : 0) | (notes ? 2 : 0) |
                           (notes && s->link_tail_open_line ? 4 : 0) |
                           (plus_extension ? 8 : 0) | (row_extension ? 16 : 0) |
-                          (chain_extension ? 32 : 0));
+                          (chain_extension ? 32 : 0) |
+                          (s->band_prefix ? 64 : 0) |
+                          (s->band_sticky ? 128 : 0));
   // Bits 9..10 of the tail carry the caption gap; missing closers use 0..8.
   uint16_t tail = s->missing_closers | (uint16_t)((s->caption_gap & 3) << 9) |
                   (s->after_literal_star ? 1 << 14 : 0) |
@@ -16716,6 +16750,8 @@ void tree_sitter_carve_external_scanner_deserialize(void *payload, char *buffer,
     uint8_t notes = (uint8_t)buffer[length - 3];
     length -= 3;
     s->mid_line = (notes & 1) != 0;
+    s->band_prefix = (notes & 64) != 0;
+    s->band_sticky = (notes & 128) != 0;
     if (notes & 32) {
       if (length < 18) return;
       s->chain_col = (uint8_t)buffer[--length];

@@ -158,3 +158,203 @@ A worded + after a lazy line in an item quote is text (#600)
                 (paragraph
                   (block_quote_marker)
                   (block_quote_marker))))))))))
+
+================================================================================
+A > at a marker-line quote's content column continues its paragraph as text (#600)
+================================================================================
+- > q
+    > r
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (block_quote
+          (block_quote_marker)
+          content: (content
+            (paragraph)))))))
+
+================================================================================
+A > at a nested marker-line quote's content column continues its paragraph as text (#600)
+================================================================================
+1. > > q
+     > r
+     > d
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_decimal_period)
+      content: (list_item_content
+        (block_quote
+          (block_quote_marker)
+          content: (content
+            (block_quote
+              (block_quote_marker)
+              content: (content
+                (paragraph)))))))))
+
+================================================================================
+A > at a marker-line quote's content column after a heading continues the quote (#600)
+================================================================================
+- > # H
+    > y
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (block_quote
+          (block_quote_marker)
+          content: (content
+            (heading
+              marker: (marker)
+              content: (content))
+            (block_quote_marker)
+            (paragraph)))))))
+
+================================================================================
+A paragraph opened past a marker-line quote's prefix keeps such markers (#600)
+================================================================================
+- > # H
+    > c
+  > d
+    > a
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (block_quote
+          (block_quote_marker)
+          content: (content
+            (heading
+              marker: (marker)
+              content: (content))
+            (block_quote_marker)
+            (paragraph
+              (block_quote_marker)
+              (block_quote_marker))))))))
+
+================================================================================
+A paragraph opened at a marker-line quote's prefix keeps an overindented > as text (#600)
+================================================================================
+- > # H
+  > c
+    > a
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (block_quote
+          (block_quote_marker)
+          content: (content
+            (heading
+              marker: (marker)
+              content: (content))
+            (block_quote_marker)
+            (paragraph)))))))
+
+================================================================================
+An overindented > after a lazy line opens no fence in the paragraph (#600)
+================================================================================
+- > - q
+    > ```
+    > c
+    > ```
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (block_quote
+          (block_quote_marker)
+          content: (content
+            (list
+              (list_item
+                marker: (list_marker_dash)
+                content: (list_item_content
+                  (paragraph
+                    (verbatim
+                      begin_marker: (verbatim_marker_begin)
+                      content: (content)
+                      end_marker: (verbatim_marker_end))))))))))))
+
+================================================================================
+A paragraph opened past a marker-line quote's prefix keeps such markers for the quote (#600)
+================================================================================
+- > # H
+  > # J
+    > c
+  > # K
+  > e
+    > d
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (block_quote
+          (block_quote_marker)
+          content: (content
+            (heading
+              marker: (marker)
+              content: (content))
+            (block_quote_marker)
+            (heading
+              marker: (marker)
+              content: (content))
+            (block_quote_marker)
+            (paragraph)
+            (block_quote_marker)
+            (heading
+              marker: (marker)
+              content: (content))
+            (block_quote_marker)
+            (paragraph
+              (block_quote_marker))))))))
+
+================================================================================
+An overindented > under an open code span ends the line, not the run (#600)
+================================================================================
+1. > b
+   > ```
+     >
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_decimal_period)
+      content: (list_item_content
+        (block_quote
+          (block_quote_marker)
+          content: (content
+            (paragraph
+              (block_quote_marker)
+              (verbatim
+                begin_marker: (verbatim_marker_begin)
+                content: (content)
+                end_marker: (verbatim_marker_end)))))))))
