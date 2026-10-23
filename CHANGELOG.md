@@ -20,6 +20,9 @@ This release follows the Carve 0.1.11 corpus, mainly the column rules for the `+
 - A `> +` after a nested quote line attaches the next block at that quote level, also inside a list item, and a `+` after a footnote or description that a blank line ended stays text (#590).
 - `+` lines in quoted lists, nested quotes and quoted footnotes parse without error nodes, and a refused `+` keeps the next line from closing its paragraph (#591).
 - A `+` at the content column of a quoted item (`> - > a` / `>   +` / `>   b`) attaches the next block inside that item's quote, and a refused `+` under nested quotes (`> > q` / `  +` / `  b`) stays text in the quoted paragraph (#593).
+- A paragraph in a nested quote continues on a line with fewer `>` markers unless that line opens a block (`> > q` / `> r`), and a quote inside a quoted item continues past the item's indentation (#595).
+- The 39 `+` shapes where carve-js and carve-rs disagree follow the spec model: a quote-prefixed `+` short of a nested quote attaches one quote past its prefix, a footnote on a quoted item's marker line takes the `+` follower, and a `+` after a blank quote line attaches inside the nested item (#597, markup-carve/carve#3528).
+- A `+` followed by a quoted list (`- > a` / `  +` / `  > - b`) parses without an error tree, and every `>` of a follower after an unprefixed `+` opens the attached quote (#599, #601).
 - Each quote marker in a nested container is matched at its own column, so indentation no longer stands in for a `>` (#574).
 - List and fence ownership is read at the tab-expanded column, and a list marker past a description's marker column no longer folds into the description (#578).
 - A valueless include option such as `{{ src/a.js @code }}` parses as `include_option` and gets the option highlight; its `value` field is optional in `node-types.json` (#572).
