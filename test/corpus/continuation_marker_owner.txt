@@ -1220,8 +1220,6 @@ Issue 584: A sibling after an item quote keeps plus as text
         (block_quote
           (block_quote_marker)
           (content
-            (paragraph)
-            (MISSING block_quote_marker)
             (paragraph)))))))
 
 ================================================================================
@@ -1499,3 +1497,48 @@ A nested item in a quoted list keeps its plus
 --------------------------------------------------------------------------------
 
 (document (list (list_item marker: (list_marker_dash) content: (list_item_content (block_quote (block_quote_marker) content: (content (list (list_item marker: (list_marker_dash) content: (list_item_content (paragraph) (block_quote_marker) (list (list_item marker: (list_marker_dash) content: (list_item_content (paragraph) (list_continuation_marker) (paragraph (block_quote_marker))))))))))))))
+
+================================================================================
+Issue 588: A refused quoted plus stays paragraph text without an error
+================================================================================
+- > - a
+  > +
+  > b
+
+--------------------------------------------------------------------------------
+
+(document (list (list_item marker: (list_marker_dash) content: (list_item_content (block_quote (block_quote_marker) content: (content (list (list_item marker: (list_marker_dash) content: (list_item_content (paragraph (block_quote_marker) (block_quote_marker)))))))))))
+
+================================================================================
+Issue 588: A refused plus does not let the next line close its paragraph
+================================================================================
+- > - > a
+  > +
+  > # h
+
+--------------------------------------------------------------------------------
+
+(document (list (list_item marker: (list_marker_dash) content: (list_item_content (block_quote (block_quote_marker) content: (content (list (list_item marker: (list_marker_dash) content: (list_item_content (block_quote (block_quote_marker) content: (content (paragraph (block_quote_marker))))))) (block_quote_marker) (heading marker: (marker) content: (content))))))))
+
+================================================================================
+Issue 588: A quoted item plus at its content column is text before a nested list
+================================================================================
+> - a
+>   +
+>   - s
+
+--------------------------------------------------------------------------------
+
+(document (block_quote (block_quote_marker) content: (content (list (list_item marker: (list_marker_dash) content: (list_item_content (paragraph (block_quote_marker)) (block_quote_marker) (list (list_item marker: (list_marker_dash) content: (list_item_content (paragraph))))))))))
+
+================================================================================
+Issue 588: An item between quotes keeps a dedented plus as text
+================================================================================
+- > - a
+  >   > q
+  > +
+  > | a |
+
+--------------------------------------------------------------------------------
+
+(document (list (list_item marker: (list_marker_dash) content: (list_item_content (block_quote (block_quote_marker) content: (content (list (list_item marker: (list_marker_dash) content: (list_item_content (paragraph) (block_quote_marker) (block_quote (block_quote_marker) content: (content (paragraph (block_quote_marker))))))) (block_quote_marker) (table (table_row (table_cell)))))))))

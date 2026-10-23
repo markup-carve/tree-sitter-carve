@@ -99,6 +99,8 @@ jobs:
 
       - name: No-ERROR sweep
         run: npm run test:no-error
+      - name: No error tree around a `+` marker
+        run: npm run test:plus-error-trees
 
       # A closed fence that loses its closer builds no ERROR: the closer line
       # reads as inline verbatim and the tree is clean, so the sweep above
