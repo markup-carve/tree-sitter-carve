@@ -1,0 +1,67 @@
+================================================================================
+An indented > after a blank line ends a quoted item
+================================================================================
+> - a
+
+   > c
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (paragraph))))))
+  (paragraph))
+
+================================================================================
+An indented > after a blank line under a marker-line quote opens a quote in the outer item
+================================================================================
+- > - a
+
+     > c
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (block_quote
+          (block_quote_marker)
+          content: (content
+            (list
+              (list_item
+                marker: (list_marker_dash)
+                content: (list_item_content
+                  (paragraph))))))
+        (block_quote
+          (block_quote_marker)
+          content: (content
+            (paragraph)))))))
+
+================================================================================
+An indented > after a quoted blank line ends a quoted item
+================================================================================
+> - a
+>
+  > c
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (paragraph))))
+      (block_quote_marker)))
+  (paragraph))

@@ -6636,8 +6636,12 @@ static bool parse_list_item_end(Scanner *s, TSLexer *lexer,
         list->data > quote->content_col + 1))) return false;
 
   // We're still inside the list, don't end it yet. An unmarked line under a
-  // list opened in a quote is measured by column, as the continuation is.
-  if (lexer->lookahead != '>' && list_opened_in_quote(s, list)) {
+  // list opened in a quote is measured by column, as the continuation is. So
+  // is a `>` the outermost quote does not take as its marker.
+  bool quoted_list = list_opened_in_quote(s, list);
+  bool stray_marker = lexer->lookahead == '>' && quoted_list &&
+      !quote_marker_at_column(s, 1, line_column(s, lexer), false);
+  if ((lexer->lookahead != '>' || stray_marker) && quoted_list) {
     if (line_column(s, lexer) >= list->content_col) return false;
   } else if (s->indent >= list_item_margin(s, list)) {
     return false;
