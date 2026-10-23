@@ -713,6 +713,8 @@ typedef struct {
   uint8_t drop_close_markers;
   // Column of the first `>` the paragraph-end quote probe read. Transient.
   uint32_t probe_first_marker_col;
+  // Set while the paragraph-end `+` probe asks `plus_follower`. Transient.
+  bool paragraph_plus_probe;
 } Scanner;
 
 // Tracks if a `[` starts an inline link.
@@ -8010,12 +8012,23 @@ static PlusFollow plus_follower(Scanner *s, TSLexer *lexer, uint32_t column,
     bool item = marker != IGNORED && marker_line_has_content(s, lexer);
     if (item_follows && next_col == column) *item_follows = item;
     // A quote can attach a list just like any other block.
+    // A follower at column 0 is outside a list item holding the quote.
+    uint32_t owner_margin = 0;
+    for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
+      Block *b = *array_get(s->open_blocks, i);
+      if (b == quote_owner) break;
+      if (is_list(b->type) && b->type != LIST_DEFINITION) owner_margin = b->content_col;
+    }
     bool attaches =
         (((quote_owner->flags & BLOCK_FLAG_QUOTE_DEDENT_PLUS) == 0 &&
           count_blocks(s, BLOCK_QUOTE) == markers &&
           reentered < markers &&
-          (next_col == 0 || (reentered + 1 == markers &&
-                             next_col + 2 == quote_owner->content_col))) ||
+          ((next_col == 0 && owner_margin == 0) ||
+           (reentered + 1 == markers &&
+            next_col + 2 == quote_owner->content_col &&
+            (owner_margin == 0 ||
+             ((quote_owner->flags & BLOCK_FLAG_QUOTE_OPENING_LINE) &&
+              !s->paragraph_plus_probe))))) ||
          ((count_blocks(s, BLOCK_QUOTE) > markers ||
            (quote_owner->flags & BLOCK_FLAG_QUOTE_DEDENT_PLUS)) &&
           !item_inside_quote_owner && reentered == markers &&
@@ -8034,7 +8047,7 @@ static PlusFollow plus_follower(Scanner *s, TSLexer *lexer, uint32_t column,
     // A note in an item-held quote refuses a quote follower (spec model).
     if (follower_char == '>' && quoted_note_inside_item(s)) attaches = false;
     // A quote's first-block `+` refuses a list follower (corpus 652).
-    if (item && quote_owner == peek_block(s) &&
+    if (item && reentered <= markers && quote_owner == peek_block(s) &&
         (quote_owner->flags & BLOCK_FLAG_QUOTE_OPENING_LINE)) {
       attaches = false;
     }
@@ -8338,7 +8351,15 @@ static bool emit_plus_line(Scanner *s, TSLexer *lexer,
                 !next_line_end &&
                 (list || (note && note->type == FOOTNOTE)));
   bool sibling_item = false;
-  if (!empty && list && !at_line_end(lexer)) {
+  // A follower `>` past the `+` line's own prefix (or, unprefixed, off the
+  // outer quote's marker column) opens the attached quote, so no marker inside
+  // it is a sibling item.
+  Block *outer_quote = find_block_from_bottom(s, BLOCK_QUOTE);
+  bool new_quote_follower = next_char == '>' &&
+      (level > 0 ? follower_prefixes == level
+                 : outer_quote && outer_quote->content_col >= 2 &&
+                   next_column != outer_quote->content_col - 2u);
+  if (!empty && list && !at_line_end(lexer) && !new_quote_follower) {
     bool ending_newline = false;
     scan_block_quote_markers(s, lexer, &ending_newline);
     s->indent = consume_whitespace(s, lexer);
@@ -8348,7 +8369,7 @@ static bool emit_plus_line(Scanner *s, TSLexer *lexer,
                    marker_line_has_content(s, lexer) &&
                    (marker_column + 1 == list->data ||
                     (level == 0 && find_block(s, BLOCK_QUOTE) &&
-                     next_column == attachment_col));
+                     next_column == attachment_col && next_char != '>'));
     empty = sibling_item;
   }
   if (sibling_item && find_block(s, BLOCK_QUOTE)) {
@@ -9784,8 +9805,11 @@ static bool scan_continuation_marker_at_paragraph_end(Scanner *s,
   // A `+` the next line refuses folds into this paragraph as text (L3).
   if (at_line_end(lexer)) {
     consume_line_end(s, lexer);
+    // A paragraph is open, so the quote's opening line is behind this `+`.
+    s->paragraph_plus_probe = true;
     PlusFollow follow = plus_follower(s, lexer, column, markers,
                                       NULL, NULL, NULL, NULL, NULL);
+    s->paragraph_plus_probe = false;
     if (follow != PLUS_ATTACHES) {
       Block *note = find_block(s, FOOTNOTE);
       if (note && !find_list(s) && !find_block(s, BLOCK_QUOTE)) {
@@ -16274,6 +16298,7 @@ static void init_scalars(Scanner *s) {
   s->lazy_drop_markers = 0;
   s->drop_close_markers = 0;
   s->probe_first_marker_col = 0;
+  s->paragraph_plus_probe = false;
   s->continuation_col = 0;
   s->attached_row_prefix = UINT8_MAX;
   s->plus_decision = 0;

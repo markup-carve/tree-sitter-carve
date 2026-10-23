@@ -1,0 +1,235 @@
+================================================================================
+A plus under an item quote attaches a quoted list (#598)
+================================================================================
+- > a
+  +
+  > - b
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (block_quote
+          (block_quote_marker)
+          content: (content
+            (paragraph)
+            (list_continuation_marker)
+            (block_quote
+              (block_quote_marker)
+              content: (content
+                (list
+                  (list_item
+                    marker: (list_marker_dash)
+                    content: (list_item_content
+                      (paragraph))))))))))))
+
+================================================================================
+A plus under an item quote attaches a quoted ordered list (#598)
+================================================================================
+- > a
+  +
+  > 1. b
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (block_quote
+          (block_quote_marker)
+          content: (content
+            (paragraph)
+            (list_continuation_marker)
+            (block_quote
+              (block_quote_marker)
+              content: (content
+                (list
+                  (list_item
+                    marker: (list_marker_decimal_period)
+                    content: (list_item_content
+                      (paragraph))))))))))))
+
+================================================================================
+A plus under an ordered item quote attaches a quoted list (#598)
+================================================================================
+1. > a
+   +
+   > - b
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_decimal_period)
+      content: (list_item_content
+        (block_quote
+          (block_quote_marker)
+          content: (content
+            (paragraph)
+            (list_continuation_marker)
+            (block_quote
+              (block_quote_marker)
+              content: (content
+                (list
+                  (list_item
+                    marker: (list_marker_dash)
+                    content: (list_item_content
+                      (paragraph))))))))))))
+
+================================================================================
+A quoted plus at a nested item content column attaches a quoted list (#598)
+================================================================================
+- > - > a
+  >   +
+  >   > - s
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (block_quote
+          (block_quote_marker)
+          content: (content
+            (list
+              (list_item
+                marker: (list_marker_dash)
+                content: (list_item_content
+                  (block_quote
+                    (block_quote_marker)
+                    content: (content
+                      (paragraph)
+                      (list_continuation_marker)
+                      (block_quote_marker)
+                      (block_quote
+                        (block_quote_marker)
+                        content: (content
+                          (list
+                            (list_item
+                              marker: (list_marker_dash)
+                              content: (list_item_content
+                                (paragraph)))))))))))))))))
+
+================================================================================
+A quoted plus past a nested list attaches a quoted list (#598)
+================================================================================
+- > - > - a
+  >   +
+  >   > - s
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (block_quote
+          (block_quote_marker)
+          content: (content
+            (list
+              (list_item
+                marker: (list_marker_dash)
+                content: (list_item_content
+                  (block_quote
+                    (block_quote_marker)
+                    content: (content
+                      (list
+                        (list_item
+                          marker: (list_marker_dash)
+                          content: (list_item_content
+                            (paragraph))))
+                      (list_continuation_marker)
+                      (block_quote_marker)
+                      (block_quote
+                        (block_quote_marker)
+                        content: (content
+                          (list
+                            (list_item
+                              marker: (list_marker_dash)
+                              content: (list_item_content
+                                (paragraph)))))))))))))))))
+
+================================================================================
+A quoted plus inside an item refuses a quoted follower at column 0 (#598)
+================================================================================
+- > - a
+  > +
+> - b
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (block_quote
+          (block_quote_marker)
+          content: (content
+            (list
+              (list_item
+                marker: (list_marker_dash)
+                content: (list_item_content
+                  (paragraph
+                    (block_quote_marker))))))))))
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (paragraph)))))))
+
+================================================================================
+A quoted plus inside an item refuses a follower at the quote column (#598)
+================================================================================
+- > a
+  > +
+  b
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (block_quote
+          (block_quote_marker)
+          content: (content
+            (paragraph
+              (block_quote_marker))))))))
+
+================================================================================
+A quoted plus inside a nested item refuses a follower at the quote column (#598)
+================================================================================
+- > - a
+  > +
+  b
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (block_quote
+          (block_quote_marker)
+          content: (content
+            (list
+              (list_item
+                marker: (list_marker_dash)
+                content: (list_item_content
+                  (paragraph
+                    (block_quote_marker)))))))))))
