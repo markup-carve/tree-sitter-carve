@@ -1,0 +1,411 @@
+================================================================================
+Issue 588: quoted item attaches paragraph at its content column
+================================================================================
+> - > a
+>   +
+>   b
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (list
+        (list_item
+          (list_marker_dash)
+          (list_item_content
+            (block_quote
+              (block_quote_marker)
+              (content
+                (paragraph)
+                (list_continuation_marker)
+                (block_quote_marker)
+                (paragraph)))))))))
+
+================================================================================
+Issue 588: quoted item attaches nested quote at its content column
+================================================================================
+> - > a
+>   +
+>   > r
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (list
+        (list_item
+          (list_marker_dash)
+          (list_item_content
+            (block_quote
+              (block_quote_marker)
+              (content
+                (paragraph)
+                (list_continuation_marker)
+                (block_quote_marker)
+                (block_quote
+                  (block_quote_marker)
+                  (content
+                    (paragraph)))))))))))
+
+================================================================================
+Issue 588: quoted item attaches code fence at its content column
+================================================================================
+> - > a
+>   +
+>   ```
+>   c
+>   ```
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (list
+        (list_item
+          (list_marker_dash)
+          (list_item_content
+            (block_quote
+              (block_quote_marker)
+              (content
+                (paragraph)
+                (list_continuation_marker)
+                (block_quote_marker)
+                (code_block
+                  (code_block_marker_begin)
+                  (code
+                    (block_quote_marker))
+                  (block_quote_marker)
+                  (code_block_marker_end))))))))))
+
+================================================================================
+Issue 588: quoted item attaches heading at its content column
+================================================================================
+> - > a
+>   +
+>   # h
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (list
+        (list_item
+          (list_marker_dash)
+          (list_item_content
+            (block_quote
+              (block_quote_marker)
+              (content
+                (paragraph)
+                (list_continuation_marker)
+                (block_quote_marker)
+                (heading
+                  (marker)
+                  (content))))))))))
+
+================================================================================
+Issue 588: quoted item attaches table at its content column
+================================================================================
+> - > a
+>   +
+>   | a |
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (list
+        (list_item
+          (list_marker_dash)
+          (list_item_content
+            (block_quote
+              (block_quote_marker)
+              (content
+                (paragraph)
+                (list_continuation_marker)
+                (block_quote_marker)
+                (table
+                  (table_row
+                    (table_cell)))))))))))
+
+================================================================================
+Issue 588: item holding a quoted item attaches paragraph at its content column
+================================================================================
+- > - > a
+  >   +
+  >   b
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (block_quote
+          (block_quote_marker)
+          (content
+            (list
+              (list_item
+                (list_marker_dash)
+                (list_item_content
+                  (block_quote
+                    (block_quote_marker)
+                    (content
+                      (paragraph)
+                      (list_continuation_marker)
+                      (block_quote_marker)
+                      (paragraph))))))))))))
+
+================================================================================
+Issue 588: item holding a quoted item attaches nested quote at its content column
+================================================================================
+- > - > a
+  >   +
+  >   > r
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (block_quote
+          (block_quote_marker)
+          (content
+            (list
+              (list_item
+                (list_marker_dash)
+                (list_item_content
+                  (block_quote
+                    (block_quote_marker)
+                    (content
+                      (paragraph)
+                      (list_continuation_marker)
+                      (block_quote_marker)
+                      (block_quote
+                        (block_quote_marker)
+                        (content
+                          (paragraph))))))))))))))
+
+================================================================================
+Issue 588: item holding a quoted item attaches code fence at its content column
+================================================================================
+- > - > a
+  >   +
+  >   ```
+  >   c
+  >   ```
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (block_quote
+          (block_quote_marker)
+          (content
+            (list
+              (list_item
+                (list_marker_dash)
+                (list_item_content
+                  (block_quote
+                    (block_quote_marker)
+                    (content
+                      (paragraph)
+                      (list_continuation_marker)
+                      (block_quote_marker)
+                      (code_block
+                        (code_block_marker_begin)
+                        (code
+                          (block_quote_marker))
+                        (block_quote_marker)
+                        (code_block_marker_end)))))))))))))
+
+================================================================================
+Issue 588: item holding a quoted item attaches heading at its content column
+================================================================================
+- > - > a
+  >   +
+  >   # h
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (block_quote
+          (block_quote_marker)
+          (content
+            (list
+              (list_item
+                (list_marker_dash)
+                (list_item_content
+                  (block_quote
+                    (block_quote_marker)
+                    (content
+                      (paragraph)
+                      (list_continuation_marker)
+                      (block_quote_marker)
+                      (heading
+                        (marker)
+                        (content)))))))))))))
+
+================================================================================
+Issue 588: item holding a quoted item attaches table at its content column
+================================================================================
+- > - > a
+  >   +
+  >   | a |
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (block_quote
+          (block_quote_marker)
+          (content
+            (list
+              (list_item
+                (list_marker_dash)
+                (list_item_content
+                  (block_quote
+                    (block_quote_marker)
+                    (content
+                      (paragraph)
+                      (list_continuation_marker)
+                      (block_quote_marker)
+                      (table
+                        (table_row
+                          (table_cell))))))))))))))
+
+================================================================================
+Issue 588: nested quote keeps lazy text in one paragraph
+================================================================================
+> > q
+  +
+  b
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (block_quote
+        (block_quote_marker)
+        (content
+          (paragraph))))))
+
+================================================================================
+Issue 588: nested quote keeps lazy quote marker in one paragraph
+================================================================================
+> > q
+  +
+  > r
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (block_quote
+        (block_quote_marker)
+        (content
+          (paragraph))))))
+
+================================================================================
+Issue 588: nested quote keeps lazy list marker in one paragraph
+================================================================================
+> > q
+  +
+  - s
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (block_quote
+        (block_quote_marker)
+        (content
+          (paragraph))))))
+
+================================================================================
+Issue 588: nested quote keeps lazy fence text in one paragraph
+================================================================================
+> > q
+  +
+  ```
+  c
+  ```
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (block_quote
+        (block_quote_marker)
+        (content
+          (paragraph
+            (verbatim
+              (verbatim_marker_begin)
+              (content)
+              (verbatim_marker_end))))))))
+
+================================================================================
+Issue 588: nested quote keeps lazy heading text in one paragraph
+================================================================================
+> > q
+  +
+  # h
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (block_quote
+        (block_quote_marker)
+        (content
+          (paragraph))))))
+
+================================================================================
+Issue 588: nested quote keeps lazy table text in one paragraph
+================================================================================
+> > q
+  +
+  | a |
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (block_quote
+        (block_quote_marker)
+        (content
+          (paragraph))))))
