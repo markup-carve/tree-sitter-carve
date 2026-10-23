@@ -233,3 +233,96 @@ A quoted plus inside a nested item refuses a follower at the quote column (#598)
                 content: (list_item_content
                   (paragraph
                     (block_quote_marker)))))))))))
+
+================================================================================
+A plus under an item quote attaches a doubly quoted list (#598)
+================================================================================
+- > a
+  +
+  > > - b
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (block_quote
+          (block_quote_marker)
+          content: (content
+            (paragraph)
+            (list_continuation_marker)
+            (block_quote
+              (block_quote_marker)
+              content: (content
+                (block_quote
+                  (block_quote_marker)
+                  content: (content
+                    (list
+                      (list_item
+                        marker: (list_marker_dash)
+                        content: (list_item_content
+                          (paragraph))))))))))))))
+
+================================================================================
+A plus under an item quote attaches a doubly quoted paragraph (#598)
+================================================================================
+- > a
+  +
+  > > b
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (block_quote
+          (block_quote_marker)
+          content: (content
+            (paragraph)
+            (list_continuation_marker)
+            (block_quote
+              (block_quote_marker)
+              content: (content
+                (block_quote
+                  (block_quote_marker)
+                  content: (content
+                    (paragraph)))))))))))
+
+================================================================================
+A plus after a quoted list attaches a doubly quoted list (#598)
+================================================================================
+- > - a
+  +
+  > > - b
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (block_quote
+          (block_quote_marker)
+          content: (content
+            (list
+              (list_item
+                marker: (list_marker_dash)
+                content: (list_item_content
+                  (paragraph))))
+            (list_continuation_marker)
+            (block_quote
+              (block_quote_marker)
+              content: (content
+                (block_quote
+                  (block_quote_marker)
+                  content: (content
+                    (list
+                      (list_item
+                        marker: (list_marker_dash)
+                        content: (list_item_content
+                          (paragraph))))))))))))))

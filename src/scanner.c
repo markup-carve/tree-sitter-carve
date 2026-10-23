@@ -4503,8 +4503,17 @@ static bool parse_block_quote(Scanner *s, TSLexer *lexer,
       scan_block_quote_marker(s, lexer, &ending_newline);
   Block *quote_list_owner = find_list(s);
   Block *holding_quote = find_block(s, BLOCK_QUOTE);
+  bool prefixed_plus = false;
+  for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (b->type == BLOCK_QUOTE &&
+        (b->flags & BLOCK_FLAG_QUOTE_CONTINUATION_PENDING)) prefixed_plus = true;
+  }
+  // Only a quote-prefixed `+` lets the follower's first `>` re-enter its
+  // quote; after an unprefixed one every `>` opens the attached quote.
   if (has_marker && lexer->lookahead == '>' && holding_quote &&
       quote_list_owner && (s->state & STATE_LIST_CONTINUATION) &&
+      (prefixed_plus || quote_list_owner->type == LIST_DEFINITION) &&
       !list_opened_in_quote(s, quote_list_owner) &&
       marker_start_col == quote_list_owner->content_col &&
       valid_symbols[BLOCK_QUOTE_BEGIN] && !at_nesting_cap(s)) {
