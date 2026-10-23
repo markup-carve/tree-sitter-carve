@@ -4695,9 +4695,8 @@ A nested marker run that stops short stays in the quote (tree-sitter-carve#136)
       (block_quote
         (block_quote_marker)
         content: (content
-          (paragraph)
-          (block_quote_marker)
-          (paragraph))))))
+          (paragraph
+            (block_quote_marker)))))))
 
 ===============================================================================
 A fence on a footnote's first continuation line opens a code block (tree-sitter-carve#112)

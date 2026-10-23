@@ -1,0 +1,333 @@
+================================================================================
+A shallower quoted line continues a nested quoted paragraph (#594)
+================================================================================
+> > q
+> r
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (block_quote
+        (block_quote_marker)
+        content: (content
+          (paragraph
+            (block_quote_marker)))))))
+
+================================================================================
+A shallower line continues the paragraph of a quote in a quoted item (#594)
+================================================================================
+> - > a
+>   b
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (block_quote
+              (block_quote_marker)
+              content: (content
+                (paragraph
+                  (block_quote_marker))))))))))
+
+================================================================================
+An unmarked line continues the paragraph of a quote in an item (#594)
+================================================================================
+- > a
+b
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (block_quote
+          (block_quote_marker)
+          content: (content
+            (paragraph)))))))
+
+================================================================================
+A paragraph attached by + continues across a shallower quoted line (#594)
+================================================================================
+> - > a
+>   +
+>   b
+>   d
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (block_quote
+              (block_quote_marker)
+              content: (content
+                (paragraph)
+                (list_continuation_marker)
+                (block_quote_marker)
+                (paragraph
+                  (block_quote_marker))))))))))
+
+================================================================================
+A quoted + with text continues the paragraph of a quote in a quoted item (#594)
+================================================================================
+> - > a
+>   + x
+>   b
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (block_quote
+              (block_quote_marker)
+              content: (content
+                (paragraph
+                  (block_quote_marker)
+                  (block_quote_marker))))))))))
+
+================================================================================
+A + under two outer quotes attaches inside the item quote (#594)
+================================================================================
+> > - > a
+> >   +
+> >   b
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (block_quote
+        (block_quote_marker)
+        content: (content
+          (list
+            (list_item
+              marker: (list_marker_dash)
+              content: (list_item_content
+                (block_quote
+                  (block_quote_marker)
+                  content: (content
+                    (paragraph)
+                    (list_continuation_marker)
+                    (paragraph
+                      (block_quote_marker)
+                      (block_quote_marker))))))))))))
+
+================================================================================
+A quote in a quoted item continues past the item indentation (#594)
+================================================================================
+> - > a
+>   > b
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (block_quote
+              (block_quote_marker)
+              content: (content
+                (paragraph
+                  (block_quote_marker)
+                  (block_quote_marker))))))))))
+
+================================================================================
+A heading on a shallower quoted line ends the nested paragraph (#594)
+================================================================================
+> > q
+> # h
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (block_quote
+        (block_quote_marker)
+        content: (content
+          (paragraph)))
+      (block_quote_marker)
+      (heading
+        marker: (marker)
+        content: (content)))))
+
+================================================================================
+A list marker on a shallower quoted line folds into the nested paragraph (#594)
+================================================================================
+> > q
+> - s
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (block_quote
+        (block_quote_marker)
+        content: (content
+          (paragraph
+            (block_quote_marker)))))))
+
+================================================================================
+A marker left of an item quote opens a new quote (#594)
+================================================================================
+- > q
+> r
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (block_quote
+          (block_quote_marker)
+          content: (content
+            (paragraph))))))
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (paragraph))))
+
+================================================================================
+An indented + on a shallower quoted line is paragraph text (#594)
+================================================================================
+> > q
+>   +
+>   b
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (block_quote
+        (block_quote_marker)
+        content: (content
+          (paragraph
+            (block_quote_marker)
+            (block_quote_marker)))))))
+
+================================================================================
+A list marker short of the quote holding its list folds in (#594)
+================================================================================
+> > - a
+>   Q
+>   - b
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (block_quote
+        (block_quote_marker)
+        content: (content
+          (list
+            (list_item
+              marker: (list_marker_dash)
+              content: (list_item_content
+                (paragraph
+                  (block_quote_marker)
+                  (block_quote_marker))))))))))
+
+================================================================================
+An indented marker on a shallower quoted line is paragraph text (#594)
+================================================================================
+> > q
+>   > r
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (block_quote
+        (block_quote_marker)
+        content: (content
+          (paragraph
+            (block_quote_marker)))))))
+
+================================================================================
+A marker at the shallower quote content column opens a quote (#594)
+================================================================================
+> - > q
+> > r
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (block_quote
+              (block_quote_marker)
+              content: (content
+                (paragraph))))))
+      (block_quote_marker)
+      (block_quote
+        (block_quote_marker)
+        content: (content
+          (paragraph))))))
+
+================================================================================
+A shallower lazy line keeps the deeper quote open (#594)
+================================================================================
+> > > q
+> r
+> > s
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (block_quote
+        (block_quote_marker)
+        content: (content
+          (block_quote
+            (block_quote_marker)
+            content: (content
+              (paragraph
+                (block_quote_marker)
+                (block_quote_marker)
+                (block_quote_marker)))))))))

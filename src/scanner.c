@@ -426,6 +426,9 @@ static const uint8_t BLOCK_FLAG_QUOTE_BLANK_PLUS = 1 << 1;
 static const uint8_t BLOCK_FLAG_PLUS_AHEAD = 1 << 5;
 // The attached block starts outside the quote prefix.
 static const uint8_t BLOCK_FLAG_QUOTE_DEDENT_PLUS = 1 << 0;
+// BLOCK_QUOTE only: the line under this quote's paragraph carries fewer `>`
+// markers but opens no block, so its markers continue the paragraph lazily.
+static const uint8_t BLOCK_FLAG_QUOTE_LAZY_DROP = 1 << 7;
 static const uint8_t BLOCK_FLAG_COMMENT_RESTORES_LAZY = 1 << 6;
 static const uint8_t BLOCK_FLAG_DESCRIPTION_FENCE_HAS_CLOSER = 1 << 7;
 
@@ -699,6 +702,9 @@ typedef struct {
   bool plus_scan_spent;
   // Set when the paragraph-end `+` probe read past a lone `+` line it refused.
   bool plus_probe_refused_line;
+  // The `>` markers of a line under a deeper quoted paragraph while
+  // `close_paragraph` asks its openers; 0 otherwise. Transient.
+  uint8_t lazy_drop_markers;
 } Scanner;
 
 // Tracks if a `[` starts an inline link.
@@ -1356,6 +1362,16 @@ static bool inside_open_figure_group(Scanner *s) {
 
 static Block *find_block(Scanner *s, BlockType type) {
   for (int i = s->open_blocks->size - 1; i >= 0; --i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (b->type == type) {
+      return b;
+    }
+  }
+  return NULL;
+}
+
+static Block *find_block_from_bottom(Scanner *s, BlockType type) {
+  for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
     Block *b = *array_get(s->open_blocks, i);
     if (b->type == type) {
       return b;
@@ -4256,6 +4272,32 @@ static bool scan_block_quote_marker(Scanner *s, TSLexer *lexer,
   }
 }
 
+/// The `number`-th open quote counted from the outermost, or NULL.
+static Block *nth_quote(Scanner *s, uint8_t number) {
+  uint8_t seen = 0;
+  for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (b->type == BLOCK_QUOTE && ++seen == number) return b;
+  }
+  return NULL;
+}
+
+/// Does a list item stand between the `number`-th quote and the next one?
+static bool list_between_quotes(Scanner *s, uint8_t number) {
+  uint8_t seen = 0;
+  bool list = false;
+  for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (b->type == BLOCK_QUOTE) {
+      if (seen == number) return list;
+      ++seen;
+      continue;
+    }
+    if (seen == number && is_list(b->type)) list = true;
+  }
+  return false;
+}
+
 static bool quote_marker_at_column(Scanner *s, uint8_t number,
                                    uint32_t column) {
   uint8_t seen = 0;
@@ -4274,8 +4316,9 @@ static bool quote_marker_at_column(Scanner *s, uint8_t number,
   return true;
 }
 
-static uint8_t scan_block_quote_markers(Scanner *s, TSLexer *lexer,
-                                        bool *ending_newline) {
+static uint8_t scan_quote_marker_run(Scanner *s, TSLexer *lexer,
+                                     bool *ending_newline,
+                                     bool *skipped_indent) {
   // `scan_block_quote_marker` only ever sets this to true; the loop reads it.
   *ending_newline = false;
   uint8_t marker_count = 0;
@@ -4294,8 +4337,25 @@ static uint8_t scan_block_quote_markers(Scanner *s, TSLexer *lexer,
     if (*ending_newline) {
       break;
     }
+    // `> - > a` / `>   > b`: the next quote's marker sits past the item's
+    // indentation.
+    Block *next_quote = nth_quote(s, marker_count + 1);
+    if (skipped_indent && lexer->lookahead == ' ' && next_quote &&
+        next_quote->content_col >= 2 && list_between_quotes(s, marker_count)) {
+      uint32_t target = next_quote->content_col - 2u;
+      while (lexer->lookahead == ' ' && line_column(s, lexer) < target) {
+        advance(s, lexer);
+      }
+      // Spaces read past that do not end at a marker stand for the run.
+      *skipped_indent = lexer->lookahead != '>';
+    }
   }
   return marker_count;
+}
+
+static uint8_t scan_block_quote_markers(Scanner *s, TSLexer *lexer,
+                                        bool *ending_newline) {
+  return scan_quote_marker_run(s, lexer, ending_newline, NULL);
 }
 
 static void output_block_quote_continuation(Scanner *s, TSLexer *lexer,
@@ -4564,6 +4624,15 @@ static bool parse_block_quote(Scanner *s, TSLexer *lexer,
       // Includes end of input: `> ` at end of input reports no ending newline
       // either, and `>  ` there is the same line without one.
       marker_end_pinned = true;
+      // A quote inside a quoted item continues past the item's indentation:
+      // `> - > a` / `>   > b`.
+      if (lexer->lookahead == '>') {
+        Block *next_quote = nth_quote(s, s->block_quote_level + 2);
+        run_continues = next_quote && next_quote->content_col >= 2 &&
+            line_column(s, lexer) == next_quote->content_col - 2u &&
+            list_between_quotes(s, s->block_quote_level + 1);
+        if (run_continues) mark_end(s, lexer);
+      }
     }
   }
 
@@ -4666,9 +4735,8 @@ static bool parse_block_quote(Scanner *s, TSLexer *lexer,
   // here cannot work: the deferred marker has already been consumed as that
   // quote's own prefix, and the container it would dedent into needs a prefix
   // of its own before it can hold a block - so `> > a` / `> >x` went to ERROR
-  // recovery with the tail line dropped. Held in the deeper quote it is a
-  // paragraph there, one line off carve-js, which continues the paragraph above
-  // it (`a\n>x`) rather than starting a second one.
+  // recovery with the tail line dropped. Under an open paragraph the line is
+  // lazy (`a\n>x`, BLOCK_FLAG_QUOTE_LAZY_DROP).
   bool run_stopped_short = !has_marker && marker_at_owner &&
       s->block_quote_level > 0;
   bool attached_table_prefix = has_marker &&
@@ -4694,9 +4762,15 @@ static bool parse_block_quote(Scanner *s, TSLexer *lexer,
 
   // There's an open block quote with a higher nesting level.
   Block *plus_list = lexer->lookahead == '+' ? find_list(s) : NULL;
+  bool lazy_drop = has_marker && highest_block_quote &&
+      (highest_block_quote->flags & BLOCK_FLAG_QUOTE_LAZY_DROP) &&
+      valid_symbols[BLOCK_QUOTE_CONTINUATION];
+  if (lazy_drop && !run_continues) {
+    highest_block_quote->flags &= (uint8_t)~BLOCK_FLAG_QUOTE_LAZY_DROP;
+  }
   if (highest_block_quote && marker_count < highest_block_quote->data &&
       !run_continues && !run_stopped_short && !attached_table_prefix &&
-      !attached_code_prefix &&
+      !attached_code_prefix && !lazy_drop &&
       !any_open_inline &&
       (lexer->lookahead != '+' || plus_list != NULL || marker_count == 0 ||
        (s->state & STATE_AFTER_BLANK_LINE))) {
@@ -7864,6 +7938,11 @@ static PlusFollow plus_follower(Scanner *s, TSLexer *lexer, uint32_t column,
       attaches = !item && (rel == 0 || rel == s->chain_col ||
                            next_col + 2 == quote_owner->content_col);
     }
+    // A quote's first-block `+` refuses a list follower (corpus 652).
+    if (item && quote_owner == peek_block(s) &&
+        (quote_owner->flags & BLOCK_FLAG_QUOTE_OPENING_LINE)) {
+      attaches = false;
+    }
     return attaches ? PLUS_ATTACHES : PLUS_REFUSED;
   }
   if (!list_owner) {
@@ -9269,7 +9348,11 @@ static bool end_paragraph_in_block_quote(Scanner *s, TSLexer *lexer,
 
   // Scan all `> ` markers we can find.
   bool ending_newline;
-  uint8_t marker_count = scan_block_quote_markers(s, lexer, &ending_newline);
+  uint32_t first_marker_col = lexer->lookahead == '>' ? line_column(s, lexer) : 0;
+  bool skipped_indent = false;
+  uint8_t marker_count = scan_quote_marker_run(s, lexer, &ending_newline,
+                                               &skipped_indent);
+  int32_t after_markers = skipped_indent ? ' ' : lexer->lookahead;
   // Handed to the caller rather than stored: `block_quote_level` is written
   // only by `output_block_quote_continuation`, which this route never reaches,
   // so a stored count would describe a different line (the #114 trap).
@@ -9310,6 +9393,19 @@ static bool end_paragraph_in_block_quote(Scanner *s, TSLexer *lexer,
   if (marker_count == 0) {
     return false;
   }
+  // A first `>` left of the content column of the item holding the outermost
+  // quote opens a new quote outside the item: `- > q` / `> r`.
+  Block *outer = find_block_from_bottom(s, BLOCK_QUOTE);
+  Block *holder = NULL;
+  for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (b == outer) break;
+    if (is_list(b->type) && b->content_col != 0) holder = b;
+  }
+  if (holder && first_marker_col < holder->content_col &&
+      !(s->state & STATE_LIST_CONTINUATION)) {
+    return true;
+  }
 
   if (marker_count < block->data && !ending_newline && find_list(s) &&
       (block->flags & BLOCK_FLAG_QUOTE_ON_ITEM_MARKER_LINE) &&
@@ -9318,6 +9414,7 @@ static bool end_paragraph_in_block_quote(Scanner *s, TSLexer *lexer,
     uint8_t level = s->block_quote_level;
     uint32_t col_base = s->col_base;
     consume_whitespace(s, lexer);
+    after_markers = lexer->lookahead;
     if (lexer->lookahead == '+') {
       uint32_t column = line_column(s, lexer);
       Block *owner_list = NULL;
@@ -9363,14 +9460,25 @@ static bool end_paragraph_in_block_quote(Scanner *s, TSLexer *lexer,
     s->indent = indent;
     s->block_quote_level = level;
     s->col_base = col_base;
-    return true;
+    if (lexer->lookahead == '+') return true;
   }
 keep_reading:
 
-  // We've gone down a blockquote level, we need to close the paragraph.
-  if ((marker_count < block->data && lexer->lookahead != '+') ||
-      ending_newline) {
+  if (ending_newline) {
     return true;
+  }
+  // Down a quote level: the line continues the paragraph lazily unless it
+  // opens a block, which `close_paragraph` asks at the shallower depth.
+  if (marker_count < block->data && after_markers != '+') {
+    // A `>` right at the shallower quote's content column opens a quote there.
+    if (after_markers == '>') return true;
+    consume_whitespace(s, lexer);
+    if (lexer->lookahead == '+') {
+      // An indented `+` on the shallower line is the paragraph's text.
+      s->plus_probe_refused_line = true;
+      return false;
+    }
+    return at_line_end(lexer) || lexer->lookahead == '+';
   }
 
   // And UP a level: a deeper quote is a new block, so it interrupts the
@@ -10084,6 +10192,17 @@ static bool abbreviation_definition_follows(Scanner *s, TSLexer *lexer,
 /// in a list item: the line folds in lazily unless it is a sibling marker of
 /// an enclosing list (corpus 448, 507).
 static bool marker_folds_into_nested_paragraph(Scanner *s, uint32_t column) {
+  // A line short of the quotes holding the list cannot reach its items.
+  if (s->lazy_drop_markers > 0) {
+    Block *missing = nth_quote(s, s->lazy_drop_markers + 1);
+    bool reachable = false;
+    for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
+      Block *b = *array_get(s->open_blocks, i);
+      if (b == missing) break;
+      if (is_list(b->type)) reachable = true;
+    }
+    if (missing && !reachable) return true;
+  }
   Block *host = peek_block(s);
   if (!host || find_list(s) == NULL) {
     return false;
@@ -10211,6 +10330,8 @@ static bool paragraph_block_opener_ahead(Scanner *s, TSLexer *lexer, int markers
 
   return false;
 }
+static bool close_paragraph_after_quote(Scanner *s, TSLexer *lexer,
+                                        int markers_seen);
 static bool close_paragraph(Scanner *s, TSLexer *lexer) {
   // Workaround for not including the following blankline when closing a
   // paragraph inside a block.
@@ -10270,9 +10391,31 @@ static bool close_paragraph(Scanner *s, TSLexer *lexer) {
   // carries; -1 while no quote is open.
   int markers_seen = -1;
   s->plus_probe_refused_line = false;
+  Block *lazy_quote = find_block(s, BLOCK_QUOTE);
+  if (lazy_quote) lazy_quote->flags &= (uint8_t)~BLOCK_FLAG_QUOTE_LAZY_DROP;
   if (end_paragraph_in_block_quote(s, lexer, &markers_seen)) {
     return true;
   }
+  if (lazy_quote && markers_seen > 0 && markers_seen < lazy_quote->data &&
+      s->plus_probe_refused_line) {
+    lazy_quote->flags |= BLOCK_FLAG_QUOTE_LAZY_DROP;
+    return false;
+  }
+  if (lazy_quote && markers_seen > 0 && markers_seen < lazy_quote->data) {
+    uint8_t level = s->block_quote_level;
+    s->block_quote_level = (uint8_t)markers_seen;
+    s->lazy_drop_markers = (uint8_t)markers_seen;
+    bool ends = close_paragraph_after_quote(s, lexer, markers_seen);
+    s->lazy_drop_markers = 0;
+    s->block_quote_level = level;
+    if (!ends) lazy_quote->flags |= BLOCK_FLAG_QUOTE_LAZY_DROP;
+    return ends;
+  }
+  return close_paragraph_after_quote(s, lexer, markers_seen);
+}
+
+static bool close_paragraph_after_quote(Scanner *s, TSLexer *lexer,
+                                        int markers_seen) {
   // A refused lone `+` is this paragraph's text, and the lexer now stands on
   // the line after it, where no later probe may look.
   if (s->plus_probe_refused_line) {
@@ -15926,6 +16069,7 @@ static void init_scalars(Scanner *s) {
   s->indent = 0;
   s->marker_end_col = 0;
   s->chain_col = UINT8_MAX;
+  s->lazy_drop_markers = 0;
   s->continuation_col = 0;
   s->attached_row_prefix = UINT8_MAX;
   s->plus_decision = 0;

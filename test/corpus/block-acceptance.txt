@@ -1092,9 +1092,8 @@ Block ownership boundary 7
       (block_quote
         (block_quote_marker)
         (content
-          (paragraph)))
-      (block_quote_marker)
-      (paragraph))))
+          (paragraph
+            (block_quote_marker)))))))
 
 ================================================================================
 Block ownership boundary 8
