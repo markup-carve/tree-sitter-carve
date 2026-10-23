@@ -1,0 +1,192 @@
+================================================================================
+A quote-prefixed + short of a nested quote attaches a list in that quote (#588)
+================================================================================
+- > > q
+  > +
+  > - s
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (block_quote
+          (block_quote_marker)
+          content: (content
+            (block_quote
+              (block_quote_marker)
+              content: (content
+                (paragraph)
+                (block_quote_marker)
+                (list_continuation_marker)
+                (list
+                  (list_item
+                    (block_quote_marker)
+                    marker: (list_marker_dash)
+                    content: (list_item_content
+                      (paragraph))))))))))))
+
+================================================================================
+A + two quotes short closes the innermost and attaches in the next (#588)
+================================================================================
+- > > > q
+  > +
+  > - s
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (block_quote
+          (block_quote_marker)
+          content: (content
+            (block_quote
+              (block_quote_marker)
+              content: (content
+                (block_quote
+                  (block_quote_marker)
+                  content: (content
+                    (paragraph)))
+                (block_quote_marker)
+                (list_continuation_marker)
+                (list
+                  (list_item
+                    (block_quote_marker)
+                    marker: (list_marker_dash)
+                    content: (list_item_content
+                      (paragraph))))))))))))
+
+================================================================================
+A + short of a nested quote closes the list inside it first (#588)
+================================================================================
+- > > - a
+  > +
+  > b
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (block_quote
+          (block_quote_marker)
+          content: (content
+            (block_quote
+              (block_quote_marker)
+              content: (content
+                (list
+                  (list_item
+                    marker: (list_marker_dash)
+                    content: (list_item_content
+                      (paragraph))))
+                (block_quote_marker)
+                (list_continuation_marker)
+                (paragraph
+                  (block_quote_marker))))))))))
+
+================================================================================
+A top-level + two quotes short attaches in the middle quote (#588)
+================================================================================
+> > > q
+> +
+> b
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (block_quote
+        (block_quote_marker)
+        content: (content
+          (block_quote
+            (block_quote_marker)
+            content: (content
+              (paragraph)))
+          (block_quote_marker)
+          (list_continuation_marker)
+          (paragraph
+            (block_quote_marker)))))))
+
+================================================================================
+An indented heading on a shallower quoted line is paragraph text (#588)
+================================================================================
+> > q
+>   # h
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (block_quote
+        (block_quote_marker)
+        content: (content
+          (paragraph
+            (block_quote_marker)))))))
+
+================================================================================
+A refused + on a shallower line keeps its follower as text (#588)
+================================================================================
+- > > > q
+  >   +
+  >   # h
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (block_quote
+          (block_quote_marker)
+          content: (content
+            (block_quote
+              (block_quote_marker)
+              content: (content
+                (block_quote
+                  (block_quote_marker)
+                  content: (content
+                    (paragraph
+                      (block_quote_marker)
+                      (block_quote_marker))))))))))))
+
+================================================================================
+A + at the column of a quote the line is short of is text (#588)
+================================================================================
+- > - > q
+  >     r
+  >     +
+  >     b
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (block_quote
+          (block_quote_marker)
+          content: (content
+            (list
+              (list_item
+                marker: (list_marker_dash)
+                content: (list_item_content
+                  (block_quote
+                    (block_quote_marker)
+                    content: (content
+                      (paragraph
+                        (block_quote_marker)
+                        (block_quote_marker)
+                        (block_quote_marker)))))))))))))

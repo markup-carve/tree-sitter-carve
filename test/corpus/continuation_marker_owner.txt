@@ -1102,22 +1102,12 @@ Issue 584: A marker line quote attaches at its own depth
               (block_quote_marker)
               (content
                 (paragraph)
-              )
-            )
-            (block_quote_marker)
-            (list_continuation_marker)
-            (block_quote
-              (block_quote_marker)
-              (content
-                (paragraph)
-              )
-            )
-          )
-        )
-      )
-    )
-  )
-)
+                (block_quote_marker)
+                (list_continuation_marker)
+                (block_quote
+                  (block_quote_marker)
+                  (content
+                    (paragraph)))))))))))
 
 ================================================================================
 Issue 584: A third stacked quote attaches at its own depth
@@ -1142,25 +1132,13 @@ Issue 584: A third stacked quote attaches at its own depth
                 (block_quote
                   (block_quote_marker)
                   (content
-                    (paragraph)
-                  )
-                )
-              )
-            )
-            (block_quote_marker)
-            (list_continuation_marker)
-            (block_quote
-              (block_quote_marker)
-              (content
-                (paragraph)
-              )
-            )
-          )
-        )
-      )
-    )
-  )
-)
+                    (paragraph)))
+                (block_quote_marker)
+                (list_continuation_marker)
+                (block_quote
+                  (block_quote_marker)
+                  (content
+                    (paragraph)))))))))))
 
 ================================================================================
 Issue 584: A description marker line quote attaches at its own depth
