@@ -9573,6 +9573,16 @@ static bool end_paragraph_in_block_quote(Scanner *s, TSLexer *lexer,
         s->col_base = col_base;
         return attaches;
       }
+      // A `+` only the quote the line is short of would reach is text.
+      Block *missing = nth_quote(s, marker_count + 1);
+      if (missing && missing->content_col != 0 &&
+          column >= missing->content_col) {
+        s->indent = indent;
+        s->block_quote_level = level;
+        s->col_base = col_base;
+        s->plus_probe_refused_line = true;
+        return false;
+      }
       // A `+` owned by a list at its marker column, or by a quote whose own
       // child is a list item, keeps the reading below.
       bool item_between = false;
