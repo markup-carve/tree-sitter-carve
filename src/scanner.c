@@ -4319,14 +4319,17 @@ static bool list_between_quotes(Scanner *s, uint8_t number) {
 static bool quote_marker_at_column(Scanner *s, uint8_t number,
                                    uint32_t column) {
   uint8_t seen = 0;
-  bool enclosing_list = false;
+  Block *enclosing_list = NULL;
   for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
     Block *b = *array_get(s->open_blocks, i);
-    if (is_list(b->type)) enclosing_list = true;
+    if (is_list(b->type)) enclosing_list = b;
     if (b->type != BLOCK_QUOTE) continue;
     if (++seen == number) {
       // Marker-line quotes in an outer list retain their existing band rule.
-      return b->content_col == 0 || (seen == 1 && enclosing_list) ||
+      return b->content_col == 0 ||
+          (seen == 1 && enclosing_list &&
+           (column <= enclosing_list->content_col ||
+            column == b->content_col)) ||
           (s->state & STATE_LIST_CONTINUATION) ||
           column == b->content_col - 2;
     }
@@ -9468,7 +9471,7 @@ static bool list_above_block(Scanner *s, Block *list, Block *block) {
 
 /// A lone `+` short of the paragraph's quote that attaches marks the innermost
 /// list, so `parse_block_quote` keeps the quote one level past its prefix.
-static void note_short_plus(Scanner *s, TSLexer *lexer, uint8_t markers,
+static bool note_short_plus(Scanner *s, TSLexer *lexer, uint8_t markers,
                             bool lone_is_enough) {
   // The list that stays open once the blocks inside the next quote close.
   Block *next = nth_quote(s, markers + 1);
@@ -9478,17 +9481,19 @@ static void note_short_plus(Scanner *s, TSLexer *lexer, uint8_t markers,
     if (b == next) break;
     if (is_list(b->type)) list = b;
   }
-  if (!list || list->type == LIST_DEFINITION) return;
+  if (!list) return false;
+  if (list->type == LIST_DEFINITION) return true;
   uint32_t column = line_column(s, lexer);
   advance(s, lexer);
   while (lexer->lookahead == ' ' || lexer->lookahead == '\t') advance(s, lexer);
-  if (!at_line_end(lexer)) return;
+  if (!at_line_end(lexer)) return false;
   consume_line_end(s, lexer);
   if (lone_is_enough ||
       plus_follower(s, lexer, column, markers, NULL, NULL, NULL, NULL,
                     NULL) == PLUS_ATTACHES) {
     list->flags |= BLOCK_FLAG_LIST_SHORT_PLUS;
   }
+  return true;
 }
 
 static bool end_paragraph_in_block_quote(Scanner *s, TSLexer *lexer,
@@ -9636,8 +9641,9 @@ static bool end_paragraph_in_block_quote(Scanner *s, TSLexer *lexer,
     s->block_quote_level = level;
     s->col_base = col_base;
     if (lexer->lookahead == '+') {
-      note_short_plus(s, lexer, marker_count, true);
-      return true;
+      if (note_short_plus(s, lexer, marker_count, true)) return true;
+      s->plus_probe_refused_line = true;
+      return false;
     }
   }
 keep_reading:
@@ -9792,6 +9798,15 @@ static bool scan_continuation_marker_at_paragraph_end(Scanner *s,
   // probe ends a paragraph the marker then refuses to open, and the `+` becomes
   // a block of its own where the language keeps it as lazy text.
   uint32_t column = line_column(s, lexer);
+  Block *quoted_item = find_list(s);
+  Block *item_quote = find_block(s, BLOCK_QUOTE);
+  if (markers == 0 && column > 0 && quoted_item && item_quote &&
+      list_opened_in_quote(s, quoted_item) &&
+      !list_above_block(s, quoted_item, item_quote) &&
+      (item_quote->flags & BLOCK_FLAG_QUOTE_ON_ITEM_MARKER_LINE) &&
+      column <= quoted_item->content_col) {
+    return false;
+  }
   if (!continuation_marker_column(s, column)) {
     return false;
   }
@@ -9826,6 +9841,13 @@ static bool scan_continuation_marker_at_paragraph_end(Scanner *s,
       }
       s->plus_probe_refused_line = true;
       return false;
+    }
+    // An unprefixed `+` after a lazy paragraph in stacked quotes attaches
+    // its follower in the outer quote. Close the inner quotes at the paragraph
+    // boundary, before the marker is read as a new block.
+    if (markers == 0 && count_blocks(s, BLOCK_QUOTE) > 1 &&
+        !list_between_quotes(s, 1)) {
+      s->drop_close_markers = 1;
     }
     if (markers > 0) {
       Block *owner_list = NULL;
