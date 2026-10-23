@@ -4318,8 +4318,10 @@ static bool list_between_quotes(Scanner *s, uint8_t number) {
   return false;
 }
 
+/// An open paragraph reads a `>` at a marker-line quote's content column as
+/// lazy text, not as the quote's marker (#600).
 static bool quote_marker_at_column(Scanner *s, uint8_t number,
-                                   uint32_t column) {
+                                   uint32_t column, bool in_paragraph) {
   uint8_t seen = 0;
   Block *enclosing_list = NULL;
   for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
@@ -4331,7 +4333,7 @@ static bool quote_marker_at_column(Scanner *s, uint8_t number,
       return b->content_col == 0 ||
           (seen == 1 && enclosing_list &&
            (column <= enclosing_list->content_col ||
-            column == b->content_col)) ||
+            (!in_paragraph && column == b->content_col))) ||
           (s->state & STATE_LIST_CONTINUATION) ||
           column == b->content_col - 2;
     }
@@ -4347,7 +4349,7 @@ static uint8_t scan_quote_marker_run(Scanner *s, TSLexer *lexer,
   uint8_t marker_count = 0;
   while (lexer->lookahead == '>') {
     uint32_t column = line_column(s, lexer);
-    if (!quote_marker_at_column(s, marker_count + 1, column)) {
+    if (!quote_marker_at_column(s, marker_count + 1, column, false)) {
       return marker_count;
     }
     if (marker_count == 0 && count_blocks(s, BLOCK_QUOTE) == 0 &&
@@ -4499,11 +4501,14 @@ static bool parse_block_quote(Scanner *s, TSLexer *lexer,
   // nested list `- - A` that `parse_list_marker_or_thematic_break` already
   // models with the same two fields - see `open_marker_line_quote` below.
   uint32_t marker_start_col = line_column(s, lexer);
+  // A paragraph's continuation line offers the marker and nothing else.
+  bool inside_paragraph = valid_symbols[BLOCK_QUOTE_CONTINUATION] &&
+      !valid_symbols[BLOCK_QUOTE_BEGIN] && !valid_symbols[BLOCK_CLOSE];
 
   bool ending_newline = false;
   // A valid marker is a '> ' or '>\n'.
   bool marker_at_owner = quote_marker_at_column(
-      s, s->block_quote_level + 1, marker_start_col);
+      s, s->block_quote_level + 1, marker_start_col, inside_paragraph);
   bool has_marker = marker_at_owner &&
       scan_block_quote_marker(s, lexer, &ending_newline);
   Block *quote_list_owner = find_list(s);
@@ -4575,7 +4580,8 @@ static bool parse_block_quote(Scanner *s, TSLexer *lexer,
   // run, and nothing the probe walks over can be this character.
   bool run_continues = has_marker && !ending_newline && lexer->lookahead == '>';
   if (run_continues) run_continues = quote_marker_at_column(
-      s, s->block_quote_level + 2, line_column(s, lexer));
+      s, s->block_quote_level + 2, line_column(s, lexer),
+      inside_paragraph);
 
   // A marker followed by only whitespace is content-less whatever that
   // whitespace is: carve-js renders `>`, `> `, `>  ` and `> <TAB>` as the same
