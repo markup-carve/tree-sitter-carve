@@ -9374,15 +9374,24 @@ static bool list_above_block(Scanner *s, Block *list, Block *block) {
 
 /// A lone `+` short of the paragraph's quote that attaches marks the innermost
 /// list, so `parse_block_quote` keeps the quote one level past its prefix.
-static void note_short_plus(Scanner *s, TSLexer *lexer, uint8_t markers) {
-  Block *list = find_list(s);
+static void note_short_plus(Scanner *s, TSLexer *lexer, uint8_t markers,
+                            bool lone_is_enough) {
+  // The list that stays open once the blocks inside the next quote close.
+  Block *next = nth_quote(s, markers + 1);
+  Block *list = NULL;
+  for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (b == next) break;
+    if (is_list(b->type)) list = b;
+  }
   if (!list || list->type == LIST_DEFINITION) return;
   uint32_t column = line_column(s, lexer);
   advance(s, lexer);
   while (lexer->lookahead == ' ' || lexer->lookahead == '\t') advance(s, lexer);
   if (!at_line_end(lexer)) return;
   consume_line_end(s, lexer);
-  if (plus_follower(s, lexer, column, markers, NULL, NULL, NULL, NULL,
+  if (lone_is_enough ||
+      plus_follower(s, lexer, column, markers, NULL, NULL, NULL, NULL,
                     NULL) == PLUS_ATTACHES) {
     list->flags |= BLOCK_FLAG_LIST_SHORT_PLUS;
   }
@@ -9511,7 +9520,7 @@ static bool end_paragraph_in_block_quote(Scanner *s, TSLexer *lexer,
     s->block_quote_level = level;
     s->col_base = col_base;
     if (lexer->lookahead == '+') {
-      note_short_plus(s, lexer, marker_count);
+      note_short_plus(s, lexer, marker_count, true);
       return true;
     }
   }
@@ -9576,7 +9585,7 @@ keep_reading:
   if (list && list_above_block(s, list, block) &&
       !list_opened_in_quote(s, list)) {
     if (lexer->lookahead == '+' && marker_count < block->data) {
-      note_short_plus(s, lexer, marker_count);
+      note_short_plus(s, lexer, marker_count, false);
     }
     return true;
   }
@@ -9707,9 +9716,14 @@ static bool scan_continuation_marker_at_paragraph_end(Scanner *s,
       Block *owner = owner_list ? owner_list : find_list(s);
       if (!owner) owner = find_block(s, FOOTNOTE);
       if (owner) owner->flags |= BLOCK_FLAG_PLUS_AHEAD;
-      Block *short_list = find_list(s);
-      if (short_list && short_list->type != LIST_DEFINITION &&
-          markers < count_blocks(s, BLOCK_QUOTE)) {
+      Block *next = nth_quote(s, markers + 1);
+      Block *short_list = NULL;
+      for (uint32_t i = 0; next && i < s->open_blocks->size; ++i) {
+        Block *b = *array_get(s->open_blocks, i);
+        if (b == next) break;
+        if (is_list(b->type)) short_list = b;
+      }
+      if (short_list && short_list->type != LIST_DEFINITION) {
         short_list->flags |= BLOCK_FLAG_LIST_SHORT_PLUS;
       }
       // Two or more quotes short: those past the next one close first.
