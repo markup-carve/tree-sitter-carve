@@ -406,6 +406,8 @@ static const uint8_t BLOCK_FLAG_LIST_TEXT_LINE = 1 << 0;
 // Lists only: a `+`-attached block so far holds only attribute lines, so the
 // next line is still the attached block.
 static const uint8_t BLOCK_FLAG_LIST_ATTACHED_ATTRIBUTE = 1 << 7;
+// A prefixed `+` at every open quote level belongs to this quoted item.
+static const uint8_t BLOCK_FLAG_LIST_FULL_QUOTE_PLUS = 1 << 6;
 // A literal, not the two names above: C (and MSVC) rejects a static const
 // initialized from other const objects.
 static const uint8_t LIST_COMMENT_FLAGS = (1 << 3) | (1 << 4);
@@ -6588,8 +6590,9 @@ static bool parse_list_item_end(Scanner *s, TSLexer *lexer,
     }
   }
   if (lexer->lookahead == '>' && quote &&
-      (quote->flags & BLOCK_FLAG_QUOTE_BLANK_PLUS) &&
-      (list->flags & BLOCK_FLAG_PLUS_AHEAD)) return false;
+      (list->flags & BLOCK_FLAG_PLUS_AHEAD) &&
+      (quote->flags & BLOCK_FLAG_QUOTE_BLANK_PLUS ||
+       (list->flags & BLOCK_FLAG_LIST_FULL_QUOTE_PLUS))) return false;
 
   // We're still inside the list, don't end it yet. An unmarked line under a
   // list opened in a quote is measured by column, as the continuation is.
@@ -7871,8 +7874,15 @@ static bool unprefixed_plus_short_of_nested_quote(Scanner *s,
                                                   uint32_t column,
                                                   uint8_t markers) {
   Block *list = find_list(s);
-  return markers == 0 && column > 0 && !list &&
-      count_blocks(s, BLOCK_QUOTE) > 1;
+  Block *inner = find_block(s, BLOCK_QUOTE);
+  Block *outer = find_block_from_bottom(s, BLOCK_QUOTE);
+  return markers == 0 && column > 0 &&
+      count_blocks(s, BLOCK_QUOTE) > 1 &&
+      (!outer || outer->content_col < 2 ||
+       column != outer->content_col - 2) &&
+      (!list || (list_opened_in_quote(s, list) && inner &&
+                 column < inner->content_col &&
+                 !list_between_quotes(s, 1)));
 }
 
 /// A footnote opened inside a quote inside an item owns its `+`, not the item.
@@ -8154,8 +8164,11 @@ static bool scan_plus_owner_check(Scanner *s, TSLexer *lexer) {
   Block *quote = find_block(s, BLOCK_QUOTE);
   uint32_t owner_col = first_block ? list->data - 1 : column;
   if (!first_block && s->block_quote_level > 0 &&
-      list_opened_in_quote(s, list) && quote && quote->content_col >= 2)
-    owner_col = quote->content_col - 2;
+      list_opened_in_quote(s, list) && quote && quote->content_col >= 2) {
+    Block *outer = find_block_from_bottom(s, BLOCK_QUOTE);
+    owner_col = outer && outer->content_col >= 2
+        ? outer->content_col - 2 : quote->content_col - 2;
+  }
   mark_end(s, lexer);
   advance(s, lexer);
   while (lexer->lookahead == ' ' || lexer->lookahead == '\t') advance(s, lexer);
@@ -8537,7 +8550,8 @@ static bool scan_quoted_plus_owner(Scanner *s, TSLexer *lexer,
       s->plus_decision = 0;
       return false;
     }
-    owner->flags &= (uint8_t)~BLOCK_FLAG_PLUS_AHEAD;
+    owner->flags &= (uint8_t)~(BLOCK_FLAG_PLUS_AHEAD |
+                                BLOCK_FLAG_LIST_FULL_QUOTE_PLUS);
     return true;
   }
   advance(s, lexer);
@@ -8554,7 +8568,8 @@ static bool scan_quoted_plus_owner(Scanner *s, TSLexer *lexer,
     s->block_quote_level = old_level;
     s->plus_scan_spent = true;
   } else {
-    owner->flags &= (uint8_t)~BLOCK_FLAG_PLUS_AHEAD;
+    owner->flags &= (uint8_t)~(BLOCK_FLAG_PLUS_AHEAD |
+                                BLOCK_FLAG_LIST_FULL_QUOTE_PLUS);
   }
   return attached;
 }
@@ -9491,10 +9506,20 @@ static bool note_short_plus(Scanner *s, TSLexer *lexer, uint8_t markers,
   consume_line_end(s, lexer);
   if (lexer->eof(lexer)) return false;
   if (list->type == LIST_DEFINITION) return true;
-  if (lone_is_enough ||
-      plus_follower(s, lexer, column, markers, NULL, NULL, NULL, NULL,
-                    NULL) == PLUS_ATTACHES) {
+  PlusFollow follow = plus_follower(s, lexer, column, markers,
+                                    NULL, NULL, NULL, NULL, NULL);
+  if (lone_is_enough || follow == PLUS_ATTACHES) {
     list->flags |= BLOCK_FLAG_LIST_SHORT_PLUS;
+  }
+  if (follow == PLUS_ATTACHES) {
+    for (uint8_t depth = markers + 1;
+         depth < count_blocks(s, BLOCK_QUOTE); ++depth) {
+      Block *q = nth_quote(s, depth);
+      if (q && q->content_col >= 2 && column == q->content_col - 2) {
+        s->drop_close_markers = depth;
+        break;
+      }
+    }
   }
   return true;
 }
@@ -9604,7 +9629,12 @@ static bool end_paragraph_in_block_quote(Scanner *s, TSLexer *lexer,
           consume_line_end(s, lexer);
           attaches = plus_follower(s, lexer, column, marker_count,
                                    NULL, NULL, NULL, NULL, NULL) == PLUS_ATTACHES;
-          if (attaches) owner_list->flags |= BLOCK_FLAG_PLUS_AHEAD;
+          if (attaches) {
+            owner_list->flags |= BLOCK_FLAG_PLUS_AHEAD;
+            if (marker_count + 1 < count_blocks(s, BLOCK_QUOTE)) {
+              s->drop_close_markers = marker_count + 1;
+            }
+          }
         }
         s->indent = indent;
         s->block_quote_level = level;
@@ -9644,6 +9674,24 @@ static bool end_paragraph_in_block_quote(Scanner *s, TSLexer *lexer,
     s->block_quote_level = level;
     s->col_base = col_base;
     if (lexer->lookahead == '+') {
+      Block *next_quote = nth_quote(s, marker_count + 1);
+      uint32_t plus_column = line_column(s, lexer);
+      Block *first_quote = nth_quote(s, 1);
+      bool list_outside_quote = false;
+      for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
+        Block *candidate = *array_get(s->open_blocks, i);
+        if (candidate == first_quote) break;
+        if (is_list(candidate->type)) list_outside_quote = true;
+      }
+      if (next_quote && next_quote->content_col >= 2 &&
+          plus_column == next_quote->content_col - 2 &&
+          !list_outside_quote &&
+          list_between_quotes(s, marker_count + 1)) {
+        if (scan_continuation_marker_at_paragraph_end(
+                s, lexer, marker_count)) return true;
+        s->plus_probe_refused_line = true;
+        return false;
+      }
       if (note_short_plus(s, lexer, marker_count, true)) return true;
       s->plus_probe_refused_line = true;
       return false;
@@ -9679,6 +9727,32 @@ keep_reading:
     }
     consume_whitespace(s, lexer);
     if (lexer->lookahead == '+') {
+      uint32_t plus_column = line_column(s, lexer);
+      Block *first_quote = nth_quote(s, 1);
+      bool list_outside_quote = false;
+      for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
+        Block *candidate = *array_get(s->open_blocks, i);
+        if (candidate == first_quote) break;
+        if (is_list(candidate->type)) list_outside_quote = true;
+      }
+      uint8_t plus_quote_depth = 0;
+      Block *next_quote = nth_quote(s, marker_count + 1);
+      if (marker_count + 1 < count_blocks(s, BLOCK_QUOTE) &&
+          next_quote && next_quote->content_col >= 2 &&
+          plus_column == next_quote->content_col - 2) {
+        plus_quote_depth = marker_count + 1;
+      }
+      if (marker_count > 0 && !list_outside_quote &&
+          list_between_quotes(s, marker_count) &&
+          plus_quote_depth > 0) {
+        if (scan_continuation_marker_at_paragraph_end(
+                s, lexer, marker_count)) {
+          s->drop_close_markers = plus_quote_depth;
+          return true;
+        }
+        s->plus_probe_refused_line = true;
+        return false;
+      }
       // An indented `+` on the shallower line is the paragraph's text.
       s->plus_probe_refused_line = true;
       return false;
@@ -9821,10 +9895,13 @@ static bool scan_continuation_marker_at_paragraph_end(Scanner *s,
   uint32_t column = line_column(s, lexer);
   Block *quoted_item = find_list(s);
   Block *item_quote = find_block(s, BLOCK_QUOTE);
+  Block *first_quote = find_block_from_bottom(s, BLOCK_QUOTE);
   if (markers == 0 && column > 0 && quoted_item && item_quote &&
       list_opened_in_quote(s, quoted_item) &&
       !list_above_block(s, quoted_item, item_quote) &&
       (item_quote->flags & BLOCK_FLAG_QUOTE_ON_ITEM_MARKER_LINE) &&
+      (!first_quote || first_quote->content_col < 2 ||
+       column != first_quote->content_col - 2) &&
       column <= quoted_item->content_col) {
     return false;
   }
@@ -9867,10 +9944,16 @@ static bool scan_continuation_marker_at_paragraph_end(Scanner *s,
     // its follower in the outer quote. Close the inner quotes at the paragraph
     // boundary, before the marker is read as a new block.
     if (markers == 0 && count_blocks(s, BLOCK_QUOTE) > 1 &&
-        !list_between_quotes(s, 1)) {
+        (!list_between_quotes(s, 1) ||
+         (first_quote && first_quote->content_col >= 2 &&
+          column == first_quote->content_col - 2))) {
       s->drop_close_markers = 1;
     }
     if (markers > 0) {
+      if (markers < count_blocks(s, BLOCK_QUOTE) &&
+          list_between_quotes(s, markers)) {
+        s->drop_close_markers = markers;
+      }
       Block *owner_list = NULL;
       Block *owner_quote = NULL;
       uint32_t reach = 0;
@@ -9879,6 +9962,11 @@ static bool scan_continuation_marker_at_paragraph_end(Scanner *s,
       if (!owner_list && quoted_note_inside_item(s)) owner = find_block(s, FOOTNOTE);
       if (!owner) owner = find_block(s, FOOTNOTE);
       if (owner) owner->flags |= BLOCK_FLAG_PLUS_AHEAD;
+      if (owner_list && markers > 1 &&
+          markers == count_blocks(s, BLOCK_QUOTE) &&
+          list_opened_in_quote(s, owner_list)) {
+        owner_list->flags |= BLOCK_FLAG_LIST_FULL_QUOTE_PLUS;
+      }
       Block *next = nth_quote(s, markers + 1);
       Block *short_list = NULL;
       for (uint32_t i = 0; next && i < s->open_blocks->size; ++i) {
@@ -9896,6 +9984,15 @@ static bool scan_continuation_marker_at_paragraph_end(Scanner *s,
           (own->content_col == 0 ||
            own->content_col == s->probe_first_marker_col + 2 * markers)) {
         s->drop_close_markers = markers + 1;
+      }
+      for (uint8_t depth = markers + 1;
+           depth < count_blocks(s, BLOCK_QUOTE); ++depth) {
+        Block *q = nth_quote(s, depth);
+        if (q && q->content_col >= 2 &&
+            column == q->content_col - 2) {
+          s->drop_close_markers = depth;
+          break;
+        }
       }
     }
   }

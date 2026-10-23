@@ -1,0 +1,311 @@
+================================================================================
+An unprefixed plus after a lazy line stays in the quoted item (#600)
+================================================================================
+> - > q
+> r
+> +
+> b
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (list
+        (list_item
+          (list_marker_dash)
+          (list_item_content
+            (block_quote
+              (block_quote_marker)
+              (content
+                (paragraph
+                  (block_quote_marker))))
+            (list_continuation_marker)
+            (paragraph
+              (block_quote_marker))))))))
+
+================================================================================
+A plus at the outer margin keeps a nested quoted item open (#600)
+================================================================================
+> > - q
+  r
+  +
+  b
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (block_quote
+        (block_quote_marker)
+        (content
+          (list
+            (list_item
+              (list_marker_dash)
+              (list_item_content
+                (paragraph)))))))))
+
+================================================================================
+A plus after a lazy line crosses an item and quote (#600)
+================================================================================
+- > - > q
+  r
+  +
+  b
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (block_quote
+          (block_quote_marker)
+          (content
+            (list
+              (list_item
+                (list_marker_dash)
+                (list_item_content
+                  (block_quote
+                    (block_quote_marker)
+                    (content
+                      (paragraph))))))
+            (list_continuation_marker)
+            (paragraph)))))))
+
+================================================================================
+A fully prefixed plus stays with the item between quotes (#600)
+================================================================================
+> > - > q
+> > r
+> > +
+> > b
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (block_quote
+        (block_quote_marker)
+        (content
+          (list
+            (list_item
+              (list_marker_dash)
+              (list_item_content
+                (block_quote
+                  (block_quote_marker)
+                  (content
+                    (paragraph
+                      (block_quote_marker)
+                      (block_quote_marker))))
+                (list_continuation_marker)
+                (paragraph
+                  (block_quote_marker)
+                  (block_quote_marker))))))))))
+
+================================================================================
+A fully prefixed plus stays with an item below three quotes (#600)
+================================================================================
+> > > - q
+> > > r
+> > > +
+> > > b
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (block_quote
+        (block_quote_marker)
+        (content
+          (block_quote
+            (block_quote_marker)
+            (content
+              (list
+                (list_item
+                  (list_marker_dash)
+                  (list_item_content
+                    (paragraph
+                      (block_quote_marker)
+                      (block_quote_marker)
+                      (block_quote_marker))
+                    (list_continuation_marker)
+                    (paragraph
+                      (block_quote_marker)
+                      (block_quote_marker)
+                      (block_quote_marker))))))))))))
+
+================================================================================
+A plus short of three nested quotes attaches at its column (#600)
+================================================================================
+> - > > > q
+>   r
+>   +
+>   b
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (list
+        (list_item
+          (list_marker_dash)
+          (list_item_content
+            (block_quote
+              (block_quote_marker)
+              (content
+                (block_quote
+                  (block_quote_marker)
+                  (content
+                    (block_quote
+                      (block_quote_marker)
+                      (content
+                        (paragraph
+                          (block_quote_marker))))))
+                (list_continuation_marker)
+                (block_quote_marker)
+                (paragraph)))))))))
+
+================================================================================
+A plus short of a nested item quote retains the item (#600)
+================================================================================
+> - > - > q
+>   r
+>   +
+>   b
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (list
+        (list_item
+          (list_marker_dash)
+          (list_item_content
+            (block_quote
+              (block_quote_marker)
+              (content
+                (list
+                  (list_item
+                    (list_marker_dash)
+                    (list_item_content
+                      (block_quote
+                        (block_quote_marker)
+                        (content
+                          (paragraph
+                            (block_quote_marker)))))))
+                (list_continuation_marker)
+                (block_quote_marker)
+                (paragraph)))))))))
+
+================================================================================
+One quote prefix before plus keeps the hosted item (#600)
+================================================================================
+- > > > > q
+  > r
+  > +
+  > b
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (block_quote
+          (block_quote_marker)
+          (content
+            (block_quote
+              (block_quote_marker)
+              (content
+                (block_quote
+                  (block_quote_marker)
+                  (content
+                    (block_quote
+                      (block_quote_marker)
+                      (content
+                        (paragraph
+                          (block_quote_marker))))))
+                (block_quote_marker)
+                (list_continuation_marker)
+                (paragraph
+                  (block_quote_marker))))))))))
+
+================================================================================
+Two quote prefixes before plus keep the hosted item (#600)
+================================================================================
+- > > > > q
+  > > r
+  > > +
+  > > b
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (block_quote
+          (block_quote_marker)
+          (content
+            (block_quote
+              (block_quote_marker)
+              (content
+                (block_quote
+                  (block_quote_marker)
+                  (content
+                    (block_quote
+                      (block_quote_marker)
+                      (content
+                        (paragraph
+                          (block_quote_marker)
+                          (block_quote_marker))))
+                    (block_quote_marker)
+                    (block_quote_marker)
+                    (list_continuation_marker)
+                    (paragraph
+                      (block_quote_marker)
+                      (block_quote_marker))))))))))))
+
+================================================================================
+An ordered quoted item keeps its unprefixed plus (#600)
+================================================================================
+1. > - > q
+   r
+   +
+   b
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_decimal_period)
+      (list_item_content
+        (block_quote
+          (block_quote_marker)
+          (content
+            (list
+              (list_item
+                (list_marker_dash)
+                (list_item_content
+                  (block_quote
+                    (block_quote_marker)
+                    (content
+                      (paragraph))))))
+            (list_continuation_marker)
+            (paragraph)))))))
