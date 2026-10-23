@@ -8034,7 +8034,7 @@ static PlusFollow plus_follower(Scanner *s, TSLexer *lexer, uint32_t column,
     // A note in an item-held quote refuses a quote follower (spec model).
     if (follower_char == '>' && quoted_note_inside_item(s)) attaches = false;
     // A quote's first-block `+` refuses a list follower (corpus 652).
-    if (item && quote_owner == peek_block(s) &&
+    if (item && reentered <= markers && quote_owner == peek_block(s) &&
         (quote_owner->flags & BLOCK_FLAG_QUOTE_OPENING_LINE)) {
       attaches = false;
     }
@@ -8338,7 +8338,15 @@ static bool emit_plus_line(Scanner *s, TSLexer *lexer,
                 !next_line_end &&
                 (list || (note && note->type == FOOTNOTE)));
   bool sibling_item = false;
-  if (!empty && list && !at_line_end(lexer)) {
+  // A follower `>` past the `+` line's own prefix (or, unprefixed, off the
+  // outer quote's marker column) opens the attached quote, so no marker inside
+  // it is a sibling item.
+  Block *outer_quote = find_block_from_bottom(s, BLOCK_QUOTE);
+  bool new_quote_follower = next_char == '>' &&
+      (level > 0 ? follower_prefixes == level
+                 : outer_quote && outer_quote->content_col >= 2 &&
+                   next_column != outer_quote->content_col - 2u);
+  if (!empty && list && !at_line_end(lexer) && !new_quote_follower) {
     bool ending_newline = false;
     scan_block_quote_markers(s, lexer, &ending_newline);
     s->indent = consume_whitespace(s, lexer);
@@ -8348,7 +8356,7 @@ static bool emit_plus_line(Scanner *s, TSLexer *lexer,
                    marker_line_has_content(s, lexer) &&
                    (marker_column + 1 == list->data ||
                     (level == 0 && find_block(s, BLOCK_QUOTE) &&
-                     next_column == attachment_col));
+                     next_column == attachment_col && next_char != '>'));
     empty = sibling_item;
   }
   if (sibling_item && find_block(s, BLOCK_QUOTE)) {
