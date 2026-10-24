@@ -902,10 +902,7 @@ module.exports = grammar({
                 $._checked_list_continuation,
               ),
               $._checked_list_continuation,
-              seq(
-                $._block_quote_prefix,
-                $._checked_list_continuation,
-              ),
+              seq($._block_quote_prefix, $._checked_list_continuation),
             ),
           ),
         ),
@@ -936,13 +933,16 @@ module.exports = grammar({
         repeat($.block_attribute),
         choice(
           $._block_with_heading,
-          prec(2, seq(
-            choice(
-              alias($._block_quote_continuation, $.block_quote_marker),
-              $._unhosted_block_quote_continuation,
+          prec(
+            2,
+            seq(
+              choice(
+                alias($._block_quote_continuation, $.block_quote_marker),
+                $._unhosted_block_quote_continuation,
+              ),
+              $.block_quote,
             ),
-            $.block_quote,
-          )),
+          ),
           seq($._block_quote_prefix, $.block_quote),
         ),
       ),
@@ -1478,14 +1478,17 @@ module.exports = grammar({
               $.list_continuation_marker,
               choice($.heading, $._block_element),
             ),
-            prec(2, seq(
-              $.list_continuation_marker,
-              choice(
-                alias($._block_quote_continuation, $.block_quote_marker),
-                $._unhosted_block_quote_continuation,
+            prec(
+              2,
+              seq(
+                $.list_continuation_marker,
+                choice(
+                  alias($._block_quote_continuation, $.block_quote_marker),
+                  $._unhosted_block_quote_continuation,
+                ),
+                $.block_quote,
               ),
-              $.block_quote,
-            )),
+            ),
             seq(
               $.list_continuation_marker,
               $._block_quote_prefix,
