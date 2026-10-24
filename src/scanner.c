@@ -8723,6 +8723,8 @@ static bool scan_quoted_plus_owner(Scanner *s, TSLexer *lexer,
   Block *owner = list ? list : note;
   if (quoted_note_inside_item(s)) owner = note;
   if (!owner || !(owner->flags & BLOCK_FLAG_PLUS_AHEAD)) return false;
+  // Anchor here so a `+` owned further out can still end the inner item.
+  mark_end(s, lexer);
   bool ending_newline = false;
   uint8_t markers = scan_block_quote_markers(s, lexer, &ending_newline);
   // PLUS_AHEAD records a lone plus after this prefix and its spacing.
@@ -8759,6 +8761,12 @@ static bool scan_quoted_plus_owner(Scanner *s, TSLexer *lexer,
       column_list != list &&
       !(nested_description && quote && column == quote->content_col &&
         list->data == column + 1)) {
+    if (valid_symbols[LIST_ITEM_END] && column_list != list &&
+        list->type != LIST_DEFINITION) {
+      lexer->result_symbol = LIST_ITEM_END;
+      s->blocks_to_close = 1;
+      return true;
+    }
     s->plus_scan_spent = true;
     return false;
   }

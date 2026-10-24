@@ -382,3 +382,65 @@
           (block_quote_marker)
           (content
             (paragraph)))))))
+
+================================================================================
+614 part 2: A quote-prefixed plus owned outside two marker-line items parses without error
+================================================================================
+> > - - q
+> +
+> b
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (block_quote
+        (block_quote_marker)
+        (content
+          (list
+            (list_item
+              (list_marker_dash)
+              (list_item_content
+                (list
+                  (list_item
+                    (list_marker_dash)
+                    (list_item_content
+                      (paragraph)))))))
+          (block_quote_marker)
+          (list_continuation_marker)
+          (paragraph
+            (block_quote_marker)))))))
+
+================================================================================
+614 part 2: A lazy line before an outer plus closes both items
+================================================================================
+> > - - q
+> r
+> +
+> b
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (block_quote
+        (block_quote_marker)
+        (content
+          (list
+            (list_item
+              (list_marker_dash)
+              (list_item_content
+                (list
+                  (list_item
+                    (list_marker_dash)
+                    (list_item_content
+                      (paragraph
+                        (block_quote_marker))))))))
+          (block_quote_marker)
+          (list_continuation_marker)
+          (paragraph
+            (block_quote_marker)))))))
