@@ -77,6 +77,8 @@ jobs:
       # and it is what every other Carve grammar already runs.
       - name: Block battery
         run: npm run test:battery
+      - name: Current released block battery
+        run: npm run test:battery-current
 
       # The mirror of the over-acceptance check: the language builds a block
       # and the grammar builds none. Not an ERROR - the input falls back to a

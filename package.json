@@ -28,6 +28,7 @@
     "install": "node-gyp-build",
     "prebuildify": "prebuildify --napi --strip",
     "test:battery": "node scripts/block-battery.mjs",
+    "test:battery-current": "node scripts/current-block-battery.mjs && ./tools/check-current-battery-drift.sh",
     "test:battery-drift": "./tools/check-battery-drift.sh",
     "test:under-acceptance": "node scripts/under-acceptance.mjs",
     "test:oracle-goldens": "node scripts/oracle-goldens.mjs",
