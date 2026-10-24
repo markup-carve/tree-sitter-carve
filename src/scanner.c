@@ -4344,14 +4344,26 @@ static bool quote_marker_at_column(Scanner *s, uint8_t number,
                                    uint32_t column, bool in_paragraph) {
   uint8_t seen = 0;
   Block *enclosing_list = NULL;
+  bool outer_list_reached = false;
   for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
     Block *b = *array_get(s->open_blocks, i);
-    if (is_list(b->type)) enclosing_list = b;
+    if (is_list(b->type)) {
+      if (enclosing_list && enclosing_list->content_col != 0 &&
+          column >= enclosing_list->content_col) {
+        outer_list_reached = true;
+      }
+      enclosing_list = b;
+    }
     if (b->type != BLOCK_QUOTE) continue;
     if (++seen == number) {
+      // In a paragraph, a `>` between the item's marker and content columns
+      // is lazy text unless an outer item reaches it.
+      bool lazy_gap = in_paragraph && enclosing_list &&
+          !outer_list_reached && column > enclosing_list->data &&
+          column < enclosing_list->content_col;
       // Marker-line quotes in an outer list retain their existing band rule.
       return b->content_col == 0 ||
-          (seen == 1 && enclosing_list &&
+          (seen == 1 && enclosing_list && !lazy_gap &&
            (column <= enclosing_list->content_col ||
             (!in_paragraph && column == b->content_col))) ||
           (s->state & STATE_LIST_CONTINUATION) ||
