@@ -766,7 +766,12 @@
   "underAcceptance": {},
   "oracleGoldenDisagreements": {
     "smart-typography-dashes-and-quotes-35": "Pinned oracle 0.1.13 reads a quote directly after a slash as an opening quote (config/ followed by a double quote, and the single quotes around tmp/); the spec golden closes the quote there.",
-    "a-definition-marker-line-keeps-a-straddling-tab-s-residual-columns": "Pinned oracle 0.1.13 reads the line : zq as the nested term's description; the spec golden keeps it as text of the outer description, because the tab before :: t leaves residual columns that put the line left of the nested item."
+    "a-definition-marker-line-keeps-a-straddling-tab-s-residual-columns": "Pinned oracle 0.1.13 reads the line : zq as the nested term's description; the spec golden keeps it as text of the outer description, because the tab before :: t leaves residual columns that put the line left of the nested item.",
+    "table-spans-keep-alignment-defaults-in-physical-columns": "Pinned oracle 0.1.13 treats a bare < in a later cell as text; the current spec resolves it as a colspan marker.",
+    "table-spans-keep-alignment-defaults-in-physical-columns-3": "Pinned oracle 0.1.13 copies the spanning header's right alignment into the covered second column; the current spec leaves that column without a default.",
+    "table-spans-keep-alignment-defaults-in-physical-columns-4": "Pinned oracle 0.1.13 copies the spanning header's right alignment into the covered second column; the current spec takes that column's left alignment from the GFM separator.",
+    "table-spans-keep-alignment-defaults-in-physical-columns-5": "Pinned oracle 0.1.13 promotes alignments in an attributed plain head row to column defaults; the current spec keeps them on their cells.",
+    "table-spans-keep-alignment-defaults-in-physical-columns-10": "Pinned oracle 0.1.13 copies a spanning head cell's horizontal and vertical alignment into the covered second column; the current spec leaves that column without a default."
   },
   "errorFamilies": {},
   "inlineReadingGaps": {},
