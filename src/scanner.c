@@ -10938,6 +10938,34 @@ static bool paragraph_block_opener_ahead(Scanner *s, TSLexer *lexer, int markers
 }
 static bool close_paragraph_after_quote(Scanner *s, TSLexer *lexer,
                                         int markers_seen);
+/// A quote opens at `column` in an item when this line's markers reach every
+/// quote around the item, the line reaches the item's content column, and
+/// `column` is left of everything nested in the item.
+static bool quote_opens_in_outer_item(Scanner *s, uint8_t markers,
+                                      uint32_t column) {
+  uint8_t quotes_below = count_blocks(s, BLOCK_QUOTE);
+  uint32_t nested_start = UINT32_MAX;
+  for (int i = (int)s->open_blocks->size - 1; i >= 0; --i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (b->type == BLOCK_QUOTE) {
+      --quotes_below;
+      if (b->content_col >= 2 && b->content_col - 2 < nested_start) {
+        nested_start = b->content_col - 2;
+      }
+      continue;
+    }
+    if (!is_list(b->type) || b->type == LIST_DEFINITION || b->content_col == 0) {
+      continue;
+    }
+    if (markers >= quotes_below && column >= b->content_col &&
+        column < nested_start) {
+      return true;
+    }
+    if (b->content_col < nested_start) nested_start = b->content_col;
+  }
+  return false;
+}
+
 static bool close_paragraph(Scanner *s, TSLexer *lexer) {
   // Workaround for not including the following blankline when closing a
   // paragraph inside a block.
@@ -11000,6 +11028,16 @@ static bool close_paragraph(Scanner *s, TSLexer *lexer) {
   Block *lazy_quote = find_block(s, BLOCK_QUOTE);
   if (lazy_quote) lazy_quote->flags &= (uint8_t)~BLOCK_FLAG_QUOTE_LAZY_DROP;
   if (end_paragraph_in_block_quote(s, lexer, &markers_seen)) {
+    return true;
+  }
+  // A `>` left of the inner quote's column can open a quote in an item whose
+  // enclosing quotes this line's markers all reach.
+  if (lazy_quote && markers_seen > 0 && markers_seen < lazy_quote->data &&
+      lexer->lookahead == '>' && !s->plus_probe_refused_line &&
+      quote_opens_in_outer_item(s, (uint8_t)markers_seen,
+                                line_column(s, lexer)) &&
+      !at_nesting_cap(s)) {
+    s->drop_close_markers = (uint8_t)markers_seen;
     return true;
   }
   if (lazy_quote && markers_seen > 0 && markers_seen < lazy_quote->data &&
