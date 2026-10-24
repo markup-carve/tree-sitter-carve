@@ -10592,9 +10592,23 @@ static bool scan_code_fence_at_paragraph_end(Scanner *s, TSLexer *lexer,
 /// second line continues the first at the SAME depth), and `> a` / `b` is a
 /// lazy continuation. Only `> a` / `> > b` opens something new.
 static bool scan_deeper_block_quote_at_paragraph_end(Scanner *s,
-                                                     TSLexer *lexer) {
+                                                     TSLexer *lexer,
+                                                     int markers_seen) {
   if (lexer->lookahead != '>') {
     return false;
+  }
+  // On a line carrying every quote's marker, a `>` at or past the content
+  // column of an item holding the paragraph opens a quote in that item.
+  if (markers_seen > 0 && markers_seen >= count_blocks(s, BLOCK_QUOTE)) {
+    uint32_t column = line_column(s, lexer);
+    for (int i = (int)s->open_blocks->size - 1; i >= 0; --i) {
+      Block *b = *array_get(s->open_blocks, i);
+      if (!is_list(b->type) || b->type == LIST_DEFINITION ||
+          b->content_col == 0) {
+        break;
+      }
+      if (column >= b->content_col) return !at_nesting_cap(s);
+    }
   }
   uint8_t open_depth = count_blocks(s, BLOCK_QUOTE);
   bool ending_newline = false;
@@ -11100,7 +11114,7 @@ static bool close_paragraph_after_quote(Scanner *s, TSLexer *lexer,
     }
   }
 
-  if (scan_deeper_block_quote_at_paragraph_end(s, lexer)) {
+  if (scan_deeper_block_quote_at_paragraph_end(s, lexer, markers_seen)) {
     return true;
   }
 
