@@ -717,6 +717,9 @@ typedef struct {
   uint32_t probe_first_marker_col;
   // Set while the paragraph-end `+` probe asks `plus_follower`. Transient.
   bool paragraph_plus_probe;
+  // A refused `+` folded into the open paragraph keeps later short marked
+  // lines in that paragraph until its boundary.
+  bool folded_plus_paragraph;
   // The last quote line outside a paragraph reached its marker-line quote
   // only at that quote's content column, so a paragraph it opened keeps
   // reading such markers as markers.
@@ -4632,6 +4635,19 @@ static bool parse_block_quote(Scanner *s, TSLexer *lexer,
   // `scan_block_quote_marker` refuses it, so `>\t` stays a paragraph, matching
   // carve-js and the rule that a marker separator is a literal space.
   bool marker_end_pinned = false;
+  // With only BLOCK_CLOSE valid, look past the spaces without pinning a token.
+  // A later marker may still continue a quote below a closed heading.
+  if (has_marker && !ending_newline && valid_symbols[BLOCK_CLOSE] &&
+      !valid_symbols[BLOCK_QUOTE_CONTINUATION] &&
+      !valid_symbols[BLOCK_QUOTE_BEGIN] &&
+      !valid_symbols[CLOSE_PARAGRAPH]) {
+    while (lexer->lookahead == ' ' || lexer->lookahead == '\t') advance(s, lexer);
+    Block *next_quote = nth_quote(s, s->block_quote_level + 2);
+    run_continues = lexer->lookahead == '>' && next_quote &&
+        next_quote->content_col >= 2 &&
+        line_column(s, lexer) == next_quote->content_col - 2u &&
+        list_between_quotes(s, s->block_quote_level + 1);
+  }
   // Only where a token this pin belongs to can follow: a pin taken on a line
   // whose only valid close is another block's (a heading ending at its
   // newline) widened that zero-width close over the `> ` and lost the quote.
@@ -6644,6 +6660,22 @@ static bool parse_list_item_end(Scanner *s, TSLexer *lexer,
   // list opened in a quote is measured by column, as the continuation is. So
   // is a `>` the outermost quote does not take as its marker.
   bool quoted_list = list_opened_in_quote(s, list);
+  // The prefix token stopped before the padding. Keep a `+` at the nested
+  // item's content column inside that item.
+  if (quoted_list && lexer->lookahead == ' ' && s->block_quote_level > 0) {
+    BracketProbe probe = bracket_probe_new(s, lexer);
+    TSLexer *peek = &probe.lexer;
+    while (peek->lookahead == ' ') peek->advance(peek, false);
+    bool plus_at_margin = peek->lookahead == '+' &&
+        line_column(s, peek) >= list->content_col;
+    array_delete(&probe.characters);
+    if (plus_at_margin && valid_symbols[LIST_ITEM_CONTINUATION]) {
+      while (lexer->lookahead == ' ') advance(s, lexer);
+      mark_end(s, lexer);
+      lexer->result_symbol = LIST_ITEM_CONTINUATION;
+      return true;
+    }
+  }
   bool stray_marker = lexer->lookahead == '>' && quoted_list &&
       !quote_marker_at_column(s, 1, line_column(s, lexer), false);
   if ((lexer->lookahead != '>' || stray_marker) && quoted_list) {
@@ -10834,6 +10866,15 @@ static bool close_paragraph(Scanner *s, TSLexer *lexer) {
   if (lazy_quote && markers_seen > 0 && markers_seen < lazy_quote->data &&
       s->plus_probe_refused_line) {
     lazy_quote->flags |= BLOCK_FLAG_QUOTE_LAZY_DROP;
+    Block *first_quote = find_block_from_bottom(s, BLOCK_QUOTE);
+    bool list_outside_quote = false;
+    for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
+      Block *b = *array_get(s->open_blocks, i);
+      if (b == first_quote) break;
+      if (is_list(b->type)) list_outside_quote = true;
+    }
+    // An item outside the quote already has its own short-line handling.
+    if (!list_outside_quote) s->folded_plus_paragraph = true;
     return false;
   }
   if (lazy_quote && markers_seen > 0 && markers_seen < lazy_quote->data) {
@@ -10957,6 +10998,9 @@ static bool close_paragraph_after_quote(Scanner *s, TSLexer *lexer,
     return true;
   }
 
+  if (s->folded_plus_paragraph && markers_seen > 0 &&
+      !(s->state & STATE_AFTER_BLANK_LINE)) return false;
+
   s->paragraph_markers_seen = markers_seen;
   return paragraph_block_opener_ahead(s, lexer, markers_seen);
 }
@@ -10970,6 +11014,7 @@ static bool parse_close_paragraph(Scanner *s, TSLexer *lexer) {
   if (!close_paragraph(s, lexer)) {
     return false;
   }
+  s->folded_plus_paragraph = false;
   // An opener on a shallower quoted line closes the deeper quotes before the
   // line's markers are read, as it does after any other block.
   if (s->drop_close_markers > 0) {
@@ -16519,6 +16564,7 @@ static void init_scalars(Scanner *s) {
   s->drop_close_markers = 0;
   s->probe_first_marker_col = 0;
   s->paragraph_plus_probe = false;
+  s->folded_plus_paragraph = false;
   s->band_prefix = false;
   s->band_sticky = false;
   s->continuation_col = 0;
@@ -16737,11 +16783,13 @@ unsigned tree_sitter_carve_external_scanner_serialize(void *payload,
                           (chain_extension ? 32 : 0) |
                           (s->band_prefix ? 64 : 0) |
                           (s->band_sticky ? 128 : 0));
-  // Bits 9..10 of the tail carry the caption gap; missing closers use 0..8.
+  // Bits 9..10 carry the caption gap, bit 12 the folded plus paragraph;
+  // missing closers use 0..8.
   uint16_t tail = s->missing_closers | (uint16_t)((s->caption_gap & 3) << 9) |
                   (s->after_literal_star ? 1 << 14 : 0) |
                   (s->after_separator_row ? 1 << 15 : 0) |
-                  (s->blank_line_taken ? 1 << 11 : 0);
+                  (s->blank_line_taken ? 1 << 11 : 0) |
+                  (s->folded_plus_paragraph ? 1 << 12 : 0);
   buffer[size++] = (char)tail;
   buffer[size++] = (char)(tail >> 8);
   return size;
@@ -16759,6 +16807,7 @@ void tree_sitter_carve_external_scanner_deserialize(void *payload, char *buffer,
     s->after_literal_star = (tail & (1 << 14)) != 0;
     s->after_separator_row = (tail & (1 << 15)) != 0;
     s->blank_line_taken = (tail & (1 << 11)) != 0;
+    s->folded_plus_paragraph = (tail & (1 << 12)) != 0;
     uint8_t notes = (uint8_t)buffer[length - 3];
     length -= 3;
     s->mid_line = (notes & 1) != 0;
