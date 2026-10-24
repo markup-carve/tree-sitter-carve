@@ -6834,8 +6834,10 @@ static bool parse_list_item_end(Scanner *s, TSLexer *lexer,
   // later in this function.
   // But first we need to skip the `> ` tokens.
   bool ending_newline;
-  uint8_t block_quote_markers =
-      scan_block_quote_markers(s, lexer, &ending_newline);
+  // An existing quote after a quoted item may have spaces before its marker.
+  bool skipped_quote_indent = false;
+  uint8_t block_quote_markers = scan_quote_marker_run(
+      s, lexer, &ending_newline, &skipped_quote_indent, false);
 
 
   // Delayed output of BLOCK_QUOTE_CONTINUATION, if necessary.

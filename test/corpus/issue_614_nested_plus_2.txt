@@ -218,3 +218,33 @@
             (paragraph
               (block_quote_marker)
               (block_quote_marker))))))))
+
+================================================================================
+614 part 2: A quote after a quoted item opens inside that item
+================================================================================
+> - > * q
+>   >    > b
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (list
+        (list_item
+          (list_marker_dash)
+          (list_item_content
+            (block_quote
+              (block_quote_marker)
+              (content
+                (list
+                  (list_item
+                    (list_marker_star)
+                    (list_item_content
+                      (paragraph)
+                      (block_quote_marker)
+                      (block_quote
+                        (block_quote_marker)
+                        (content
+                          (paragraph))))))))))))))
