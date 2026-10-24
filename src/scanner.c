@@ -4757,6 +4757,23 @@ static bool parse_block_quote(Scanner *s, TSLexer *lexer,
       number_of_blocks_from_top(s, BLOCK_QUOTE, marker_count);
   Block *highest_block_quote = find_block(s, BLOCK_QUOTE);
   Block *quote_list = find_list(s);
+  if (has_marker && valid_symbols[BLOCK_CLOSE] && highest_block_quote &&
+      quote_list && marker_start_col < quote_list->content_col &&
+      marker_start_col >= quote_list->data) {
+    for (int i = (int)s->open_blocks->size - 1; i >= 0; --i) {
+      if (*array_get(s->open_blocks, i) != quote_list) continue;
+      for (int j = i - 1; j >= 0; --j) {
+        Block *parent = *array_get(s->open_blocks, j);
+        if (!is_list(parent->type)) continue;
+        if (marker_start_col >= parent->content_col) {
+          close_blocks(s, lexer, s->open_blocks->size - (size_t)i);
+          return true;
+        }
+        break;
+      }
+      break;
+    }
+  }
   if (has_marker && highest_block_quote && quote_list &&
       !list_opened_in_quote(s, quote_list) &&
       (s->state & STATE_LIST_CONTINUATION) &&
