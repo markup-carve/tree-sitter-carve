@@ -6,8 +6,8 @@
       "nodes": 22
     },
     "block_quote": {
-      "documents": 533,
-      "nodes": 647
+      "documents": 535,
+      "nodes": 649
     },
     "table": {
       "documents": 247,
@@ -22,12 +22,12 @@
       "nodes": 381
     },
     "list": {
-      "documents": 1184,
-      "nodes": 1646
+      "documents": 1188,
+      "nodes": 1650
     },
     "definition_list": {
-      "documents": 318,
-      "nodes": 334
+      "documents": 320,
+      "nodes": 336
     },
     "line_block": {
       "documents": 54,
@@ -765,6 +765,9 @@
   "batteryDisagreements": {},
   "underAcceptance": {},
   "oracleGoldenDisagreements": {
+    "a-wrapped-attribute-line-opened-at-a-container-s-column-is-one-construct-7": "Pinned oracle 0.1.13 closes the quoted definition before the wrapped attribute ends; the spec keeps the attribute in its opening container.",
+    "a-wrapped-attribute-line-opened-at-a-container-s-column-is-one-construct-8": "Pinned oracle 0.1.13 closes the quoted definition before the wrapped attribute ends; the spec keeps the attribute in its opening container.",
+    "a-wrapped-attribute-line-opened-at-a-container-s-column-is-one-construct-9": "Pinned oracle 0.1.13 closes the quoted block before the wrapped attribute ends; the spec keeps the attribute in its opening container.",
     "smart-typography-dashes-and-quotes-35": "Pinned oracle 0.1.13 reads a quote directly after a slash as an opening quote (config/ followed by a double quote, and the single quotes around tmp/); the spec golden closes the quote there.",
     "a-definition-marker-line-keeps-a-straddling-tab-s-residual-columns": "Pinned oracle 0.1.13 reads the line : zq as the nested term's description; the spec golden keeps it as text of the outer description, because the tab before :: t leaves residual columns that put the line left of the nested item.",
     "table-spans-keep-alignment-defaults-in-physical-columns": "Pinned oracle 0.1.13 treats a bare < in a later cell as text; the current spec resolves it as a colspan marker.",
