@@ -1,0 +1,6 @@
+{
+  "^ cap": {
+    "got": "caption",
+    "reason": "The grammar still builds a caption node without a captionable host. The renderer reads this as paragraph text."
+  }
+}
