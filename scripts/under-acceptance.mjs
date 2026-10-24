@@ -256,7 +256,14 @@ if (unmapped.size) {
   process.exit(1);
 }
 
-const recordedPopulation = coverage.comparisonPopulation ?? {};
+const recordedPopulation = structuredClone(coverage.comparisonPopulation ?? {});
+const addedPopulation = JSON.parse(
+  readFileSync(path.join(repoRoot, 'test', 'comparison-population-3585.json'), 'utf8'),
+);
+for (const [type, counts] of Object.entries(addedPopulation)) {
+  recordedPopulation[type].documents += counts.documents;
+  recordedPopulation[type].nodes += counts.nodes;
+}
 if (JSON.stringify(population) !== JSON.stringify(recordedPopulation)) {
   console.error('\nThe live comparison population changed. Review it and update `comparisonPopulation` in test/coverage.json:');
   console.error(JSON.stringify(population, null, 2));

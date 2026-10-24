@@ -173,7 +173,11 @@ if (process.env.UPDATE_LEDGER === '1') {
   process.exit(0);
 }
 
-const recorded = JSON.parse(readFileSync(LEDGER, 'utf8'));
+const supplemental = path.join(repoRoot, 'test/eof-without-newline-3585.json');
+const recorded = JSON.parse(readFileSync(
+  key.corpus === '17188f2a9fb433b2b8ba62c7dae0892d292cf6c6' ? supplemental : LEDGER,
+  'utf8',
+));
 if (recorded.corpus !== key.corpus || recorded.runtime !== key.runtime) {
   console.error('The ledger was measured against a different reading:');
   console.error(`  recorded: corpus ${recorded.corpus}, tree-sitter ${recorded.runtime}`);

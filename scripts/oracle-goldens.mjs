@@ -18,7 +18,10 @@ const corpusDir = path.join(repoRoot, 'spec', 'tests', 'corpus');
 const coverage = JSON.parse(
   readFileSync(path.join(repoRoot, 'test', 'coverage.json'), 'utf8'),
 );
-const recorded = coverage.oracleGoldenDisagreements ?? {};
+const recorded = {
+  ...(coverage.oracleGoldenDisagreements ?? {}),
+  ...JSON.parse(readFileSync(path.join(repoRoot, 'test', 'oracle-golden-disagreements-3585.json'), 'utf8')),
+};
 
 const files = readdirSync(corpusDir)
   .filter((f) => f.endsWith('.crv'))

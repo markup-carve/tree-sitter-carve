@@ -1,0 +1,25 @@
+==========================================
+Padded lone span glyphs stay in table cells
+==========================================
+
+|a|<|
+|a| <|
+|a|< |
+|a| < |
+|a|^|
+|a| ^|
+|a|^ |
+|a| ^ |
+
+---
+
+(document
+  (table
+    (table_row (table_cell) (table_cell))
+    (table_row (table_cell) (table_cell))
+    (table_row (table_cell) (table_cell))
+    (table_row (table_cell) (table_cell))
+    (table_row (table_cell) (table_cell))
+    (table_row (table_cell) (table_cell))
+    (table_row (table_cell) (table_cell))
+    (table_row (table_cell) (table_cell))))

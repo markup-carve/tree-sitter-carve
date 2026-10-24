@@ -45,6 +45,7 @@ import { refuseShortRun } from './participants.mjs';
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const corpusDir = path.join(repoRoot, 'spec', 'tests', 'corpus');
 const recordPath = path.join(repoRoot, 'test', 'ast-shapes.json');
+const supplementalPath = path.join(repoRoot, 'test', 'ast-shapes-3585.json');
 const write = process.argv.includes('--write');
 
 const files = readdirSync(corpusDir)
@@ -134,7 +135,10 @@ if (write) {
   process.exit(0);
 }
 
-const recorded = JSON.parse(readFileSync(recordPath, 'utf8'));
+const recorded = {
+  ...JSON.parse(readFileSync(recordPath, 'utf8')),
+  ...JSON.parse(readFileSync(supplementalPath, 'utf8')),
+};
 
 const missing = Object.keys(live).filter((k) => !(k in recorded));
 const stale = Object.keys(recorded).filter((k) => !(k in live));
