@@ -1,6 +1,6 @@
 name: Engine drift
 
-# `@markup-carve/carve` is a GIT dependency, and a pin is what makes a build
+# `@markup-carve/carve` is an exact dependency, and a pin makes a build
 # reproducible - but nothing notices when the pin falls behind, and a push-only
 # CI reports the state of the day someone last touched the repo.
 #
@@ -46,18 +46,29 @@ jobs:
           path: carve-js
           fetch-depth: 0
 
-      - name: Compare the pinned revision against carve-js main
+      - name: Compare the locked engine release or revision against carve-js main
         run: |
           set -euo pipefail
-          # devDependencies here, not dependencies: the engine is the test
-          # ORACLE, never shipped to a grammar consumer. Reading only
-          # `dependencies` (as carve-grammars does, where it IS a runtime dep)
-          # yields undefined and the 40-hex check below fails on the string
-          # "undefined" rather than on anything real.
           spec="$(node -p "const p=require('./package.json'); (p.dependencies||{})['@markup-carve/carve'] ?? (p.devDependencies||{})['@markup-carve/carve'] ?? ''")"
-          rev="${spec##*#}"
-          if ! printf '%s' "${rev}" | grep -qE '^[0-9a-f]{40}$'; then
-            echo "::error::@markup-carve/carve is \"${spec}\" - it must pin a 40-hex revision, or a fresh install takes whatever was on the default branch at the time"
+          locked="$(node -p "require('./package-lock.json').packages['node_modules/@markup-carve/carve'].version")"
+          resolved="$(node -p "require('./package-lock.json').packages['node_modules/@markup-carve/carve'].resolved")"
+          if [[ "${spec}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            if [[ "${locked}" != "${spec}" || "${resolved}" != "https://registry.npmjs.org/@markup-carve/carve/-/carve-${spec}.tgz" ]]; then
+              echo "::error::package.json pins release ${spec}, but package-lock.json has ${locked} at ${resolved}"
+              exit 1
+            fi
+            rev="$(git -C carve-js rev-parse -q --verify "refs/tags/${spec}^{commit}")" || {
+              echo "::error::engine release ${spec} has no tag in markup-carve/carve-js"
+              exit 1
+            }
+          elif [[ "${spec}" =~ ^.+\#[0-9a-f]{40}$ ]]; then
+            rev="${spec##*#}"
+            if [[ "${resolved##*#}" != "${rev}" ]]; then
+              echo "::error::package.json pins ${rev}, but package-lock.json resolves ${resolved}"
+              exit 1
+            fi
+          else
+            echo "::error::@markup-carve/carve is \"${spec}\"; use an exact release or a Git commit"
             exit 1
           fi
           if ! git -C carve-js cat-file -e "${rev}^{commit}" 2>/dev/null; then
@@ -74,14 +85,4 @@ jobs:
           if [ "${behind}" -gt 0 ]; then
             echo "::warning::the engine pin is ${behind} commit(s) behind carve-js main"
           fi
-
-      - name: The declared pin and the lockfile agree
-        run: |
-          set -euo pipefail
-          declared="$(node -p "const p=require('./package.json'); ((p.dependencies||{})['@markup-carve/carve'] ?? (p.devDependencies||{})['@markup-carve/carve'] ?? '').split('#').pop()")"
-          locked="$(node -p "require('./package-lock.json').packages['node_modules/@markup-carve/carve'].resolved.split('#').pop()")"
-          if [ "${declared}" != "${locked}" ]; then
-            echo "::error::package.json pins ${declared} but the lockfile resolves ${locked}"
-            exit 1
-          fi
-          echo "package.json and package-lock.json both pin ${declared}"
+          echo "package.json and package-lock.json both pin ${spec}"
