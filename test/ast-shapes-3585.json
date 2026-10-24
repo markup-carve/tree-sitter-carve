@@ -1,0 +1,14 @@
+{
+ "table-spans-keep-alignment-defaults-in-physical-columns-12": ".>document document>table table>table_row table_cell>text table_row>table_cell*2",
+ "table-spans-keep-alignment-defaults-in-physical-columns-13": ".>document document>table table>table_row table_cell>text*2 table_row>table_cell*2",
+ "table-spans-keep-alignment-defaults-in-physical-columns-14": ".>document document>table table>table_row table_cell>text table_row>table_cell*2",
+ "table-spans-keep-alignment-defaults-in-physical-columns-15": ".>document document>table table>table_row table_cell>text table_row>table_cell*2",
+ "table-spans-keep-alignment-defaults-in-physical-columns-16": ".>document document>table table>table_row*2 table_cell>text*2 table_row>table_cell*4",
+ "table-spans-keep-alignment-defaults-in-physical-columns-17": ".>document document>table table>table_row*2 table_cell>text*2 table_row>table_cell*4",
+ "table-spans-keep-alignment-defaults-in-physical-columns-18": ".>document document>table table>table_row*2 table_cell>text*2 table_row>table_cell*4",
+ "table-spans-keep-alignment-defaults-in-physical-columns-19": ".>document document>table table>table_row*2 table_cell>text*2 table_row>table_cell*4",
+ "table-spans-keep-alignment-defaults-in-physical-columns-20": ".>document document>table table>table_row table_cell>text table_row>table_cell",
+ "table-spans-keep-alignment-defaults-in-physical-columns-21": ".>document document>table table>table_row table_row>table_cell",
+ "table-spans-keep-alignment-defaults-in-physical-columns-22": ".>document document>table table>table_row table_row>table_cell",
+ "table-spans-keep-alignment-defaults-in-physical-columns-23": ".>document document>table table>table_row table_cell@class table_row>table_cell"
+}
