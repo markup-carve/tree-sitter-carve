@@ -857,6 +857,9 @@ static bool braced_closer_ahead(Scanner *s, TSLexer *lexer, char marker);
 static bool at_block_opener_margin(Scanner *s, uint32_t column);
 static bool marker_line_has_content(Scanner *s, TSLexer *lexer);
 static bool continuation_marker_column(Scanner *s, uint32_t column);
+static void plus_owner(Scanner *s, uint32_t column, uint8_t markers,
+                       Block **list_owner_out, Block **quote_owner_out,
+                       uint32_t *reach_out);
 static void note_fence_blank_quote_plus(Scanner *s, TSLexer *lexer);
 static bool opener_reaches_item_margin(Scanner *s, uint32_t column);
 static bool list_item_open(Scanner *s);
@@ -4948,6 +4951,29 @@ static bool parse_block_quote(Scanner *s, TSLexer *lexer,
         (outer_quote_owner || blank_nested_owner))
       lexer->result_symbol = UNHOSTED_BLOCK_QUOTE_CONTINUATION;
     open_marker_line_quote(s, marker_start_col);
+    // Commit this flag with the quote marker; a failed paragraph probe loses it.
+    if (marker_count < count_blocks(s, BLOCK_QUOTE)) {
+      uint8_t indent = s->indent;
+      uint8_t level = s->block_quote_level;
+      uint32_t col_base = s->col_base;
+      consume_whitespace(s, lexer);
+      if (lexer->lookahead == '+') {
+        uint32_t plus_column = line_column(s, lexer);
+        Block *owner_list = NULL;
+        Block *owner_quote = NULL;
+        uint32_t reach = 0;
+        plus_owner(s, plus_column, marker_count, &owner_list, &owner_quote,
+                   &reach);
+        advance(s, lexer);
+        consume_whitespace(s, lexer);
+        if (!owner_list && (at_line_end(lexer) || lexer->eof(lexer))) {
+          s->folded_plus_paragraph = true;
+        }
+      }
+      s->indent = indent;
+      s->block_quote_level = level;
+      s->col_base = col_base;
+    }
     return true;
   }
 
@@ -9659,8 +9685,7 @@ static bool list_above_block(Scanner *s, Block *list, Block *block) {
 /// A lone `+` short of the paragraph's quote that attaches marks the list that
 /// stays open, so `parse_block_quote` keeps the quote one level past its
 /// prefix. FALSE when the `+` line is paragraph text.
-static bool note_short_plus(Scanner *s, TSLexer *lexer, uint8_t markers,
-                            bool lone_is_enough) {
+static bool note_short_plus(Scanner *s, TSLexer *lexer, uint8_t markers) {
   // The list that stays open once the blocks inside the next quote close.
   Block *next = nth_quote(s, markers + 1);
   Block *list = NULL;
@@ -9681,12 +9706,15 @@ static bool note_short_plus(Scanner *s, TSLexer *lexer, uint8_t markers,
   while (lexer->lookahead == ' ' || lexer->lookahead == '\t') advance(s, lexer);
   if (at_line_end(lexer)) return false;
   if (list->type == LIST_DEFINITION) return true;
-  PlusFollow follow = plus_follower(s, lexer, column, markers,
-                                    NULL, NULL, NULL, NULL, NULL);
-  if (lone_is_enough || follow == PLUS_ATTACHES) {
-    list->flags |= BLOCK_FLAG_LIST_SHORT_PLUS;
-  }
+  Block *owner_list = NULL;
+  Block *owner_quote = NULL;
+  uint32_t reach = 0;
+  plus_owner(s, column, markers, &owner_list, &owner_quote, &reach);
+  PlusFollow follow = owner_list || owner_quote
+      ? plus_follower(s, lexer, column, markers, NULL, NULL, NULL, NULL, NULL)
+      : PLUS_REFUSED;
   if (follow == PLUS_ATTACHES) {
+    list->flags |= BLOCK_FLAG_LIST_SHORT_PLUS;
     for (uint8_t depth = markers + 1;
          depth < count_blocks(s, BLOCK_QUOTE); ++depth) {
       Block *q = nth_quote(s, depth);
@@ -9696,7 +9724,7 @@ static bool note_short_plus(Scanner *s, TSLexer *lexer, uint8_t markers,
       }
     }
   }
-  return true;
+  return follow == PLUS_ATTACHES;
 }
 
 static bool end_paragraph_in_block_quote(Scanner *s, TSLexer *lexer,
@@ -9873,7 +9901,7 @@ static bool end_paragraph_in_block_quote(Scanner *s, TSLexer *lexer,
         s->plus_probe_refused_line = true;
         return false;
       }
-      if (note_short_plus(s, lexer, marker_count, true)) return true;
+      if (note_short_plus(s, lexer, marker_count)) return true;
       s->plus_probe_refused_line = true;
       return false;
     }
@@ -9983,7 +10011,7 @@ keep_reading:
   if (list && list_above_block(s, list, block) &&
       !list_opened_in_quote(s, list)) {
     if (lexer->lookahead == '+' && marker_count < block->data) {
-      note_short_plus(s, lexer, marker_count, false);
+      note_short_plus(s, lexer, marker_count);
     }
     return true;
   }
