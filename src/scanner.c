@@ -4340,8 +4340,9 @@ static bool list_between_quotes(Scanner *s, uint8_t number) {
 
 /// An open paragraph reads a `>` at a marker-line quote's content column as
 /// lazy text, not as the quote's marker (#600).
-static bool quote_marker_at_column(Scanner *s, uint8_t number,
-                                   uint32_t column, bool in_paragraph) {
+static bool quote_marker_at_column_gap(Scanner *s, uint8_t number,
+                                       uint32_t column, bool in_paragraph,
+                                       bool gap_is_lazy) {
   uint8_t seen = 0;
   Block *enclosing_list = NULL;
   bool outer_list_reached = false;
@@ -4358,7 +4359,7 @@ static bool quote_marker_at_column(Scanner *s, uint8_t number,
     if (++seen == number) {
       // In a paragraph, a `>` between the item's marker and content columns
       // is lazy text unless an outer item reaches it.
-      bool lazy_gap = in_paragraph && enclosing_list &&
+      bool lazy_gap = gap_is_lazy && in_paragraph && enclosing_list &&
           !outer_list_reached && column > enclosing_list->data &&
           column < enclosing_list->content_col;
       // Marker-line quotes in an outer list retain their existing band rule.
@@ -4371,6 +4372,11 @@ static bool quote_marker_at_column(Scanner *s, uint8_t number,
     }
   }
   return true;
+}
+
+static bool quote_marker_at_column(Scanner *s, uint8_t number,
+                                   uint32_t column, bool in_paragraph) {
+  return quote_marker_at_column_gap(s, number, column, in_paragraph, true);
 }
 
 /// `in_paragraph`: the run continues an open paragraph's line.
@@ -4543,8 +4549,9 @@ static bool parse_block_quote(Scanner *s, TSLexer *lexer,
   if (inside_paragraph && s->band_prefix) s->band_sticky = true;
   if (!inside_paragraph && s->block_quote_level == 0 &&
       lexer->lookahead == '>') {
+    // An item's marker gap is lazy text, not a band.
     s->band_prefix = quote_marker_at_column(s, 1, marker_start_col, false) &&
-        !quote_marker_at_column(s, 1, marker_start_col, true);
+        !quote_marker_at_column_gap(s, 1, marker_start_col, true, false);
   }
   inside_paragraph = inside_paragraph && !s->band_prefix && !s->band_sticky;
 

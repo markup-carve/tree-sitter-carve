@@ -444,3 +444,23 @@
           (list_continuation_marker)
           (paragraph
             (block_quote_marker)))))))
+
+================================================================================
+614 part 2: Every marker-gap line of a quoted item paragraph is lazy text
+================================================================================
+1. > q
+  > r
+  > +
+  > b
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_decimal_period)
+      (list_item_content
+        (block_quote
+          (block_quote_marker)
+          (content
+            (paragraph)))))))
