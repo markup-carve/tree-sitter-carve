@@ -1855,6 +1855,24 @@
                     ]
                   },
                   {
+                    "type": "SEQ",
+                    "members": [
+                      {
+                        "type": "ALIAS",
+                        "content": {
+                          "type": "SYMBOL",
+                          "name": "_quoted_list_item_continuation"
+                        },
+                        "named": true,
+                        "value": "block_quote_marker"
+                      },
+                      {
+                        "type": "SYMBOL",
+                        "name": "_checked_list_continuation"
+                      }
+                    ]
+                  },
+                  {
                     "type": "SYMBOL",
                     "name": "_checked_list_continuation"
                   },
@@ -1862,13 +1880,8 @@
                     "type": "SEQ",
                     "members": [
                       {
-                        "type": "ALIAS",
-                        "content": {
-                          "type": "SYMBOL",
-                          "name": "_block_quote_continuation"
-                        },
-                        "named": true,
-                        "value": "block_quote_marker"
+                        "type": "SYMBOL",
+                        "name": "_block_quote_prefix"
                       },
                       {
                         "type": "SYMBOL",
@@ -1906,8 +1919,22 @@
       "type": "SEQ",
       "members": [
         {
-          "type": "SYMBOL",
-          "name": "_plus_owner_check"
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "_plus_owner_check"
+            },
+            {
+              "type": "ALIAS",
+              "content": {
+                "type": "SYMBOL",
+                "name": "_quoted_plus_owner_check"
+              },
+              "named": true,
+              "value": "block_quote_marker"
+            }
+          ]
         },
         {
           "type": "SYMBOL",
@@ -1948,8 +1975,57 @@
           }
         },
         {
-          "type": "SYMBOL",
-          "name": "_block_with_heading"
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "_block_with_heading"
+            },
+            {
+              "type": "PREC",
+              "value": 2,
+              "content": {
+                "type": "SEQ",
+                "members": [
+                  {
+                    "type": "CHOICE",
+                    "members": [
+                      {
+                        "type": "ALIAS",
+                        "content": {
+                          "type": "SYMBOL",
+                          "name": "_block_quote_continuation"
+                        },
+                        "named": true,
+                        "value": "block_quote_marker"
+                      },
+                      {
+                        "type": "SYMBOL",
+                        "name": "_unhosted_block_quote_continuation"
+                      }
+                    ]
+                  },
+                  {
+                    "type": "SYMBOL",
+                    "name": "block_quote"
+                  }
+                ]
+              }
+            },
+            {
+              "type": "SEQ",
+              "members": [
+                {
+                  "type": "SYMBOL",
+                  "name": "_block_quote_prefix"
+                },
+                {
+                  "type": "SYMBOL",
+                  "name": "block_quote"
+                }
+              ]
+            }
+          ]
         }
       ]
     },
@@ -4468,6 +4544,58 @@
                         "name": "_block_element"
                       }
                     ]
+                  }
+                ]
+              },
+              {
+                "type": "PREC",
+                "value": 2,
+                "content": {
+                  "type": "SEQ",
+                  "members": [
+                    {
+                      "type": "SYMBOL",
+                      "name": "list_continuation_marker"
+                    },
+                    {
+                      "type": "CHOICE",
+                      "members": [
+                        {
+                          "type": "ALIAS",
+                          "content": {
+                            "type": "SYMBOL",
+                            "name": "_block_quote_continuation"
+                          },
+                          "named": true,
+                          "value": "block_quote_marker"
+                        },
+                        {
+                          "type": "SYMBOL",
+                          "name": "_unhosted_block_quote_continuation"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "SYMBOL",
+                      "name": "block_quote"
+                    }
+                  ]
+                }
+              },
+              {
+                "type": "SEQ",
+                "members": [
+                  {
+                    "type": "SYMBOL",
+                    "name": "list_continuation_marker"
+                  },
+                  {
+                    "type": "SYMBOL",
+                    "name": "_block_quote_prefix"
+                  },
+                  {
+                    "type": "SYMBOL",
+                    "name": "block_quote"
                   }
                 ]
               },
@@ -11423,6 +11551,18 @@
     {
       "type": "SYMBOL",
       "name": "_plus_owner_check"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_quoted_plus_owner_check"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_quoted_list_item_continuation"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_unhosted_block_quote_continuation"
     },
     {
       "type": "SYMBOL",

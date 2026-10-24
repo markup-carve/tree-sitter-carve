@@ -1,0 +1,105 @@
+================================================================================
+Hosted nested item keeps every quote marker
+================================================================================
+- > > > - q
+  > > > r
+  > > > +
+  > > > b
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (block_quote
+          (block_quote_marker)
+          (content
+            (block_quote
+              (block_quote_marker)
+              (content
+                (block_quote
+                  (block_quote_marker)
+                  (content
+                    (list
+                      (list_item
+                        (list_marker_dash)
+                        (list_item_content
+                          (paragraph
+                            (block_quote_marker)
+                            (block_quote_marker)
+                            (block_quote_marker))
+                          (block_quote_marker)
+                          (list_continuation_marker)
+                          (paragraph
+                            (block_quote_marker)
+                            (block_quote_marker)
+                            (block_quote_marker)))))))))))))))
+
+================================================================================
+Quote follower keeps every quote marker
+================================================================================
+- > - > q
+  > r
+  > +
+  > > b
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (block_quote
+          (block_quote_marker)
+          (content
+            (list
+              (list_item
+                (list_marker_dash)
+                (list_item_content
+                  (block_quote
+                    (block_quote_marker)
+                    (content
+                      (paragraph
+                        (block_quote_marker))))
+                  (block_quote_marker)
+                  (list_continuation_marker)
+                  (block_quote_marker)
+                  (block_quote
+                    (block_quote_marker)
+                    (content
+                      (paragraph))))))))))))
+
+================================================================================
+Round 2: star host and an attached quote
+================================================================================
+* > 1. q
+  > r
+  > +
+  > > b
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_star)
+      (list_item_content
+        (block_quote
+          (block_quote_marker)
+          (content
+            (list
+              (list_item
+                (list_marker_decimal_period)
+                (list_item_content
+                  (paragraph
+                    (block_quote_marker))
+                  (block_quote_marker)
+                  (list_continuation_marker)
+                  (block_quote_marker)
+                  (block_quote
+                    (block_quote_marker)
+                    (content
+                      (paragraph))))))))))))
