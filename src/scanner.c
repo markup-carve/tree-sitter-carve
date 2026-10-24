@@ -4340,18 +4340,31 @@ static bool list_between_quotes(Scanner *s, uint8_t number) {
 
 /// An open paragraph reads a `>` at a marker-line quote's content column as
 /// lazy text, not as the quote's marker (#600).
-static bool quote_marker_at_column(Scanner *s, uint8_t number,
-                                   uint32_t column, bool in_paragraph) {
+static bool quote_marker_at_column_gap(Scanner *s, uint8_t number,
+                                       uint32_t column, bool in_paragraph,
+                                       bool gap_is_lazy) {
   uint8_t seen = 0;
   Block *enclosing_list = NULL;
+  bool outer_list_reached = false;
   for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
     Block *b = *array_get(s->open_blocks, i);
-    if (is_list(b->type)) enclosing_list = b;
+    if (is_list(b->type)) {
+      if (enclosing_list && enclosing_list->content_col != 0 &&
+          column >= enclosing_list->content_col) {
+        outer_list_reached = true;
+      }
+      enclosing_list = b;
+    }
     if (b->type != BLOCK_QUOTE) continue;
     if (++seen == number) {
+      // In a paragraph, a `>` between the item's marker and content columns
+      // is lazy text unless an outer item reaches it.
+      bool lazy_gap = gap_is_lazy && in_paragraph && enclosing_list &&
+          !outer_list_reached && column > enclosing_list->data &&
+          column < enclosing_list->content_col;
       // Marker-line quotes in an outer list retain their existing band rule.
       return b->content_col == 0 ||
-          (seen == 1 && enclosing_list &&
+          (seen == 1 && enclosing_list && !lazy_gap &&
            (column <= enclosing_list->content_col ||
             (!in_paragraph && column == b->content_col))) ||
           (s->state & STATE_LIST_CONTINUATION) ||
@@ -4359,6 +4372,11 @@ static bool quote_marker_at_column(Scanner *s, uint8_t number,
     }
   }
   return true;
+}
+
+static bool quote_marker_at_column(Scanner *s, uint8_t number,
+                                   uint32_t column, bool in_paragraph) {
+  return quote_marker_at_column_gap(s, number, column, in_paragraph, true);
 }
 
 /// `in_paragraph`: the run continues an open paragraph's line.
@@ -4531,8 +4549,9 @@ static bool parse_block_quote(Scanner *s, TSLexer *lexer,
   if (inside_paragraph && s->band_prefix) s->band_sticky = true;
   if (!inside_paragraph && s->block_quote_level == 0 &&
       lexer->lookahead == '>') {
+    // An item's marker gap is lazy text, not a band.
     s->band_prefix = quote_marker_at_column(s, 1, marker_start_col, false) &&
-        !quote_marker_at_column(s, 1, marker_start_col, true);
+        !quote_marker_at_column_gap(s, 1, marker_start_col, true, false);
   }
   inside_paragraph = inside_paragraph && !s->band_prefix && !s->band_sticky;
 
@@ -4757,6 +4776,23 @@ static bool parse_block_quote(Scanner *s, TSLexer *lexer,
       number_of_blocks_from_top(s, BLOCK_QUOTE, marker_count);
   Block *highest_block_quote = find_block(s, BLOCK_QUOTE);
   Block *quote_list = find_list(s);
+  if (has_marker && valid_symbols[BLOCK_CLOSE] && highest_block_quote &&
+      quote_list && marker_start_col < quote_list->content_col &&
+      marker_start_col >= quote_list->data) {
+    for (int i = (int)s->open_blocks->size - 1; i >= 0; --i) {
+      if (*array_get(s->open_blocks, i) != quote_list) continue;
+      for (int j = i - 1; j >= 0; --j) {
+        Block *parent = *array_get(s->open_blocks, j);
+        if (!is_list(parent->type)) continue;
+        if (marker_start_col >= parent->content_col) {
+          close_blocks(s, lexer, s->open_blocks->size - (size_t)i);
+          return true;
+        }
+        break;
+      }
+      break;
+    }
+  }
   if (has_marker && highest_block_quote && quote_list &&
       !list_opened_in_quote(s, quote_list) &&
       (s->state & STATE_LIST_CONTINUATION) &&
@@ -6817,8 +6853,10 @@ static bool parse_list_item_end(Scanner *s, TSLexer *lexer,
   // later in this function.
   // But first we need to skip the `> ` tokens.
   bool ending_newline;
-  uint8_t block_quote_markers =
-      scan_block_quote_markers(s, lexer, &ending_newline);
+  // An existing quote after a quoted item may have spaces before its marker.
+  bool skipped_quote_indent = false;
+  uint8_t block_quote_markers = scan_quote_marker_run(
+      s, lexer, &ending_newline, &skipped_quote_indent, false);
 
 
   // Delayed output of BLOCK_QUOTE_CONTINUATION, if necessary.
@@ -8692,6 +8730,8 @@ static bool scan_quoted_plus_owner(Scanner *s, TSLexer *lexer,
   Block *owner = list ? list : note;
   if (quoted_note_inside_item(s)) owner = note;
   if (!owner || !(owner->flags & BLOCK_FLAG_PLUS_AHEAD)) return false;
+  // Anchor here so a `+` owned further out can still end the inner item.
+  mark_end(s, lexer);
   bool ending_newline = false;
   uint8_t markers = scan_block_quote_markers(s, lexer, &ending_newline);
   // PLUS_AHEAD records a lone plus after this prefix and its spacing.
@@ -8728,6 +8768,12 @@ static bool scan_quoted_plus_owner(Scanner *s, TSLexer *lexer,
       column_list != list &&
       !(nested_description && quote && column == quote->content_col &&
         list->data == column + 1)) {
+    if (valid_symbols[LIST_ITEM_END] && column_list != list &&
+        list->type != LIST_DEFINITION) {
+      lexer->result_symbol = LIST_ITEM_END;
+      s->blocks_to_close = 1;
+      return true;
+    }
     s->plus_scan_spent = true;
     return false;
   }
@@ -10592,13 +10638,29 @@ static bool scan_code_fence_at_paragraph_end(Scanner *s, TSLexer *lexer,
 /// second line continues the first at the SAME depth), and `> a` / `b` is a
 /// lazy continuation. Only `> a` / `> > b` opens something new.
 static bool scan_deeper_block_quote_at_paragraph_end(Scanner *s,
-                                                     TSLexer *lexer) {
+                                                     TSLexer *lexer,
+                                                     int markers_seen) {
   if (lexer->lookahead != '>') {
     return false;
   }
+  // On a line carrying every quote's marker, a `>` at or past the content
+  // column of an item holding the paragraph opens a quote in that item.
+  if (markers_seen > 0 && markers_seen >= count_blocks(s, BLOCK_QUOTE)) {
+    uint32_t column = line_column(s, lexer);
+    for (int i = (int)s->open_blocks->size - 1; i >= 0; --i) {
+      Block *b = *array_get(s->open_blocks, i);
+      if (!is_list(b->type) || b->type == LIST_DEFINITION ||
+          b->content_col == 0) {
+        break;
+      }
+      if (column >= b->content_col) return !at_nesting_cap(s);
+    }
+  }
   uint8_t open_depth = count_blocks(s, BLOCK_QUOTE);
   bool ending_newline = false;
-  uint8_t marker_count = scan_block_quote_markers(s, lexer, &ending_newline);
+  // At a paragraph's end the run is read with the paragraph's marker rules.
+  uint8_t marker_count =
+      scan_quote_marker_run(s, lexer, &ending_newline, NULL, true);
   return marker_count > open_depth && !at_nesting_cap(s);
 }
 
@@ -10905,6 +10967,34 @@ static bool paragraph_block_opener_ahead(Scanner *s, TSLexer *lexer, int markers
 }
 static bool close_paragraph_after_quote(Scanner *s, TSLexer *lexer,
                                         int markers_seen);
+/// A quote opens at `column` in an item when this line's markers reach every
+/// quote around the item, the line reaches the item's content column, and
+/// `column` is left of everything nested in the item.
+static bool quote_opens_in_outer_item(Scanner *s, uint8_t markers,
+                                      uint32_t column) {
+  uint8_t quotes_below = count_blocks(s, BLOCK_QUOTE);
+  uint32_t nested_start = UINT32_MAX;
+  for (int i = (int)s->open_blocks->size - 1; i >= 0; --i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (b->type == BLOCK_QUOTE) {
+      --quotes_below;
+      if (b->content_col >= 2 && b->content_col - 2 < nested_start) {
+        nested_start = b->content_col - 2;
+      }
+      continue;
+    }
+    if (!is_list(b->type) || b->type == LIST_DEFINITION || b->content_col == 0) {
+      continue;
+    }
+    if (markers >= quotes_below && column >= b->content_col &&
+        column < nested_start) {
+      return true;
+    }
+    if (b->content_col < nested_start) nested_start = b->content_col;
+  }
+  return false;
+}
+
 static bool close_paragraph(Scanner *s, TSLexer *lexer) {
   // Workaround for not including the following blankline when closing a
   // paragraph inside a block.
@@ -10967,6 +11057,16 @@ static bool close_paragraph(Scanner *s, TSLexer *lexer) {
   Block *lazy_quote = find_block(s, BLOCK_QUOTE);
   if (lazy_quote) lazy_quote->flags &= (uint8_t)~BLOCK_FLAG_QUOTE_LAZY_DROP;
   if (end_paragraph_in_block_quote(s, lexer, &markers_seen)) {
+    return true;
+  }
+  // A `>` left of the inner quote's column can open a quote in an item whose
+  // enclosing quotes this line's markers all reach.
+  if (lazy_quote && markers_seen > 0 && markers_seen < lazy_quote->data &&
+      lexer->lookahead == '>' && !s->plus_probe_refused_line &&
+      quote_opens_in_outer_item(s, (uint8_t)markers_seen,
+                                line_column(s, lexer)) &&
+      !at_nesting_cap(s)) {
+    s->drop_close_markers = (uint8_t)markers_seen;
     return true;
   }
   if (lazy_quote && markers_seen > 0 && markers_seen < lazy_quote->data &&
@@ -11100,7 +11200,7 @@ static bool close_paragraph_after_quote(Scanner *s, TSLexer *lexer,
     }
   }
 
-  if (scan_deeper_block_quote_at_paragraph_end(s, lexer)) {
+  if (scan_deeper_block_quote_at_paragraph_end(s, lexer, markers_seen)) {
     return true;
   }
 

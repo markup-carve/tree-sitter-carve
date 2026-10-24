@@ -1,0 +1,486 @@
+================================================================================
+614 part 2: A short quote line without a plus keeps the next block
+================================================================================
+- > ~~~
+  > x
+  > ~~~
+
+  > y
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (block_quote
+          (block_quote_marker)
+          (content
+            (code_block
+              (code_block_marker_begin)
+              (code
+                (block_quote_marker))
+              (block_quote_marker)
+              (code_block_marker_end))))
+        (block_quote
+          (block_quote_marker)
+          (content
+            (paragraph)))))))
+
+================================================================================
+614 part 2: A direct refused plus stays in the nested paragraph
+================================================================================
+> - > q
+>    r
+>    +
+>    b
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (list
+        (list_item
+          (list_marker_dash)
+          (list_item_content
+            (block_quote
+              (block_quote_marker)
+              (content
+                (paragraph
+                  (block_quote_marker)
+                  (block_quote_marker)
+                  (block_quote_marker))))))))))
+
+================================================================================
+614 part 2: A quote past a quoted item's content column opens in the item
+================================================================================
+> * q
+>    > b
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (list
+        (list_item
+          (list_marker_star)
+          (list_item_content
+            (paragraph)
+            (block_quote_marker)
+            (block_quote
+              (block_quote_marker)
+              (content
+                (paragraph)))))))))
+
+================================================================================
+614 part 2: A quote after a refused plus opens in the quoted item
+================================================================================
+> * q
+>    r
+>    +
+>    > b
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (list
+        (list_item
+          (list_marker_star)
+          (list_item_content
+            (paragraph
+              (block_quote_marker)
+              (block_quote_marker))
+            (block_quote_marker)
+            (block_quote
+              (block_quote_marker)
+              (content
+                (paragraph)))))))))
+
+================================================================================
+614 part 2: A quote at the outer item's column leaves the nested item
+================================================================================
+> - - q
+>    r
+>    +
+>    > b
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (list
+        (list_item
+          (list_marker_dash)
+          (list_item_content
+            (list
+              (list_item
+                (list_marker_dash)
+                (list_item_content
+                  (paragraph
+                    (block_quote_marker)
+                    (block_quote_marker)))))
+            (block_quote_marker)
+            (block_quote
+              (block_quote_marker)
+              (content
+                (paragraph)))))))))
+
+================================================================================
+614 part 2: A quote on a lazy line stays paragraph text
+================================================================================
+> > * q
+>     r
+>     +
+>     > b
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (block_quote
+        (block_quote_marker)
+        (content
+          (list
+            (list_item
+              (list_marker_star)
+              (list_item_content
+                (paragraph
+                  (block_quote_marker)
+                  (block_quote_marker)
+                  (block_quote_marker))))))))))
+
+================================================================================
+614 part 2: A nested item quote follower opens in the enclosing item
+================================================================================
+- 1. > q
+    r
+    +
+    > b
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (list
+          (list_item
+            (list_marker_decimal_period)
+            (list_item_content
+              (block_quote
+                (block_quote_marker)
+                (content
+                  (paragraph))))))
+        (block_quote
+          (block_quote_marker)
+          (content
+            (paragraph)))))))
+
+================================================================================
+614 part 2: A marked follower leaves the nested item after its first line
+================================================================================
+- 1. > q
+    > r
+    > +
+    > b
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (list
+          (list_item
+            (list_marker_decimal_period)
+            (list_item_content
+              (block_quote
+                (block_quote_marker)
+                (content
+                  (paragraph))))))
+        (block_quote
+          (block_quote_marker)
+          (content
+            (paragraph
+              (block_quote_marker)
+              (block_quote_marker))))))))
+
+================================================================================
+614 part 2: A quote after a quoted item opens inside that item
+================================================================================
+> - > * q
+>   >    > b
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (list
+        (list_item
+          (list_marker_dash)
+          (list_item_content
+            (block_quote
+              (block_quote_marker)
+              (content
+                (list
+                  (list_item
+                    (list_marker_star)
+                    (list_item_content
+                      (paragraph)
+                      (block_quote_marker)
+                      (block_quote
+                        (block_quote_marker)
+                        (content
+                          (paragraph))))))))))))))
+
+================================================================================
+614 part 2: A quote left of a nested item opens in the outer item
+================================================================================
+> - 1. > q
+>     > b
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (list
+        (list_item
+          (list_marker_dash)
+          (list_item_content
+            (list
+              (list_item
+                (list_marker_decimal_period)
+                (list_item_content
+                  (block_quote
+                    (block_quote_marker)
+                    (content
+                      (paragraph))))))
+            (block_quote_marker)
+            (block_quote
+              (block_quote_marker)
+              (content
+                (paragraph)))))))))
+
+================================================================================
+614 part 2: A quote after a refused plus leaves the nested item
+================================================================================
+> - 1. > q
+>     r
+>     +
+>     > b
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (list
+        (list_item
+          (list_marker_dash)
+          (list_item_content
+            (list
+              (list_item
+                (list_marker_decimal_period)
+                (list_item_content
+                  (block_quote
+                    (block_quote_marker)
+                    (content
+                      (paragraph
+                        (block_quote_marker)
+                        (block_quote_marker)))))))
+            (block_quote_marker)
+            (block_quote
+              (block_quote_marker)
+              (content
+                (paragraph)))))))))
+
+================================================================================
+614 part 2: A quote past an inner quote's marker stays text
+================================================================================
+> - > q
+>    r
+>    +
+>    > b
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (list
+        (list_item
+          (list_marker_dash)
+          (list_item_content
+            (block_quote
+              (block_quote_marker)
+              (content
+                (paragraph
+                  (block_quote_marker)
+                  (block_quote_marker)
+                  (block_quote_marker))))))))))
+
+================================================================================
+614 part 2: A quote marker inside an item's marker gap is lazy text
+================================================================================
+1. > q
+  > r
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_decimal_period)
+      (list_item_content
+        (block_quote
+          (block_quote_marker)
+          (content
+            (paragraph)))))))
+
+================================================================================
+614 part 2: A quote marker that reaches an outer item opens there
+================================================================================
+- 1. > q
+    > r
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (list
+          (list_item
+            (list_marker_decimal_period)
+            (list_item_content
+              (block_quote
+                (block_quote_marker)
+                (content
+                  (paragraph))))))
+        (block_quote
+          (block_quote_marker)
+          (content
+            (paragraph)))))))
+
+================================================================================
+614 part 2: A quote-prefixed plus owned outside two marker-line items parses without error
+================================================================================
+> > - - q
+> +
+> b
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (block_quote
+        (block_quote_marker)
+        (content
+          (list
+            (list_item
+              (list_marker_dash)
+              (list_item_content
+                (list
+                  (list_item
+                    (list_marker_dash)
+                    (list_item_content
+                      (paragraph)))))))
+          (block_quote_marker)
+          (list_continuation_marker)
+          (paragraph
+            (block_quote_marker)))))))
+
+================================================================================
+614 part 2: A lazy line before an outer plus closes both items
+================================================================================
+> > - - q
+> r
+> +
+> b
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (block_quote
+        (block_quote_marker)
+        (content
+          (list
+            (list_item
+              (list_marker_dash)
+              (list_item_content
+                (list
+                  (list_item
+                    (list_marker_dash)
+                    (list_item_content
+                      (paragraph
+                        (block_quote_marker))))))))
+          (block_quote_marker)
+          (list_continuation_marker)
+          (paragraph
+            (block_quote_marker)))))))
+
+================================================================================
+614 part 2: Every marker-gap line of a quoted item paragraph is lazy text
+================================================================================
+1. > q
+  > r
+  > +
+  > b
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_decimal_period)
+      (list_item_content
+        (block_quote
+          (block_quote_marker)
+          (content
+            (paragraph)))))))
+
+================================================================================
+614 part 2: A line that starts with a marker-gap > opens no quote
+================================================================================
+1. > q
+  > r
+  > +
+  > > b
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_decimal_period)
+      (list_item_content
+        (block_quote
+          (block_quote_marker)
+          (content
+            (paragraph)))))))
