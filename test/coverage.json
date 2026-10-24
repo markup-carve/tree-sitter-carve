@@ -22,12 +22,12 @@
       "nodes": 381
     },
     "list": {
-      "documents": 1180,
-      "nodes": 1642
+      "documents": 1184,
+      "nodes": 1646
     },
     "definition_list": {
-      "documents": 313,
-      "nodes": 328
+      "documents": 318,
+      "nodes": 334
     },
     "line_block": {
       "documents": 54,
@@ -717,7 +717,9 @@
     "an-unclosed-fence-run-with-no-closer-in-its-item-does-not-hide-a-blank-line",
     "definition-body-note-and-fence-owner-boundaries",
     "nested-plus-below-fence-and-description",
-    "the-column-of-the-quote-that-owns-a-first-block-plus-stays-eligible-at-every-depth"
+    "the-column-of-the-quote-that-owns-a-first-block-plus-stays-eligible-at-every-depth",
+    "a-description-separator-left-of-its-item-s-column-folds-into-the-definition-body",
+    "a-definition-marker-line-keeps-a-straddling-tab-s-residual-columns"
   ],
   "skip": {},
   "overAcceptance": {
@@ -761,7 +763,10 @@
   "invisibleUnderAcceptance": {},
   "batteryDisagreements": {},
   "underAcceptance": {},
-  "oracleGoldenDisagreements": {},
+  "oracleGoldenDisagreements": {
+    "smart-typography-dashes-and-quotes-35": "Pinned oracle 0.1.13 reads a quote directly after a slash as an opening quote (config/ followed by a double quote, and the single quotes around tmp/); the spec golden closes the quote there.",
+    "a-definition-marker-line-keeps-a-straddling-tab-s-residual-columns": "Pinned oracle 0.1.13 reads the line : zq as the nested term's description; the spec golden keeps it as text of the outer description, because the tab before :: t leaves residual columns that put the line left of the nested item."
+  },
   "errorFamilies": {},
   "inlineReadingGaps": {},
   "lineTerminatorGaps": {},
