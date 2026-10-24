@@ -1,0 +1,72 @@
+================================================================================
+A refused + before a blank line folds into the open paragraph (#611)
+================================================================================
+> - > > q
+>   > r
+>   > +
+
+>   > b
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (block_quote
+              (block_quote_marker)
+              content: (content
+                (block_quote
+                  (block_quote_marker)
+                  content: (content
+                    (paragraph
+                      (block_quote_marker)
+                      (block_quote_marker)
+                      (block_quote_marker)
+                      (block_quote_marker)))))))))))
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (paragraph))))
+
+================================================================================
+A quote after a blank line keeps a marker followed by two spaces (#611)
+================================================================================
+> q
+
+>  b
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (paragraph)))
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (paragraph))))
+
+================================================================================
+An indented > in a quote after a blank line is text (#611)
+================================================================================
+> q
+
+>  > b
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (paragraph)))
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (paragraph))))

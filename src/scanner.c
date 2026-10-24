@@ -4635,7 +4635,12 @@ static bool parse_block_quote(Scanner *s, TSLexer *lexer,
   // Only where a token this pin belongs to can follow: a pin taken on a line
   // whose only valid close is another block's (a heading ending at its
   // newline) widened that zero-width close over the `> ` and lost the quote.
-  if (has_marker && !ending_newline &&
+  // Nor before the close a blank line forces below: that close is
+  // zero-width and the marker opens the next quote.
+  bool closes_after_blank = after_blank_line && find_block(s, BLOCK_QUOTE) &&
+      !has_open_span(s) &&
+      (valid_symbols[CLOSE_PARAGRAPH] || valid_symbols[BLOCK_CLOSE]);
+  if (has_marker && !ending_newline && !closes_after_blank &&
       (valid_symbols[BLOCK_QUOTE_CONTINUATION] ||
        valid_symbols[BLOCK_QUOTE_BEGIN] || valid_symbols[CLOSE_PARAGRAPH]) &&
       (lexer->lookahead == ' ' || lexer->lookahead == '\t')) {
@@ -9562,6 +9567,9 @@ static bool note_short_plus(Scanner *s, TSLexer *lexer, uint8_t markers,
   if (!at_line_end(lexer)) return false;
   consume_line_end(s, lexer);
   if (lexer->eof(lexer)) return false;
+  // A blank line after it leaves nothing to attach: the `+` is text (L3).
+  while (lexer->lookahead == ' ' || lexer->lookahead == '\t') advance(s, lexer);
+  if (at_line_end(lexer)) return false;
   if (list->type == LIST_DEFINITION) return true;
   PlusFollow follow = plus_follower(s, lexer, column, markers,
                                     NULL, NULL, NULL, NULL, NULL);
