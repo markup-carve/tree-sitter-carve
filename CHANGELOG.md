@@ -14,7 +14,7 @@ Quoted lists and continuation markers now keep their intended owners across lazy
 
 - Lazy quoted lines remain in the right quote and list item, including shallower quote prefixes and overindented markers (#603, #604, #605, #606, #607, #610, #621).
 - A refused or unowned `+` stays paragraph text, while an accepted follower attaches to the open item after lazy or blank quoted lines (#612, #613, #615, #616).
-- Padded lone table span markers `>` and `^` remain span cells (#625, markup-carve/carve#3585).
+- Padded lone table span markers `<` and `^` remain span cells (#625, markup-carve/carve#3585).
 
 **Full Changelog**: https://github.com/markup-carve/tree-sitter-carve/compare/0.1.11...0.1.12
 
