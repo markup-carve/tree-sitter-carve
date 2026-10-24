@@ -2888,7 +2888,7 @@
  "table-spans-keep-alignment-defaults-in-physical-columns-7": ".>document document>table table>table_row table_cell>text*2 table_row>table_cell*2",
  "table-spans-keep-alignment-defaults-in-physical-columns-8": ".>document document>table table>table_row*2 table@aligns table_cell>text*5 table_row>table_cell*6",
  "table-spans-keep-alignment-defaults-in-physical-columns-9": ".>document document>table table>table_row*2 table@aligns table@header-rows table_cell>text*4 table_row>table_cell*4",
- "table-spans-keep-alignment-defaults-in-physical-columns": ".>document document>table table>table_row table_cell>text*2 table_row>table_cell*2",
+ "table-spans-keep-alignment-defaults-in-physical-columns": ".>document document>table table>table_row table_cell>text table_row>table_cell*2",
  "footnote-with-multiple-blocks-2": ".>document document>paragraph*3 paragraph>footnote_ref paragraph>text*3",
  "footnote-with-multiple-blocks": ".>document document>paragraph*3 paragraph>footnote_ref paragraph>text*3",
  "empty-delimiters": ".>document document>paragraph paragraph>text",
@@ -3040,7 +3040,7 @@
  "table-span-marker-in-first-column": ".>document document>table table>table_row*2 table_cell>text*3 table_row>table_cell*4",
  "table-cell-attributes": ".>document document>table table>table_row*2 table_cell>text*4 table_cell@class table_row>table_cell*4",
  "a-wrapped-attribute-line-opened-at-a-container-s-column-is-one-construct-10": ".>document block_quote>list document>block_quote list>list_item list_item>paragraph paragraph>soft_break*3 paragraph>text*4",
- "a-wrapped-attribute-line-opened-at-a-container-s-column-is-one-construct-7": ".>document definition_list>list definition_list>paragraph definition_list>text document>definition_list list>list_item list_item>paragraph paragraph>text*2",
- "a-wrapped-attribute-line-opened-at-a-container-s-column-is-one-construct-8": ".>document definition_list>list definition_list>paragraph*2 definition_list>text document>definition_list list>list_item list_item>paragraph paragraph>text*3",
- "a-wrapped-attribute-line-opened-at-a-container-s-column-is-one-construct-9": ".>document block_quote>list block_quote>paragraph document>block_quote list>list_item list_item>paragraph paragraph>text*2"
+ "a-wrapped-attribute-line-opened-at-a-container-s-column-is-one-construct-7": ".>document definition_list>list definition_list>text document>definition_list document>paragraph list>list_item list_item>paragraph paragraph>text*2",
+ "a-wrapped-attribute-line-opened-at-a-container-s-column-is-one-construct-8": ".>document definition_list>list definition_list>paragraph definition_list>text document>definition_list document>paragraph list>list_item list_item>paragraph paragraph>text*3",
+ "a-wrapped-attribute-line-opened-at-a-container-s-column-is-one-construct-9": ".>document block_quote>list document>block_quote document>paragraph list>list_item list_item>paragraph paragraph>text*2"
 }
