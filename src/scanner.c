@@ -10658,7 +10658,9 @@ static bool scan_deeper_block_quote_at_paragraph_end(Scanner *s,
   }
   uint8_t open_depth = count_blocks(s, BLOCK_QUOTE);
   bool ending_newline = false;
-  uint8_t marker_count = scan_block_quote_markers(s, lexer, &ending_newline);
+  // At a paragraph's end the run is read with the paragraph's marker rules.
+  uint8_t marker_count =
+      scan_quote_marker_run(s, lexer, &ending_newline, NULL, true);
   return marker_count > open_depth && !at_nesting_cap(s);
 }
 
