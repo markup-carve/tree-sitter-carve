@@ -897,9 +897,13 @@ module.exports = grammar({
                 $._block_with_heading,
                 $._indented_content_spacer,
               ),
+              seq(
+                alias($._quoted_list_item_continuation, $.block_quote_marker),
+                $._checked_list_continuation,
+              ),
               $._checked_list_continuation,
               seq(
-                alias($._block_quote_continuation, $.block_quote_marker),
+                $._block_quote_prefix,
                 $._checked_list_continuation,
               ),
             ),
@@ -909,7 +913,13 @@ module.exports = grammar({
         $._list_item_end,
       ),
     _checked_list_continuation: ($) =>
-      seq($._plus_owner_check, $._list_continuation),
+      seq(
+        choice(
+          $._plus_owner_check,
+          alias($._quoted_plus_owner_check, $.block_quote_marker),
+        ),
+        $._list_continuation,
+      ),
     // A `+` continuation marker (PART 9 §17) plus the single flush-left block it
     // attaches to the enclosing list item (corpus 83-list-continuation-marker).
     // No `_indented_content_spacer` here: the attached block sits flush left, and
@@ -924,7 +934,17 @@ module.exports = grammar({
       seq(
         $.list_continuation_marker,
         repeat($.block_attribute),
-        $._block_with_heading,
+        choice(
+          $._block_with_heading,
+          prec(2, seq(
+            choice(
+              alias($._block_quote_continuation, $.block_quote_marker),
+              $._unhosted_block_quote_continuation,
+            ),
+            $.block_quote,
+          )),
+          seq($._block_quote_prefix, $.block_quote),
+        ),
       ),
 
     table: ($) =>
@@ -1457,6 +1477,19 @@ module.exports = grammar({
             seq(
               $.list_continuation_marker,
               choice($.heading, $._block_element),
+            ),
+            prec(2, seq(
+              $.list_continuation_marker,
+              choice(
+                alias($._block_quote_continuation, $.block_quote_marker),
+                $._unhosted_block_quote_continuation,
+              ),
+              $.block_quote,
+            )),
+            seq(
+              $.list_continuation_marker,
+              $._block_quote_prefix,
+              $.block_quote,
             ),
             prec(
               1,
@@ -3322,6 +3355,9 @@ module.exports = grammar({
     $._empty_link_padding,
     $._delimited_table_begin,
     $._plus_owner_check,
+    $._quoted_plus_owner_check,
+    $._quoted_list_item_continuation,
+    $._unhosted_block_quote_continuation,
     $._refused_plus_line,
     $._attached_quote_prefix,
   ],
