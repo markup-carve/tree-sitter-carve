@@ -6,6 +6,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.1.12] - 2026-10-24
+
+Quoted lists and continuation markers now keep their intended owners across lazy lines, blank lines, and nested quotes.
+
+### Fixes
+
+- Lazy quoted lines remain in the right quote and list item, including shallower quote prefixes and overindented markers (#603, #604, #605, #606, #607, #610, #621).
+- A refused or unowned `+` stays paragraph text, while an accepted follower attaches to the open item after lazy or blank quoted lines (#612, #613, #615, #616).
+
+**Full Changelog**: https://github.com/markup-carve/tree-sitter-carve/compare/0.1.11...0.1.12
+
 ## [0.1.11] - 2026-10-23
 
 This release follows the Carve 0.1.11 corpus, mainly the column rules for the `+` continuation marker.
