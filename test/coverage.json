@@ -14,20 +14,20 @@
       "nodes": 250
     },
     "heading": {
-      "documents": 189,
-      "nodes": 223
+      "documents": 190,
+      "nodes": 224
     },
     "code_block": {
-      "documents": 348,
-      "nodes": 381
+      "documents": 350,
+      "nodes": 383
     },
     "list": {
-      "documents": 1188,
-      "nodes": 1650
+      "documents": 1190,
+      "nodes": 1652
     },
     "definition_list": {
-      "documents": 320,
-      "nodes": 336
+      "documents": 322,
+      "nodes": 338
     },
     "line_block": {
       "documents": 54,
@@ -50,8 +50,8 @@
       "nodes": 0
     },
     "admonition": {
-      "documents": 197,
-      "nodes": 418
+      "documents": 198,
+      "nodes": 419
     },
     "directive": {
       "documents": 6,
