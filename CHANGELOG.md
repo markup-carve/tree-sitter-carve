@@ -6,6 +6,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.1.13] - 2026-10-25
+
+Task lists now follow the published carve 0.1.13 task state rules.
+
+### Fixes
+
+- Progress `[/]` and blocked `[!]` markers parse as task items alongside the open alias `[_]` state (#633).
+
+**Full Changelog**: https://github.com/markup-carve/tree-sitter-carve/compare/0.1.12...0.1.13
+
 ## [0.1.12] - 2026-10-24
 
 Quoted lists and continuation markers now keep their intended owners across lazy lines, blank lines, and nested quotes.
