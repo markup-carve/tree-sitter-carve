@@ -619,11 +619,11 @@ module.exports = grammar({
       ),
     checked: (_) => seq("[", choice("x", "X"), "]"),
     // Unchecked task states per the spec's task_state rule: ` `, `_`, `-`,
-    // `>`, `?` all render as an UNCHECKED checkbox (matches djot-php). The
+    // `/`, `!`, `>`, `?` all render as an unchecked checkbox. The
     // grammar emits a single `unchecked` node for every form; the state
     // character stays recoverable from the node text for consumers that
     // want to distinguish them.
-    unchecked: (_) => seq("[", choice(" ", "_", "-", ">", "?"), "]"),
+    unchecked: (_) => seq("[", choice(" ", "_", "-", "/", "!", ">", "?"), "]"),
 
     // A definition list is its own node, not a `list`: it renders `<dl>` and
     // its items are `<dt>`/`<dd>`, so a consumer that highlights or folds lists
