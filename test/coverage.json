@@ -720,7 +720,14 @@
     "the-column-of-the-quote-that-owns-a-first-block-plus-stays-eligible-at-every-depth",
     "a-description-separator-left-of-its-item-s-column-folds-into-the-definition-body",
     "a-definition-marker-line-keeps-a-straddling-tab-s-residual-columns",
-    "table-spans-keep-alignment-defaults-in-physical-columns"
+    "table-spans-keep-alignment-defaults-in-physical-columns",
+    "a-display-math-span-with-trailing-attributes-takes-a-caption",
+    "a-line-at-the-marker-column-leaves-a-closed-nested-body",
+    "a-styled-display-math-span-takes-a-caption-across-one-blank-line",
+    "a-tab-after-a-comment-marker-stays-in-its-text",
+    "a-tab-cannot-pad-an-empty-link-destination",
+    "a-titled-admonition-skips-an-authored-heading-id",
+    "an-empty-link-destination-takes-spaces"
   ],
   "skip": {},
   "overAcceptance": {

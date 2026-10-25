@@ -1,0 +1,24 @@
+================================================================================
+Progress, blocked, and open-alias task states
+================================================================================
+- [/] progress
+- [!] blocked
+- [_] open
+--------------------------------------------------------------------------------
+(document
+  (list
+    (list_item
+      (list_marker_task
+        (unchecked))
+      (list_item_content
+        (paragraph)))
+    (list_item
+      (list_marker_task
+        (unchecked))
+      (list_item_content
+        (paragraph)))
+    (list_item
+      (list_marker_task
+        (unchecked))
+      (list_item_content
+        (paragraph)))))
