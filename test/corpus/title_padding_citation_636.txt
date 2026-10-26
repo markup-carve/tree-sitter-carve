@@ -1,0 +1,50 @@
+==================
+A quoted link title accepts ASCII padding
+==================
+[t](/u "T" )
+
+[t](/u 'T'  )
+
+---
+
+(document
+  (paragraph
+    (inline_link
+      text: (link_text)
+      destination: (inline_link_destination
+        title: (link_title))))
+  (paragraph
+    (inline_link
+      text: (link_text)
+      destination: (inline_link_destination
+        title: (link_title)))))
+
+==================
+Citation definitions require ASCII spaces after the colon
+==================
+[@one]: Entry
+[@two]:   Entry
+
+---
+
+(document
+  (citation_definition
+    label: (citation_label)
+    entry: (citation_entry))
+  (citation_definition
+    label: (citation_label)
+    entry: (citation_entry)))
+
+==================
+Tabs after titles and citation colons stay plain text
+==================
+[t](/u "T"	)
+
+[@tab]:	Entry
+
+---
+
+(document
+  (paragraph)
+  (paragraph
+    (citation_group)))

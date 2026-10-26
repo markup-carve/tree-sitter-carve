@@ -13264,6 +13264,8 @@ static bool probe_scan_inline_link_tail(Scanner *s, TSLexer *lexer, char bare, b
       advance(s, lexer);
       if (!any_dest) {
         while (lexer->lookahead == ' ' || lexer->lookahead == '\t') advance(s, lexer);
+      } else {
+        while (lexer->lookahead == ' ') advance(s, lexer);
       }
       return lexer->lookahead == ')';
     }

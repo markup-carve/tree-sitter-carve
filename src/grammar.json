@@ -4941,29 +4941,27 @@
             "value": ":"
           },
           {
+            "type": "IMMEDIATE_TOKEN",
+            "content": {
+              "type": "PATTERN",
+              "value": " +"
+            }
+          },
+          {
             "type": "CHOICE",
             "members": [
               {
-                "type": "SEQ",
-                "members": [
-                  {
-                    "type": "SYMBOL",
-                    "name": "_whitespace1"
+                "type": "FIELD",
+                "name": "entry",
+                "content": {
+                  "type": "ALIAS",
+                  "content": {
+                    "type": "PATTERN",
+                    "value": "[^\\r\\n]+"
                   },
-                  {
-                    "type": "FIELD",
-                    "name": "entry",
-                    "content": {
-                      "type": "ALIAS",
-                      "content": {
-                        "type": "PATTERN",
-                        "value": "[^\\r\\n]+"
-                      },
-                      "named": true,
-                      "value": "citation_entry"
-                    }
-                  }
-                ]
+                  "named": true,
+                  "value": "citation_entry"
+                }
               },
               {
                 "type": "BLANK"
@@ -8921,6 +8919,21 @@
                             "named": true,
                             "value": "link_title"
                           }
+                        },
+                        {
+                          "type": "CHOICE",
+                          "members": [
+                            {
+                              "type": "IMMEDIATE_TOKEN",
+                              "content": {
+                                "type": "PATTERN",
+                                "value": " +"
+                              }
+                            },
+                            {
+                              "type": "BLANK"
+                            }
+                          ]
                         }
                       ]
                     },
