@@ -1628,12 +1628,8 @@ module.exports = grammar({
           $._link_ref_def_label_end,
           "]",
           ":",
-          optional(
-            seq(
-              $._whitespace1,
-              field("entry", alias(/[^\r\n]+/, $.citation_entry)),
-            ),
-          ),
+          token.immediate(/ +/),
+          optional(field("entry", alias(/[^\r\n]+/, $.citation_entry))),
           choice($._newline, $._eof_or_newline),
         ),
       ),
@@ -2761,6 +2757,7 @@ module.exports = grammar({
               seq(
                 $._link_title_space,
                 field("title", alias($._inline_link_title, $.link_title)),
+                optional(token.immediate(/ +/)),
               ),
             ),
           ),

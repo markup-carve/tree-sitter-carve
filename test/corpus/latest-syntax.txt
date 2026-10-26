@@ -486,7 +486,11 @@ A link title is one space and a quoted run, and the destination has no space
       text: (link_text)
       destination: (inline_link_destination
         title: (link_title))))
-  (paragraph))
+  (paragraph
+    (inline_link
+      text: (link_text)
+      destination: (inline_link_destination
+        title: (link_title)))))
 
 ==================
 An unterminated code span ends at the closer of the braced span it sits in
