@@ -485,7 +485,7 @@ module.exports = grammar({
           // Empty frontmatter, `---` over `---`, is frontmatter (spec 21879d7).
           optional(field("content", $.frontmatter_content)),
           $.frontmatter_marker,
-          $._newline,
+          choice($._newline, $._eof_or_newline),
         ),
         // An opener with no closer runs to the end of the document
         // (carve#5016, #5085).
