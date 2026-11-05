@@ -5358,12 +5358,20 @@ static TokenType scan_ordered_list_marker_token(Scanner *s, TSLexer *lexer) {
     return IGNORED;
   }
 
-  if (lexer->lookahead == ' ') {
-    advance(s, lexer);
-    return res;
-  } else {
+  if (lexer->lookahead != ' ') {
     return IGNORED;
   }
+  advance(s, lexer);
+  // A letter or roman marker with a dot needs two spaces, so `A. Smith` and
+  // `e. g.` stay text (carve#4828).
+  bool letter_dot = res == LIST_MARKER_LOWER_ALPHA_PERIOD ||
+                    res == LIST_MARKER_UPPER_ALPHA_PERIOD ||
+                    res == LIST_MARKER_LOWER_ROMAN_PERIOD ||
+                    res == LIST_MARKER_UPPER_ROMAN_PERIOD;
+  if (letter_dot && lexer->lookahead != ' ') {
+    return IGNORED;
+  }
+  return res;
 }
 
 // Scans a task marker box. `x`/`X` are the checked states; ` `, `_`, `-`,

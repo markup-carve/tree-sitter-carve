@@ -7769,7 +7769,7 @@ An ordered marker still opens a list at a paragraph's start (#320)
 ===============================================================================
 a) x
 
-iv. y
+iv.  y
 
 A) z
 

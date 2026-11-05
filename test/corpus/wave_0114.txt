@@ -125,3 +125,25 @@ a: 1
     (frontmatter_marker)
     language: (language)
     content: (frontmatter_content)))
+
+================================================================================
+A letter or roman marker with a dot needs two spaces (markup-carve/carve#4828)
+================================================================================
+A. Smith said so
+
+a.  one
+b.  two
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph)
+  (list
+    (list_item
+      (list_marker_lower_alpha_period)
+      (list_item_content
+        (paragraph)))
+    (list_item
+      (list_marker_lower_alpha_period)
+      (list_item_content
+        (paragraph)))))
