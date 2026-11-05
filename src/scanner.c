@@ -6085,9 +6085,11 @@ static bool parse_list_marker_or_thematic_break(
   // The item's content starts after the WHOLE space run: `-   lead` puts it at
   // column 4. Counted before the thematic-break probe, which can eat an inner
   // marker too (`* * u`) and would then report a column past it.
+  uint32_t extra_spaces = 0;
   if (can_be_list_marker) {
     while (lexer->lookahead == ' ') {
       advance(s, lexer);
+      ++extra_spaces;
     }
     if (!at_line_end(lexer) && !lexer->eof(lexer)) {
       marker_content_col = list_column_u8(line_column(s, lexer) + column_offset);
@@ -6120,7 +6122,7 @@ static bool parse_list_marker_or_thematic_break(
       valid_symbols[thematic_break_type] && !marker_attribute && !past_quote_column &&
       (opener_reaches_item_margin(s, start_col) ||
        (s->marker_end_col != 0 && start_col == s->marker_end_col)) &&
-      lexer->lookahead == marker) {
+      extra_spaces == 0 && lexer->lookahead == marker) {
     uint8_t spaced = 1;
     bool spaced_ok = false;
     while (lexer->lookahead == marker) {
