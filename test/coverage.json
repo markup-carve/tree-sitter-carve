@@ -1894,6 +1894,18 @@
     "a-termless-colon-line-a-quote-attaches-opens-no-fence": {"reading": "code#1 html=\"js\" tree=\"jsq\"", "reason": "A code fence interrupts a paragraph without a closer ahead in the next carve release (carve#4018); the grammar still reads the fence run as an inline code span."},
     "a-fence-a-quote-s-attached-block-opens-ends-with-its-container-3": {"reading": "code html=0 tree=1", "reason": "A code fence interrupts a paragraph without a closer ahead in the next carve release (carve#4018); the grammar still reads the fence run as an inline code span."}
   },
-  "lineTerminatorGaps": {},
+  "lineTerminatorGaps": {
+    "an-enclosing-closer-ends-a-tag-name": {"fold": "the cr spelling(s) parse to a different tree than lf", "reason": "The same row leaves an ERROR node in the LF spelling (skip ledger), so its error recovery differs by line terminator; it follows the skip entry for the row."},
+    "opaque-reference-and-inline-bounds-4": {"fold": "the cr spelling(s) parse to a different tree than lf", "reason": "The same row leaves an ERROR node in the LF spelling (skip ledger), so its error recovery differs by line terminator; it follows the skip entry for the row."},
+    "a-matched-insertion-or-deletion-hides-a-substitution-s-closer-4": {"fold": "the cr spelling(s) parse to a different tree than lf", "reason": "The same row leaves an ERROR node in the LF spelling (skip ledger), so its error recovery differs by line terminator; it follows the skip entry for the row."},
+    "the-first-caption-registers-a-repeated-id": {"fold": "the cr spelling(s) parse to a different tree than lf", "reason": "The same row leaves an ERROR node in the LF spelling (skip ledger), so its error recovery differs by line terminator; it follows the skip entry for the row."},
+    "the-third-confirmation-round-s-model-findings-13": {"fold": "the cr spelling(s) parse to a different tree than lf", "reason": "The same row leaves an ERROR node in the LF spelling (skip ledger), so its error recovery differs by line terminator; it follows the skip entry for the row."},
+    "the-third-confirmation-round-s-model-findings-14": {"fold": "the cr spelling(s) parse to a different tree than lf", "reason": "The same row leaves an ERROR node in the LF spelling (skip ledger), so its error recovery differs by line terminator; it follows the skip entry for the row."},
+    "a-line-comment-hides-a-substitution-arrow-2": {"fold": "the cr spelling(s) parse to a different tree than lf", "reason": "The same row leaves an ERROR node in the LF spelling (skip ledger), so its error recovery differs by line terminator; it follows the skip entry for the row."},
+    "a-line-comment-hides-a-substitution-arrow-3": {"fold": "the cr spelling(s) parse to a different tree than lf", "reason": "The same row leaves an ERROR node in the LF spelling (skip ledger), so its error recovery differs by line terminator; it follows the skip entry for the row."},
+    "a-line-comment-hides-a-substitution-arrow": {"fold": "the cr spelling(s) parse to a different tree than lf", "reason": "The same row leaves an ERROR node in the LF spelling (skip ledger), so its error recovery differs by line terminator; it follows the skip entry for the row."},
+    "a-comment-on-the-new-side-of-a-substitution-ends-at-the-first-raw-closer-2": {"fold": "the cr spelling(s) parse to a different tree than lf", "reason": "The same row leaves an ERROR node in the LF spelling (skip ledger), so its error recovery differs by line terminator; it follows the skip entry for the row."},
+    "a-comment-on-the-new-side-of-a-substitution-ends-at-the-first-raw-closer": {"fold": "the cr spelling(s) parse to a different tree than lf", "reason": "The same row leaves an ERROR node in the LF spelling (skip ledger), so its error recovery differs by line terminator; it follows the skip entry for the row."}
+  },
   "parseTimeouts": {}
 }
