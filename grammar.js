@@ -28,12 +28,20 @@ const CELL_ATTR_ITEM =
   "|#[A-Za-z0-9_][A-Za-z0-9_-]*" +
   "|:[A-Za-z][A-Za-z0-9-]*" +
   "|[A-Za-z_][A-Za-z0-9_-]*(?:=(?:\"[^\"\\r\\n]*\"|'[^'\\r\\n]*'|[^\\s\"'{}]+))?)";
+const CELL_ALIGNMENT = "(?:[<>~][\\^~v]?|\\?[\\^~v])";
+const CELL_ATTR_LIST = CELL_ATTR_ITEM + "(?: +" + CELL_ATTR_ITEM + ")*";
+// Alignment is the first token inside the braces (`|={> .x} `, carve#5091 D3);
+// the glued 0.1.13 prefix (`|=>{.x} `) stays readable through 0.1.x.
 const CELL_MARKER_RUN = new RegExp(
-  "(?:=?(?:[<>~][\\^~v]?|\\?[\\^~v])|=)?\\{ *(?:" +
-    CELL_ATTR_ITEM +
+  "(?:=?\\{" +
+    CELL_ALIGNMENT +
     "(?: +" +
-    CELL_ATTR_ITEM +
-    ")* *)?\\} ",
+    CELL_ATTR_LIST +
+    ")? *|(?:=?" +
+    CELL_ALIGNMENT +
+    "|=)?\\{ *(?:" +
+    CELL_ATTR_LIST +
+    " *)?)\\} ",
 );
 
 // The inline element alternatives, shared by ordinary inline content and by a
@@ -468,15 +476,36 @@ module.exports = grammar({
       seq(optional($.frontmatter), repeat($._block_with_section)),
 
     frontmatter: ($) =>
-      seq(
-        $.frontmatter_marker,
-        $._whitespace,
-        optional(field("language", $.language)),
-        $._newline,
-        // Empty frontmatter, `---` over `---`, is frontmatter (spec 21879d7).
-        optional(field("content", $.frontmatter_content)),
-        $.frontmatter_marker,
-        $._newline,
+      choice(
+        seq(
+          $.frontmatter_marker,
+          $._whitespace,
+          optional(field("language", $.language)),
+          $._newline,
+          // Empty frontmatter, `---` over `---`, is frontmatter (spec 21879d7).
+          optional(field("content", $.frontmatter_content)),
+          $.frontmatter_marker,
+          $._newline,
+        ),
+        // An opener with no closer runs to the end of the document
+        // (carve#5016, #5085).
+        seq(
+          alias($._frontmatter_unclosed_marker, $.frontmatter_marker),
+          $._whitespace,
+          optional(field("language", $.language)),
+          choice(
+            seq(
+              $._newline,
+              optional(
+                field(
+                  "content",
+                  alias($._frontmatter_rest, $.frontmatter_content),
+                ),
+              ),
+            ),
+            $._eof_or_newline,
+          ),
+        ),
       ),
     frontmatter_content: ($) => repeat1($._line),
 
@@ -3360,5 +3389,7 @@ module.exports = grammar({
     $._unhosted_block_quote_continuation,
     $._refused_plus_line,
     $._attached_quote_prefix,
+    $._frontmatter_unclosed_marker,
+    $._frontmatter_rest,
   ],
 });
