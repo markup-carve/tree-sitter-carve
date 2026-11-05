@@ -292,6 +292,8 @@ typedef enum {
   UNHOSTED_BLOCK_QUOTE_CONTINUATION,
   REFUSED_PLUS_LINE,
   ATTACHED_QUOTE_PREFIX,
+  FRONTMATTER_UNCLOSED_MARKER,
+  FRONTMATTER_REST,
 } TokenType;
 
 // The different blocks in Carve that we track,
@@ -5356,12 +5358,20 @@ static TokenType scan_ordered_list_marker_token(Scanner *s, TSLexer *lexer) {
     return IGNORED;
   }
 
-  if (lexer->lookahead == ' ') {
-    advance(s, lexer);
-    return res;
-  } else {
+  if (lexer->lookahead != ' ') {
     return IGNORED;
   }
+  advance(s, lexer);
+  // A letter or roman marker with a dot needs two spaces, so `A. Smith` and
+  // `e. g.` stay text (carve#4828).
+  bool letter_dot = res == LIST_MARKER_LOWER_ALPHA_PERIOD ||
+                    res == LIST_MARKER_UPPER_ALPHA_PERIOD ||
+                    res == LIST_MARKER_LOWER_ROMAN_PERIOD ||
+                    res == LIST_MARKER_UPPER_ROMAN_PERIOD;
+  if (letter_dot && lexer->lookahead != ' ') {
+    return IGNORED;
+  }
+  return res;
 }
 
 // Scans a task marker box. `x`/`X` are the checked states; ` `, `_`, `-`,
@@ -5858,26 +5868,31 @@ static uint8_t consume_line_with_char_or_whitespace(Scanner *s, TSLexer *lexer,
   return at_line_end(lexer) || lexer->eof(lexer) ? seen : 0;
 }
 
-// Does a document-level closing frontmatter marker exist anywhere later in
-// the input? Called right after the OPENING run of `-` characters has been
-// consumed (so the lexer sits at whatever follows them on the opener line).
-// Frontmatter content is raw text end to end (`frontmatter_content` is just
-// `repeat1($._line)`, an unparsed `/[^\n]*/` per line), so the closer is
-// simply the first later line that is, from column 0, nothing but three or
-// more '-' characters and trailing horizontal whitespace - the identical
-// shape `parse_list_marker_or_thematic_break` itself commits to when it is
-// asked to recognize that same line as the closer.
-//
-// Deliberately takes only `lexer`, never `Scanner *s`: every `advance` here
-// is a plain read with no effect on persistent scanner state (no indent,
-// list or block-quote tracking touched), so however far this travels -
-// potentially to the end of the document - there is nothing left to unwind
-// if the caller ultimately decides not to use what it finds. An earlier
-// attempt at this same lookahead (tree-sitter-carve#95) used the ordinary
-// state-tracking helpers to scan ahead and, on failing to find a closer,
-// left `Scanner *s` mid-document for the NEXT token - this function is
-// written to make that class of mistake impossible by construction rather
-// than by care.
+static bool frontmatter_has_closer(TSLexer *lexer) {
+  while (!lexer->eof(lexer) && !at_line_end(lexer)) {
+    lexer->advance(lexer, false);
+  }
+  while (!lexer->eof(lexer)) {
+    if (lexer->lookahead == '\r') lexer->advance(lexer, false);
+    if (lexer->lookahead == '\n') lexer->advance(lexer, false);
+    uint32_t dashes = 0;
+    while (lexer->lookahead == '-') {
+      ++dashes;
+      lexer->advance(lexer, false);
+    }
+    if (dashes >= 3) {
+      while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+        lexer->advance(lexer, false);
+      }
+      if (lexer->eof(lexer) || at_line_end(lexer)) return true;
+    }
+    while (!lexer->eof(lexer) && !at_line_end(lexer)) {
+      lexer->advance(lexer, false);
+    }
+  }
+  return false;
+}
+
 /// Is the rest of the OPENER line a frontmatter opener at all?
 ///
 /// `frontmatter` in `grammar.js` is `frontmatter_marker`, a `[space]` slot and
@@ -5914,53 +5929,6 @@ static bool frontmatter_opener_tail_is_modeled(Scanner *s, TSLexer *lexer) {
   bool trailing_tabbed = false;
   consume_ws_run(s, lexer, &trailing_tabbed);
   return at_line_end(lexer) || lexer->eof(lexer);
-}
-
-static bool frontmatter_has_closer(TSLexer *lexer) {
-  // Skip whatever remains of the OPENER line (optional whitespace and/or a
-  // language tag per the grammar) without caring about its shape.
-  while (!lexer->eof(lexer) && !at_line_end(lexer)) {
-    lexer->advance(lexer, false);
-  }
-  if (lexer->eof(lexer)) {
-    return false;
-  }
-  if (lexer->lookahead == '\r') {
-    lexer->advance(lexer, false);
-  }
-  if (lexer->lookahead == '\n') {
-    lexer->advance(lexer, false); // the opener line's own newline
-  }
-
-  while (!lexer->eof(lexer)) {
-    uint32_t dashes = 0;
-    while (lexer->lookahead == '-') {
-      ++dashes;
-      lexer->advance(lexer, false);
-    }
-    if (dashes >= 3) {
-      while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
-        lexer->advance(lexer, false);
-      }
-      if (lexer->eof(lexer) || at_line_end(lexer)) {
-        return true;
-      }
-    }
-    // Not a closer: skip to the end of this line and try the next one.
-    while (!lexer->eof(lexer) && !at_line_end(lexer)) {
-      lexer->advance(lexer, false);
-    }
-    if (lexer->eof(lexer)) {
-      return false;
-    }
-    if (lexer->lookahead == '\r') {
-      lexer->advance(lexer, false);
-    }
-    if (lexer->lookahead == '\n') {
-      lexer->advance(lexer, false);
-    }
-  }
-  return false;
 }
 
 // Either parse a list item marker (like '- ') or a thematic break
@@ -6117,9 +6085,11 @@ static bool parse_list_marker_or_thematic_break(
   // The item's content starts after the WHOLE space run: `-   lead` puts it at
   // column 4. Counted before the thematic-break probe, which can eat an inner
   // marker too (`* * u`) and would then report a column past it.
+  uint32_t extra_spaces = 0;
   if (can_be_list_marker) {
     while (lexer->lookahead == ' ') {
       advance(s, lexer);
+      ++extra_spaces;
     }
     if (!at_line_end(lexer) && !lexer->eof(lexer)) {
       marker_content_col = list_column_u8(line_column(s, lexer) + column_offset);
@@ -6142,6 +6112,41 @@ static bool parse_list_marker_or_thematic_break(
   // all publish `<ul><li>-</li></ul>` where this grammar flattened the pair to
   // a paragraph (tree-sitter-carve#48).
   bool consumed_line_of_markers = false;
+
+  // A SPACED BREAK, `- - -` or `* * *`: single spaces between three or more
+  // markers (PART 2 `thematic_break`, carve#4814). Probed after the list token
+  // end is marked, so a refusal still leaves `- ` as the marker. A refused probe
+  // has consumed an inner marker, so the item has content and is no task.
+  bool spaced_probe_refused = false;
+  if (marker_count == 1 && can_be_list_marker && (marker == '-' || marker == '*') &&
+      valid_symbols[thematic_break_type] && !marker_attribute && !past_quote_column &&
+      (opener_reaches_item_margin(s, start_col) ||
+       (s->marker_end_col != 0 && start_col == s->marker_end_col)) &&
+      extra_spaces == 0 && lexer->lookahead == marker) {
+    uint8_t spaced = 1;
+    bool spaced_ok = false;
+    while (lexer->lookahead == marker) {
+      advance(s, lexer);
+      ++spaced;
+      if (lexer->lookahead != ' ') {
+        spaced_ok = at_line_end(lexer) || lexer->eof(lexer);
+        break;
+      }
+      advance(s, lexer);
+      if (lexer->lookahead != marker) {
+        while (lexer->lookahead == ' ' || lexer->lookahead == '\t') advance(s, lexer);
+        spaced_ok = at_line_end(lexer) || lexer->eof(lexer);
+        break;
+      }
+    }
+    if (spaced_ok && spaced >= 3) {
+      lexer->result_symbol = thematic_break_type;
+      mark_end(s, lexer);
+      return true;
+    }
+    spaced_probe_refused = true;
+    consumed_line_of_markers = true;
+  }
 
   // Check frontmatter, if needed. The run must be contiguous from the first
   // marker: `-` / `---` is a paragraph and then a break.
@@ -6169,28 +6174,12 @@ static bool parse_list_marker_or_thematic_break(
         if (!frontmatter_opener_tail_is_modeled(s, lexer)) {
           return false;
         }
-        // PART 9 section 12: "an opener with no exact closer ahead opens
-        // nothing" - already the rule for the `%%%` comment block and the
-        // code fence. An unclosed `---` at document start is the same shape,
-        // and every engine reads it as a thematic break instead
-        // (tree-sitter-carve#95).
+        // An opener with no closer claims the rest of the document
+        // (carve#5016, #5085); `_frontmatter_rest` then takes it whole.
         s->host_previous = -1;
-        if (frontmatter_has_closer(lexer)) {
-          lexer->result_symbol = FRONTMATTER_MARKER;
-          return true;
-        }
-        // No closer anywhere in the rest of the document: fall back to a
-        // thematic break, spanning exactly the marker run already consumed
-        // above (the `mark_end` call before the lookahead). Any trailing
-        // same-line whitespace after the markers cannot also be folded into
-        // this token: `frontmatter_has_closer` has already read past this
-        // line (and potentially to the end of the document) to answer the
-        // closer question, so the lexer's physical position is no longer
-        // right after the marker run, and `mark_end` cannot be pointed
-        // backward to reclaim it. Every case this fixes
-        // (tree-sitter-carve#95) is a bare `---` with nothing else on the
-        // line, where this boundary is already exact.
-        lexer->result_symbol = thematic_break_type;
+        lexer->result_symbol = frontmatter_has_closer(lexer)
+                                   ? FRONTMATTER_MARKER
+                                   : FRONTMATTER_UNCLOSED_MARKER;
         return true;
       }
       lexer->result_symbol = FRONTMATTER_MARKER;
@@ -6212,7 +6201,7 @@ static bool parse_list_marker_or_thematic_break(
   }
 
   if (can_be_list_marker) {
-    if (valid_symbols[LIST_MARKER_TASK_BEGIN]) {
+    if (valid_symbols[LIST_MARKER_TASK_BEGIN] && !spaced_probe_refused) {
       if (scan_task_list_marker(s, lexer)) {
         if (!ensure_list_open(s, LIST_TASK, list_indent + 1)) return false;
         record_list_marker_margin(s, marker_content_col, false);
@@ -10892,8 +10881,36 @@ static bool scan_row_or_break_at_paragraph_end(Scanner *s, TSLexer *lexer) {
     }
   }
   bool separated = lexer->lookahead == ' ';
-  consume_whitespace(s, lexer);
-  bool content = !at_line_end(lexer) && !lexer->eof(lexer);
+  // A spaced break (`- - -`, `* * *`) interrupts like `---`; a refused run
+  // leaves its inner marker as the item's content.
+  bool spaced_run = false;
+  if (separated && count == 1 && !attributed && c != '_') {
+    advance(s, lexer);
+    if (lexer->lookahead == c) {
+      spaced_run = true;
+      uint8_t spaced = 1;
+      bool spaced_ok = false;
+      while (lexer->lookahead == c) {
+        advance(s, lexer);
+        ++spaced;
+        if (lexer->lookahead != ' ') {
+          spaced_ok = at_line_end(lexer) || lexer->eof(lexer);
+          break;
+        }
+        advance(s, lexer);
+        if (lexer->lookahead != c) {
+          consume_whitespace(s, lexer);
+          spaced_ok = at_line_end(lexer) || lexer->eof(lexer);
+          break;
+        }
+      }
+      if (at_margin && spaced_ok && spaced >= 3) {
+        return true;
+      }
+    }
+  }
+  if (!spaced_run) consume_whitespace(s, lexer);
+  bool content = spaced_run || (!at_line_end(lexer) && !lexer->eof(lexer));
   if (at_margin && count >= 3 && !attributed && !content) {
     return true;
   }
@@ -14927,6 +14944,13 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
 // Its sentinel cannot be mistaken for a delimiter character.
 static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   s->plus_scan_spent = false;
+  if (valid_symbols[FRONTMATTER_REST] && !valid_symbols[ERROR] &&
+      !lexer->eof(lexer)) {
+    while (!lexer->eof(lexer)) advance(s, lexer);
+    mark_end(s, lexer);
+    lexer->result_symbol = FRONTMATTER_REST;
+    return true;
+  }
   if (valid_symbols[EMPTY_LINK_PADDING] && !valid_symbols[ERROR] &&
       (lexer->lookahead == ' ' || lexer->lookahead == '\t')) {
     do {

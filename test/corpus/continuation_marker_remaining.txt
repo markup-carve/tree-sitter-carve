@@ -653,7 +653,7 @@ First footnote block stops before a letter list
 r[^a]
 
 [^a]: +
-a. b
+a.  b
 
 ---
 
@@ -897,7 +897,7 @@ Ordered first block stops before a bullet
 ============================================================
 Letter first block stops before a bullet
 ============================================================
-a. +
+a.  +
 - x
 
 ---
