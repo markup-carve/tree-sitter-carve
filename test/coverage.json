@@ -6,36 +6,36 @@
       "nodes": 39
     },
     "block_quote": {
-      "documents": 769,
-      "nodes": 946
+      "documents": 776,
+      "nodes": 952
     },
     "table": {
-      "documents": 345,
-      "nodes": 349
+      "documents": 335,
+      "nodes": 339
     },
     "heading": {
-      "documents": 291,
-      "nodes": 334
+      "documents": 306,
+      "nodes": 349
     },
     "code_block": {
-      "documents": 557,
-      "nodes": 655
+      "documents": 561,
+      "nodes": 662
     },
     "list": {
-      "documents": 1730,
-      "nodes": 2429
+      "documents": 1760,
+      "nodes": 2463
     },
     "definition_list": {
-      "documents": 565,
-      "nodes": 608
+      "documents": 580,
+      "nodes": 622
     },
     "line_block": {
-      "documents": 111,
-      "nodes": 111
+      "documents": 115,
+      "nodes": 115
     },
     "div": {
-      "documents": 149,
-      "nodes": 167
+      "documents": 150,
+      "nodes": 168
     },
     "raw_block": {
       "documents": 59,
@@ -50,8 +50,8 @@
       "nodes": 0
     },
     "admonition": {
-      "documents": 230,
-      "nodes": 451
+      "documents": 240,
+      "nodes": 461
     },
     "directive": {
       "documents": 9,
@@ -482,7 +482,6 @@
     "a-boolean-attribute-does-not-start-with-an-underscore",
     "a-braced-hyphen-pair-is-an-en-dash",
     "a-container-s-span-ends-at-its-last-placed-child",
-    "a-definition-list-ends-at-its-last-placed-child-too",
     "a-hyphen-run-opening-a-word-after-whitespace-is-a-flag",
     "a-lazy-marker-line-s-definition-defines-nothing-in-any-container",
     "a-leading-escaped-caret-keeps-its-escape",
@@ -937,7 +936,6 @@
     "a-quoted-link-definition-in-a-footnote-body-registers-globally",
     "a-quoted-row-attribute-value-may-hold-a-pipe",
     "a-quoted-span-after-a-hosted-span-s-closer-leaves-the-follower-outside",
-    "a-quoted-term-takes-no-lazy-marker-or-separator",
     "a-reference-definition-needs-a-separator-before-its-destination",
     "a-reference-label-across-a-line-stays-verbatim-in-every-form",
     "a-reference-link-around-a-literal-directive-renders",
@@ -1126,7 +1124,33 @@
     "an-attribute-run-after-a-lone-plus-leads-a-sublist-at-the-content-column",
     "a-column-zero-description-is-a-sibling-after-an-indented-description-s-refused-plus",
     "a-description-a-plus-filled-stays-open-for-a-sibling",
-    "the-third-confirmation-round-s-model-findings"
+    "the-third-confirmation-round-s-model-findings",
+    "a-block-at-a-pulled-description-column-opens-in-the-description",
+    "a-block-at-a-pulled-footnote-column-opens-in-the-note",
+    "a-block-at-the-host-column-after-a-plus-attached-quote-stays-in-the-host",
+    "a-braced-comment-that-starts-a-continuation-line-is-at-block-position",
+    "a-caption-at-the-host-column-captions-a-plus-attached-quote",
+    "a-container-owned-comment-run-is-one-writer-block",
+    "a-definition-marker-after-a-block-and-paragraph-ends-the-item",
+    "a-document-owned-comment-run-stays-between-list-items",
+    "a-lazy-braced-comment-uses-source-columns-in-every-host",
+    "a-lazy-line-after-a-comment-keeps-the-deepest-list-open",
+    "a-multi-line-braced-comment-keeps-the-nested-list-open",
+    "a-nested-item-resumes-after-its-attached-fence-with-an-empty-line",
+    "a-quoted-comment-span-uses-its-live-owner",
+    "a-skipped-note-definition-cannot-claim-an-earlier-plus",
+    "adjacent-invalid-includes-keep-their-tokens-literal",
+    "an-attached-fence-closes-only-at-its-host-column-carve",
+    "an-attached-fence-closes-only-at-its-host-column-carve-5410",
+    "an-attribute-at-an-attached-task-quote-column-applies-to-its-paragraph",
+    "an-ended-definition-list-releases-its-marker-boundary",
+    "an-outer-item-loosens-after-a-nested-attached-colon-ends",
+    "an-outer-item-s-paragraph-after-a-nested-attached-fence-loosens-it",
+    "an-outer-plus-host-resumes-after-a-quote-holding-a-plus-host",
+    "an-unclosed-attached-colon-ends-at-its-first-blank",
+    "open-state-lifetime-boundaries",
+    "text-ending-a-nested-span-opens-a-paragraph-in-the-surviving-item",
+    "unresolved-reference-fallback-folds-soft-breaks-on-plain-and-ansi"
   ],
   "skip": {
     "combined-emphasis-finds-a-later-nonempty-closer": "Inline pairing the next carve release rules (comment, substitution, tag or emphasis boundaries); the grammar's reading leaves an ERROR node",
@@ -1189,7 +1213,6 @@
   "invisibleOverAcceptance": {
     "an-inline-attribute-block-does-not-span-lines-but-an-attribute-line-does-2": {"nodes": "block_attribute: {.a .b}", "reason": "An attribute block that wraps across lines is one attribute line in the next carve release (carve#4186, #5080); the grammar reads only its first line as the block and leaves the rest visible."},
     "an-inline-attribute-block-does-not-span-lines-but-an-attribute-line-does-3": {"nodes": "block_attribute: { .a}; block_attribute: {.b }", "reason": "An attribute block that wraps across lines is one attribute line in the next carve release (carve#4186, #5080); the grammar reads only its first line as the block and leaves the rest visible."},
-    "a-quoted-attribute-value-stops-at-the-newline-4": {"nodes": "block_attribute: {.a .b}", "reason": "An attribute block that wraps across lines is one attribute line in the next carve release (carve#4186, #5080); the grammar reads only its first line as the block and leaves the rest visible."},
     "a-floating-attribute-is-scoped-to-the-container-that-holds-it-6": {"nodes": "block_attribute: {.k #x}", "reason": "An attribute block that wraps across lines is one attribute line in the next carve release (carve#4186, #5080); the grammar reads only its first line as the block and leaves the rest visible."},
     "a-wrapped-attribute-line-leaves-no-paragraph-open-2": {"nodes": "block_attribute: {.a .b}", "reason": "An attribute block that wraps across lines is one attribute line in the next carve release (carve#4186, #5080); the grammar reads only its first line as the block and leaves the rest visible."},
     "a-wrapped-attribute-line-leaves-no-paragraph-open": {"nodes": "block_attribute: {.a .b}", "reason": "An attribute block that wraps across lines is one attribute line in the next carve release (carve#4186, #5080); the grammar reads only its first line as the block and leaves the rest visible."},
@@ -1334,7 +1357,6 @@
     "a-fenced-block-quote-is-the-block-quote-written-another-way-3": {"gaps": "div: want 1 have 0", "reason": "The next carve release's block layout (indented openers at top level, an unclosed fence interrupting a paragraph, containers owning lines at their content column, carve#3887) builds this block; the grammar still folds the line the released way."},
     "a-recognized-opener-in-a-body-needs-no-blank-line-above-it-6": {"gaps": "heading: want 1 have 0", "reason": "The next carve release's block layout (indented openers at top level, an unclosed fence interrupting a paragraph, containers owning lines at their content column, carve#3887) builds this block; the grammar still folds the line the released way."},
     "a-recognized-opener-in-a-body-needs-no-blank-line-above-it-7": {"gaps": "block_quote: want 1 have 0", "reason": "The next carve release's block layout (indented openers at top level, an unclosed fence interrupting a paragraph, containers owning lines at their content column, carve#3887) builds this block; the grammar still folds the line the released way."},
-    "below-a-definition-body-s-column-the-body-ends-2": {"gaps": "block_quote: want 1 have 0", "reason": "The next carve release's block layout (indented openers at top level, an unclosed fence interrupting a paragraph, containers owning lines at their content column, carve#3887) builds this block; the grammar still folds the line the released way."},
     "below-a-definition-body-s-column-the-body-ends-3": {"gaps": "heading: want 1 have 0", "reason": "The next carve release's block layout (indented openers at top level, an unclosed fence interrupting a paragraph, containers owning lines at their content column, carve#3887) builds this block; the grammar still folds the line the released way."},
     "a-marker-folds-into-a-quote-below-it-2": {"gaps": "list: want 3 have 2", "reason": "The next carve release's block layout (indented openers at top level, an unclosed fence interrupting a paragraph, containers owning lines at their content column, carve#3887) builds this block; the grammar still folds the line the released way."},
     "a-marker-folds-into-a-quote-below-it-3": {"gaps": "list: want 3 have 2", "reason": "The next carve release's block layout (indented openers at top level, an unclosed fence interrupting a paragraph, containers owning lines at their content column, carve#3887) builds this block; the grammar still folds the line the released way."},
@@ -1413,7 +1435,6 @@
     "an-item-comment-or-attribute-line-closes-the-item-s-paragraph-7": {"gaps": "code_block: want 1 have 0", "reason": "The next carve release's block layout (indented openers at top level, an unclosed fence interrupting a paragraph, containers owning lines at their content column, carve#3887) builds this block; the grammar still folds the line the released way."},
     "a-table-row-or-a-definition-under-a-paragraph-ends-it-before-an-unclosed-fence-4": {"gaps": "code_block: want 1 have 0", "reason": "The next carve release's block layout (indented openers at top level, an unclosed fence interrupting a paragraph, containers owning lines at their content column, carve#3887) builds this block; the grammar still folds the line the released way."},
     "a-block-at-an-item-content-column-ends-its-paragraph-before-an-unclosed-fence-8": {"gaps": "code_block: want 1 have 0; table: want 1 have 0", "reason": "The next carve release's block layout (indented openers at top level, an unclosed fence interrupting a paragraph, containers owning lines at their content column, carve#3887) builds this block; the grammar still folds the line the released way."},
-    "a-quoted-item-comment-ends-the-quote-before-an-unclosed-fence-3": {"gaps": "code_block: want 1 have 0", "reason": "The next carve release's block layout (indented openers at top level, an unclosed fence interrupting a paragraph, containers owning lines at their content column, carve#3887) builds this block; the grammar still folds the line the released way."},
     "a-line-past-a-body-s-column-is-read-in-the-body-and-a-quote-does-not-rebase-2": {"gaps": "list: want 1 have 0", "reason": "The next carve release's block layout (indented openers at top level, an unclosed fence interrupting a paragraph, containers owning lines at their content column, carve#3887) builds this block; the grammar still folds the line the released way."},
     "a-line-past-a-body-s-column-is-read-in-the-body-and-a-quote-does-not-rebase-3": {"gaps": "list: want 1 have 0", "reason": "The next carve release's block layout (indented openers at top level, an unclosed fence interrupting a paragraph, containers owning lines at their content column, carve#3887) builds this block; the grammar still folds the line the released way."},
     "a-line-past-a-body-s-column-is-read-in-the-body-and-a-quote-does-not-rebase-4": {"gaps": "list: want 1 have 0", "reason": "The next carve release's block layout (indented openers at top level, an unclosed fence interrupting a paragraph, containers owning lines at their content column, carve#3887) builds this block; the grammar still folds the line the released way."},
@@ -1475,7 +1496,6 @@
     "a-quote-s-first-block-plus-takes-a-list-that-carries-its-quote-prefixes-at-its-marker-column-3": {"gaps": "list: want 2 have 1", "reason": "The next carve release's block layout (indented openers at top level, an unclosed fence interrupting a paragraph, containers owning lines at their content column, carve#3887) builds this block; the grammar still folds the line the released way."},
     "a-quote-s-first-block-plus-takes-a-list-that-carries-its-quote-prefixes-at-its-marker-column": {"gaps": "list: want 2 have 1", "reason": "The next carve release's block layout (indented openers at top level, an unclosed fence interrupting a paragraph, containers owning lines at their content column, carve#3887) builds this block; the grammar still folds the line the released way."},
     "a-fence-with-no-host-prefix-leaves-an-inline-run-2": {"gaps": "code_block: want 2 have 1", "reason": "The next carve release's block layout (indented openers at top level, an unclosed fence interrupting a paragraph, containers owning lines at their content column, carve#3887) builds this block; the grammar still folds the line the released way."},
-    "a-fence-with-no-host-prefix-leaves-an-inline-run": {"gaps": "code_block: want 2 have 1", "reason": "The next carve release's block layout (indented openers at top level, an unclosed fence interrupting a paragraph, containers owning lines at their content column, carve#3887) builds this block; the grammar still folds the line the released way."},
     "a-below-column-fence-stays-in-a-definition-paragraph": {"gaps": "code_block: want 1 have 0", "reason": "The next carve release's block layout (indented openers at top level, an unclosed fence interrupting a paragraph, containers owning lines at their content column, carve#3887) builds this block; the grammar still folds the line the released way."},
     "nested-term-after-a-list-in-a-description": {"gaps": "definition_list: want 2 have 1", "reason": "The next carve release's block layout (indented openers at top level, an unclosed fence interrupting a paragraph, containers owning lines at their content column, carve#3887) builds this block; the grammar still folds the line the released way."},
     "a-blank-ends-the-old-quote-s-child-column": {"gaps": "block_quote: want 3 have 2", "reason": "The next carve release's block layout (indented openers at top level, an unclosed fence interrupting a paragraph, containers owning lines at their content column, carve#3887) builds this block; the grammar still folds the line the released way."},
@@ -1521,7 +1541,6 @@
     "a-lazy-line-continues-a-quoted-term-only-as-plain-text-7": {"gaps": "list: want 3 have 2", "reason": "The next carve release's block layout (indented openers at top level, an unclosed fence interrupting a paragraph, containers owning lines at their content column, carve#3887) builds this block; the grammar still folds the line the released way."},
     "a-lazy-line-continues-a-quoted-term-only-as-plain-text-8": {"gaps": "list: want 1 have 0", "reason": "The next carve release's block layout (indented openers at top level, an unclosed fence interrupting a paragraph, containers owning lines at their content column, carve#3887) builds this block; the grammar still folds the line the released way."},
     "a-lazy-line-continues-a-quoted-term-only-as-plain-text": {"gaps": "list: want 2 have 1", "reason": "The next carve release's block layout (indented openers at top level, an unclosed fence interrupting a paragraph, containers owning lines at their content column, carve#3887) builds this block; the grammar still folds the line the released way."},
-    "a-quoted-term-takes-no-lazy-marker-or-separator": {"gaps": "list: want 2 have 1", "reason": "The next carve release's block layout (indented openers at top level, an unclosed fence interrupting a paragraph, containers owning lines at their content column, carve#3887) builds this block; the grammar still folds the line the released way."},
     "blockquote-lazy-continuation-stops-at-a-fenced-block-2": {"gaps": "code_block: want 1 have 0", "reason": "The next carve release's block layout (indented openers at top level, an unclosed fence interrupting a paragraph, containers owning lines at their content column, carve#3887) builds this block; the grammar still folds the line the released way."},
     "an-unclosed-fence-opener-interrupts-a-quote-or-item-paragraph-2": {"gaps": "code_block: want 1 have 0", "reason": "The next carve release's block layout (indented openers at top level, an unclosed fence interrupting a paragraph, containers owning lines at their content column, carve#3887) builds this block; the grammar still folds the line the released way."},
     "an-unclosed-fence-opener-interrupts-a-quote-or-item-paragraph": {"gaps": "code_block: want 1 have 0", "reason": "The next carve release's block layout (indented openers at top level, an unclosed fence interrupting a paragraph, containers owning lines at their content column, carve#3887) builds this block; the grammar still folds the line the released way."},
@@ -1586,7 +1605,20 @@
     "a-quoted-span-after-a-hosted-span-s-closer-leaves-the-follower-outside-5": {"gaps": "list: want 3 have 2", "reason": "The next carve release's block layout (indented openers at top level, an unclosed fence interrupting a paragraph, containers owning lines at their content column, carve#3887) builds this block; the grammar still folds the line the released way."},
     "a-nested-quote-after-a-quoted-list-leaves-a-marker-line-lazy-3": {"gaps": "block_quote: want 2 have 1", "reason": "The next carve release's block layout (indented openers at top level, an unclosed fence interrupting a paragraph, containers owning lines at their content column, carve#3887) builds this block; the grammar still folds the line the released way."},
     "a-quote-s-next-is-not-payload-of-an-item-fence-the-last-block-left-open-3": {"gaps": "code_block: want 1 have 0", "reason": "The next carve release's block layout (indented openers at top level, an unclosed fence interrupting a paragraph, containers owning lines at their content column, carve#3887) builds this block; the grammar still folds the line the released way."},
-    "a-fence-a-quote-s-attached-block-opens-ends-with-its-container-3": {"gaps": "code_block: want 1 have 0; list: want 1 have 0", "reason": "The next carve release's block layout (indented openers at top level, an unclosed fence interrupting a paragraph, containers owning lines at their content column, carve#3887) builds this block; the grammar still folds the line the released way."}
+    "a-fence-a-quote-s-attached-block-opens-ends-with-its-container-3": {"gaps": "code_block: want 1 have 0; list: want 1 have 0", "reason": "The next carve release's block layout (indented openers at top level, an unclosed fence interrupting a paragraph, containers owning lines at their content column, carve#3887) builds this block; the grammar still folds the line the released way."},
+    "a-paragraph-after-a-note-attached-fence-closed-past-a-blank-takes-a-lazy-line": {"gaps": "code_block: want 2 have 1", "reason": "The next carve release's block layout (indented openers at top level, an unclosed fence interrupting a paragraph, containers owning lines at their content column, carve#3887) builds this block; the grammar still folds the line the released way."},
+    "a-block-at-a-pulled-description-column-opens-in-the-description-2": {"gaps": "heading: want 1 have 0", "reason": "The next carve release's block layout (indented openers at top level, an unclosed fence interrupting a paragraph, containers owning lines at their content column, carve#3887) builds this block; the grammar still folds the line the released way."},
+    "a-block-at-a-pulled-description-column-opens-in-the-description": {"gaps": "heading: want 1 have 0", "reason": "The next carve release's block layout (indented openers at top level, an unclosed fence interrupting a paragraph, containers owning lines at their content column, carve#3887) builds this block; the grammar still folds the line the released way."},
+    "an-unclosed-attached-colon-ends-at-its-first-blank-3": {"gaps": "admonition_type: want 1 have 0", "reason": "The next carve release's block layout (indented openers at top level, an unclosed fence interrupting a paragraph, containers owning lines at their content column, carve#3887) builds this block; the grammar still folds the line the released way."},
+    "open-state-lifetime-boundaries-22": {"gaps": "heading: want 1 have 0", "reason": "The next carve release's block layout (indented openers at top level, an unclosed fence interrupting a paragraph, containers owning lines at their content column, carve#3887) builds this block; the grammar still folds the line the released way."},
+    "an-attached-fence-closes-only-at-its-host-column-carve-5410-2": {"gaps": "code_block: want 2 have 1", "reason": "The next carve release's block layout (indented openers at top level, an unclosed fence interrupting a paragraph, containers owning lines at their content column, carve#3887) builds this block; the grammar still folds the line the released way."},
+    "an-attached-fence-closes-only-at-its-host-column-carve-5410-3": {"gaps": "code_block: want 2 have 1", "reason": "The next carve release's block layout (indented openers at top level, an unclosed fence interrupting a paragraph, containers owning lines at their content column, carve#3887) builds this block; the grammar still folds the line the released way."},
+    "an-attached-fence-closes-only-at-its-host-column-carve-5410": {"gaps": "code_block: want 2 have 1", "reason": "The next carve release's block layout (indented openers at top level, an unclosed fence interrupting a paragraph, containers owning lines at their content column, carve#3887) builds this block; the grammar still folds the line the released way."},
+    "a-block-at-a-pulled-footnote-column-opens-in-the-note": {"gaps": "code_block: want 1 have 0", "reason": "The next carve release's block layout (indented openers at top level, an unclosed fence interrupting a paragraph, containers owning lines at their content column, carve#3887) builds this block; the grammar still folds the line the released way."},
+    "a-block-at-the-host-column-after-a-plus-attached-quote-stays-in-the-host-2": {"gaps": "admonition_type: want 1 have 0", "reason": "The next carve release's block layout (indented openers at top level, an unclosed fence interrupting a paragraph, containers owning lines at their content column, carve#3887) builds this block; the grammar still folds the line the released way."},
+    "a-block-at-the-host-column-after-a-plus-attached-quote-stays-in-the-host-3": {"gaps": "heading: want 1 have 0", "reason": "The next carve release's block layout (indented openers at top level, an unclosed fence interrupting a paragraph, containers owning lines at their content column, carve#3887) builds this block; the grammar still folds the line the released way."},
+    "a-block-at-the-host-column-after-a-plus-attached-quote-stays-in-the-host-4": {"gaps": "admonition_type: want 1 have 0", "reason": "The next carve release's block layout (indented openers at top level, an unclosed fence interrupting a paragraph, containers owning lines at their content column, carve#3887) builds this block; the grammar still folds the line the released way."},
+    "a-block-at-the-host-column-after-a-plus-attached-quote-stays-in-the-host": {"gaps": "heading: want 1 have 0", "reason": "The next carve release's block layout (indented openers at top level, an unclosed fence interrupting a paragraph, containers owning lines at their content column, carve#3887) builds this block; the grammar still folds the line the released way."}
   },
   "oracleGoldenDisagreements": {},
   "errorFamilies": {},
@@ -1710,7 +1742,6 @@
     "a-block-at-an-item-content-column-ends-its-paragraph-before-an-unclosed-fence-8": {"reading": "strong html=0 tree=1, code html=0 tree=1", "reason": "The next carve release makes the inline pairing procedure normative (delimiter stack, braced openers, combined tokens); the grammar still pairs these delimiters the released way."},
     "a-block-at-an-item-content-column-ends-its-paragraph-before-an-unclosed-fence": {"reading": "strong html=0 tree=1", "reason": "The next carve release makes the inline pairing procedure normative (delimiter stack, braced openers, combined tokens); the grammar still pairs these delimiters the released way."},
     "a-quoted-item-comment-ends-the-quote-before-an-unclosed-fence-2": {"reading": "strong html=0 tree=1", "reason": "The next carve release makes the inline pairing procedure normative (delimiter stack, braced openers, combined tokens); the grammar still pairs these delimiters the released way."},
-    "a-quoted-item-comment-ends-the-quote-before-an-unclosed-fence-3": {"reading": "strong html=0 tree=1, code html=0 tree=1", "reason": "The next carve release makes the inline pairing procedure normative (delimiter stack, braced openers, combined tokens); the grammar still pairs these delimiters the released way."},
     "a-quoted-item-comment-ends-the-quote-before-an-unclosed-fence": {"reading": "strong html=0 tree=1", "reason": "The next carve release makes the inline pairing procedure normative (delimiter stack, braced openers, combined tokens); the grammar still pairs these delimiters the released way."},
     "a-line-past-a-body-s-column-is-read-in-the-body-and-a-quote-does-not-rebase-10": {"reading": "strong html=0 tree=1", "reason": "The next carve release makes the inline pairing procedure normative (delimiter stack, braced openers, combined tokens); the grammar still pairs these delimiters the released way."},
     "a-line-is-read-in-the-container-whose-column-it-reaches-9": {"reading": "code html=0 tree=1", "reason": "A code fence interrupts a paragraph without a closer ahead in the next carve release (carve#4018); the grammar still reads the fence run as an inline code span."},
@@ -1745,7 +1776,6 @@
     "an-unclosed-fence-run-with-no-closer-in-its-item-does-not-hide-a-blank-line-2": {"reading": "code html=0 tree=1", "reason": "A code fence interrupts a paragraph without a closer ahead in the next carve release (carve#4018); the grammar still reads the fence run as an inline code span."},
     "an-unclosed-fence-run-with-no-closer-in-its-item-does-not-hide-a-blank-line": {"reading": "code html=0 tree=2", "reason": "A code fence interrupts a paragraph without a closer ahead in the next carve release (carve#4018); the grammar still reads the fence run as an inline code span."},
     "a-fence-with-no-host-prefix-leaves-an-inline-run-2": {"reading": "code html=0 tree=1", "reason": "A code fence interrupts a paragraph without a closer ahead in the next carve release (carve#4018); the grammar still reads the fence run as an inline code span."},
-    "a-fence-with-no-host-prefix-leaves-an-inline-run": {"reading": "code html=0 tree=1", "reason": "A code fence interrupts a paragraph without a closer ahead in the next carve release (carve#4018); the grammar still reads the fence run as an inline code span."},
     "a-below-column-fence-stays-in-a-definition-paragraph": {"reading": "code html=0 tree=1", "reason": "A code fence interrupts a paragraph without a closer ahead in the next carve release (carve#4018); the grammar still reads the fence run as an inline code span."},
     "a-cross-reference-clones-heading-inline-nodes": {"reading": "strong html=2 tree=1", "reason": "The next carve release makes the inline pairing procedure normative (delimiter stack, braced openers, combined tokens); the grammar still pairs these delimiters the released way."},
     "a-non-ascii-letter-does-not-block-a-bare-delimiter": {"reading": "strong html=0 tree=2", "reason": "The next carve release makes the inline pairing procedure normative (delimiter stack, braced openers, combined tokens); the grammar still pairs these delimiters the released way."},
@@ -1892,7 +1922,9 @@
     "a-termless-colon-line-a-quote-attaches-opens-no-fence-2": {"reading": "code#1 html=\"\" tree=\"q\"", "reason": "A code fence interrupts a paragraph without a closer ahead in the next carve release (carve#4018); the grammar still reads the fence run as an inline code span."},
     "a-termless-colon-line-a-quote-attaches-opens-no-fence-3": {"reading": "code html=2 tree=1, code#1 html=\"\" tree=\"q\"", "reason": "A code fence interrupts a paragraph without a closer ahead in the next carve release (carve#4018); the grammar still reads the fence run as an inline code span."},
     "a-termless-colon-line-a-quote-attaches-opens-no-fence": {"reading": "code#1 html=\"js\" tree=\"jsq\"", "reason": "A code fence interrupts a paragraph without a closer ahead in the next carve release (carve#4018); the grammar still reads the fence run as an inline code span."},
-    "a-fence-a-quote-s-attached-block-opens-ends-with-its-container-3": {"reading": "code html=0 tree=1", "reason": "A code fence interrupts a paragraph without a closer ahead in the next carve release (carve#4018); the grammar still reads the fence run as an inline code span."}
+    "a-fence-a-quote-s-attached-block-opens-ends-with-its-container-3": {"reading": "code html=0 tree=1", "reason": "A code fence interrupts a paragraph without a closer ahead in the next carve release (carve#4018); the grammar still reads the fence run as an inline code span."},
+    "an-outer-item-s-paragraph-after-a-nested-attached-fence-loosens-it": {"reading": "code html=1 tree=0", "reason": "A fence attached with `+` in a nested item opens a code block in the next carve release (carve#4409); the grammar does not build it there."},
+    "a-block-at-a-pulled-footnote-column-opens-in-the-note": {"reading": "code html=0 tree=1", "reason": "A code fence interrupts a paragraph without a closer ahead in the next carve release (carve#4018); the grammar still reads the fence run as an inline code span."}
   },
   "lineTerminatorGaps": {
     "an-enclosing-closer-ends-a-tag-name": {"fold": "the cr spelling(s) parse to a different tree than lf", "reason": "The same row leaves an ERROR node in the LF spelling (skip ledger), so its error recovery differs by line terminator; it follows the skip entry for the row."},
