@@ -6145,7 +6145,7 @@ static bool parse_list_marker_or_thematic_break(
       (opener_reaches_item_margin(s, start_col) ||
        (s->marker_end_col != 0 && start_col == s->marker_end_col)) &&
       extra_spaces == 0 && lexer->lookahead == marker) {
-    uint8_t spaced = 1;
+    uint32_t spaced = 1;
     bool spaced_ok = false;
     while (lexer->lookahead == marker) {
       advance(s, lexer);
@@ -10910,7 +10910,7 @@ static bool scan_row_or_break_at_paragraph_end(Scanner *s, TSLexer *lexer) {
     advance(s, lexer);
     if (lexer->lookahead == c) {
       spaced_run = true;
-      uint8_t spaced = 1;
+      uint32_t spaced = 1;
       bool spaced_ok = false;
       while (lexer->lookahead == c) {
         advance(s, lexer);
