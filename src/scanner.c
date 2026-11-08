@@ -369,6 +369,9 @@ typedef struct {
   // Per-block-type bits with no shared meaning across types, the way
   // `Inline::flags` already works. Only `BLOCK_FLAG_LINE_BLOCK` exists today.
   uint8_t flags;
+  // BLOCK_QUOTE only: the task box before this quote on its item's marker
+  // line. A later line's marker reads left by it (CARVE-P9-083).
+  uint8_t box_shift;
 } Block;
 
 /// The div is a line block (`::: |`), set where its `|` marker validates.
@@ -1229,6 +1232,7 @@ static Block *create_block(BlockType type, uint16_t data) {
   b->data = data;
   b->content_col = 0;
   b->flags = 0;
+  b->box_shift = 0;
   b->cell_boundary_col = b->cell_carry_ticks = 0;
   b->bracket_cell_col = UINT32_MAX;
   return b;
@@ -4370,7 +4374,8 @@ static bool quote_marker_at_column_gap(Scanner *s, uint8_t number,
            (column <= enclosing_list->content_col ||
             (!in_paragraph && column == b->content_col))) ||
           (s->state & STATE_LIST_CONTINUATION) ||
-          column == b->content_col - 2;
+          column == b->content_col - 2 ||
+          (b->box_shift && column == b->content_col - 2 - b->box_shift);
     }
   }
   return true;
@@ -4496,6 +4501,21 @@ static void output_block_quote_continuation(Scanner *s, TSLexer *lexer,
 /// The quote's content column is the marker plus its single separator space - a
 /// marker separator is one literal space, never a tab and never a run, which is
 /// what `scan_block_quote_marker` already enforces.
+/// The task box a quote opening on its item's marker line sits behind. The box
+/// is content (CARVE-P9-083), so a later line's marker reads left by it. A
+/// quote right after another marker-line quote inherits that quote's box.
+static uint8_t task_box_before_quote(Scanner *s, uint32_t marker_start_col) {
+  Block *top = peek_block(s);
+  if (!top) return 0;
+  if (top->type == BLOCK_QUOTE && (top->flags & BLOCK_FLAG_QUOTE_OPENING_LINE) &&
+      marker_start_col == top->content_col)
+    return top->box_shift;
+  if (s->marker_end_col == 0 || marker_start_col != s->marker_end_col) return 0;
+  if (top->type == LIST_TASK && top->content_col != 0 && s->marker_end_col > top->content_col)
+    return (uint8_t)(s->marker_end_col - top->content_col);
+  return 0;
+}
+
 static void open_marker_line_quote(Scanner *s, uint32_t marker_start_col) {
   if (marker_start_col <= s->indent) {
     return;
@@ -5048,7 +5068,9 @@ static bool parse_block_quote(Scanner *s, TSLexer *lexer,
     if (attached_quote) {
       continuation_quote->flags &= ~BLOCK_FLAG_QUOTE_CONTINUATION_PENDING;
     }
+    uint8_t box = task_box_before_quote(s, marker_start_col);
     push_block(s, BLOCK_QUOTE, marker_count);
+    peek_block(s)->box_shift = box;
     if (count_blocks(s, BLOCK_QUOTE) == 1) s->band_sticky = false;
     peek_block(s)->flags |= BLOCK_FLAG_QUOTE_OPENING_LINE;
     if (s->marker_end_col != 0 &&
@@ -16913,6 +16935,7 @@ unsigned tree_sitter_carve_external_scanner_serialize(void *payload,
   for (size_t i = 0; i < s->open_blocks->size; ++i) {
     Block *b = *array_get(s->open_blocks, i);
     if (b->type == TABLE_ROW) block_extra_bytes += 12;
+    if (b->type == BLOCK_QUOTE) block_extra_bytes += 1;
     // A data value of 255 or more is the escape byte plus two.
     if (b->data >= UINT8_MAX) block_extra_bytes += 2;
   }
@@ -16964,6 +16987,7 @@ unsigned tree_sitter_carve_external_scanner_serialize(void *payload,
       buffer[size++] = (char)(b->data & 0xff);
       buffer[size++] = (char)(b->data >> 8);
     }
+    if (b->type == BLOCK_QUOTE) buffer[size++] = (char)b->box_shift;
     if (b->type == TABLE_ROW) {
       for (unsigned shift = 0; shift < 32; shift += 8)
         buffer[size++] = (char)(b->cell_boundary_col >> shift);
@@ -17099,6 +17123,10 @@ void tree_sitter_carve_external_scanner_deserialize(void *payload, char *buffer,
       Block *b = create_block(type, level);
       b->content_col = content_col;
       b->flags = flags;
+      if (type == BLOCK_QUOTE) {
+        if (size + 1 > length) { ts_free(b); return; }
+        b->box_shift = (uint8_t)buffer[size++];
+      }
       if (type == TABLE_ROW) {
         if (size + 12 > length) { ts_free(b); return; }
         for (unsigned shift = 0; shift < 32; shift += 8)
