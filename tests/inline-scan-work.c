@@ -25,6 +25,13 @@ int main(int argc, char **argv) {
     {"unclosed emphasis", "/a ", "\n", 2.5, 2.5},
     {"one strong opener per line", "a *b\n", "", 2.5, 2.5},
     {"one long word", "abcde", "\n", 2.5, 2.5},
+    {"closed strong spans", "a *z* b ", "\n", 2.5, 2.5},
+    {"closed emphasis spans", "a /z/ b ", "\n", 2.5, 2.5},
+    {"closed highlighted spans", "a =z= b ", "\n", 2.5, 2.5},
+    {"closed braced strong spans", "a {*z*} b ", "\n", 2.5, 2.5},
+    {"closed combined spans", "a /*z*/ b ", "\n", 2.5, 2.5},
+    {"braced comments", "a {% c %} b ", "\n", 2.5, 2.5},
+    {"editorial comments", "a {# c #} b ", "\n", 2.5, 2.5},
   };
   const unsigned sizes[] = {512, 1024, 2048, 4096};
   for (unsigned f = 0; f < sizeof(families) / sizeof(families[0]); ++f) {

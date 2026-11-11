@@ -624,6 +624,9 @@ typedef struct {
   // context this proves the lexer is past column 0 without `get_column`,
   // which rereads the line from its start. Serialized in the trailer.
   bool mid_line;
+  // The braced or editorial comment opened last closes on its opening line,
+  // so no body token ends on a line terminator. Serialized in the trailer.
+  bool comment_one_line;
   // Bare markers (bit per `BARE_CLOSER_MARKERS` entry) whose closer probe ran
   // to the end of the paragraph without finding one, valid while the inline
   // scope matches `no_closer_scope`. Serialized in the trailer.
@@ -642,6 +645,15 @@ typedef struct {
   // Line feeds the host lexer passed in this scan call, and at the mark.
   uint32_t host_newlines;
   uint32_t host_newlines_at_mark;
+  // Characters the host lexer advanced over in this scan call. A column read
+  // can be deferred to a later point on the same line by subtracting these
+  // (`defer_column`): `get_column` rereads the line from its start, so a read
+  // per opener is quadratic on a long line. Transient.
+  uint32_t host_advances;
+  uint32_t deferred_column_at;
+  uint32_t deferred_column;
+  bool deferred_column_pending;
+  bool deferred_column_known;
   bool probe_reached_end;
   bool probe_skipped_opaque;
   // The serialized state this scan call started from.
@@ -1009,9 +1021,13 @@ static void mark_end(Scanner *s, TSLexer *lexer) {
   }
 }
 
+static void resolve_deferred_column(Scanner *s, TSLexer *host);
+
 static void advance(Scanner *s, TSLexer *lexer) {
   int32_t current = lexer->lookahead;
   if (lexer->advance != bracket_probe_advance && !lexer->eof(lexer)) {
+    if (current == '\n' || current == '\r') resolve_deferred_column(s, lexer);
+    ++s->host_advances;
     s->host_previous = current;
     if (current == '\n' || current == '\r') s->host_crossed_line = true;
     if (current == '\n') ++s->host_newlines;
@@ -1117,6 +1133,29 @@ static uint32_t line_column(Scanner *s, TSLexer *lexer) {
     return col;
   }
   return col - s->col_base;
+}
+
+// Note the column of the host lexer's position without reading it yet. Read
+// it with `deferred_column` from the same host, later on the line or past a
+// line end the host crossed meanwhile.
+static void defer_column(Scanner *s) {
+  s->deferred_column_pending = true;
+  s->deferred_column_known = false;
+  s->deferred_column_at = s->host_advances;
+}
+
+// The host is about to take a line terminator: the deferred column can no
+// longer be derived from the host's own column, so read it now.
+static void resolve_deferred_column(Scanner *s, TSLexer *host) {
+  if (!s->deferred_column_pending || s->deferred_column_known) return;
+  s->deferred_column = line_column(s, host) - (s->host_advances - s->deferred_column_at);
+  s->deferred_column_known = true;
+}
+
+static uint32_t deferred_column(Scanner *s, TSLexer *host) {
+  resolve_deferred_column(s, host);
+  s->deferred_column_pending = false;
+  return s->deferred_column;
 }
 
 // Consume exactly one line terminator, whichever of the three it is, and record
@@ -3170,6 +3209,7 @@ typedef struct {
   int32_t *host_previous;
   bool *host_crossed_line;
   uint32_t *host_newlines;
+  Scanner *scanner;
 } BracketProbe;
 
 static uint32_t bracket_probe_column(TSLexer *lexer);
@@ -3224,6 +3264,10 @@ static void bracket_probe_advance(TSLexer *lexer, bool skip) {
     *probe->host_previous = previous;
     if (previous == '\n' || previous == '\r') *probe->host_crossed_line = true;
     if (previous == '\n') ++*probe->host_newlines;
+    if (probe->host->advance != bracket_probe_advance) {
+      if (previous == '\n' || previous == '\r') resolve_deferred_column(probe->scanner, probe->host);
+      ++probe->scanner->host_advances;
+    }
     probe->host->advance(probe->host, skip);
     if (probe->host->lookahead != '`' && probe->pending_ticks) {
       if (!probe->row_ticks) probe->row_ticks = probe->pending_ticks;
@@ -3277,6 +3321,7 @@ static BracketProbe bracket_probe_new(Scanner *s, TSLexer *host) {
   probe.host_previous = &s->host_previous;
   probe.host_crossed_line = &s->host_crossed_line;
   probe.host_newlines = &s->host_newlines;
+  probe.scanner = s;
   Inline *extension = find_inline(s, EXTENSION);
   probe.extension_cut = extension != NULL;
   if (extension && extension->literal_closes) {
@@ -15035,6 +15080,8 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
   s->host_crossed_line_at_mark = false;
   s->host_newlines = 0;
   s->host_newlines_at_mark = 0;
+  s->host_advances = 0;
+  s->deferred_column_pending = false;
   if (at_line_end(lexer) || lexer->eof(lexer)) s->missing_closers = 0;
   bool line_end = at_line_end(lexer);
   uint8_t closer_char = s->after_closer_char;
@@ -15085,6 +15132,9 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
     }
   }
   if (found) count_caption_gap(s, lexer->result_symbol);
+  if (found && (lexer->result_symbol == BRACED_COMMENT_BEGIN ||
+                lexer->result_symbol == EDITORIAL_COMMENT_BEGIN))
+    s->comment_one_line = !s->host_crossed_line;
   // The CR adjacency note is for the token right after the `]`; a line end
   // taking the CR must not leave it to refuse a `{` or `(` on a later line.
   if (found && (lexer->result_symbol == NEWLINE || lexer->result_symbol == NEWLINE_INLINE ||
@@ -15323,25 +15373,25 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   }
   if (valid_symbols[HIGHLIGHTED_QUALIFIED_MARK_BEGIN] && !valid_symbols[ERROR] &&
       (s->state & STATE_BARE_SPAN_OPENER)) {
-    uint32_t content_column = line_column(s, lexer);
+    defer_column(s);
     mark_end(s, lexer);
     bool real_symbols[LAZY_DESCRIPTION_FENCE + 1];
     memcpy(real_symbols, valid_symbols, sizeof(real_symbols));
     real_symbols[IN_FALLBACK] = false;
     bool same_marker_before = (s->after_closer_char == '=' || s->after_closer_char == '_') &&
-                              s->after_closer_col + 1 == content_column;
+                              s->after_closer_col + 1 == line_column(s, lexer);
     if (!same_marker_before && mark_span_begin(s, lexer, real_symbols, HIGHLIGHTED, HIGHLIGHTED_QUALIFIED_MARK_BEGIN))
       return true;
     s->state &= ~STATE_BARE_SPAN_OPENER;
     if (!valid_symbols[IN_FALLBACK]) return false;
     s->after_closer_char = '=';
-    s->after_closer_col = content_column;
+    s->after_closer_col = deferred_column(s, lexer);
     lexer->result_symbol = IN_FALLBACK;
     return true;
   }
   if (valid_symbols[EMPHASIS_QUALIFIED_MARK_BEGIN] && !valid_symbols[ERROR] &&
       (s->state & STATE_BARE_SPAN_OPENER) && lexer->lookahead != '*') {
-    uint32_t content_column = line_column(s, lexer);
+    defer_column(s);
     mark_end(s, lexer);
     bool real_symbols[LAZY_DESCRIPTION_FENCE + 1];
     memcpy(real_symbols, valid_symbols, sizeof(real_symbols));
@@ -15351,13 +15401,13 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     s->state &= ~STATE_BARE_SPAN_OPENER;
     if (!valid_symbols[IN_FALLBACK]) return false;
     s->after_closer_char = '/';
-    s->after_closer_col = content_column;
+    s->after_closer_col = deferred_column(s, lexer);
     lexer->result_symbol = IN_FALLBACK;
     return true;
   }
   if (valid_symbols[STRONG_QUALIFIED_MARK_BEGIN] && !valid_symbols[ERROR] &&
       (s->state & STATE_BARE_SPAN_OPENER)) {
-    uint32_t content_column = line_column(s, lexer);
+    defer_column(s);
     mark_end(s, lexer);
     bool real_symbols[LAZY_DESCRIPTION_FENCE + 1];
     memcpy(real_symbols, valid_symbols, sizeof(real_symbols));
@@ -15368,7 +15418,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     s->state &= ~STATE_BARE_SPAN_OPENER;
     if (!valid_symbols[IN_FALLBACK]) return false;
     s->after_closer_char = '*';
-    s->after_closer_col = content_column;
+    s->after_closer_col = deferred_column(s, lexer);
     lexer->result_symbol = IN_FALLBACK;
     return true;
   }
@@ -15455,12 +15505,11 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       s->after_closer_char = 0;
       s->after_closer_col = 0;
     }
-    uint32_t opener_column = s->after_closer_char == NO_COMBINED_CLOSER_LINE ? 0 :
-                             line_column(s, lexer);
+    bool opener_at_zero = s->after_closer_char == NO_COMBINED_CLOSER_LINE;
+    defer_column(s);
     mark_end(s, lexer);
     if (HAS_NO_COMBINED_CLOSER(s) &&
-        (s->after_closer_char == NO_COMBINED_CLOSER_LINE ||
-         opener_column < s->after_closer_col)) {
+        (opener_at_zero || line_column(s, lexer) < s->after_closer_col)) {
       Inline *cached_scope = peek_inline(s);
       bool scoped = valid_symbols[BOLD_ITALIC_SCOPED_OPEN_CHECK] && cached_scope &&
                     cached_scope->type == STRONG &&
@@ -15754,7 +15803,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
         (valid_symbols[EMPHASIS_MARK_BEGIN] || valid_symbols[EMPHASIS_COMBINED_MARK_BEGIN]) &&
         !find_inline_in_scope(s, EMPHASIS)) {
       s->after_closer_char = strong_closer ? 0 : '*';
-      s->after_closer_col = opener_column;
+      s->after_closer_col = opener_at_zero ? 0 : deferred_column(s, lexer);
       if (valid_symbols[EMPHASIS_COMBINED_MARK_BEGIN]) {
         push_inline_flagged(s, EMPHASIS, strong_closer ? 0 : 1,
                             strong_closer ? 0 : INLINE_COMBINED_FALLBACK);
@@ -15769,7 +15818,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       uint32_t through = plain_prefix_end_column;
       if (!s->combined_raw_closer && first_line_complete) through = first_line_end_column;
       if (!through) through = line_column(s, lexer);
-      if (through > opener_column) {
+      if (through > (opener_at_zero ? 0 : deferred_column(s, lexer))) {
         bool whole_line = !scope && !disallow_newline(peek_block(s)) &&
                           first_line_complete && !s->combined_raw_closer &&
                           (first_line_end_column ? first_line_cache_safe :
@@ -15951,7 +16000,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       mark_end(s, lexer);
       s->state &= ~STATE_BARE_SPAN_OPENER;
       int32_t first_content = lexer->lookahead;
-      uint32_t content_column = line_column(s, lexer);
+      defer_column(s);
       bool opens = !carve_is_grapheme_extender(first_content) &&
                    !braced_same_kind_blocked(s, kind) &&
                    braced_closer_ahead(s, lexer, inline_marker(kind));
@@ -15959,7 +16008,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
         push_inline_flagged(s, kind, 0, INLINE_BRACED);
         if (kind == EMPHASIS && first_content == '/') {
           s->after_closer_char = '/';
-          s->after_closer_col = content_column;
+          s->after_closer_col = deferred_column(s, lexer);
         }
         lexer->result_symbol = token;
       } else {
@@ -16020,9 +16069,10 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   mark_end(s, lexer);
   // Comment bodies and alignment cells are the internal tokens that can end
   // on a line terminator; where one may be in progress the column is read.
+  bool comment_body = valid_symbols[COMMENT_BODY_PERCENT] || valid_symbols[COMMENT_BODY_HASH] ||
+                      valid_symbols[COMMENT_END_MARKER] || valid_symbols[COMMENT_HASH_END_MARKER];
   bool known_mid_line = s->mid_line && s->col_base == 0 && !valid_symbols[ERROR] &&
-                        !valid_symbols[COMMENT_BODY_PERCENT] && !valid_symbols[COMMENT_BODY_HASH] &&
-                        !valid_symbols[COMMENT_END_MARKER] && !valid_symbols[COMMENT_HASH_END_MARKER] &&
+                        (!comment_body || s->comment_one_line) &&
                         !valid_symbols[COMMENT_CLOSE] && !valid_symbols[TABLE_CELL_END] &&
                         !valid_symbols[TABLE_ESCAPED_CELL_END] &&
                         !lexer->is_at_included_range_start(lexer);
@@ -16994,6 +17044,7 @@ static void init_scalars(Scanner *s) {
   s->col_base_at_mark = 0;
   s->col_base_marked = false;
   s->mid_line = false;
+  s->comment_one_line = false;
   s->no_closer_kinds = 0;
   s->no_closer_scope = 0;
   s->link_tail_open_line = false;
@@ -17202,13 +17253,15 @@ unsigned tree_sitter_carve_external_scanner_serialize(void *payload,
                           (chain_extension ? 32 : 0) |
                           (s->band_prefix ? 64 : 0) |
                           (s->band_sticky ? 128 : 0));
-  // Bits 9..10 carry the caption gap, bit 12 the folded plus paragraph;
+  // Bits 9..10 carry the caption gap, bit 12 the folded plus paragraph, bit
+  // 13 the one-line comment;
   // missing closers use 0..8.
   uint16_t tail = s->missing_closers | (uint16_t)((s->caption_gap & 3) << 9) |
                   (s->after_literal_star ? 1 << 14 : 0) |
                   (s->after_separator_row ? 1 << 15 : 0) |
                   (s->blank_line_taken ? 1 << 11 : 0) |
-                  (s->folded_plus_paragraph ? 1 << 12 : 0);
+                  (s->folded_plus_paragraph ? 1 << 12 : 0) |
+                  (s->comment_one_line ? 1 << 13 : 0);
   buffer[size++] = (char)tail;
   buffer[size++] = (char)(tail >> 8);
   return size;
@@ -17227,6 +17280,7 @@ void tree_sitter_carve_external_scanner_deserialize(void *payload, char *buffer,
     s->after_separator_row = (tail & (1 << 15)) != 0;
     s->blank_line_taken = (tail & (1 << 11)) != 0;
     s->folded_plus_paragraph = (tail & (1 << 12)) != 0;
+    s->comment_one_line = (tail & (1 << 13)) != 0;
     uint8_t notes = (uint8_t)buffer[length - 3];
     length -= 3;
     s->mid_line = (notes & 1) != 0;
