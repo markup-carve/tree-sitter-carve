@@ -2722,7 +2722,9 @@ static bool parse_verbatim_content(Scanner *s, TSLexer *lexer, bool end_valid,
     int32_t current = lexer->lookahead;
     if (lexer->lookahead == ']') {
       if (extension_payload && extension_closes_here(s, lexer)) break;
-      if (stop_marker == 3 && parent && parent->literal_closes > 1) {
+      // Every left-behind `]` counts, also one a closed run swallows.
+      if (stop_marker != 2 && parent && parent->type >= EMPHASIS &&
+          parent->type <= BOLD_ITALIC && parent->literal_closes > 1) {
         --parent->literal_closes;
         Inline *bracket = find_inline(s, SQUARE_BRACKET_SPAN);
         if (bracket && (bracket->flags & INLINE_BRACED) && square_literal_closes(bracket)) {
@@ -15145,7 +15147,6 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       cut_parent && cut_parent->type >= EMPHASIS && cut_parent->type <= BOLD_ITALIC &&
       !find_inline(s, EXTENSION) && (cut_parent->literal_closes || bracket_remainder)) {
     if (cut_parent->literal_closes > 1) --cut_parent->literal_closes;
-    if (cut_parent->literal_closes == 1) cut_parent->literal_closes = 0;
     Inline *bracket = find_inline(s, SQUARE_BRACKET_SPAN);
     if (bracket && (bracket->flags & INLINE_BRACED) && square_literal_closes(bracket)) {
       --bracket->literal_closes;
