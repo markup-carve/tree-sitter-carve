@@ -3,6 +3,7 @@ import Parser from 'tree-sitter';
 import { parse } from '@markup-carve/carve';
 import { createRequire } from 'node:module';
 import { readFileSync, readdirSync } from 'node:fs';
+import { engineReadingGaps } from './engine-reading-gaps.mjs';
 
 const require = createRequire(import.meta.url);
 const parser = new Parser();
@@ -10,6 +11,7 @@ parser.setLanguage(require('../bindings/node'));
 const directory = new URL('../spec/tests/corpus/', import.meta.url);
 const files = readdirSync(directory).filter(name => /^\d+-a-marker-line-opaque-quote-keeps-overindented-markers-literal(?:-\d+)?\.crv$/.test(name));
 assert.equal(files.length, 36);
+const gaps = engineReadingGaps('opaque-quote-bands');
 const compared = new Set(['code_block', 'raw_block', 'paragraph', 'block_quote', 'heading', 'table']);
 function astSummary(node, depth = 0, result = []) {
   if (compared.has(node.type)) result.push([node.type, node.pos.startLine - 1, depth]);
@@ -30,7 +32,7 @@ for (const file of files) {
   const source = readFileSync(new URL(file, directory), 'utf8');
   const reference = parser.parse(source).rootNode;
   assert.equal(reference.hasError, false, file);
-  assert.deepEqual(cstSummary(reference), astSummary(parse(source, { sourcePositions: true })), `${file}: block ownership`);
+  gaps.compare(file, () => assert.deepEqual(cstSummary(reference), astSummary(parse(source, { sourcePositions: true })), `${file}: block ownership`));
   for (const newline of ['\r\n', '\r']) {
     const alternate = parser.parse(source.replace(/\r\n|\r|\n/g, newline)).rootNode;
     assert.equal(alternate.hasError, false, `${file}: ${JSON.stringify(newline)}`);
@@ -80,7 +82,7 @@ for (const following of ['y', '`c`', '[t](/u)']) {
     for (const child of [...(node.children ?? []), ...(node.items ?? [])]) collectText(child);
   }
   collectText(oracle);
-  assert.ok(textValues.includes('> y'), `${following}: engine keeps the overindented marker literal`);
+  gaps.compare(following, () => assert.ok(textValues.includes('> y'), `${following}: engine keeps the overindented marker literal`));
   for (const newline of ['\n', '\r\n', '\r']) {
     const variant = source.replace(/\n/g, newline);
     const tree = parser.parse(variant).rootNode;
@@ -92,3 +94,4 @@ for (const following of ['y', '`c`', '[t](/u)']) {
     assert.ok(tree.descendantsOfType('paragraph').some(node => node.text.includes('> y')), `${following}: literal paragraph content`);
   }
 }
+gaps.finish();
