@@ -57,3 +57,33 @@ b :x[z]]
             (extension_inline
               (extension_marker_begin)
               (content))))))))
+
+=========================
+An escaped bracket before an unbalanced one falls back to the first unescaped closer
+=========================
+:x[\] [b]
+
+---
+
+(document
+  (paragraph
+    (extension_inline
+      (extension_marker_begin)
+      (content
+        (backslash_escape)))))
+
+=========================
+A link inside an extension keeps the extension open to the depth-zero bracket
+=========================
+:x[a [b](u) c]
+
+---
+
+(document
+  (paragraph
+    (extension_inline
+      (extension_marker_begin)
+      (content
+        (inline_link
+          (link_text)
+          (inline_link_destination))))))

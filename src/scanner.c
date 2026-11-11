@@ -11727,11 +11727,12 @@ static Inline *find_inline(Scanner *s, InlineType type) {
   return NULL;
 }
 
-// The innermost extension when its content ends at the first raw `]`, so no
-// bracket construct can complete inside it.
+// The innermost extension when no unescaped `]` comes before its closer, so
+// no bracket construct can complete inside it: the closer is the first raw
+// `]`, or the fallback for an unbalanced `[` (`data` set).
 static Inline *first_bracket_extension(Scanner *s) {
   Inline *extension = find_inline(s, EXTENSION);
-  return extension && !extension->literal_closes ? extension : NULL;
+  return extension && (!extension->literal_closes || extension->data) ? extension : NULL;
 }
 
 // Does the host lexer stand on the innermost extension's closing `]`?
@@ -12841,11 +12842,12 @@ static bool extension_line_ends_block(Scanner *s, BracketProbe *probe, uint8_t i
 // comments do not. `*close` receives the closer's encoded position, or zero
 // when it is the first raw `]` ahead.
 static bool extension_payload_close(Scanner *s, TSLexer *host, uint32_t *remaining, bool *changes_scope, bool *opaque_cut,
-                                    uint32_t *close) {
+                                    uint32_t *close, bool *fallback) {
   *remaining = 0;
   *changes_scope = false;
   *opaque_cut = false;
   *close = 0;
+  *fallback = false;
   if (first_bracket_extension(s)) return false;
   uint32_t start_newlines = s->host_newlines;
   BracketProbe probe = bracket_probe_new(s, host);
@@ -12867,13 +12869,17 @@ static bool extension_payload_close(Scanner *s, TSLexer *host, uint32_t *remaini
   bool saw_tick = false;
   uint32_t base = s->col_base;
   uint32_t depth = 0, first_raw = UINT32_MAX, first_unescaped = UINT32_MAX, scope_end_at = UINT32_MAX;
-  uint32_t depth_zero = UINT32_MAX;
+  uint32_t depth_zero = UINT32_MAX, first_unescaped_column = 0;
   while (!lexer->eof(lexer)) {
     if (lexer->lookahead == ']') {
       if (first_raw == UINT32_MAX) first_raw = probe.position;
       if (!escaped) {
-        if (first_unescaped == UINT32_MAX) first_unescaped = probe.position;
         if (!depth) { depth_zero = probe.position; break; }
+        // The fallback closer's column is read while the probe stands on it.
+        if (first_unescaped == UINT32_MAX) {
+          first_unescaped = probe.position;
+          first_unescaped_column = bracket_probe_column_at(&probe, probe.position);
+        }
         --depth;
       }
     } else if (lexer->lookahead == '[' && !escaped) ++depth;
@@ -12895,10 +12901,11 @@ static bool extension_payload_close(Scanner *s, TSLexer *host, uint32_t *remaini
   uint32_t closer = depth_zero != UINT32_MAX ? depth_zero : first_unescaped;
   if (closer != UINT32_MAX) {
     closed = true;
+    *fallback = closer != depth_zero;
     possible_scope_end = scope_end_at < closer;
     if (closer != first_raw) {
       uint32_t newlines = start_newlines + probe.characters.contents[closer].newlines;
-      uint32_t column = bracket_probe_column_at(&probe, closer) + 1;
+      uint32_t column = (closer == depth_zero ? bracket_probe_column_at(&probe, closer) : first_unescaped_column) + 1;
       if (newlines < (UINT32_C(1) << (32 - EXTENSION_CLOSE_COLUMN_BITS)) &&
           column < (UINT32_C(1) << EXTENSION_CLOSE_COLUMN_BITS))
         *close = newlines << EXTENSION_CLOSE_COLUMN_BITS | column;
@@ -12956,7 +12963,8 @@ static bool extension_payload_close(Scanner *s, TSLexer *host, uint32_t *remaini
 
 static bool extension_payload_closed(Scanner *s, TSLexer *host, uint32_t *remaining, bool *changes_scope, bool *opaque_cut) {
   uint32_t close;
-  return extension_payload_close(s, host, remaining, changes_scope, opaque_cut, &close);
+  bool fallback;
+  return extension_payload_close(s, host, remaining, changes_scope, opaque_cut, &close, &fallback);
 }
 
 static bool scan_inline_link_tail(Scanner *s, TSLexer *lexer, char bare, bool *closer, bool *boundary);
@@ -15254,7 +15262,8 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     uint32_t remaining;
     bool changes_scope, opaque_cut;
     uint32_t close;
-    bool balanced = extension_payload_close(s, lexer, &remaining, &changes_scope, &opaque_cut, &close);
+    bool fallback;
+    bool balanced = extension_payload_close(s, lexer, &remaining, &changes_scope, &opaque_cut, &close, &fallback);
     if (balanced && valid_symbols[EXTENSION_CONTENT_BEGIN]) {
       Inline *parent = peek_inline(s);
       if (opaque_cut && parent && parent->type >= EMPHASIS && parent->type <= BOLD_ITALIC)
@@ -15265,7 +15274,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
         bracket->literal_closes += remaining;
         if (opaque_cut) bracket->literal_closes |= INLINE_CUT_CODE;
       }
-      push_inline_flagged(s, EXTENSION, 0, INLINE_BRACED);
+      push_inline_flagged(s, EXTENSION, close && fallback, INLINE_BRACED);
       peek_inline(s)->literal_closes = close;
       lexer->result_symbol = EXTENSION_CONTENT_BEGIN;
       return true;
