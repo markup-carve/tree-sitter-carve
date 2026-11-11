@@ -17061,6 +17061,10 @@ static void init_scalars(Scanner *s) {
   s->col_base_marked = false;
   s->mid_line = false;
   s->comment_one_line = false;
+  s->host_advances = 0;
+  s->deferred_column_pending = false;
+  s->deferred_column_known = false;
+  s->host_jumped = false;
   s->no_closer_kinds = 0;
   s->no_closer_scope = 0;
   s->link_tail_open_line = false;
