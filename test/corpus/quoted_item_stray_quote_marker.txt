@@ -63,5 +63,6 @@ An indented > after a quoted blank line ends a quoted item
           marker: (list_marker_dash)
           content: (list_item_content
             (paragraph))))
-      (block_quote_marker)))
-  (paragraph))
+      (block_quote_marker)
+      (block_quote_marker)
+      (paragraph))))
