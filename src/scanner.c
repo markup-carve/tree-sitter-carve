@@ -294,6 +294,10 @@ typedef enum {
   ATTACHED_QUOTE_PREFIX,
   FRONTMATTER_UNCLOSED_MARKER,
   FRONTMATTER_REST,
+  // Never emitted. Valid only right after a bare emphasis, strong, combined or
+  // strikethrough closer, so a closer note needs no column (see
+  // `NOTE_NEXT_TOKEN`).
+  AFTER_BARE_CLOSER,
 } TokenType;
 
 // The different blocks in Carve that we track,
@@ -13809,6 +13813,10 @@ static bool substitution_arrow_ahead(Scanner *s, TSLexer *lexer, bool *closed) {
 
 // Bare emphasis has no intervening strong closer before this cache ends.
 #define AFTER_COMBINED_CLOSER (UINT8_MAX - 4)
+// A closer note's column when only the token right behind the closer reads it:
+// that token is lexed where `AFTER_BARE_CLOSER` is valid. `get_column` rereads
+// the line from its start, so a column read per closer is quadratic.
+#define NOTE_NEXT_TOKEN UINT32_MAX
 #define AFTER_WORD_BEFORE_COMBINED (UINT8_MAX - 5)
 #define NO_STRONG_IN_EMPHASIS (UINT8_MAX - 3)
 #define NO_COMBINED_CLOSER UINT8_MAX
@@ -13932,7 +13940,10 @@ static bool mark_span_begin(Scanner *s, TSLexer *lexer,
   if (inline_type == BOLD_ITALIC && !valid_symbols[IN_FALLBACK] && top &&
       top->type == STRONG && (top->flags & INLINE_SCOPED_COMBINED_LITERAL)) return false;
   bool combined_fallback = inline_type == EMPHASIS &&
-      s->after_closer_char == '*' && s->after_closer_col == line_column(s, lexer);
+      s->after_closer_char == '*' &&
+      (s->after_closer_col == NOTE_NEXT_TOKEN
+           ? valid_symbols[AFTER_BARE_CLOSER] && !valid_symbols[ERROR]
+           : s->after_closer_col == line_column(s, lexer));
   bool bare = (s->state & STATE_BARE_SPAN_OPENER) != 0;
   s->state &= ~STATE_BARE_SPAN_OPENER;
   if (!valid_symbols[IN_FALLBACK] &&
@@ -14406,7 +14417,10 @@ static bool parse_span_end(Scanner *s, TSLexer *lexer, InlineType element,
       is_bare_delim_kind(lexer->lookahead, &next_kind)) {
     s->after_closer_char = (element == BOLD_ITALIC || (element == EMPHASIS && lexer->lookahead == '*')) ?
         AFTER_COMBINED_CLOSER : (uint8_t)inline_marker(element);
-    s->after_closer_col = line_column(s, lexer);
+    bool next_token_only = s->after_closer_char == AFTER_COMBINED_CLOSER ||
+                           s->after_closer_char == '/' || s->after_closer_char == '~' ||
+                           s->after_closer_char == '*';
+    s->after_closer_col = next_token_only ? NOTE_NEXT_TOKEN : line_column(s, lexer);
   }
   // See STATE_SPAN_END_AT_CR: a `{` after this `]` is only the span's attribute
   // list when it is ADJACENT, and a carriage return between them is invisible
@@ -14770,7 +14784,9 @@ static int parse_literal_run(Scanner *s, TSLexer *lexer,
     }
   } else if (is_bare_delim_kind(lexer->lookahead, &kind)) {
     if (s->after_closer_char != 0 && !HAS_NO_COMBINED_CLOSER(s) &&
-        s->after_closer_col == line_column(s, lexer)) {
+        (s->after_closer_col == NOTE_NEXT_TOKEN
+             ? valid_symbols[AFTER_BARE_CLOSER] && !valid_symbols[ERROR]
+             : s->after_closer_col == line_column(s, lexer))) {
       // Right behind a closer of this very marker: nothing of this kind is
       // open any more and the previous character is the marker, so no
       // character of the rest of the run can open or close.
@@ -14983,7 +14999,7 @@ static bool parse_attribute_mark_begin(Scanner *s, TSLexer *lexer,
   }
   // The attribute's own path: the fallback is not taken here, so its marker
   // must not steer the bookkeeping to the fallback's branch.
-  bool attribute_only[ATTRIBUTE_MARK_BEGIN + 1];
+  bool attribute_only[AFTER_BARE_CLOSER + 1];
   memcpy(attribute_only, valid_symbols, sizeof(attribute_only));
   attribute_only[IN_FALLBACK] = false;
   if (!mark_span_begin(s, lexer, attribute_only, CURLY_BRACKET_SPAN, shared)) {
@@ -15448,7 +15464,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       (s->state & STATE_BARE_SPAN_OPENER)) {
     defer_column(s);
     mark_end(s, lexer);
-    bool real_symbols[LAZY_DESCRIPTION_FENCE + 1];
+    bool real_symbols[AFTER_BARE_CLOSER + 1];
     memcpy(real_symbols, valid_symbols, sizeof(real_symbols));
     real_symbols[IN_FALLBACK] = false;
     bool same_marker_before = (s->after_closer_char == '=' || s->after_closer_char == '_') &&
@@ -15466,7 +15482,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       (s->state & STATE_BARE_SPAN_OPENER) && lexer->lookahead != '*') {
     defer_column(s);
     mark_end(s, lexer);
-    bool real_symbols[LAZY_DESCRIPTION_FENCE + 1];
+    bool real_symbols[AFTER_BARE_CLOSER + 1];
     memcpy(real_symbols, valid_symbols, sizeof(real_symbols));
     real_symbols[IN_FALLBACK] = false;
     if (lexer->lookahead != '/' && mark_span_begin(s, lexer, real_symbols, EMPHASIS, EMPHASIS_QUALIFIED_MARK_BEGIN))
@@ -15482,7 +15498,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       (s->state & STATE_BARE_SPAN_OPENER)) {
     defer_column(s);
     mark_end(s, lexer);
-    bool real_symbols[LAZY_DESCRIPTION_FENCE + 1];
+    bool real_symbols[AFTER_BARE_CLOSER + 1];
     memcpy(real_symbols, valid_symbols, sizeof(real_symbols));
     real_symbols[IN_FALLBACK] = false;
     if (lexer->lookahead != '*' &&
