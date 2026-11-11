@@ -2803,6 +2803,10 @@
             "members": [
               {
                 "type": "SYMBOL",
+                "name": "_after_bare_closer"
+              },
+              {
+                "type": "SYMBOL",
                 "name": "_smart_punctuation"
               },
               {
@@ -6085,6 +6089,10 @@
             "members": [
               {
                 "type": "SYMBOL",
+                "name": "_after_bare_closer"
+              },
+              {
+                "type": "SYMBOL",
                 "name": "_smart_punctuation"
               },
               {
@@ -6488,6 +6496,10 @@
           {
             "type": "CHOICE",
             "members": [
+              {
+                "type": "SYMBOL",
+                "name": "_after_bare_closer"
+              },
               {
                 "type": "SYMBOL",
                 "name": "_smart_punctuation"
@@ -7294,18 +7306,6 @@
             "type": "SYMBOL",
             "name": "emphasis_end"
           }
-        },
-        {
-          "type": "CHOICE",
-          "members": [
-            {
-              "type": "SYMBOL",
-              "name": "_after_bare_closer"
-            },
-            {
-              "type": "BLANK"
-            }
-          ]
         }
       ]
     },
@@ -7366,18 +7366,6 @@
             "type": "SYMBOL",
             "name": "bold_italic_end"
           }
-        },
-        {
-          "type": "CHOICE",
-          "members": [
-            {
-              "type": "SYMBOL",
-              "name": "_after_bare_closer"
-            },
-            {
-              "type": "BLANK"
-            }
-          ]
         }
       ]
     },
@@ -7504,18 +7492,6 @@
             "type": "SYMBOL",
             "name": "strong_end"
           }
-        },
-        {
-          "type": "CHOICE",
-          "members": [
-            {
-              "type": "SYMBOL",
-              "name": "_after_bare_closer"
-            },
-            {
-              "type": "BLANK"
-            }
-          ]
         }
       ]
     },
@@ -7636,18 +7612,6 @@
             "type": "SYMBOL",
             "name": "strikethrough_end"
           }
-        },
-        {
-          "type": "CHOICE",
-          "members": [
-            {
-              "type": "SYMBOL",
-              "name": "_after_bare_closer"
-            },
-            {
-              "type": "BLANK"
-            }
-          ]
         }
       ]
     },

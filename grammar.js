@@ -61,6 +61,9 @@ function inlineElement($, options) {
       // alternative, the block attached to a word run too, and the run it
       // swallowed took the rest of the line's reading with it.
       choice(
+        // Empty; the scanner returns it to keep a note's state change when
+        // the token right behind a closer is the internal lexer's.
+        $._after_bare_closer,
         $._smart_punctuation,
         $.backslash_escape,
         $.hard_line_break,
@@ -2194,7 +2197,6 @@ module.exports = grammar({
         ),
         field("content", alias($._braced_span_content, $.content)),
         field("end_marker", $.emphasis_end),
-        optional($._after_bare_closer),
       ),
     emphasis_begin: ($) => choice("{/", seq("/", $._non_whitespace_check)),
 
@@ -2204,7 +2206,6 @@ module.exports = grammar({
         $._bold_italic_mark_begin,
         field("content", alias($._inline_without_trailing_space, $.content)),
         field("end_marker", $.bold_italic_end),
-        optional($._after_bare_closer),
       ),
     // THE OPENER IS EXTERNAL, so the scanner can decline it. `/**/` is an
     // emphasis over two literal asterisks (spec fixture 130), and spelled as
@@ -2243,7 +2244,6 @@ module.exports = grammar({
         choice($._strong_qualified_mark_begin, $._strong_mark_begin),
         field("content", alias($._braced_span_content, $.content)),
         field("end_marker", $.strong_end),
-        optional($._after_bare_closer),
       ),
     strong_begin: ($) => choice("{*", seq("*", $._non_whitespace_check)),
 
@@ -2262,7 +2262,6 @@ module.exports = grammar({
         $._strikethrough_mark_begin,
         field("content", alias($._braced_span_content, $.content)),
         field("end_marker", $.strikethrough_end),
-        optional($._after_bare_closer),
       ),
     strikethrough_begin: ($) => choice("{~", seq("~", $._non_whitespace_check)),
 
@@ -3396,8 +3395,6 @@ module.exports = grammar({
     $._attached_quote_prefix,
     $._frontmatter_unclosed_marker,
     $._frontmatter_rest,
-    // Never emitted: valid only in the state right after a bare closer, so the
-    // scanner can tell the token behind the closer without reading a column.
     $._after_bare_closer,
   ],
 });
