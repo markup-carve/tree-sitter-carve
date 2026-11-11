@@ -6032,8 +6032,23 @@ static void record_list_marker_margin(Scanner *s, uint8_t col,
   s->marker_end_col = col;
 }
 
+/// The content column of the item or quote holding `list`, or 0 at the root.
+static uint8_t enclosing_item_content_col(Scanner *s, Block *list) {
+  bool below = false;
+  for (int i = s->open_blocks->size - 1; i >= 0; --i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (b == list) {
+      below = true;
+    } else if (below && (is_list(b->type) || b->type == BLOCK_QUOTE)) {
+      return b->content_col;
+    }
+  }
+  return 0;
+}
+
 /// False when a new list would pass the nesting cap; the marker is then text.
-static bool ensure_list_open(Scanner *s, BlockType type, uint8_t indent) {
+static bool ensure_list_open(Scanner *s, BlockType type, uint8_t indent,
+                             uint32_t marker_column) {
   Block *top = peek_block(s);
   // Found a list with the same type and indent, we should continue it.
   if (top && top->type == type && top->data == indent) {
@@ -6044,13 +6059,21 @@ static bool ensure_list_open(Scanner *s, BlockType type, uint8_t indent) {
   }
   // A sibling short of the last item's content column moves the list to its
   // own columns (PART 0 S4).
-  if (top && top->type == type && top->content_col != 0 && indent > 0) {
+  if (top && top->type == type && type != LIST_DEFINITION &&
+      top->content_col != 0 && indent > 0) {
     uint32_t content = top->content_col;
     Block *quote = find_block(s, BLOCK_QUOTE);
     if (quote && list_opened_in_quote(s, top)) {
       content = content > quote->content_col ? content - quote->content_col : 0;
     }
-    if (indent - 1u < content &&
+    // The marker must stand inside the quote the list was opened in (an
+    // unknown column is not checked).
+    bool absolute = quote && marker_column != UINT32_MAX &&
+                    marker_column < quote->content_col;
+    uint32_t at = indent - 1u +
+        (quote && list_opened_in_quote(s, top) ? quote->content_col : 0);
+    if (indent - 1u < content && !absolute &&
+        at >= enclosing_item_content_col(s, top) &&
         (!quote || list_opened_in_quote(s, top))) {
       top->data = indent;
       top->content_col = 0;
@@ -6092,7 +6115,8 @@ static bool handle_ordered_list_marker(Scanner *s, TSLexer *lexer,
         start_col == s->marker_end_col && start_col < UINT8_MAX) {
       list_indent = (uint8_t)start_col;
     }
-    if (!ensure_list_open(s, list_marker_to_block(marker), list_indent + 1)) return false;
+    if (!ensure_list_open(s, list_marker_to_block(marker), list_indent + 1,
+                          start_col != 0 ? start_col : UINT32_MAX)) return false;
     record_list_marker_margin(s, content_col, false);
     lexer->result_symbol = marker;
     return true;
@@ -6441,7 +6465,7 @@ static bool parse_list_marker_or_thematic_break(
   if (can_be_list_marker) {
     if (valid_symbols[LIST_MARKER_TASK_BEGIN] && !spaced_probe_refused) {
       if (scan_task_list_marker(s, lexer)) {
-        if (!ensure_list_open(s, LIST_TASK, list_indent + 1)) return false;
+        if (!ensure_list_open(s, LIST_TASK, list_indent + 1, start_col)) return false;
         record_list_marker_margin(s, marker_content_col, false);
         while (lexer->lookahead == ' ') advance(s, lexer);
         s->marker_end_col = list_column_u8(line_column(s, lexer) + column_offset);
@@ -6456,7 +6480,7 @@ static bool parse_list_marker_or_thematic_break(
       if (!consumed_line_of_markers && !marker_line_has_content(s, lexer)) {
         return false;
       }
-      if (!ensure_list_open(s, list_type, list_indent + 1)) return false;
+      if (!ensure_list_open(s, list_type, list_indent + 1, start_col)) return false;
       record_list_marker_margin(s, marker_content_col, false);
       lexer->result_symbol = marker_type;
       return true;
@@ -6903,20 +6927,6 @@ static bool parse_star(Scanner *s, TSLexer *lexer, const bool *valid_symbols,
                                              THEMATIC_BREAK_STAR, declined_run);
 }
 
-/// The content column of the item or quote holding `list`, or 0 at the root.
-static uint8_t enclosing_item_content_col(Scanner *s, Block *list) {
-  bool below = false;
-  for (int i = s->open_blocks->size - 1; i >= 0; --i) {
-    Block *b = *array_get(s->open_blocks, i);
-    if (b == list) {
-      below = true;
-    } else if (below && (is_list(b->type) || b->type == BLOCK_QUOTE)) {
-      return b->content_col;
-    }
-  }
-  return 0;
-}
-
 static bool parse_list_item_end(Scanner *s, TSLexer *lexer,
                                 const bool *valid_symbols, bool at_eof) {
   // Captured before the block-quote / list-marker scans below advance the
@@ -7226,12 +7236,15 @@ static bool parse_list_item_end(Scanner *s, TSLexer *lexer,
                              list->data != line_indent + 1));
     // Past a missed item a marker is a sibling wherever it stands short of the
     // item, as long as it reaches the item's owner (PART 0 S4, carve#4545).
-    if (different_indent && count_blocks(s, BLOCK_QUOTE) == 0 &&
+    bool bullet_or_ordered = list->type != LIST_DEFINITION;
+    if (different_indent && bullet_or_ordered &&
+        count_blocks(s, BLOCK_QUOTE) == 0 &&
         list->content_col != 0 && s->indent < list->content_col &&
         s->indent >= enclosing_item_content_col(s, list)) {
       different_indent = false;
     }
-    if (different_indent && marker_col != 0 && list->content_col != 0 &&
+    if (different_indent && bullet_or_ordered && marker_col != 0 &&
+        list->content_col != 0 &&
         marker_col < list->content_col &&
         marker_col >= enclosing_item_content_col(s, list)) {
       different_indent = false;
@@ -7346,7 +7359,7 @@ static bool parse_colon(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       if (!marker_line_has_content(s, lexer)) {
         return false;
       }
-      if (!ensure_list_open(s, LIST_DEFINITION, list_indent + 1)) return false;
+      if (!ensure_list_open(s, LIST_DEFINITION, list_indent + 1, UINT32_MAX)) return false;
       peek_block(s)->flags |= BLOCK_FLAG_DEFINITION_TERM;
       // Record where the term's content starts, as the bullet and ordered
       // markers do. Without it the block reads column 0, and
@@ -7382,7 +7395,7 @@ static bool parse_colon(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     if (!marker_line_has_content(s, lexer)) {
       return false;
     }
-    if (!ensure_list_open(s, LIST_DEFINITION, list_indent + 1)) return false;
+    if (!ensure_list_open(s, LIST_DEFINITION, list_indent + 1, UINT32_MAX)) return false;
     peek_block(s)->flags &= (uint8_t)~BLOCK_FLAG_DEFINITION_TERM;
     // The full space run above is marker padding, so the lexer sits at the
     // body's authored content column. See the term branch.
@@ -11070,9 +11083,9 @@ static bool abbreviation_definition_follows(Scanner *s, TSLexer *lexer,
 /// in a list item: the line folds in lazily unless it is a sibling marker of
 /// an enclosing list (corpus 448, 507).
 static bool marker_folds_into_nested_paragraph(Scanner *s, uint32_t column) {
-  // A line inside every open quote, with no list open in the innermost one,
-  // continues that quote's paragraph, which no list marker interrupts
-  // (PART 9 section 10 I2).
+  // A line inside every open quote, with no item or note body open in the
+  // innermost one, continues that quote's paragraph, which no list marker
+  // interrupts (PART 9 section 10 I2).
   uint8_t quotes = count_blocks(s, BLOCK_QUOTE);
   if (quotes > 0 && s->paragraph_markers_seen == quotes &&
       s->lazy_drop_markers == 0 && !line_misses_note(s, column)) {
@@ -11080,7 +11093,7 @@ static bool marker_folds_into_nested_paragraph(Scanner *s, uint32_t column) {
     for (int i = s->open_blocks->size - 1; i >= 0; --i) {
       Block *b = *array_get(s->open_blocks, i);
       if (b->type == BLOCK_QUOTE) break;
-      if (is_list(b->type)) list_in_quote = true;
+      if (is_list(b->type) || b->type == FOOTNOTE) list_in_quote = true;
     }
     if (!list_in_quote) return true;
   }
