@@ -654,6 +654,9 @@ typedef struct {
   uint32_t deferred_column;
   bool deferred_column_pending;
   bool deferred_column_known;
+  // The host jumped into the next included range in this scan call; a gap
+  // may have hidden a line terminator. Transient.
+  bool host_jumped;
   bool probe_reached_end;
   bool probe_skipped_opaque;
   // The serialized state this scan call started from.
@@ -1059,6 +1062,10 @@ static void advance(Scanner *s, TSLexer *lexer) {
     s->row_cell_start_col = s->row_capture_col + 1;
   }
   lexer->advance(lexer, false);
+  if (lexer->advance != bracket_probe_advance && lexer->is_at_included_range_start(lexer)) {
+    s->host_jumped = true;
+    resolve_deferred_column(s, lexer);
+  }
   if (s->row_capture) {
     // An escaped tick opens no run for the cell splitter either (CARVE T1).
     if (current == '`' && !s->row_carry_escape) ++s->row_raw_pending;
@@ -1144,11 +1151,14 @@ static void defer_column(Scanner *s) {
   s->deferred_column_at = s->host_advances;
 }
 
-// The host is about to take a line terminator: the deferred column can no
-// longer be derived from the host's own column, so read it now.
+// The host is about to take a line terminator, or has just jumped into the
+// next included range: read the deferred column now, while the host's own
+// column still counts from the same line. A range gap that swallowed a line
+// terminator leaves no such line; its column falls back to 0.
 static void resolve_deferred_column(Scanner *s, TSLexer *host) {
   if (!s->deferred_column_pending || s->deferred_column_known) return;
-  s->deferred_column = line_column(s, host) - (s->host_advances - s->deferred_column_at);
+  uint32_t column = line_column(s, host), moved = s->host_advances - s->deferred_column_at;
+  s->deferred_column = column >= moved ? column - moved : 0;
   s->deferred_column_known = true;
 }
 
@@ -3269,6 +3279,11 @@ static void bracket_probe_advance(TSLexer *lexer, bool skip) {
       ++probe->scanner->host_advances;
     }
     probe->host->advance(probe->host, skip);
+    if (probe->host->advance != bracket_probe_advance &&
+        probe->host->is_at_included_range_start(probe->host)) {
+      probe->scanner->host_jumped = true;
+      resolve_deferred_column(probe->scanner, probe->host);
+    }
     if (probe->host->lookahead != '`' && probe->pending_ticks) {
       if (!probe->row_ticks) probe->row_ticks = probe->pending_ticks;
       else if (probe->row_ticks == probe->pending_ticks) probe->row_ticks = 0;
@@ -15082,6 +15097,7 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
   s->host_newlines_at_mark = 0;
   s->host_advances = 0;
   s->deferred_column_pending = false;
+  s->host_jumped = false;
   if (at_line_end(lexer) || lexer->eof(lexer)) s->missing_closers = 0;
   bool line_end = at_line_end(lexer);
   uint8_t closer_char = s->after_closer_char;
@@ -15134,7 +15150,7 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
   if (found) count_caption_gap(s, lexer->result_symbol);
   if (found && (lexer->result_symbol == BRACED_COMMENT_BEGIN ||
                 lexer->result_symbol == EDITORIAL_COMMENT_BEGIN))
-    s->comment_one_line = !s->host_crossed_line;
+    s->comment_one_line = !s->host_crossed_line && !s->host_jumped;
   // The CR adjacency note is for the token right after the `]`; a line end
   // taking the CR must not leave it to refuse a `{` or `(` on a later line.
   if (found && (lexer->result_symbol == NEWLINE || lexer->result_symbol == NEWLINE_INLINE ||
