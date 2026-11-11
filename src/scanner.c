@@ -1153,12 +1153,13 @@ static void defer_column(Scanner *s) {
 
 // The host is about to take a line terminator, or has just jumped into the
 // next included range: read the deferred column now, while the host's own
-// column still counts from the same line. A range gap that swallowed a line
-// terminator leaves no such line; its column falls back to 0.
+// column still counts from the same line. A range gap that hid a line
+// terminator leaves no such line, and `TSLexer` cannot tell a range end is
+// coming: such a column gets a value no real column equals.
 static void resolve_deferred_column(Scanner *s, TSLexer *host) {
   if (!s->deferred_column_pending || s->deferred_column_known) return;
   uint32_t column = line_column(s, host), moved = s->host_advances - s->deferred_column_at;
-  s->deferred_column = column >= moved ? column - moved : 0;
+  s->deferred_column = column >= moved ? column - moved : UINT32_MAX >> 1;
   s->deferred_column_known = true;
 }
 
