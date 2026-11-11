@@ -14945,6 +14945,11 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
     s->col_base = s->col_base_at_mark;
   }
   if (found) count_caption_gap(s, lexer->result_symbol);
+  // The CR adjacency note is for the token right after the `]`; a line end
+  // taking the CR must not leave it to refuse a `{` or `(` on a later line.
+  if (found && (lexer->result_symbol == NEWLINE || lexer->result_symbol == NEWLINE_INLINE ||
+                lexer->result_symbol == EOF_OR_NEWLINE || lexer->result_symbol == TABLE_ROW_END_NEWLINE))
+    s->state &= ~STATE_SPAN_END_AT_CR;
   if (found) {
     // A zero-width inline token keeps the note of whatever ended before it;
     // any other one may follow a comment body that crossed a line.
