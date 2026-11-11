@@ -15145,7 +15145,6 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       cut_parent && cut_parent->type >= EMPHASIS && cut_parent->type <= BOLD_ITALIC &&
       !find_inline(s, EXTENSION) && (cut_parent->literal_closes || bracket_remainder)) {
     if (cut_parent->literal_closes > 1) --cut_parent->literal_closes;
-    if (cut_parent->literal_closes == 1) cut_parent->literal_closes = 0;
     Inline *bracket = find_inline(s, SQUARE_BRACKET_SPAN);
     if (bracket && (bracket->flags & INLINE_BRACED) && square_literal_closes(bracket)) {
       --bracket->literal_closes;

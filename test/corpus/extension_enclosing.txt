@@ -55,3 +55,46 @@ An extension cannot cross a blank quote line
       (block_quote_marker)
       (block_quote_marker)
       (paragraph))))
+
+=========================
+A code run after an extension cut in code still ends at the bare closer
+=========================
+*z :x[`]]`] z*
+
+*z :x[`]]` z*
+
+---
+
+(document
+  (paragraph
+    (strong
+      (strong_begin)
+      (content
+        (extension_inline
+          (extension_marker_begin)
+          (content
+            (verbatim
+              (verbatim_marker_begin)
+              (content)
+              (verbatim_marker_end))))
+        (verbatim
+          (verbatim_marker_begin)
+          (content)
+          (verbatim_marker_end)))
+      (strong_end)))
+  (paragraph
+    (strong
+      (strong_begin)
+      (content
+        (extension_inline
+          (extension_marker_begin)
+          (content
+            (verbatim
+              (verbatim_marker_begin)
+              (content)
+              (verbatim_marker_end))))
+        (verbatim
+          (verbatim_marker_begin)
+          (content)
+          (verbatim_marker_end)))
+      (strong_end))))
