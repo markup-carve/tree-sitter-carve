@@ -9975,6 +9975,8 @@ static bool note_short_plus(Scanner *s, TSLexer *lexer, uint8_t markers) {
   return follow == PLUS_ATTACHES;
 }
 
+static bool scan_row_or_break_at_paragraph_end(Scanner *s, TSLexer *lexer);
+
 static bool end_paragraph_in_block_quote(Scanner *s, TSLexer *lexer,
                                          int *markers_seen) {
   Block *block = find_block(s, BLOCK_QUOTE);
@@ -10262,6 +10264,11 @@ keep_reading:
       note_short_plus(s, lexer, marker_count);
     }
     return true;
+  }
+  // A dash or star line can be a thematic break, which only the break probe
+  // reads; it reads a bullet too (PART 0 S3).
+  if (lexer->lookahead == '-' || lexer->lookahead == '*') {
+    return scan_row_or_break_at_paragraph_end(s, lexer);
   }
   return scan_paragraph_closing_marker(s, lexer);
 }
@@ -11026,6 +11033,20 @@ static bool abbreviation_definition_follows(Scanner *s, TSLexer *lexer,
 /// in a list item: the line folds in lazily unless it is a sibling marker of
 /// an enclosing list (corpus 448, 507).
 static bool marker_folds_into_nested_paragraph(Scanner *s, uint32_t column) {
+  // A line inside every open quote, with no list open in the innermost one,
+  // continues that quote's paragraph, which no list marker interrupts
+  // (PART 9 section 10 I2).
+  uint8_t quotes = count_blocks(s, BLOCK_QUOTE);
+  if (quotes > 0 && s->paragraph_markers_seen == quotes &&
+      s->lazy_drop_markers == 0) {
+    bool list_in_quote = false;
+    for (int i = s->open_blocks->size - 1; i >= 0; --i) {
+      Block *b = *array_get(s->open_blocks, i);
+      if (b->type == BLOCK_QUOTE) break;
+      if (is_list(b->type)) list_in_quote = true;
+    }
+    if (!list_in_quote) return true;
+  }
   // A line short of the quotes holding the list cannot reach its items.
   if (s->lazy_drop_markers > 0) {
     Block *missing = nth_quote(s, s->lazy_drop_markers + 1);
