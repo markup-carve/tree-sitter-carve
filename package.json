@@ -48,6 +48,7 @@
     "test:version-surfaces": "node scripts/version-surfaces.mjs && node --test tests/version-surfaces.test.mjs",
     "test:inline-span-audit": "node scripts/inline-span-audit.mjs",
     "test:inline-reading": "node scripts/inline-reading.mjs && node --test tests/inline-reading.test.mjs && node scripts/inline-link-tails.mjs && node scripts/inline-reading-boundaries.mjs",
+    "test:table-cell-code-padding": "node scripts/table-cell-code-padding.mjs",
     "test:termination": "node scripts/parse-termination.mjs",
     "test:editor-queries": "node scripts/editor-queries.mjs",
     "test:literal-bracket-work": "node scripts/literal-bracket-work.mjs",

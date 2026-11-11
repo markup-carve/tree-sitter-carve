@@ -55,6 +55,8 @@ jobs:
       # categories were in that state when this was added.
       - name: Inline readings match the fixtures
         run: npm run test:inline-reading
+      - name: Unclosed code runs in table cells end before the padding
+        run: npm run test:table-cell-code-padding
       - name: Check bracket boundaries including superscript and subscript
         run: npm run test:bracket-boundaries
       - name: Check attributed spans and literal bracket work

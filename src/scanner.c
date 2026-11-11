@@ -2713,6 +2713,9 @@ static bool parse_verbatim_content(Scanner *s, TSLexer *lexer, bool end_valid,
   // whitespace that may trail it, cleared by any other content - the same
   // question `scan_verbatim_run_in_cell` answers while validating the row.
   bool marked_at_pipe = false;
+  // Spaces read in a table row but not yet marked: a closing pipe right after
+  // them leaves them out as cell padding (`data_cell` ends in `{space}`).
+  bool pending_space = false;
   bool extension_payload = find_inline(s, EXTENSION) != NULL;
   Inline *parent = s->open_inline->size >= 2 ? *array_get(s->open_inline, s->open_inline->size - 2) : NULL;
   char bare_stop = stop_marker == 3 && parent ? inline_marker(parent->type) : 0;
@@ -2720,6 +2723,10 @@ static bool parse_verbatim_content(Scanner *s, TSLexer *lexer, bool end_valid,
 
   while (!lexer->eof(lexer)) {
     int32_t current = lexer->lookahead;
+    if (pending_space && lexer->lookahead != ' ' && lexer->lookahead != '|') {
+      mark_end(s, lexer);
+      pending_space = false;
+    }
     if (lexer->lookahead == ']') {
       if (extension_payload && extension_closes_here(s, lexer)) break;
       // Every left-behind `]` counts, also one a closed run swallows.
@@ -2830,7 +2837,8 @@ static bool parse_verbatim_content(Scanner *s, TSLexer *lexer, bool end_valid,
     } else if (in_table_row && lexer->lookahead == '|') {
       // A candidate row closer: mark BEFORE it and read on without moving the
       // mark, so a later pipe (or a closing run) overrides this one.
-      mark_end(s, lexer);
+      if (!pending_space) mark_end(s, lexer);
+      pending_space = false;
       marked_at_pipe = true;
       advance(s, lexer);
     } else if (in_table_row && marked_at_pipe &&
@@ -2838,6 +2846,9 @@ static bool parse_verbatim_content(Scanner *s, TSLexer *lexer, bool end_valid,
       // Whitespace trailing what may be the closing pipe. A row admits it, so
       // step over it without moving the mark off the pipe.
       advance(s, lexer);
+    } else if (in_table_row && lexer->lookahead == ' ') {
+      advance(s, lexer);
+      pending_space = true;
     } else {
       // Non-` token found, this we should consume.
       advance(s, lexer);
@@ -16861,6 +16872,16 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       find_block(s, TABLE_ROW) != NULL &&
       try_implicit_close_verbatim(s, lexer)) {
     return true;
+  }
+  // The content stopped before the cell's trailing space padding (#647): the
+  // end stays zero width here, in front of the spaces.
+  if (valid_symbols[VERBATIM_END] && lexer->lookahead == ' ' &&
+      find_block(s, TABLE_ROW) != NULL) {
+    mark_end(s, lexer);
+    while (lexer->lookahead == ' ') advance(s, lexer);
+    if (lexer->lookahead == '|' && try_implicit_close_verbatim(s, lexer)) {
+      return true;
+    }
   }
 
   // The same implicit close at the closer of the BRACED span an open run sits
