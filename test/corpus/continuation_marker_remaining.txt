@@ -414,11 +414,13 @@ Quote table after a definition
       (term))
     (list_item
       (list_marker_description)
-      (definition
-        (footnote_reference
-          (footnote_marker_begin)
-          (reference_label)
-          (footnote_marker_end)))))
+      (definition)))
+  (footnote
+    (footnote_marker_begin)
+    (reference_label)
+    (footnote_marker_end)
+    (footnote_content
+      (paragraph)))
   (block_quote
     (block_quote_marker)
     (content
@@ -493,22 +495,13 @@ Quote table after a nested task
     (list_item
       (list_marker_decimal_period)
       (list_item_content
-        (paragraph
-          (footnote_reference
-            (footnote_marker_begin)
-            (reference_label)
-            (footnote_marker_end)))
-        (list
-          (list_item
-            (list_marker_task
-              (unchecked))
-            (list_item_content
-              (paragraph)
-              (list
-                (list_item
-                  (list_marker_dash)
-                  (list_item_content
-                    (paragraph))))))))))
+        (paragraph))))
+  (footnote
+    (footnote_marker_begin)
+    (reference_label)
+    (footnote_marker_end)
+    (footnote_content
+      (paragraph)))
   (block_quote
     (block_quote_marker)
     (content
@@ -573,11 +566,11 @@ Blank ends a quoted list before flush marker
           (list_marker_dash)
           (list_item_content
             (paragraph))))))
-  (paragraph
-    (verbatim
-      (verbatim_marker_begin)
-      (content)
-      (verbatim_marker_end))))
+  (paragraph)
+  (code_block
+    (code_block_marker_begin)
+    (code)
+    (code_block_marker_end)))
 
 ============================================================
 Blank ends a quoted list before indented marker
@@ -600,11 +593,11 @@ Blank ends a quoted list before indented marker
           (list_marker_dash)
           (list_item_content
             (paragraph))))))
-  (paragraph
-    (verbatim
-      (verbatim_marker_begin)
-      (content)
-      (verbatim_marker_end))))
+  (paragraph)
+  (code_block
+    (code_block_marker_begin)
+    (code)
+    (code_block_marker_end)))
 
 ============================================================
 First task block stops before a sibling list

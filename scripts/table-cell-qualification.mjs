@@ -55,7 +55,7 @@ for (const [body, cells, spans] of [
   ["| [a | b]{.k} | t |", 3, 0],
   ["| *a |\n> b\n- c", 1, 0],
   ["| [a |\n  b", 1, 0],
-  [": term\n  | [a]{.k} | [b]{.k} |\n  folded", 0, 2],
+  [": term\n  | [a]{.k} | [b]{.k} |\n  folded", 2, 2],
 ]) for (const ending of ['\n', '\r\n', '\r', '']) {
   const root = parser.parse(body + ending).rootNode;
   assert.equal(root.hasError, false, body);

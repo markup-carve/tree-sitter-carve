@@ -756,6 +756,8 @@ typedef struct {
   bool plus_scan_spent;
   // Set when the paragraph-end `+` probe read past a lone `+` line it refused.
   bool plus_probe_refused_line;
+  // A probe read a `>` that is no marker (`>#`): the line is text.
+  bool glued_quote_marker;
   // The `>` markers of a line under a deeper quoted paragraph while
   // `close_paragraph` asks its openers; 0 otherwise. Transient.
   uint8_t lazy_drop_markers;
@@ -1522,15 +1524,10 @@ static Block *find_list(Scanner *s) {
   return NULL;
 }
 
-// Whether the current line's leading whitespace (`s->indent`) is EXTRA --
-// indentation beyond the left margin of the innermost open container. A list
-// item, footnote, or table caption indents its content (any indent at or above
-// its `data` threshold stays inside it); blocks whose content sits flush left
-// (the document root, a `:::` div) and block quotes (whose `>` markers are
-// consumed separately, leaving indent at 0) expect a zero margin. A heading
-// marker only counts as a marker when it sits at this margin with NO extra
-// leading whitespace -- carve drops CommonMark's 0-3 space indent fuzz
-// (column-0, NORMATIVE; corpus 101-heading-marker-column-zero).
+// Whether the current line's leading whitespace (`s->indent`) stops SHORT of
+// the content column of the innermost indenting container (a list item,
+// footnote or table caption). Leading space past the margin opens an opener in
+// the owner at every level, the document and quotes included (PART 0 S3).
 /// TRUE when the line sits PAST its container's content column.
 ///
 /// `has_extra_indent` answers the opposite question - short OF the column - and
@@ -1594,40 +1591,6 @@ static bool has_extra_indent(Scanner *s) {
     Block *quote = *array_get(s->open_blocks, i);
     if (quote->type == BLOCK_QUOTE && quote->content_col != 0 &&
         s->indent == quote->content_col) {
-      return false;
-    }
-  }
-  return s->indent > 0;
-}
-
-/// TRUE when the current line sits PAST the innermost container's content
-/// column, so a definition marker on it is indented text rather than an opener.
-///
-/// A definition opens only AT its container's content column: an indented
-/// `[x]:` / `[^x]:` is ordinary paragraph text, not a definition with a stray
-/// space (the spec's column rule, corpus 157). `has_extra_indent` catches the
-/// SHORT-OF-margin (lazy) side of that and the top-level indented side, but it
-/// measures a list/footnote against `data` - a minimum indent, not a column -
-/// so it cannot see a line that is one column PAST the margin. That gap only
-/// surfaced once a `:::` container recorded its own column: a definition marker
-/// one space past a div nested in a list or footnote opened a definition the
-/// tree could not then reconcile with the padding before it
-/// (tree-sitter-carve#282). The walk stops at the innermost container of any
-/// indenting kind - div, figure group, list, footnote, table caption - because
-/// that is the one whose margin the line belongs to; a block quote continues by
-/// its own markers, so it sets no indentation margin here. A FIGURE_GROUP is a
-/// DIV wearing the reserved kind word (see `parse_figure_group_marker`), so it
-/// carries the same recorded `content_col` and must gate a nested definition
-/// the same way - without it a `::: figure` in a footnote body reproduced the
-/// very ERROR this guard removes for a plain `:::`.
-static bool past_container_content_col(Scanner *s) {
-  for (int i = s->open_blocks->size - 1; i >= 0; --i) {
-    Block *b = *array_get(s->open_blocks, i);
-    if (b->type == DIV || b->type == FIGURE_GROUP || is_list(b->type) ||
-        b->type == FOOTNOTE || b->type == TABLE_CAPTION) {
-      return b->content_col != 0 && s->indent > b->content_col;
-    }
-    if (b->type == BLOCK_QUOTE) {
       return false;
     }
   }
@@ -4256,10 +4219,9 @@ static bool parse_code_fence(Scanner *s, TSLexer *lexer,
     // lexer before failing, and the verbatim fallback below must not swallow
     // the lookahead (it intentionally does not re-mark).
     mark_end(s, lexer);
-    // COLUMN ZERO. An indented fence opens nothing; the line is paragraph
-    // text, and the ticks fall through to the verbatim handling below exactly
-    // as they would mid-paragraph (corpus 11-fenced-code). Only the OPENER is
-    // guarded -- a closer is matched against its opener's block, above.
+    // A fence short of its container's margin opens nothing; the ticks fall
+    // through to the verbatim handling below. Only the OPENER is guarded -- a
+    // closer is matched against its opener's block, above.
     // A fence on a MARKER LINE stands at the item's content column, but the
     // line indent still reads 0 there - the marker was consumed after it was
     // measured - so `has_extra_indent` calls the fence under-indented and the
@@ -4450,6 +4412,7 @@ static bool scan_block_quote_marker(Scanner *s, TSLexer *lexer,
     *ending_newline = true;
     return true;
   } else {
+    s->glued_quote_marker = true;
     return false;
   }
 }
@@ -4491,7 +4454,7 @@ static bool quote_chain_from(Scanner *s, uint8_t number) {
   for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
     Block *b = *array_get(s->open_blocks, i);
     if (b->type != BLOCK_QUOTE) {
-      if (b->type == SECTION) continue;
+      if (b->type == SECTION || b->type == HEADING) continue;
       if (seen >= number) return false;
       frame_between = true;
       continue;
@@ -4566,11 +4529,6 @@ static uint8_t scan_quote_marker_run(Scanner *s, TSLexer *lexer,
     if (!quote_marker_at_column(s, marker_count + 1, column, in_paragraph)) {
       return marker_count;
     }
-    if (marker_count == 0 && count_blocks(s, BLOCK_QUOTE) == 0 &&
-        !list_item_open(s) &&
-        !find_block(s, FOOTNOTE) && column != 0) {
-      return 0;
-    }
     if (!scan_block_quote_marker(s, lexer, ending_newline)) break;
     ++marker_count;
     if (*ending_newline) {
@@ -4581,6 +4539,14 @@ static uint8_t scan_quote_marker_run(Scanner *s, TSLexer *lexer,
     Block *next_quote = nth_quote(s, marker_count + 1);
     if (lexer->lookahead == ' ' && next_quote &&
         quote_chain_from(s, marker_count + 1)) {
+      while (lexer->lookahead == ' ') advance(s, lexer);
+      if (skipped_indent && lexer->lookahead != '>') *skipped_indent = true;
+      continue;
+    }
+    // Past every open quote a deeper `>` opens after any indentation (S3).
+    if (in_paragraph && lexer->lookahead == ' ' && !next_quote &&
+        marker_count >= count_blocks(s, BLOCK_QUOTE) &&
+        !(s->state & STATE_LIST_CONTINUATION) && !list_item_open(s)) {
       while (lexer->lookahead == ' ') advance(s, lexer);
       if (skipped_indent && lexer->lookahead != '>') *skipped_indent = true;
       continue;
@@ -6259,15 +6225,9 @@ static bool parse_list_marker_or_thematic_break(
   if (marker_attribute && !can_be_list_marker) return false;
   uint32_t marker_count = lexer->lookahead == marker ? 2 : 1;
 
-  // COLUMN ZERO. An indented `***` is a paragraph, not a break (corpus
-  // 130-thematic-break-requires-contiguous-markers). The list marker below is
-  // deliberately NOT guarded: a list may be indented, a block opener may not.
-  // Indented past a quote's column with no item open, `***` is text.
-  Block *break_quote = find_block(s, BLOCK_QUOTE);
-  bool past_quote_column = break_quote && break_quote->content_col != 0 &&
-                           start_col > break_quote->content_col && !find_list(s);
+  // Leading space does not stop a break from opening (PART 0 S3).
   bool can_be_thematic_break = valid_symbols[thematic_break_type] &&
-                               !marker_attribute && !past_quote_column &&
+                               !marker_attribute &&
                                (opener_reaches_item_margin(s, start_col) ||
                                 (s->marker_end_col != 0 &&
                                  start_col == s->marker_end_col)) &&
@@ -6326,7 +6286,7 @@ static bool parse_list_marker_or_thematic_break(
   // has consumed an inner marker, so the item has content and is no task.
   bool spaced_probe_refused = false;
   if (marker_count == 1 && can_be_list_marker && (marker == '-' || marker == '*') &&
-      valid_symbols[thematic_break_type] && !marker_attribute && !past_quote_column &&
+      valid_symbols[thematic_break_type] && !marker_attribute &&
       (opener_reaches_item_margin(s, start_col) ||
        (s->marker_end_col != 0 && start_col == s->marker_end_col)) &&
       extra_spaces == 0 && lexer->lookahead == marker) {
@@ -6788,13 +6748,8 @@ static bool parse_open_bracket(Scanner *s, TSLexer *lexer,
     return false;
   }
 
-  // COLUMN ZERO, same rule the heading marker follows. A definition opens only
-  // at its container's content column; an indented `[x]:` / `[^x]:` is ordinary
-  // paragraph text, not a definition with a stray space (corpus
-  // 157-indented-reference-and-footnote-definitions-stay-literal). Both sides
-  // of the margin disqualify it: SHORT of it (a lazy/top-level indent, via
-  // `has_extra_indent`) and PAST it (one column into a nested container, via
-  // `past_container_content_col`; tree-sitter-carve#282).
+  // A definition opens at or past its owner's content column (PART 0 S3); a
+  // line short of the margin (`has_extra_indent`) is paragraph text.
   // A definition on a MARKER LINE stands at the item's content column, but the
   // line indent still reads 0 there - the marker was consumed after it was
   // measured - so `has_extra_indent` calls it under-indented. `- [^f]: x` and
@@ -6830,8 +6785,7 @@ static bool parse_open_bracket(Scanner *s, TSLexer *lexer,
   // so the probe never ends a paragraph this then refuses.
   if (!at_marker_content_col) {
     if (list_item_open(s) ? !opener_reaches_item_margin(s, column)
-                          : ((has_extra_indent(s) ||
-                              past_container_content_col(s)) &&
+                          : (has_extra_indent(s) &&
                              !div_line_collected_by_host(s, column))) {
       return false;
     }
@@ -7268,12 +7222,7 @@ static bool parse_colon(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
         return false;
       }
       advance(s, lexer);
-      // COLUMN ZERO, the rule the div branch below already names as "the same
-      // rule the heading marker and the definition markers follow" - except
-      // this branch never asked. An indented `:: t` opened a definition list
-      // here while all three engines keep the line as paragraph text, at the
-      // top level, inside a div, and one column past a list item's content
-      // column alike (#109).
+      // A term short of its owner's margin is paragraph text (PART 0 S3).
       //
       // A term that CONTINUES an open definition list is measured against that
       // list's own marker column instead. `has_extra_indent` reads the open
@@ -7385,12 +7334,8 @@ static bool parse_colon(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     if (!valid_symbols[DIV_BEGIN]) {
       return false;
     }
-    // COLUMN ZERO, the same rule the heading marker and the definition
-    // markers follow. An indented `:::` opens nothing: it is paragraph text
-    // (corpus 158-indented-colon-fence-blocks-stay-literal). A CLOSER is left
-    // alone here -- it is handled below, and `has_extra_indent` already
-    // measures against the innermost container, so a fence at a list item's
-    // content column is not "indented".
+    // An opener short of its owner's margin is paragraph text (PART 0 S3). A
+    // CLOSER is left alone here -- it is handled below.
     if (has_extra_indent(s) && !marker_line_nested &&
         !quoted_item_column_reached(s, start_col)) {
       return false;
@@ -7537,10 +7482,7 @@ static bool parse_heading(Scanner *s, TSLexer *lexer,
   uint32_t marker_column = line_column(s, lexer);
   uint8_t hash_count = consume_chars(s, lexer, '#');
 
-  // COLUMN ZERO (NORMATIVE). A `#` is only a heading MARKER when it sits at the
-  // content column of its line with NO extra leading whitespace; carve does not
-  // accept CommonMark's 0-3 space leading indent. See corpus
-  // 101-heading-marker-column-zero.
+  // A `#` short of its owner's margin is no heading MARKER (PART 0 S3).
   if (hash_count > 0 && has_extra_indent(s) && s->block_quote_level == 0 &&
       !at_block_opener_margin(s, marker_column)) {
     // An indented `#` line is NOT a marker: outside a heading it is a
@@ -9729,18 +9671,10 @@ static bool parse_open_curly_bracket(Scanner *s, TSLexer *lexer,
         return true;
       } else if (!must_be_braced_comment && has_item &&
                  valid_symbols[BLOCK_ATTRIBUTE_BEGIN] &&
-                 // COLUMN ZERO. An indented `{.x}` line is literal text, not
-                 // an attribute for the block below it (corpus
-                 // 155-indented-attribute-line-stays-literal). Inline
-                 // attributes and `{% comments %}` are unaffected: they are
-                 // separate symbols, and only this branch is guarded.
-                 //
-                 // BOTH directions: short of the column is not an attribute and
-                 // neither is past it. Only the first half was checked, so
-                 // `{.c}` one space past a list item's content column opened a
-                 // real attribute where the corpus says literal text (#84).
+                 // Short of the owner's margin `{.x}` is literal text; at or
+                 // past it the line is an attribute (PART 0 S3).
                  (on_marker_line ||
-                  (!has_extra_indent(s) && !has_surplus_indent(s)) ||
+                  !has_extra_indent(s) ||
                   (in_item && at_block_opener_margin(s, brace_column)))) {
         // A block attribute must stand alone on its line: after the closing
         // `}` only trailing whitespace and a newline (or EOF) may follow.
@@ -10452,8 +10386,8 @@ static bool scan_continuation_marker_at_paragraph_end(Scanner *s,
   return true;
 }
 
-/// TRUE when `column` is EXACTLY the margin a block opener must sit at to open
-/// where the paragraph-closing peek currently stands.
+/// TRUE when a block opener at `column` opens where the paragraph-closing peek
+/// currently stands: at or past the owner's content column (PART 0 S3).
 ///
 /// TAKES THE COLUMN, never `s->indent`. The peek runs from the newline at the
 /// END of the previous line, so `s->indent` still holds whatever that line left
@@ -10524,8 +10458,7 @@ static bool at_block_opener_margin(Scanner *s, uint32_t column) {
     Block *b = *array_get(s->open_blocks, i);
     if (b->type == BLOCK_QUOTE && b->content_col != 0 &&
         (column == b->content_col ||
-         (column > b->content_col && s->block_quote_level > 0 &&
-          (s->lazy_drop_markers == 0 || i != top)))) {
+         (column > b->content_col && s->block_quote_level > 0))) {
       return true;
     }
     if (is_list(b->type)) {
@@ -10541,9 +10474,8 @@ static bool at_block_opener_margin(Scanner *s, uint32_t column) {
       continue;
     }
   }
-  // Nothing indenting: the document root, or a `:::` div, whose content is
-  // flush left.
-  return column == 0;
+  // The document root or a `:::` div owns the line at any indentation.
+  return true;
 }
 
 /// [CARVE-P0-020] relaxes the definition test to "at or past" only while a list
@@ -10573,8 +10505,7 @@ static bool opener_reaches_item_margin(Scanner *s, uint32_t column) {
     Block *b = *array_get(s->open_blocks, i);
     if (b->type == BLOCK_QUOTE && b->content_col != 0 &&
         (column == b->content_col ||
-         (column > b->content_col && s->block_quote_level > 0 &&
-          (s->lazy_drop_markers == 0 || i != top)))) {
+         (column > b->content_col && s->block_quote_level > 0))) {
       return true;
     }
     // A shallower line's margin is the quote it reaches, not a host past it.
@@ -10607,7 +10538,7 @@ static bool opener_reaches_item_margin(Scanner *s, uint32_t column) {
       continue;
     }
   }
-  return column == 0;
+  return true;
 }
 
 /// THE HOST DECIDES CONSUMPTION: a line past a div's content column is the
@@ -11254,40 +11185,11 @@ static bool close_paragraph(Scanner *s, TSLexer *lexer) {
     }
   }
 
-  // Between an item's marker and content columns no block opens: the line
-  // folds into the item's paragraph (corpus 143, 145). A comment or a
-  // definition still ends it.
-  Block *item = peek_block(s);
-  if (count_blocks(s, BLOCK_QUOTE) == 0 && item && is_list(item->type) &&
-      item->type != LIST_DEFINITION && item->content_col != 0 &&
-      lexer->lookahead != '%' && lexer->lookahead != '[' &&
-      !at_line_end(lexer) && !lexer->eof(lexer)) {
-    uint32_t column = s->next_line_indent >= 0 ? (uint32_t)s->next_line_indent
-                                                : s->indent;
-    // Unless an enclosing item, note or div reaches the line: then it lands
-    // there, and an opener on it opens in that host (spec 553, 578, 581).
-    uint32_t host_margin = 0;
-    for (int i = (int)s->open_blocks->size - 2; i >= 0; --i) {
-      Block *b = *array_get(s->open_blocks, i);
-      if (is_list(b->type) || b->type == DIV || b->type == FIGURE_GROUP) {
-        host_margin = b->content_col;
-        break;
-      }
-      if (b->type == FOOTNOTE) {
-        host_margin = b->data;
-        break;
-      }
-    }
-    bool host_reached = host_margin != 0 && column >= host_margin;
-    if (column >= item->data && column < item->content_col && !host_reached) {
-      return false;
-    }
-  }
-
   // Set by `end_paragraph_in_block_quote` to the `>` markers the next line
   // carries; -1 while no quote is open.
   int markers_seen = -1;
   s->plus_probe_refused_line = false;
+  s->glued_quote_marker = false;
   Block *lazy_quote = find_block(s, BLOCK_QUOTE);
   if (lazy_quote) lazy_quote->flags &= (uint8_t)~BLOCK_FLAG_QUOTE_LAZY_DROP;
   if (end_paragraph_in_block_quote(s, lexer, &markers_seen)) {
@@ -11440,6 +11342,7 @@ static bool close_paragraph_after_quote(Scanner *s, TSLexer *lexer,
 
   if (s->folded_plus_paragraph && markers_seen > 0 &&
       !(s->state & STATE_AFTER_BLANK_LINE)) return false;
+  if (s->glued_quote_marker) return false;
 
   s->paragraph_markers_seen = markers_seen;
   return paragraph_block_opener_ahead(s, lexer, markers_seen);
@@ -16273,12 +16176,6 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
         line_column(s, lexer) == quote->content_col) {
       consume_whitespace(s, lexer);
       s->indent = (uint8_t)line_column(s, lexer);
-      // Anything else keeps the reading it had: the run is the line's text.
-      int32_t c = lexer->lookahead;
-      if (c != '-' && c != '*' && c != '+' && c != '(' &&
-          !(c >= '0' && c <= '9')) {
-        return false;
-      }
     }
   }
   Block *pending_list = find_list(s);
@@ -17194,6 +17091,7 @@ static void init_scalars(Scanner *s) {
   s->chain_col = UINT8_MAX;
   s->lazy_drop_markers = 0;
   s->drop_close_markers = 0;
+  s->glued_quote_marker = false;
   s->probe_first_marker_col = 0;
   s->paragraph_plus_probe = false;
   s->folded_plus_paragraph = false;

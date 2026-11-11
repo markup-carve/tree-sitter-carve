@@ -1,0 +1,220 @@
+================================================================================
+An indented quote marker opens a quote at the document level
+================================================================================
+ > r
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (paragraph))))
+
+================================================================================
+An indented heading marker opens a heading at the document level
+================================================================================
+  # h
+
+--------------------------------------------------------------------------------
+
+(document
+  (section
+    (heading
+      (marker)
+      (content))))
+
+================================================================================
+An indented quote below an ordered item's content column closes the item
+================================================================================
+1. q
+  > r
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_decimal_period)
+      (list_item_content
+        (paragraph))))
+  (block_quote
+    (block_quote_marker)
+    (content
+      (paragraph))))
+
+================================================================================
+An indented heading below a list item after a blank line closes the item
+================================================================================
+- q
+
+ # h
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph))))
+  (section
+    (heading
+      (marker)
+      (content))))
+
+================================================================================
+An indented quote prefix continues a quote below a heading
+================================================================================
+> # h
+  > # i
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (heading
+        (marker)
+        (content))
+      (block_quote_marker)
+      (heading
+        (marker)
+        (content)))))
+
+================================================================================
+An indented inner quote prefix continues the inner quote below a heading
+================================================================================
+> > # h
+>  > # i
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (block_quote
+        (block_quote_marker)
+        (content
+          (heading
+            (marker)
+            (content))
+          (block_quote_marker)
+          (block_quote_marker)
+          (heading
+            (marker)
+            (content)))))))
+
+================================================================================
+An indented quote interrupts a paragraph at the document level
+================================================================================
+a
+  > r
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph)
+  (block_quote
+    (block_quote_marker)
+    (content
+      (paragraph))))
+
+================================================================================
+An indented heading on a lazy line closes the item
+================================================================================
+- q
+ # h
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph))))
+  (section
+    (heading
+      (marker)
+      (content))))
+
+================================================================================
+A nested quote opens past the quote's content column
+================================================================================
+> q
+>  > r
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (paragraph)
+      (block_quote_marker)
+      (block_quote
+        (block_quote_marker)
+        (content
+          (paragraph))))))
+
+================================================================================
+A table opens past the quote's content column
+================================================================================
+>  | a |
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (table
+        (table_row
+          (table_cell))))))
+
+================================================================================
+A thematic break opens past the quote's content column
+================================================================================
+> q
+>   ***
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (paragraph)
+      (block_quote_marker)
+      (thematic_break))))
+
+================================================================================
+An indented attribute line attaches to the next block
+================================================================================
+ {.c}
+b
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_attribute
+    (args
+      (class)))
+  (paragraph))
+
+================================================================================
+A glued quote marker on a lazy line stays paragraph text
+================================================================================
+> a
+># b
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (paragraph))))

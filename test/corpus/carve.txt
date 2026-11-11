@@ -819,24 +819,30 @@ outside
       (paragraph))))
 
 ===============================================================================
-Heading markers must be at column zero
+An indented heading marker opens a heading
 ===============================================================================
    # H
 
 -------------------------------------------------------------------------------
 
 (document
-  (paragraph))
+  (section
+    (heading
+      (marker)
+      (content))))
 
 ===============================================================================
-Indented heading marker (two spaces) is a paragraph
+An indented heading marker (two spaces) opens a heading
 ===============================================================================
   ## H
 
 -------------------------------------------------------------------------------
 
 (document
-  (paragraph))
+  (section
+    (heading
+      (marker)
+      (content))))
 
 ===============================================================================
 A list marker folds into a block-quote's lazy paragraph
@@ -2974,7 +2980,7 @@ A row missing the closing pipe ends the table it followed
   (paragraph))
 
 ===============================================================================
-An indented reference definition stays paragraph text
+An indented reference definition registers
 ===============================================================================
 
  [x]: /intro "T"
@@ -2982,7 +2988,10 @@ An indented reference definition stays paragraph text
 -------------------------------------------------------------------------------
 
 (document
-  (paragraph))
+  (link_reference_definition
+    (link_label)
+    (link_destination)
+    (link_title)))
 
 ===============================================================================
 A footnote definition needs an inline body on the marker line
@@ -3157,8 +3166,8 @@ A lone paren is not the bare dot's counterpart
   (paragraph))
 
 ===============================================================================
-An indented colon fence opens no div
-;; Nor does the indented closer end the paragraph (corpus 160).
+An indented colon fence opens a div
+;; Leading space stops no opener (PART 0 S3, carve#3887).
 ===============================================================================
 
  ::: note
@@ -3168,10 +3177,15 @@ An indented colon fence opens no div
 -------------------------------------------------------------------------------
 
 (document
-  (paragraph))
+  (div
+    (div_marker_begin)
+    (admonition_type)
+    (content
+      (paragraph))
+    (div_marker_end)))
 
 ===============================================================================
-An indented attribute line is literal text
+An indented attribute line attaches to the block below
 ===============================================================================
 
  {.todo}
@@ -3180,6 +3194,9 @@ para
 -------------------------------------------------------------------------------
 
 (document
+  (block_attribute
+    (args
+      (class)))
   (paragraph))
 
 ===============================================================================
@@ -3209,7 +3226,7 @@ ___
   (thematic_break))
 
 ===============================================================================
-An indented thematic break is a paragraph
+An indented thematic break is a break
 ===============================================================================
 
  ***
@@ -3217,10 +3234,10 @@ An indented thematic break is a paragraph
 -------------------------------------------------------------------------------
 
 (document
-  (paragraph))
+  (thematic_break))
 
 ===============================================================================
-An indented code fence is a paragraph
+An indented code fence opens a code block
 ===============================================================================
 
  ```
@@ -3230,11 +3247,10 @@ An indented code fence is a paragraph
 -------------------------------------------------------------------------------
 
 (document
-  (paragraph
-    (verbatim
-      begin_marker: (verbatim_marker_begin)
-      content: (content)
-      end_marker: (verbatim_marker_end))))
+  (code_block
+    (code_block_marker_begin)
+    code: (code)
+    (code_block_marker_end)))
 
 ===============================================================================
 A fence at a list item's content column still opens
@@ -4345,7 +4361,7 @@ y
   (paragraph))
 
 ===============================================================================
-An indented definition term marker is paragraph text (tree-sitter-carve#109)
+An indented definition term marker opens a term
 ===============================================================================
  :: t
 tail
@@ -4353,10 +4369,13 @@ tail
 -------------------------------------------------------------------------------
 
 (document
-  (paragraph))
+  (definition_list
+    (list_item
+      (list_marker_definition)
+      (term))))
 
 ===============================================================================
-An indented term inside a div is paragraph text too (tree-sitter-carve#109)
+An indented term inside a div opens a term too
 ===============================================================================
 ::: note
  :: t
@@ -4370,7 +4389,10 @@ tail
     (div_marker_begin)
     type: (admonition_type)
     content: (content
-      (paragraph))
+      (definition_list
+        (list_item
+          marker: (list_marker_definition)
+          term: (term))))
     (div_marker_end)))
 
 ===============================================================================
@@ -4834,7 +4856,22 @@ see[^a]
 
 -------------------------------------------------------------------------------
 
-(document (footnote (footnote_marker_begin) (reference_label) (footnote_marker_end) (footnote_content (paragraph))) (paragraph (verbatim (verbatim_marker_begin) (content) (verbatim_marker_end))) (paragraph (footnote_reference (footnote_marker_begin) (reference_label) (footnote_marker_end))))
+(document
+  (footnote
+    (footnote_marker_begin)
+    (reference_label)
+    (footnote_marker_end)
+    (footnote_content
+      (paragraph)))
+  (code_block
+    (code_block_marker_begin)
+    (code)
+    (code_block_marker_end))
+  (paragraph
+    (footnote_reference
+      (footnote_marker_begin)
+      (reference_label)
+      (footnote_marker_end))))
 
 ===============================================================================
 A seven-hash line does not interrupt a paragraph (tree-sitter-carve#112)
@@ -6152,8 +6189,7 @@ A figure group opens at a container's content column too
 ;; The column-0 half of a construct is not the whole construct. A `:::` fence
 ;; sits exactly at its container's content column, so a group has to open
 ;; inside a list item and inside a block quote as well as at the document's own
-;; column - and an opener INDENTED past the document's column is plain text,
-;; which is the control that keeps the first two from passing by accident.
+;; column, and indented past the document's column as well (PART 0 S3).
 ===============================================================================
 
 - a
@@ -6194,7 +6230,11 @@ z
             (block_quote_marker)))
         (block_quote_marker)
         (div_marker_end))))
-  (paragraph))
+  (div
+    (div_marker_begin)
+    figure_group_marker: (figure_group_marker)
+    content: (content
+      (paragraph))))
 
 ===============================================================================
 A caption's marker separator is a run, and none of it is content
@@ -6207,10 +6247,7 @@ A caption's marker separator is a run, and none of it is content
 ;; case did not.
 ;;
 ;; What the tree does pin is the marker's reach: `^` followed by a TAB is not a
-;; marker, and neither is an INDENTED caret (corpus 158). The second held before
-;; this rule landed; the third did not survive the marker's move to the external
-;; scanner on its own, and is here because the scanner has no column rule unless
-;; one is written.
+;; marker, while an INDENTED caret is one (PART 0 S3, carve#3887).
 ;;
 ;; The remaining half - a caret whose separator run reaches the end of the line
 ;; opens no caption - cannot live in this file at all: it needs a line ending in
@@ -6246,7 +6283,9 @@ A caption's marker separator is a run, and none of it is content
     (inline_image
       description: (image_description)
       destination: (inline_link_destination)))
-  (paragraph))
+  (caption
+    (caption_marker)
+    content: (caption_content)))
 
 ===============================================================================
 A heading's marker separator is a run, and none of it is content
@@ -6874,7 +6913,11 @@ A padded bullet's content column is past the whole space run (tree-sitter-carve#
     (list_item
       marker: (list_marker_dash)
       content: (list_item_content
-        (paragraph)))))
+        (paragraph))))
+  (section
+    heading: (heading
+      marker: (marker)
+      content: (content))))
 
 ===============================================================================
 A marker short of a padded item's content column folds into its paragraph (tree-sitter-carve#380)
@@ -7080,12 +7123,9 @@ y
         (code_block
           (code_block_marker_begin)
           code: (code)))))
-  (paragraph
-    (verbatim
-      begin_marker: (verbatim_marker_begin)
-      content: (content)
-      end_marker: (verbatim_marker_end)))
-  (paragraph))
+  (code_block
+    (code_block_marker_begin)
+    code: (code)))
 
 ===============================================================================
 A fence body line short of its item's content column ends the fence and the item (tree-sitter-carve#394)
@@ -7134,11 +7174,8 @@ An ordered item's fence ends at a closer short of the item's content column (tre
         (code_block
           (code_block_marker_begin)
           code: (code)))))
-  (paragraph
-    (verbatim
-      begin_marker: (verbatim_marker_begin)
-      content: (content)
-      end_marker: (verbatim_marker_end))))
+  (code_block
+    (code_block_marker_begin)))
 
 ===============================================================================
 A fence opened past an item's content column ends at a line short of that column (tree-sitter-carve#394)
@@ -7194,11 +7231,10 @@ A quoted fence closer short of its list item's column ends the fence and the ite
               code: (code
                 (block_quote_marker))))))
       (block_quote_marker)
-      (paragraph
-        (verbatim
-          begin_marker: (verbatim_marker_begin)
-          content: (content)
-          end_marker: (verbatim_marker_end))))))
+      (code_block
+        (code_block_marker_begin)
+        code: (code
+          (block_quote_marker))))))
 
 ===============================================================================
 A quoted fence body line short of its list item's column ends the fence and the item (tree-sitter-carve#407)

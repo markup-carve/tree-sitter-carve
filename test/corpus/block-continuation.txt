@@ -222,7 +222,7 @@ A heading past the item column under a quote folds into the quote
             (paragraph)))))))
 
 ================================================================================
-A quote marker between the item columns folds into the item paragraph
+A quote marker between the item columns closes the item and opens a quote
 ================================================================================
 - one
  > q
@@ -234,7 +234,11 @@ A quote marker between the item columns folds into the item paragraph
     (list_item
       (list_marker_dash)
       (list_item_content
-        (paragraph)))))
+        (paragraph))))
+  (block_quote
+    (block_quote_marker)
+    (content
+      (paragraph))))
 
 ================================================================================
 A nested list in a quote in a list item keeps its later items
@@ -415,7 +419,10 @@ A missing outer quote marker ends the fence and quote
               (content
                 (code_block
                   (code_block_marker_begin)))))))))
-  (paragraph))
+  (block_quote
+    (block_quote_marker)
+    (content
+      (paragraph))))
 
 ================================================================================
 A quote at a list item column interrupts its paragraph
