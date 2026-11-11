@@ -4528,6 +4528,17 @@ static bool quote_marker_at_column(Scanner *s, uint8_t number,
 }
 
 /// `in_paragraph`: the run continues an open paragraph's line.
+/// Is a list item open inside the innermost quote? A list holding the quotes
+/// does not count: the line is past it.
+static bool list_inside_quotes(Scanner *s) {
+  for (int i = s->open_blocks->size - 1; i >= 0; --i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (b->type == BLOCK_QUOTE) return false;
+    if (is_list(b->type)) return true;
+  }
+  return false;
+}
+
 static uint8_t scan_quote_marker_run(Scanner *s, TSLexer *lexer,
                                      bool *ending_newline,
                                      bool *skipped_indent, bool in_paragraph) {
@@ -4557,7 +4568,7 @@ static uint8_t scan_quote_marker_run(Scanner *s, TSLexer *lexer,
     // Past every open quote a deeper `>` opens after any indentation (S3).
     if (in_paragraph && lexer->lookahead == ' ' && !next_quote &&
         marker_count >= count_blocks(s, BLOCK_QUOTE) &&
-        !(s->state & STATE_LIST_CONTINUATION) && !list_item_open(s)) {
+        !(s->state & STATE_LIST_CONTINUATION) && !list_inside_quotes(s)) {
       while (lexer->lookahead == ' ') advance(s, lexer);
       if (skipped_indent && lexer->lookahead != '>') *skipped_indent = true;
       continue;
@@ -4897,10 +4908,13 @@ static bool parse_block_quote(Scanner *s, TSLexer *lexer,
         mark_end(s, lexer);
         s->indent = (uint8_t)line_column(s, lexer);
       }
+      // So does a sibling short of the item's content column (PART 0 S4).
       if (list_col != 0 && run > 0 && lexer->lookahead != ' ' &&
           lexer->lookahead != '\t' &&
           (line_column(s, lexer) == list_col ||
-           line_column(s, lexer) == abs_list_col)) {
+           line_column(s, lexer) == abs_list_col ||
+           (abs_list_col == 0 && line_column(s, lexer) > list_col &&
+            line_column(s, lexer) < pin_list->content_col))) {
         mark_end(s, lexer);
         s->indent = run;
       }
@@ -6029,12 +6043,18 @@ static bool ensure_list_open(Scanner *s, BlockType type, uint8_t indent) {
   }
   // A sibling short of the last item's content column moves the list to its
   // own columns (PART 0 S4).
-  if (top && top->type == type && top->content_col != 0 &&
-      count_blocks(s, BLOCK_QUOTE) == 0 && indent > 0 &&
-      indent - 1u < top->content_col) {
-    top->data = indent;
-    top->content_col = 0;
-    return true;
+  if (top && top->type == type && top->content_col != 0 && indent > 0) {
+    uint32_t content = top->content_col;
+    Block *quote = find_block(s, BLOCK_QUOTE);
+    if (quote && list_opened_in_quote(s, top)) {
+      content = content > quote->content_col ? content - quote->content_col : 0;
+    }
+    if (indent - 1u < content &&
+        (!quote || list_opened_in_quote(s, top))) {
+      top->data = indent;
+      top->content_col = 0;
+      return true;
+    }
   }
   if (at_nesting_cap(s)) return false;
   push_block(s, type, indent);
@@ -6882,14 +6902,14 @@ static bool parse_star(Scanner *s, TSLexer *lexer, const bool *valid_symbols,
                                              THEMATIC_BREAK_STAR, declined_run);
 }
 
-/// The content column of the item holding `list`, or 0 at the root.
+/// The content column of the item or quote holding `list`, or 0 at the root.
 static uint8_t enclosing_item_content_col(Scanner *s, Block *list) {
   bool below = false;
   for (int i = s->open_blocks->size - 1; i >= 0; --i) {
     Block *b = *array_get(s->open_blocks, i);
     if (b == list) {
       below = true;
-    } else if (below && is_list(b->type)) {
+    } else if (below && (is_list(b->type) || b->type == BLOCK_QUOTE)) {
       return b->content_col;
     }
   }
@@ -7208,6 +7228,11 @@ static bool parse_list_item_end(Scanner *s, TSLexer *lexer,
     if (different_indent && count_blocks(s, BLOCK_QUOTE) == 0 &&
         list->content_col != 0 && s->indent < list->content_col &&
         s->indent >= enclosing_item_content_col(s, list)) {
+      different_indent = false;
+    }
+    if (different_indent && marker_col != 0 && list->content_col != 0 &&
+        marker_col < list->content_col &&
+        marker_col >= enclosing_item_content_col(s, list)) {
       different_indent = false;
     }
 
@@ -10237,6 +10262,13 @@ keep_reading:
       for (int i = s->open_blocks->size - 1; i >= 0; --i) {
         Block *item = *array_get(s->open_blocks, i);
         if (is_list(item->type) && item->content_col == column) return true;
+      }
+      // Short of a quoted item, a `>` opens a quote in the item's owner
+      // (PART 0 S3/S4).
+      Block *quoted = find_list(s);
+      if (quoted && list_inside_quotes(s) && list_opened_in_quote(s, quoted) &&
+          column < quoted->content_col && !at_nesting_cap(s)) {
+        return true;
       }
     }
   }
@@ -16300,10 +16332,23 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     // Indentation right after the quote's markers, before a list marker, is
     // the line's indent, as it is outside a quote: `>  - a` opens a list.
     Block *quote = find_block(s, BLOCK_QUOTE);
+    Block *quoted_list = peek_block(s);
     if (quote && quote == peek_block(s) && quote->content_col != 0 &&
         line_column(s, lexer) == quote->content_col) {
       consume_whitespace(s, lexer);
       s->indent = (uint8_t)line_column(s, lexer);
+    } else if (quote && quote->content_col != 0 && quoted_list &&
+               is_list(quoted_list->type) &&
+               quoted_list->type != LIST_DEFINITION &&
+               list_opened_in_quote(s, quoted_list) &&
+               line_column(s, lexer) == quote->content_col) {
+      // A sibling short of a quoted item's content column (PART 0 S4) counts
+      // its indent from the quote's prefix, as the list's own marker did.
+      consume_whitespace(s, lexer);
+      uint32_t column = line_column(s, lexer);
+      if (column < quoted_list->content_col) {
+        s->indent = (uint8_t)(column - quote->content_col);
+      }
     }
   }
   Block *pending_list = find_list(s);
