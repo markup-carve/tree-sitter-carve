@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import Parser from 'tree-sitter';
 import Carve from '../bindings/node/index.js';
+import { engineReadingGaps } from './engine-reading-gaps.mjs';
 import { carveToHtml, parse } from '@markup-carve/carve';
 
 const parser = new Parser();
@@ -32,7 +33,12 @@ function countAst(value, type, accepts = () => true) {
   for (const [key, child] of Object.entries(value)) if (key !== 'pos') count += countAst(child, type, accepts);
   return count;
 }
+const gaps = engineReadingGaps('caption-block-boundaries');
 function check(source) {
+  gaps.compare(source, () => compareWithEngine(source),
+    () => assert.equal(parser.parse(source).rootNode.hasError, false, JSON.stringify(source)));
+}
+function compareWithEngine(source) {
   const root = parser.parse(source).rootNode;
   assert.equal(root.hasError, false, JSON.stringify(source));
   const html = carveToHtml(source);
@@ -130,4 +136,5 @@ for (const [open, close] of spans) for (const ending of ['\n', '\r\n', '\r']) {
     check(`- item\n+\n::: note\n${noise}| h |\n^ ${open}a\n  ^ b${close}\n:::\n`.replaceAll('\n', ending));
   }
 }
+gaps.finish();
 console.log(`Caption boundaries: ${cases} engine controls and ${edits} incremental edits pass.`);

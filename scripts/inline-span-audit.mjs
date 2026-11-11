@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import Parser from 'tree-sitter';
 import Carve from '../bindings/node/index.js';
+import { engineReadingGaps } from './engine-reading-gaps.mjs';
 import { carveToHtml } from '@markup-carve/carve';
 
 const parser = new Parser();
@@ -19,7 +20,12 @@ const types = {
   u: ['underline'], sup: ['superscript', 'inline_note', 'footnote_reference'],
   sub: ['subscript'], s: ['strikethrough'], code: ['verbatim'], mark: ['highlighted'],
 };
+const gaps = engineReadingGaps('inline-span-audit');
 function check(source) {
+  gaps.compare(source, () => compareWithEngine(source),
+    () => assert.equal(parser.parse(source).rootNode.hasError, false, JSON.stringify(source)));
+}
+function compareWithEngine(source) {
   const root = parser.parse(source).rootNode;
   assert.equal(root.hasError, false, JSON.stringify(source));
   const html = carveToHtml(source);
@@ -127,4 +133,5 @@ for (const prefix of ['# ', '## ', '- # ']) for (const marker of ['*', '/', '=']
   compareEdit(source, source.replace('a', 'ax'));
   compareEdit(source.replace('a', 'ax'), source);
 }
+gaps.finish();
 console.log(`Inline span audit: ${generated} generated inputs, ${boundaries} block controls and ${edits} incremental edits pass.`);

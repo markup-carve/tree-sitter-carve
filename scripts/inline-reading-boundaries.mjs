@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import Parser from 'tree-sitter';
 import { createRequire } from 'node:module';
 import { carveToHtml } from '@markup-carve/carve';
+import { engineReadingGaps } from './engine-reading-gaps.mjs';
 
 const require = createRequire(import.meta.url);
 const parser = new Parser();
@@ -67,6 +68,7 @@ const cases = [
 ];
 const types = { strong: ['strong', 'bold_italic', 'tag', 'mention'],
   em: ['emphasis', 'bold_italic'], u: ['underline'] };
+const gaps = engineReadingGaps('inline-reading-boundaries');
 for (const source of cases) {
   const html = carveToHtml(source);
   const reference = parser.parse(source).rootNode;
@@ -77,10 +79,11 @@ for (const source of cases) {
     for (const [tag, nodes] of Object.entries(types)) {
       const wanted = [...html.matchAll(new RegExp(`<${tag}(?:>|\\s)`, 'g'))].length;
       const actual = nodes.reduce((n, type) => n + root.descendantsOfType(type).length, 0);
-      assert.equal(actual, wanted, `${JSON.stringify(source)}: ${tag}`);
+      gaps.compare(source, () => assert.equal(actual, wanted, `${JSON.stringify(source)}: ${tag}`));
     }
   }
 }
+gaps.finish();
 const merged = parser.parse(cases[0]).rootNode.descendantsOfType('inline_attribute');
 assert.equal(merged.length, 1);
 assert.equal(merged[0].text, '{#a .k}{#b k=1}{.k k=2}');

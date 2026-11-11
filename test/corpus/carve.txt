@@ -4123,17 +4123,18 @@ Text below.
   (paragraph))
 
 ===============================================================================
-A document opening with an unclosed `---` is a thematic break (tree-sitter-carve#95)
+A document opening with an unclosed `---` is empty frontmatter (markup-carve/carve#5016)
 ===============================================================================
 ---
 
 -------------------------------------------------------------------------------
 
 (document
-  (thematic_break))
+  (frontmatter
+    (frontmatter_marker)))
 
 ===============================================================================
-An unclosed `---` opener still lets the rest of the document parse (tree-sitter-carve#95)
+An unclosed `---` opener takes the rest of the document as frontmatter (markup-carve/carve#5016)
 ===============================================================================
 ---
 x
@@ -4141,11 +4142,12 @@ x
 -------------------------------------------------------------------------------
 
 (document
-  (thematic_break)
-  (paragraph))
+  (frontmatter
+    (frontmatter_marker)
+    content: (frontmatter_content)))
 
 ===============================================================================
-An unclosed `---` opener followed by a blank line is still a thematic break (tree-sitter-carve#95)
+An unclosed `---` opener keeps a blank line in its frontmatter (markup-carve/carve#5016)
 ===============================================================================
 ---
 
@@ -4154,11 +4156,12 @@ x
 -------------------------------------------------------------------------------
 
 (document
-  (thematic_break)
-  (paragraph))
+  (frontmatter
+    (frontmatter_marker)
+    content: (frontmatter_content)))
 
 ===============================================================================
-An unclosed `---` opener with content that looks like frontmatter is still a thematic break (tree-sitter-carve#95)
+An unclosed `---` opener with a mapping is frontmatter to the end (markup-carve/carve#5016)
 ===============================================================================
 ---
 title: t
@@ -4166,8 +4169,9 @@ title: t
 -------------------------------------------------------------------------------
 
 (document
-  (thematic_break)
-  (paragraph))
+  (frontmatter
+    (frontmatter_marker)
+    content: (frontmatter_content)))
 
 ===============================================================================
 Two adjacent `---` lines are empty closed frontmatter
@@ -7765,7 +7769,7 @@ An ordered marker still opens a list at a paragraph's start (#320)
 ===============================================================================
 a) x
 
-iv. y
+iv.  y
 
 A) z
 

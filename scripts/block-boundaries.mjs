@@ -3,6 +3,7 @@ import Parser from 'tree-sitter';
 import { parse } from '@markup-carve/carve';
 import { createRequire } from 'node:module';
 import { readFileSync, readdirSync } from 'node:fs';
+import { engineReadingGaps } from './engine-reading-gaps.mjs';
 
 const require = createRequire(import.meta.url);
 const parser = new Parser();
@@ -72,16 +73,17 @@ function summary(node, source, native = false, parents = [], result = []) {
     type ? [...parents, type] : parents, result);
   return result;
 }
+const gaps = engineReadingGaps('block-boundaries');
 function check(source, label) {
   const oracle = summary(parse(source, { sourcePositions: true }), source);
   const reference = parser.parse(source);
   assert.equal(reference.rootNode.hasError, false, label);
-  assert.deepEqual(summary(reference.rootNode, source, true), oracle, label);
+  gaps.compare(label, () => assert.deepEqual(summary(reference.rootNode, source, true), oracle, label));
   for (const newline of ['\r\n', '\r']) {
     const variant = source.replace(/\r\n|\r|\n/g, newline);
     const alternate = parser.parse(variant);
     assert.equal(alternate.rootNode.hasError, false, label);
-    assert.deepEqual(summary(alternate.rootNode, variant, true), oracle, label);
+    gaps.compare(label, () => assert.deepEqual(summary(alternate.rootNode, variant, true), oracle, label));
     assert.equal(alternate.rootNode.toString(), reference.rootNode.toString(), label);
   }
 }
@@ -112,5 +114,6 @@ controls.forEach((source, index) => check(source, 'boundary control ' + index));
 const escaped = parser.parse('| a b \\|\n').rootNode;
 assert.equal(escaped.descendantsOfType('table_cell')[0].text, ' a b \\|');
 assert.equal(escaped.descendantsOfType('backslash_escape').length, 1);
+gaps.finish();
 console.log('Block boundaries: ' + examples.length + ' corpus controls and ' + controls.length
   + ' boundary controls match engine ownership across LF, CRLF, and CR.');

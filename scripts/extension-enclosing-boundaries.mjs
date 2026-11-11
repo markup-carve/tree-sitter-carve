@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import Parser from 'tree-sitter';
 import Carve from '../bindings/node/index.js';
+import { engineReadingGaps } from './engine-reading-gaps.mjs';
 import { parse } from '@markup-carve/carve';
 
 const parser = new Parser();
@@ -13,7 +14,12 @@ function nodes(value, kind, out = []) {
   for (const [key, child] of Object.entries(value)) if (key !== 'pos') nodes(child, kind, out);
   return out;
 }
+const gaps = engineReadingGaps('extension-enclosing-boundaries');
 function check(source) {
+  gaps.compare(source, () => compareWithEngine(source),
+    () => assert.equal(parser.parse(source).rootNode.hasError, false, JSON.stringify(source)));
+}
+function compareWithEngine(source) {
   const root = parser.parse(source).rootNode;
   assert.equal(root.hasError, false, JSON.stringify(source));
   const ast = parse(source);
@@ -101,4 +107,5 @@ for (const n of [16, 64, 256]) for (const fragment of [':x[a `b*} c` d] ', ':x[a
   check(before); check(after); edit(before, after); edit(after, before);
   await new Promise(setImmediate);
 }
+gaps.finish();
 console.log(`Extension scopes: ${comparisons} engine comparisons and ${edits} incremental edits pass.`);

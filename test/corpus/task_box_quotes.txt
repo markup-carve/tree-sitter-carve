@@ -1,0 +1,51 @@
+================================================================================
+Nested quotes behind a task box continue at the item column (CARVE-P9-083)
+================================================================================
+- [ ] > > q
+  > > r
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_task
+        checkmark: (unchecked))
+      content: (list_item_content
+        (block_quote
+          (block_quote_marker)
+          content: (content
+            (block_quote
+              (block_quote_marker)
+              content: (content
+                (paragraph
+                  (block_quote_marker)
+                  (block_quote_marker))))))))))
+
+================================================================================
+A third quote behind a task box continues too
+================================================================================
+- [ ]  > > > q
+  > > > r
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_task
+        checkmark: (unchecked))
+      content: (list_item_content
+        (block_quote
+          (block_quote_marker)
+          content: (content
+            (block_quote
+              (block_quote_marker)
+              content: (content
+                (block_quote
+                  (block_quote_marker)
+                  content: (content
+                    (paragraph
+                      (block_quote_marker)
+                      (block_quote_marker)
+                      (block_quote_marker))))))))))))

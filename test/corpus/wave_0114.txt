@@ -1,0 +1,159 @@
+================================================================================
+Braced cell alignment carries the cell's attribute block (markup-carve/carve#5091)
+================================================================================
+|={>} Price |={<} Item |={~^} Note |
+|{>} 3 |{< .x} a |{?v} n |
+
+--------------------------------------------------------------------------------
+
+(document
+  (table
+    (table_row
+      (table_cell
+        (table_cell_attributes))
+      (table_cell
+        (table_cell_attributes))
+      (table_cell
+        (table_cell_attributes)))
+    (table_row
+      (table_cell
+        (table_cell_attributes))
+      (table_cell
+        (table_cell_attributes))
+      (table_cell
+        (table_cell_attributes)))))
+
+================================================================================
+An invalid alignment block stays cell content
+================================================================================
+|{^} a |{>>} b |{^>} c |{?} d |
+
+--------------------------------------------------------------------------------
+
+(document
+  (table
+    (table_row
+      (table_cell)
+      (table_cell)
+      (table_cell)
+      (table_cell))))
+
+================================================================================
+Spaced thematic breaks (markup-carve/carve#4814)
+================================================================================
+- - -
+
+* * * *
+
+--------------------------------------------------------------------------------
+
+(document
+  (thematic_break)
+  (thematic_break))
+
+================================================================================
+A spaced break interrupts a paragraph
+================================================================================
+a
+* * *
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph)
+  (thematic_break))
+
+================================================================================
+A wider gap or mixed markers stay list items
+================================================================================
+- -  -
+
+-  - -
+
+- * -
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (list
+          (list_item
+            (list_marker_dash)
+            (list_item_content
+              (paragraph))))))
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (list
+          (list_item
+            (list_marker_dash)
+            (list_item_content
+              (paragraph))))))
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (list
+          (list_item
+            (list_marker_star)
+            (list_item_content
+              (paragraph))))))))
+
+================================================================================
+A spaced run that is not a break keeps the task box out of the outer marker
+================================================================================
+- - [ ] x
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (list
+          (list_item
+            (list_marker_task
+              (unchecked))
+            (list_item_content
+              (paragraph))))))))
+
+================================================================================
+Unclosed frontmatter keeps blank lines to the end (markup-carve/carve#5016)
+================================================================================
+---yaml
+a: 1
+
+# not a heading
+
+--------------------------------------------------------------------------------
+
+(document
+  (frontmatter
+    (frontmatter_marker)
+    language: (language)
+    content: (frontmatter_content)))
+
+================================================================================
+A letter or roman marker with a dot needs two spaces (markup-carve/carve#4828)
+================================================================================
+A. Smith said so
+
+a.  one
+b.  two
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph)
+  (list
+    (list_item
+      (list_marker_lower_alpha_period)
+      (list_item_content
+        (paragraph)))
+    (list_item
+      (list_marker_lower_alpha_period)
+      (list_item_content
+        (paragraph)))))
