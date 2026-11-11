@@ -5791,6 +5791,25 @@ static bool marker_folds_into_item(Scanner *s, uint32_t column) {
 // engine keeps both lines INSIDE the item as lazy text (tree-sitter-carve#75).
 static bool marker_folds_into_nested_paragraph(Scanner *s, uint32_t column);
 
+/// Does a line at `column` stand short of the innermost open footnote's body
+/// margin? The margin counts from the prefix of the quote holding the note.
+static bool line_misses_note(Scanner *s, uint32_t column) {
+  Block *note = find_block(s, FOOTNOTE);
+  if (!note) return false;
+  uint32_t margin = note->data;
+  bool below_note = false;
+  for (int i = s->open_blocks->size - 1; i >= 0; --i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (b == note) {
+      below_note = true;
+    } else if (below_note && b->type == BLOCK_QUOTE) {
+      margin += b->content_col;
+      break;
+    }
+  }
+  return column < margin;
+}
+
 static bool scan_paragraph_closing_marker(Scanner *s, TSLexer *lexer) {
   // A COLON-led line is classified in one pass, because every candidate starts
   // with the same run of colons and the lexer cannot rewind: `:::`+ is a
@@ -5947,6 +5966,11 @@ static bool scan_paragraph_closing_marker(Scanner *s, TSLexer *lexer) {
     if (is_list(host->type) && host->type != LIST_DEFINITION) {
       in_list_item = true;
     }
+  }
+  // A marker short of an open note's margin is read in the note's owner,
+  // where it opens a list (PART 0 S4).
+  if (!list && line_misses_note(s, line_column(s, lexer))) {
+    return scan_list_marker(s, lexer) && marker_line_has_content(s, lexer);
   }
   if (!list || (!in_list_item && list == peek_block(s) &&
                 list->type == LIST_DEFINITION &&
@@ -11114,7 +11138,7 @@ static bool scan_row_or_break_at_paragraph_end(Scanner *s, TSLexer *lexer) {
   }
   Block *list = find_list(s);
   if (!list) {
-    return false;
+    return line_misses_note(s, column);
   }
   if (list == peek_block(s) && list->type == LIST_DEFINITION &&
       !(list->flags & BLOCK_FLAG_DEFINITION_TERM)) {
@@ -11308,8 +11332,10 @@ static bool close_paragraph_after_quote(Scanner *s, TSLexer *lexer,
         (s->state & STATE_LIST_CONTINUATION) &&
         (column == s->continuation_col ||
          column == s->continuation_col + quote_prefix);
-    if (column < margin && !attached_lazy_line) {
-      if (lexer->lookahead == '+') {
+    // A line short of the note folds into its paragraph unless it opens a
+    // block (PART 0 S4); the probes below ask that.
+    if (column < margin && !attached_lazy_line && lexer->lookahead == '+') {
+      {
         advance(s, lexer);
         while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
           advance(s, lexer);
