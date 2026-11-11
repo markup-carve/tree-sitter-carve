@@ -712,6 +712,11 @@ typedef struct {
   bool braced_probe_closer_in_code;
   uint8_t after_closer_char;
   uint32_t after_closer_col;
+  // The column and character right behind a bare `=` whose highlight check
+  // fails there, packed `col << 8 | char`; see the scan wrapper.
+  uint32_t eq_check_note;
+  // The character after the first one this scan call advanced over. Transient.
+  int32_t first_next;
 
   // The ordered-marker probe stopped right after a word it consumed, so the
   // character behind the lexer is alphanumeric. Transient, never serialized.
@@ -1076,6 +1081,8 @@ static void advance(Scanner *s, TSLexer *lexer) {
     s->row_cell_start_col = s->row_capture_col + 1;
   }
   lexer->advance(lexer, false);
+  if (lexer->advance != bracket_probe_advance && s->host_advances == 1 && s->first_next < 0)
+    s->first_next = lexer->lookahead;
   if (lexer->advance != bracket_probe_advance && lexer->is_at_included_range_start(lexer)) {
     s->host_jumped = true;
     resolve_deferred_column(s, lexer);
@@ -15150,7 +15157,41 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
   // A token that never marks its end ends where the scan stopped; marking the
   // start first lets a declined scan still hand back an empty marker.
   if (s->note_here) lexer->mark_end(lexer);
-  bool found = scan(s, lexer, valid_symbols);
+  // EQ_CHECK_NOTE: a fresh parse scans the spot right behind a bare `=` in the
+  // state before the `=` is reduced, which offers the highlight check; after
+  // reuse the goto state does not. Read it as offered either way.
+  bool with_check[AFTER_BARE_CLOSER + 1];
+  const bool *symbols = valid_symbols;
+  if (s->eq_check_note && !valid_symbols[ERROR] && !valid_symbols[HIGHLIGHTED_OPEN_CHECK] &&
+      lexer->lookahead == (int32_t)(s->eq_check_note & 0xff) &&
+      s->eq_check_note >> 8 == line_column(s, lexer)) {
+    memcpy(with_check, valid_symbols, sizeof(with_check));
+    with_check[HIGHLIGHTED_OPEN_CHECK] = true;
+    symbols = with_check;
+  }
+  // A `=` the scanner declines goes to the internal lexer, so only an empty
+  // token can carry the note past it.
+  bool eq_start = lexer->lookahead == '=' && valid_symbols[AFTER_BARE_CLOSER] &&
+                  !valid_symbols[ERROR] && s->entry_length;
+  if (eq_start) lexer->mark_end(lexer);
+  s->first_next = -1;
+  bool found = scan(s, lexer, symbols);
+  if (eq_start && found && !s->host_marked) lexer->mark_end(lexer);
+  if (eq_start && !found && (!s->host_marked || !s->host_advances_at_mark) &&
+      !s->host_crossed_line && !s->host_jumped && s->host_advances &&
+      (s->first_next == '~' || s->first_next == '<' || s->first_next == '>')) {
+    uint32_t column = line_column(s, lexer);
+    uint32_t note = (column + 1 - s->host_advances) << 8 | (uint8_t)s->first_next;
+    if (column >= s->host_advances && s->eq_check_note != note) {
+      tree_sitter_carve_external_scanner_deserialize(s, s->entry_state, s->entry_length);
+      s->eq_check_note = note;
+      lexer->result_symbol = AFTER_BARE_CLOSER;
+      return true;
+    }
+  }
+  if (found && s->eq_check_note &&
+      (line_end || s->host_crossed_line || (s->host_marked ? s->host_advances_at_mark : s->host_advances)))
+    s->eq_check_note = 0;
   if (s->note_here && !scan_right_behind(s, lexer, valid_symbols, &found, closer_char, closer_col)) return true;
   if (found && s->table_attribute_pending) {
     TokenType token = (TokenType)lexer->result_symbol;
@@ -17085,6 +17126,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
 /// that must be released first.
 static void init_scalars(Scanner *s) {
   s->blocks_to_close = 0;
+  s->eq_check_note = 0;
   s->block_quote_level = 0;
   s->indent = 0;
   s->marker_end_col = 0;
@@ -17207,7 +17249,7 @@ unsigned tree_sitter_carve_external_scanner_serialize(void *payload,
                         s->refused_plus_column;
   bool row_extension = s->attached_row_prefix != UINT8_MAX;
   bool chain_extension = s->chain_col != UINT8_MAX;
-  const size_t scalar_bytes = 19 + (plus_extension ? 3 : 0) +
+  const size_t scalar_bytes = 23 + (plus_extension ? 3 : 0) +
                               (row_extension ? 1 : 0) + (chain_extension ? 1 : 0);
   const size_t block_count_bytes = 1;
   const size_t block_bytes = 4;
@@ -17332,6 +17374,8 @@ unsigned tree_sitter_carve_external_scanner_serialize(void *payload,
                   (s->comment_one_line ? 1 << 13 : 0);
   buffer[size++] = (char)tail;
   buffer[size++] = (char)(tail >> 8);
+  for (unsigned shift = 0; shift < 32; shift += 8)
+    buffer[size++] = (char)(s->eq_check_note >> shift);
   return size;
 }
 
@@ -17343,6 +17387,11 @@ void tree_sitter_carve_external_scanner_deserialize(void *payload, char *buffer,
   if (!length) ++s->parse_generation;
   s->entry_length = length;
   reset(s);
+  if (length >= 24) {
+    length -= 4;
+    for (unsigned shift = 0; shift < 32; shift += 8)
+      s->eq_check_note |= (uint32_t)(uint8_t)buffer[length + shift / 8] << shift;
+  }
   if (length >= 20) {
     uint16_t tail = (uint8_t)buffer[length - 2] | (uint16_t)(uint8_t)buffer[length - 1] << 8;
     s->after_literal_star = (tail & (1 << 14)) != 0;

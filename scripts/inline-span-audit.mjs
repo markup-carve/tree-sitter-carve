@@ -116,6 +116,12 @@ for (const body of controls) {
 compareEdit('/a\n *\n', '/a *\n');
 compareEdit('/a\n /a\n', '/a /a\n');
 compareEdit('a\n/**/\n', 'xa\n/**/\n');
+// #655: the spot behind a bare `=` whose highlight check fails, after reuse.
+for (const host of ['', '- ', '> ', '- =}[x]\n- ']) for (const next of ['~', '<', '>']) for (const tail of ['', 'z', '*', next]) {
+  const body = `${host}/+=z=*=${next}${tail}z~*#=${next}${tail}\n`;
+  compareEdit('a\n' + body, 'xa\n' + body);
+  compareEdit('xa\n' + body, 'a\n' + body);
+}
 for (const marker of ['*', '/', '_', '~', '=']) {
   const before = (`{${marker}a `).repeat(8) + '\n';
   const after = before.slice(0, -1) + marker + '}\n';
