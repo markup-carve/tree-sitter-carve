@@ -339,11 +339,8 @@ A thematic break below the body ends an over-indented fence
       (code_block
         (code_block_marker_begin))))
   (thematic_break)
-  (paragraph
-    (verbatim
-      (verbatim_marker_begin)
-      (content)
-      (verbatim_marker_end))))
+  (code_block
+    (code_block_marker_begin)))
 
 ================================================================================
 A heading below a description body interrupts its fence
@@ -371,11 +368,8 @@ A heading below a description body interrupts its fence
       (marker)
       (content))
     (section_content
-      (paragraph
-        (verbatim
-          (verbatim_marker_begin)
-          (content)
-          (verbatim_marker_end))))))
+      (code_block
+        (code_block_marker_begin)))))
 
 ================================================================================
 A quote below a description body interrupts its fence

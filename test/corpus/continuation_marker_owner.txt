@@ -927,19 +927,20 @@ Issue 584: A missing inner quote prefix keeps plus as text
     (list_item
       (list_marker_decimal_period)
       (list_item_content
-        (paragraph)
-      )
-    )
-  )
-  (list
-    (list_item
-      (list_marker_dash)
-      (list_item_content
-        (paragraph)
-      )
-    )
-  )
-)
+        (paragraph))))
+  (block_quote
+    (block_quote_marker)
+    (content
+      (block_quote
+        (block_quote_marker)
+        (content
+          (paragraph)))
+      (list_continuation_marker)
+      (list
+        (list_item
+          (list_marker_dash)
+          (list_item_content
+            (paragraph)))))))
 
 ================================================================================
 Issue 584: A quote prefix attaches a nested quote

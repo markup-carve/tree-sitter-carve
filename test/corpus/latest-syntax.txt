@@ -1790,7 +1790,7 @@ A paragraph after a quoted blank line at a nested item's column stays in the nes
                   (paragraph))))))))))
 
 ==================
-A heading one column short of a quoted item's content column is item text
+A heading one column short of a quoted item's content column closes the item
 ==================
 > - a
 >  # H
@@ -1805,8 +1805,11 @@ A heading one column short of a quoted item's content column is item text
         (list_item
           marker: (list_marker_dash)
           content: (list_item_content
-            (paragraph
-              (block_quote_marker))))))))
+            (paragraph))))
+      (block_quote_marker)
+      (heading
+        marker: (marker)
+        content: (content)))))
 
 ==================
 A heading two columns past a list item's content column opens in the item
@@ -1984,7 +1987,7 @@ See [r][].
       text: (link_text))))
 
 ==================
-An indented quote marker at the document margin is paragraph text
+An indented quote marker at the document margin opens a quote
 ==================
 x
 
@@ -1994,20 +1997,26 @@ x
 
 (document
   (paragraph)
-  (paragraph))
+  (block_quote
+    (block_quote_marker)
+    (content
+      (paragraph))))
 
 ==================
-A quote marker one column in at the document margin is paragraph text
+A quote marker one column in at the document margin opens a quote
 ==================
  > q
 
 ---
 
 (document
-  (paragraph))
+  (block_quote
+    (block_quote_marker)
+    (content
+      (paragraph))))
 
 ==================
-No definition registers behind an indented quote marker
+A definition registers behind an indented quote marker
 ==================
 [x][r] here.
 
@@ -2020,7 +2029,12 @@ No definition registers behind an indented quote marker
     (full_reference_link
       text: (link_text)
       label: (link_label)))
-  (paragraph))
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (link_reference_definition
+        label: (link_label)
+        destination: (link_destination)))))
 
 ==================
 A quote marker past a list item's content column still opens a quote
@@ -2043,14 +2057,17 @@ A quote marker past a list item's content column still opens a quote
             (paragraph)))))))
 
 ==================
-A tab-indented quote marker at the document margin is paragraph text
+A tab-indented quote marker at the document margin opens a quote
 ==================
 	> q
 
 ---
 
 (document
-  (paragraph))
+  (block_quote
+    (block_quote_marker)
+    (content
+      (paragraph))))
 
 ==================
 A tab that reaches a list item's content column opens a quote in the item
@@ -4757,7 +4774,24 @@ hidden
 
 ---
 
-(document (block_quote (block_quote_marker) (content (definition_list (list_item (list_marker_definition) (term (block_quote_marker)))))) (paragraph) (block_quote (block_quote_marker) (content (comment_line) (block_quote_marker) (paragraph))))
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (definition_list
+        (list_item
+          (list_marker_definition)
+          (term
+            (block_quote_marker))))))
+  (paragraph)
+  (block_quote
+    (block_quote_marker)
+    (content
+      (comment_line)
+      (block_quote_marker)
+      (link_reference_definition
+        (link_label)
+        (link_destination)))))
 
 =============================
 A dedent ends a fenced comment in a nested term (#459)

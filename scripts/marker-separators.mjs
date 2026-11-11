@@ -123,10 +123,10 @@ const CASES = [
         expect: null,
     },
     {
-        name: 'an indented caret is not a caption marker',
+        name: 'an indented caret is a caption marker (PART 0 S3)',
         source: ' ![a](i.png)\n ^ cap\n',
-        path: 'caption',
-        expect: null,
+        path: 'caption.caption_marker',
+        expect: ' ^ ',
     },
     // ---- heading: markup-carve/carve#1587 -------------------------------
     {

@@ -31,7 +31,10 @@ A refused + before a blank line folds into the open paragraph (#611)
   (block_quote
     (block_quote_marker)
     content: (content
-      (paragraph))))
+      (block_quote
+        (block_quote_marker)
+        content: (content
+          (paragraph))))))
 
 ================================================================================
 A quote after a blank line keeps a marker followed by two spaces (#611)
@@ -53,7 +56,7 @@ A quote after a blank line keeps a marker followed by two spaces (#611)
       (paragraph))))
 
 ================================================================================
-An indented > in a quote after a blank line is text (#611)
+An indented > in a quote after a blank line opens a nested quote (#611)
 ================================================================================
 > q
 
@@ -69,7 +72,10 @@ An indented > in a quote after a blank line is text (#611)
   (block_quote
     (block_quote_marker)
     content: (content
-      (paragraph))))
+      (block_quote
+        (block_quote_marker)
+        content: (content
+          (paragraph))))))
 
 ================================================================================
 A refused plus after a closed heading stays in the containing quote (#611)
