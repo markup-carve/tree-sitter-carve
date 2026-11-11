@@ -98,3 +98,32 @@ A code run after an extension cut in code still ends at the bare closer
           (content)
           (verbatim_marker_end)))
       (strong_end))))
+
+=========================
+A left-behind bracket inside a closed code run still counts toward the bare closer
+=========================
+*z :x[`]`]  `x` z*
+
+---
+
+(document
+  (paragraph
+    (strong
+      (strong_begin)
+      (content
+        (extension_inline
+          (extension_marker_begin)
+          (content
+            (verbatim
+              (verbatim_marker_begin)
+              (content)
+              (verbatim_marker_end))))
+        (verbatim
+          (verbatim_marker_begin)
+          (content)
+          (verbatim_marker_end))
+        (verbatim
+          (verbatim_marker_begin)
+          (content)
+          (verbatim_marker_end)))
+      (strong_end))))
