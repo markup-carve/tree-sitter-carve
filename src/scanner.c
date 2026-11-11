@@ -5804,6 +5804,7 @@ static bool marker_folds_into_item(Scanner *s, uint32_t column) {
 // text after it OUTSIDE the item as a new top-level paragraph, where every
 // engine keeps both lines INSIDE the item as lazy text (tree-sitter-carve#75).
 static bool marker_folds_into_nested_paragraph(Scanner *s, uint32_t column);
+static bool line_misses_note(Scanner *s, uint32_t column);
 
 /// Does a line at `column` stand short of the innermost open footnote's body
 /// margin? The margin counts from the prefix of the quote holding the note.
@@ -11074,7 +11075,7 @@ static bool marker_folds_into_nested_paragraph(Scanner *s, uint32_t column) {
   // (PART 9 section 10 I2).
   uint8_t quotes = count_blocks(s, BLOCK_QUOTE);
   if (quotes > 0 && s->paragraph_markers_seen == quotes &&
-      s->lazy_drop_markers == 0) {
+      s->lazy_drop_markers == 0 && !line_misses_note(s, column)) {
     bool list_in_quote = false;
     for (int i = s->open_blocks->size - 1; i >= 0; --i) {
       Block *b = *array_get(s->open_blocks, i);
@@ -11390,8 +11391,23 @@ static bool close_paragraph_after_quote(Scanner *s, TSLexer *lexer,
         (column == s->continuation_col ||
          column == s->continuation_col + quote_prefix);
     // A line short of the note folds into its paragraph unless it opens a
-    // block (PART 0 S4); the probes below ask that.
-    if (column < margin && !attached_lazy_line && lexer->lookahead == '+') {
+    // block (PART 0 S4). A line led by an opener character ends the note as
+    // before; plain text and a word that is no list marker fold.
+    int32_t lead = lexer->lookahead;
+    if (column < margin && !attached_lazy_line && lead != '+') {
+      if (carve_is_alnum_ascii(lead) || lead == '(' || lead == '.') {
+        return scan_list_marker(s, lexer) && marker_line_has_content(s, lexer);
+      }
+      switch (lead) {
+      case '#': case '>': case '`': case '~': case ':': case '|': case '*':
+      case '-': case '_': case '[': case '{': case '%': case '^': case '=':
+      case '$': case '!': case '<':
+        return true;
+      default:
+        return false;
+      }
+    }
+    if (column < margin && !attached_lazy_line && lead == '+') {
       {
         advance(s, lexer);
         while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
