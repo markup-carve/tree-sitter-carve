@@ -1,5 +1,5 @@
 =========================
-Nested extension marker stays literal before the first closing bracket
+Nested extension closes at the depth-zero bracket
 =========================
 :x[a :x[b] c]
 
@@ -9,7 +9,10 @@ Nested extension marker stays literal before the first closing bracket
   (paragraph
     (extension_inline
       (extension_marker_begin)
-      (content))))
+      (content
+        (extension_inline
+          (extension_marker_begin)
+          (content))))))
 
 =========================
 The extension cut implicitly closes code inside its payload
@@ -50,4 +53,7 @@ b :x[z]]
       (content
         (extension_inline
           (extension_marker_begin)
-          (content))))))
+          (content
+            (extension_inline
+              (extension_marker_begin)
+              (content))))))))
