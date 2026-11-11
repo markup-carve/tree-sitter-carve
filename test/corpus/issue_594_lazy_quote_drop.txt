@@ -265,7 +265,7 @@ A list marker short of the quote holding its list folds in (#594)
                   (block_quote_marker))))))))))
 
 ================================================================================
-An indented marker on a shallower quoted line is paragraph text (#594)
+An indented marker on a shallower quoted line continues the inner quote (#594)
 ================================================================================
 > > q
 >   > r
@@ -280,6 +280,7 @@ An indented marker on a shallower quoted line is paragraph text (#594)
         (block_quote_marker)
         content: (content
           (paragraph
+            (block_quote_marker)
             (block_quote_marker)))))))
 
 ================================================================================

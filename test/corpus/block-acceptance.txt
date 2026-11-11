@@ -1133,6 +1133,7 @@ Block ownership boundary 10
     (block_quote_marker)
     (content
       (paragraph
+        (block_quote_marker)
         (block_quote_marker)))))
 
 ================================================================================

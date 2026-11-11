@@ -330,7 +330,8 @@ Issue 588: nested quote keeps lazy quote marker in one paragraph
       (block_quote
         (block_quote_marker)
         (content
-          (paragraph))))))
+          (paragraph
+            (block_quote_marker)))))))
 
 ================================================================================
 Issue 588: nested quote keeps lazy list marker in one paragraph

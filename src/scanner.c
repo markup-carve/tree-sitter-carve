@@ -4468,6 +4468,33 @@ static bool list_between_quotes(Scanner *s, uint8_t number) {
   return false;
 }
 
+/// Does the `number`-th quote hold only quotes, and sit directly in the quote
+/// before it (or the document)? Only then may its `>` follow indentation: the
+/// shift would move every column a nested item measures.
+static bool quote_chain_from(Scanner *s, uint8_t number) {
+  // A `+` attachment keeps its own column rules (carve#4409).
+  if (s->state & STATE_LIST_CONTINUATION) return false;
+  uint8_t seen = 0;
+  bool frame_between = false;
+  for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (b->type != BLOCK_QUOTE) {
+      if (b->type == SECTION) continue;
+      if (seen >= number) return false;
+      frame_between = true;
+      continue;
+    }
+    // An attached quote counts its depth from its host, not the stack.
+    if ((b->flags & BLOCK_FLAG_QUOTE_CONTINUATION_PENDING) ||
+        b->data != seen + 1) {
+      return false;
+    }
+    if (++seen == number && frame_between) return false;
+    if (seen < number) frame_between = false;
+  }
+  return seen >= number;
+}
+
 /// An open paragraph reads a `>` at a marker-line quote's content column as
 /// lazy text, not as the quote's marker (#600).
 static bool quote_marker_at_column_gap(Scanner *s, uint8_t number,
@@ -4476,6 +4503,7 @@ static bool quote_marker_at_column_gap(Scanner *s, uint8_t number,
   uint8_t seen = 0;
   Block *enclosing_list = NULL;
   bool outer_list_reached = false;
+  bool chain = quote_chain_from(s, number);
   for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
     Block *b = *array_get(s->open_blocks, i);
     if (is_list(b->type)) {
@@ -4487,6 +4515,9 @@ static bool quote_marker_at_column_gap(Scanner *s, uint8_t number,
     }
     if (b->type != BLOCK_QUOTE) continue;
     if (++seen == number) {
+      // A quote nested directly in a quote or the document takes any
+      // indentation before its `>` (PART 0 L2).
+      if (chain) return true;
       // In a paragraph, a `>` between the item's marker and content columns
       // is lazy text unless an outer item reaches it.
       bool lazy_gap = gap_is_lazy && in_paragraph && enclosing_list &&
@@ -4533,9 +4564,17 @@ static uint8_t scan_quote_marker_run(Scanner *s, TSLexer *lexer,
     if (*ending_newline) {
       break;
     }
+    // `> > a` / `>  > b`: a quote nested directly in this one takes any
+    // indentation before its `>`.
+    Block *next_quote = nth_quote(s, marker_count + 1);
+    if (lexer->lookahead == ' ' && next_quote &&
+        quote_chain_from(s, marker_count + 1)) {
+      while (lexer->lookahead == ' ') advance(s, lexer);
+      if (skipped_indent && lexer->lookahead != '>') *skipped_indent = true;
+      continue;
+    }
     // `> - > a` / `>   > b`: the next quote's marker sits past the item's
     // indentation.
-    Block *next_quote = nth_quote(s, marker_count + 1);
     if (skipped_indent && lexer->lookahead == ' ' && next_quote &&
         next_quote->content_col >= 2 && list_between_quotes(s, marker_count)) {
       uint32_t target = next_quote->content_col - 2u;
@@ -4681,6 +4720,14 @@ static bool parse_block_quote(Scanner *s, TSLexer *lexer,
   // blank line separates.
   bool after_blank_line = (s->state & STATE_AFTER_BLANK_LINE) != 0;
 
+  // `> > a` / `>  > b`: spaces before a directly nested quote's `>`.
+  if (lexer->lookahead == ' ' && s->block_quote_level > 0 &&
+      s->block_quote_level < count_blocks(s, BLOCK_QUOTE) &&
+      quote_chain_from(s, s->block_quote_level + 1)) {
+    while (lexer->lookahead == ' ') advance(s, lexer);
+    if (lexer->lookahead != '>') return false;
+  }
+
   // Where this call's `>` sits, read BEFORE anything is consumed. A quote whose
   // marker begins exactly where the previous marker on this line ended is a
   // MARKER-LINE quote (`- > x`), the block-quote counterpart of the marker-line
@@ -4815,9 +4862,10 @@ static bool parse_block_quote(Scanner *s, TSLexer *lexer,
     while (lexer->lookahead == ' ' || lexer->lookahead == '\t') advance(s, lexer);
     Block *next_quote = nth_quote(s, s->block_quote_level + 2);
     run_continues = lexer->lookahead == '>' && next_quote &&
-        next_quote->content_col >= 2 &&
-        line_column(s, lexer) == next_quote->content_col - 2u &&
-        list_between_quotes(s, s->block_quote_level + 1);
+        ((next_quote->content_col >= 2 &&
+          line_column(s, lexer) == next_quote->content_col - 2u &&
+          list_between_quotes(s, s->block_quote_level + 1)) ||
+         quote_chain_from(s, s->block_quote_level + 2));
   }
   // Only where a token this pin belongs to can follow: a pin taken on a line
   // whose only valid close is another block's (a heading ending at its
@@ -4880,9 +4928,10 @@ static bool parse_block_quote(Scanner *s, TSLexer *lexer,
       // `> - > a` / `>   > b`.
       if (lexer->lookahead == '>') {
         Block *next_quote = nth_quote(s, s->block_quote_level + 2);
-        run_continues = next_quote && next_quote->content_col >= 2 &&
+        run_continues = (next_quote && next_quote->content_col >= 2 &&
             line_column(s, lexer) == next_quote->content_col - 2u &&
-            list_between_quotes(s, s->block_quote_level + 1);
+            list_between_quotes(s, s->block_quote_level + 1)) ||
+            quote_chain_from(s, s->block_quote_level + 2);
         if (run_continues) mark_end(s, lexer);
       }
     }
@@ -10989,9 +11038,16 @@ static bool marker_folds_into_nested_paragraph(Scanner *s, uint32_t column) {
                       (host->type != DIV && host->type != FIGURE_GROUP))) {
     return false;
   }
+  bool past_quote = false;
   for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
     Block *b = *array_get(s->open_blocks, i);
-    if (lazy_quote && b->type == BLOCK_QUOTE) break;
+    if (lazy_quote && b->type == BLOCK_QUOTE) past_quote = true;
+    // Missing a quote and an item body inside it closes them (PART 0 family
+    // guards): `> - q` / `- x` opens a list outside the quote.
+    if (past_quote) {
+      if (is_list(b->type) && b->type != LIST_DEFINITION) return false;
+      continue;
+    }
     if (is_list(b->type) && b->data == column + 1) return false;
   }
   return true;
@@ -16646,9 +16702,12 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     return parse_table_quote_continuation(s, lexer, valid_symbols);
   }
 
+  uint32_t before_quote = s->advances;
+  bool quote_after_spaces = lexer->lookahead == ' ';
   if (parse_block_quote(s, lexer, valid_symbols)) {
     return true;
   }
+  if (quote_after_spaces && s->advances != before_quote) return false;
   if (parse_editorial_comment_hash(s, lexer, valid_symbols)) {
     return true;
   }

@@ -151,7 +151,7 @@ tail
         (paragraph)))))
 
 ================================================================================
-A list marker folds into a quoted paragraph in a list item
+A list marker below a quoted list closes the quote in a list item
 ================================================================================
 - a
   > - x
@@ -172,7 +172,12 @@ A list marker folds into a quoted paragraph in a list item
               (list_item
                 (list_marker_dash)
                 (list_item_content
-                  (paragraph))))))))))
+                  (paragraph))))))
+        (list
+          (list_item
+            (list_marker_dash)
+            (list_item_content
+              (paragraph))))))))
 
 ================================================================================
 A list marker folds into a raised div paragraph in a list item
