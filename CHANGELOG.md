@@ -6,6 +6,29 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.1.14] - 2026-11-11
+
+This release follows the Carve 0.1.14 readings: braced cell alignment, spaced thematic breaks, unclosed frontmatter and the inline extension closer.
+
+### Fixes
+
+- Padded link and image titles and citation separators parse the way the engine reads them (#637).
+- An inline extension's content ends at its depth-zero `]`, so links, bracketed text and nested extensions open inside the payload (#643, markup-carve/carve#4513).
+- A bare span around an inline extension whose first `]` sits in code keeps its closer instead of leaving an ERROR node (#644).
+- An unclosed code run in a table cell ends before the spaces that pad the cell's closing pipe; a tab there stays content (#647).
+- Spaced thematic breaks such as `* * *` and `- - -` parse as breaks, also with a trailing tab (#639, markup-carve/carve#4814).
+- An unclosed `---` frontmatter opener reads as frontmatter, and a closer at the end of input without a final newline no longer leaves a MISSING node (#639, markup-carve/carve#5016, markup-carve/carve#5085).
+- A letter or roman dot marker needs two spaces after it to open a list item, so `A. Smith said so` is a paragraph (#639, markup-carve/carve#4828).
+- A quote nested behind a task box continues on later lines at the box's column (#639).
+- A quote prefix may be indented (`> q` over `  > r`, `>  > r`), and an unprefixed list marker after a quoted list opens a list outside the quote (#653).
+- A span end right before a CR no longer refuses a later `{%`, `{#` or `{*` opener with CRLF or CR line ends (#639).
+
+### Improvements
+
+- Braced table cell alignment (`|={>} Price |`, `|{<} a |`) parses into a `table_cell_attributes` node; the 0.1.13 glued prefix stays readable (#639, markup-carve/carve#5091).
+
+**Full Changelog**: https://github.com/markup-carve/tree-sitter-carve/compare/0.1.13...0.1.14
+
 ## [0.1.13] - 2026-10-25
 
 Task lists now follow the published carve 0.1.13 task state rules.
