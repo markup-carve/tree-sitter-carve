@@ -493,6 +493,10 @@ typedef enum {
   EXTENSION,
 } InlineType;
 
+// Serialized inline type byte of `eq_check_note`, never an open inline.
+#define EQ_CHECK_ENTRY 0x3f
+_Static_assert(EXTENSION < EQ_CHECK_ENTRY, "inline types fit below the note entry");
+
 // What kind of span we should parse.
 typedef enum {
   // Only delimited by a single character, for example `[text]`.
@@ -15182,7 +15186,8 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
       (s->first_next == '~' || s->first_next == '<' || s->first_next == '>')) {
     uint32_t column = line_column(s, lexer);
     uint32_t note = (column + 1 - s->host_advances) << 8 | (uint8_t)s->first_next;
-    if (column >= s->host_advances && s->eq_check_note != note) {
+    if (column >= s->host_advances && column - s->host_advances < UINT16_MAX &&
+        s->eq_check_note != note) {
       tree_sitter_carve_external_scanner_deserialize(s, s->entry_state, s->entry_length);
       s->eq_check_note = note;
       lexer->result_symbol = AFTER_BARE_CLOSER;
@@ -17249,7 +17254,7 @@ unsigned tree_sitter_carve_external_scanner_serialize(void *payload,
                         s->refused_plus_column;
   bool row_extension = s->attached_row_prefix != UINT8_MAX;
   bool chain_extension = s->chain_col != UINT8_MAX;
-  const size_t scalar_bytes = 23 + (plus_extension ? 3 : 0) +
+  const size_t scalar_bytes = 19 + (plus_extension ? 3 : 0) +
                               (row_extension ? 1 : 0) + (chain_extension ? 1 : 0);
   const size_t block_count_bytes = 1;
   const size_t block_bytes = 4;
@@ -17262,7 +17267,8 @@ unsigned tree_sitter_carve_external_scanner_serialize(void *payload,
     // A data value of 255 or more is the escape byte plus two.
     if (b->data >= UINT8_MAX) block_extra_bytes += 2;
   }
-  size_t label_bytes = 0;
+  // `eq_check_note` travels as one more three-byte inline entry.
+  size_t label_bytes = s->eq_check_note ? inline_bytes : 0;
   for (size_t i = 0; i < s->open_inline->size; ++i) {
     Inline *e = *array_get(s->open_inline, i);
     if ((e->type == SQUARE_BRACKET_SPAN && (e->flags & INLINE_LABEL)) || e->type == LITERAL_BRACKET || e->type == EXTENSION) label_bytes += 3;
@@ -17337,6 +17343,12 @@ unsigned tree_sitter_carve_external_scanner_serialize(void *payload,
         buffer[size++] = (char)(x->literal_closes >> shift);
     }
   }
+  if (s->eq_check_note) {
+    uint8_t c = (uint8_t)s->eq_check_note;
+    buffer[size++] = (char)(EQ_CHECK_ENTRY | (c == '~' ? 0 : c == '<' ? 1 : 2) << 6);
+    buffer[size++] = (char)(s->eq_check_note >> 8);
+    buffer[size++] = (char)(s->eq_check_note >> 16);
+  }
 
   // The inline notes are an optimization: drop them rather than the state
   // when the buffer cannot hold them.
@@ -17374,8 +17386,6 @@ unsigned tree_sitter_carve_external_scanner_serialize(void *payload,
                   (s->comment_one_line ? 1 << 13 : 0);
   buffer[size++] = (char)tail;
   buffer[size++] = (char)(tail >> 8);
-  for (unsigned shift = 0; shift < 32; shift += 8)
-    buffer[size++] = (char)(s->eq_check_note >> shift);
   return size;
 }
 
@@ -17387,11 +17397,6 @@ void tree_sitter_carve_external_scanner_deserialize(void *payload, char *buffer,
   if (!length) ++s->parse_generation;
   s->entry_length = length;
   reset(s);
-  if (length >= 24) {
-    length -= 4;
-    for (unsigned shift = 0; shift < 32; shift += 8)
-      s->eq_check_note |= (uint32_t)(uint8_t)buffer[length + shift / 8] << shift;
-  }
   if (length >= 20) {
     uint16_t tail = (uint8_t)buffer[length - 2] | (uint16_t)(uint8_t)buffer[length - 1] << 8;
     s->after_literal_star = (tail & (1 << 14)) != 0;
@@ -17477,6 +17482,11 @@ void tree_sitter_carve_external_scanner_deserialize(void *payload, char *buffer,
       uint8_t packed = (uint8_t)buffer[size++];
       uint8_t data = (uint8_t)buffer[size++];
       uint32_t literal_closes = (uint8_t)buffer[size++];
+      if ((packed & 0x3f) == EQ_CHECK_ENTRY) {
+        uint8_t c = packed >> 6 == 0 ? '~' : packed >> 6 == 1 ? '<' : '>';
+        s->eq_check_note = (uint32_t)data << 8 | literal_closes << 16 | c;
+        continue;
+      }
       InlineType inline_type = (InlineType)(packed & 0x3f);
       if (((packed & 0x3f) == SQUARE_BRACKET_SPAN && (packed >> 6 & INLINE_LABEL)) || (packed & 0x3f) == LITERAL_BRACKET ||
           (packed & 0x3f) == EXTENSION) {
