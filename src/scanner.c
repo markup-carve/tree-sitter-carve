@@ -16677,7 +16677,9 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       admitted = true;
     }
     if (admitted) {
-      comment_list->flags |= BLOCK_FLAG_LIST_COMMENT_RETAINS;
+      // A closed fence leaves no paragraph open, so the line after it is
+      // measured against the item as usual (PART 9 section 24 C3, P9-051).
+      if (!closed) comment_list->flags |= BLOCK_FLAG_LIST_COMMENT_RETAINS;
       lexer->result_symbol = LIST_ITEM_CONTINUATION;
       return true;
     }
