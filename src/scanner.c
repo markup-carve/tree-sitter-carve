@@ -294,6 +294,9 @@ typedef enum {
   ATTACHED_QUOTE_PREFIX,
   FRONTMATTER_UNCLOSED_MARKER,
   FRONTMATTER_REST,
+  // Empty; carries a next-token note's state past the internal lexer's token
+  // (see `scan_right_behind`).
+  AFTER_BARE_CLOSER,
 } TokenType;
 
 // The different blocks in Carve that we track,
@@ -659,6 +662,14 @@ typedef struct {
   bool host_jumped;
   bool probe_reached_end;
   bool probe_skipped_opaque;
+  // Last mark of this scan call, in host advances. Transient.
+  uint32_t host_advances_at_mark;
+  // This scan call is the one right behind the token that left a
+  // `NOTE_NEXT_TOKEN` note, and whether it wrote a new one. Transient.
+  bool note_here;
+  // Counts the parses this scanner has started; see `NOTE_NEXT_TOKEN`.
+  uint16_t parse_generation;
+  bool note_written;
   // The serialized state this scan call started from.
   unsigned entry_length;
   char entry_state[TREE_SITTER_SERIALIZATION_BUFFER_SIZE];
@@ -1020,6 +1031,7 @@ static void mark_end(Scanner *s, TSLexer *lexer) {
     s->host_previous_at_mark = s->host_previous;
     s->host_crossed_line_at_mark = s->host_crossed_line;
     s->host_newlines_at_mark = s->host_newlines;
+    s->host_advances_at_mark = s->host_advances;
     s->host_marked = true;
   }
 }
@@ -13809,6 +13821,23 @@ static bool substitution_arrow_ahead(Scanner *s, TSLexer *lexer, bool *closed) {
 
 // Bare emphasis has no intervening strong closer before this cache ends.
 #define AFTER_COMBINED_CLOSER (UINT8_MAX - 4)
+// A note's column when only the token right behind its writer reads it: the
+// character there instead, and the parse it was written in. `get_column`
+// rereads the line from its start, so a column read per closer is quadratic.
+// The scan wrapper keeps the note only until that token is scanned (see
+// `scan_right_behind`). The parse number stands in for the column in keeping a
+// later parse from reusing the token after a writer that moved.
+#define NOTE_NEXT_TOKEN(c) (0xFF000000u | (uint32_t)s->parse_generation << 8 | (uint8_t)(c))
+#define IS_NOTE_NEXT_TOKEN(col) ((col) >= 0xFF000000u)
+
+static bool marker_of_open_inline(Scanner *s, int32_t c);
+
+// The literal run reader turns this note's next token down, which leaves it
+// to the internal lexer: a column then keeps incremental reuse honest.
+static bool note_declines(Scanner *s, uint8_t marker, int32_t next) {
+  return (marker == AFTER_COMBINED_CLOSER || marker == '/') && next != '/' && next != '_' &&
+         !marker_of_open_inline(s, next);
+}
 #define AFTER_WORD_BEFORE_COMBINED (UINT8_MAX - 5)
 #define NO_STRONG_IN_EMPHASIS (UINT8_MAX - 3)
 #define NO_COMBINED_CLOSER UINT8_MAX
@@ -13932,7 +13961,10 @@ static bool mark_span_begin(Scanner *s, TSLexer *lexer,
   if (inline_type == BOLD_ITALIC && !valid_symbols[IN_FALLBACK] && top &&
       top->type == STRONG && (top->flags & INLINE_SCOPED_COMBINED_LITERAL)) return false;
   bool combined_fallback = inline_type == EMPHASIS &&
-      s->after_closer_char == '*' && s->after_closer_col == line_column(s, lexer);
+      s->after_closer_char == '*' &&
+      (IS_NOTE_NEXT_TOKEN(s->after_closer_col)
+           ? s->note_here
+           : s->after_closer_col == line_column(s, lexer));
   bool bare = (s->state & STATE_BARE_SPAN_OPENER) != 0;
   s->state &= ~STATE_BARE_SPAN_OPENER;
   if (!valid_symbols[IN_FALLBACK] &&
@@ -14406,7 +14438,13 @@ static bool parse_span_end(Scanner *s, TSLexer *lexer, InlineType element,
       is_bare_delim_kind(lexer->lookahead, &next_kind)) {
     s->after_closer_char = (element == BOLD_ITALIC || (element == EMPHASIS && lexer->lookahead == '*')) ?
         AFTER_COMBINED_CLOSER : (uint8_t)inline_marker(element);
-    s->after_closer_col = line_column(s, lexer);
+    bool next_token_only = (element == EMPHASIS || element == STRONG ||
+                            element == BOLD_ITALIC || element == STRIKETHROUGH ||
+                            element == UNDERLINE) &&
+                           !note_declines(s, s->after_closer_char, lexer->lookahead);
+    s->after_closer_col = next_token_only ? NOTE_NEXT_TOKEN(lexer->lookahead)
+                                          : line_column(s, lexer);
+    s->note_written = next_token_only;
   }
   // See STATE_SPAN_END_AT_CR: a `{` after this `]` is only the span's attribute
   // list when it is ADJACENT, and a carriage return between them is invisible
@@ -14770,7 +14808,9 @@ static int parse_literal_run(Scanner *s, TSLexer *lexer,
     }
   } else if (is_bare_delim_kind(lexer->lookahead, &kind)) {
     if (s->after_closer_char != 0 && !HAS_NO_COMBINED_CLOSER(s) &&
-        s->after_closer_col == line_column(s, lexer)) {
+        (IS_NOTE_NEXT_TOKEN(s->after_closer_col)
+             ? s->note_here
+             : s->after_closer_col == line_column(s, lexer))) {
       // Right behind a closer of this very marker: nothing of this kind is
       // open any more and the previous character is the marker, so no
       // character of the rest of the run can open or close.
@@ -14863,8 +14903,13 @@ static int parse_literal_run(Scanner *s, TSLexer *lexer,
     TokenType literal_token = c == '*' ? LITERAL_STAR : LITERAL_SLASH;
     if ((c == '*' || c == '/') && seed_prev == 0 &&
         s->advances == literal_start_advances + 1 && valid_symbols[literal_token]) {
-      s->after_closer_char = (uint8_t)c;
-      s->after_closer_col = line_column(s, lexer);
+      // Only a delimiter right behind reads the note.
+      InlineType following;
+      bool read = is_bare_delim_kind(lexer->lookahead, &following);
+      bool next = read && !note_declines(s, (uint8_t)c, lexer->lookahead);
+      s->after_closer_char = read ? (uint8_t)c : 0;
+      s->after_closer_col = next ? NOTE_NEXT_TOKEN(lexer->lookahead) : read ? line_column(s, lexer) : 0;
+      s->note_written = next;
       lexer->result_symbol = literal_token;
       return 1;
     }
@@ -14983,7 +15028,7 @@ static bool parse_attribute_mark_begin(Scanner *s, TSLexer *lexer,
   }
   // The attribute's own path: the fallback is not taken here, so its marker
   // must not steer the bookkeeping to the fallback's branch.
-  bool attribute_only[ATTRIBUTE_MARK_BEGIN + 1];
+  bool attribute_only[AFTER_BARE_CLOSER + 1];
   memcpy(attribute_only, valid_symbols, sizeof(attribute_only));
   attribute_only[IN_FALLBACK] = false;
   if (!mark_span_begin(s, lexer, attribute_only, CURLY_BRACKET_SPAN, shared)) {
@@ -15141,6 +15186,43 @@ static bool keeps_inline_notes(TokenType token) {
   }
 }
 
+// The column the host started this scan call at, from where it stands now.
+static uint32_t scan_start_column(Scanner *s, TSLexer *lexer) {
+  if (s->host_crossed_line || s->host_jumped) return UINT32_MAX >> 1;
+  uint32_t column = line_column(s, lexer);
+  return column >= s->host_advances ? column - s->host_advances : UINT32_MAX >> 1;
+}
+
+// The scan right behind the writer of a next-token note. A token with a width
+// ends the note; an empty one keeps it for the next scan at the same spot. With
+// no token the internal lexer's token follows, and the note would outlive the
+// spot: the empty `_after_bare_closer` hands back the entry state with the note
+// as a column instead. False means the caller returns that token.
+static bool scan_right_behind(Scanner *s, TSLexer *lexer, const bool *valid_symbols,
+                              bool *found, uint8_t closer_char, uint32_t closer_col) {
+  bool kept = !s->note_written && s->after_closer_char == closer_char &&
+              s->after_closer_col == closer_col;
+  uint32_t width = s->host_marked ? s->host_advances_at_mark : 0;
+  if (*found && !s->host_marked) {
+    lexer->mark_end(lexer);
+    width = s->host_advances;
+  }
+  if (*found) {
+    if (kept && width) {
+      s->after_closer_char = 0;
+      s->after_closer_col = 0;
+    }
+    return true;
+  }
+  if (width || !valid_symbols[AFTER_BARE_CLOSER]) return true;
+  uint32_t column = scan_start_column(s, lexer);
+  tree_sitter_carve_external_scanner_deserialize(s, s->entry_state, s->entry_length);
+  s->after_closer_col = column;
+  lexer->result_symbol = AFTER_BARE_CLOSER;
+  *found = true;
+  return false;
+}
+
 bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
                                             const bool *valid_symbols) {
   Scanner *s = (Scanner *)payload;
@@ -15159,7 +15241,14 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
   bool line_end = at_line_end(lexer);
   uint8_t closer_char = s->after_closer_char;
   uint32_t closer_col = s->after_closer_col;
+  s->note_here = closer_char && IS_NOTE_NEXT_TOKEN(closer_col) && !valid_symbols[ERROR] &&
+                 lexer->lookahead == (int32_t)(closer_col & 0xff);
+  s->note_written = false;
+  // A token that never marks its end ends where the scan stopped; marking the
+  // start first lets a declined scan still hand back an empty marker.
+  if (s->note_here) lexer->mark_end(lexer);
   bool found = scan(s, lexer, valid_symbols);
+  if (s->note_here && !scan_right_behind(s, lexer, valid_symbols, &found, closer_char, closer_col)) return true;
   if (found && s->table_attribute_pending) {
     TokenType token = (TokenType)lexer->result_symbol;
     if (token == BLOCK_CLOSE || token == DIV_END || token == LIST_ITEM_END) {
@@ -15380,8 +15469,8 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       !zero_width_mark_pending(valid_symbols) &&
       !(valid_symbols[TABLE_HEADER_BEGIN] && find_block(s, TABLE_ROW))) {
     advance(s, lexer);
-    mark_end(s, lexer);
     if (lexer->lookahead != '=') return false;
+    mark_end(s, lexer);
     s->after_closer_char = '=';
     s->after_closer_col = line_column(s, lexer);
     lexer->result_symbol = LITERAL_RUN;
@@ -15448,7 +15537,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       (s->state & STATE_BARE_SPAN_OPENER)) {
     defer_column(s);
     mark_end(s, lexer);
-    bool real_symbols[LAZY_DESCRIPTION_FENCE + 1];
+    bool real_symbols[AFTER_BARE_CLOSER + 1];
     memcpy(real_symbols, valid_symbols, sizeof(real_symbols));
     real_symbols[IN_FALLBACK] = false;
     bool same_marker_before = (s->after_closer_char == '=' || s->after_closer_char == '_') &&
@@ -15466,7 +15555,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       (s->state & STATE_BARE_SPAN_OPENER) && lexer->lookahead != '*') {
     defer_column(s);
     mark_end(s, lexer);
-    bool real_symbols[LAZY_DESCRIPTION_FENCE + 1];
+    bool real_symbols[AFTER_BARE_CLOSER + 1];
     memcpy(real_symbols, valid_symbols, sizeof(real_symbols));
     real_symbols[IN_FALLBACK] = false;
     if (lexer->lookahead != '/' && mark_span_begin(s, lexer, real_symbols, EMPHASIS, EMPHASIS_QUALIFIED_MARK_BEGIN))
@@ -15482,7 +15571,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       (s->state & STATE_BARE_SPAN_OPENER)) {
     defer_column(s);
     mark_end(s, lexer);
-    bool real_symbols[LAZY_DESCRIPTION_FENCE + 1];
+    bool real_symbols[AFTER_BARE_CLOSER + 1];
     memcpy(real_symbols, valid_symbols, sizeof(real_symbols));
     real_symbols[IN_FALLBACK] = false;
     if (lexer->lookahead != '*' &&
@@ -17190,6 +17279,7 @@ void *tree_sitter_carve_external_scanner_create() {
   s->open_blocks = ts_malloc(sizeof(Array(Block *)));
   s->open_inline = ts_malloc(sizeof(Array(Inline *)));
   s->entry_length = 0;
+  s->parse_generation = 0;
   init(s);
   return s;
 }
@@ -17352,6 +17442,7 @@ void tree_sitter_carve_external_scanner_deserialize(void *payload, char *buffer,
   Scanner *s = (Scanner *)payload;
   if (length > sizeof(s->entry_state)) length = 0;
   if (buffer != s->entry_state && length) memcpy(s->entry_state, buffer, length);
+  if (!length) ++s->parse_generation;
   s->entry_length = length;
   reset(s);
   if (length >= 20) {

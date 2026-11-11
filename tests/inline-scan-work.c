@@ -30,6 +30,10 @@ int main(int argc, char **argv) {
     {"closed highlighted spans", "a =z= b ", "\n", 2.5, 2.5},
     {"closed braced strong spans", "a {*z*} b ", "\n", 2.5, 2.5},
     {"closed combined spans", "a /*z*/ b ", "\n", 2.5, 2.5},
+    {"emphasis closed right before strong", "a */z/* b ", "\n", 2.5, 2.5},
+    {"strong closed right before a slash", "a *z*/ b ", "\n", 2.5, 2.5},
+    {"underline closed right before a star", "a _z_* b ", "\n", 2.5, 2.5},
+    {"strikethrough closed right before a star", "a ~z~* b ", "\n", 2.5, 2.5},
     {"braced comments", "a {% c %} b ", "\n", 2.5, 2.5},
     {"editorial comments", "a {# c #} b ", "\n", 2.5, 2.5},
   };

@@ -2803,6 +2803,10 @@
             "members": [
               {
                 "type": "SYMBOL",
+                "name": "_after_bare_closer"
+              },
+              {
+                "type": "SYMBOL",
                 "name": "_smart_punctuation"
               },
               {
@@ -6085,6 +6089,10 @@
             "members": [
               {
                 "type": "SYMBOL",
+                "name": "_after_bare_closer"
+              },
+              {
+                "type": "SYMBOL",
                 "name": "_smart_punctuation"
               },
               {
@@ -6488,6 +6496,10 @@
           {
             "type": "CHOICE",
             "members": [
+              {
+                "type": "SYMBOL",
+                "name": "_after_bare_closer"
+              },
               {
                 "type": "SYMBOL",
                 "name": "_smart_punctuation"
@@ -11687,6 +11699,10 @@
     {
       "type": "SYMBOL",
       "name": "_frontmatter_rest"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_after_bare_closer"
     }
   ],
   "inline": [],

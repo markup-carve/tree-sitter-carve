@@ -61,6 +61,9 @@ function inlineElement($, options) {
       // alternative, the block attached to a word run too, and the run it
       // swallowed took the rest of the line's reading with it.
       choice(
+        // Empty; the scanner returns it to keep a note's state change when
+        // the token right behind a closer is the internal lexer's.
+        $._after_bare_closer,
         $._smart_punctuation,
         $.backslash_escape,
         $.hard_line_break,
@@ -3392,5 +3395,6 @@ module.exports = grammar({
     $._attached_quote_prefix,
     $._frontmatter_unclosed_marker,
     $._frontmatter_rest,
+    $._after_bare_closer,
   ],
 });
