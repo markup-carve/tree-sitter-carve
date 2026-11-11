@@ -12906,9 +12906,12 @@ static bool extension_payload_close(Scanner *s, TSLexer *host, uint32_t *remaini
     if (closer != first_raw) {
       uint32_t newlines = start_newlines + probe.characters.contents[closer].newlines;
       uint32_t column = (closer == depth_zero ? bracket_probe_column_at(&probe, closer) : first_unescaped_column) + 1;
+      // A closer too far away to encode would read as the first raw `]`;
+      // the opener stays text instead.
       if (newlines < (UINT32_C(1) << (32 - EXTENSION_CLOSE_COLUMN_BITS)) &&
           column < (UINT32_C(1) << EXTENSION_CLOSE_COLUMN_BITS))
         *close = newlines << EXTENSION_CLOSE_COLUMN_BITS | column;
+      else closed = false;
     }
     bracket_probe_rewind(&probe, closer);
     s->col_base = base;
