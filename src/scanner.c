@@ -5748,6 +5748,11 @@ static bool marker_folds_into_item(Scanner *s, uint32_t column) {
         (b->flags & BLOCK_FLAG_DEFINITION_TERM)) {
       return false;
     }
+    // A bullet or ordered marker short of the item is a sibling or a new
+    // list, never text (PART 0 S4, carve#4545).
+    if (b->type != LIST_DEFINITION) {
+      return false;
+    }
     return b->content_col != 0 && column >= b->data && column < b->content_col;
   }
   return false;
@@ -5997,6 +6002,15 @@ static bool ensure_list_open(Scanner *s, BlockType type, uint8_t indent) {
     // There might be other cases, like if the top list is a list of different
     // types, but that's handled by BLOCK_CLOSE in `close_list_if_needed` and
     // we shouldn't see that state here.
+  }
+  // A sibling short of the last item's content column moves the list to its
+  // own columns (PART 0 S4).
+  if (top && top->type == type && top->content_col != 0 &&
+      count_blocks(s, BLOCK_QUOTE) == 0 && indent > 0 &&
+      indent - 1u < top->content_col) {
+    top->data = indent;
+    top->content_col = 0;
+    return true;
   }
   if (at_nesting_cap(s)) return false;
   push_block(s, type, indent);
@@ -6844,6 +6858,20 @@ static bool parse_star(Scanner *s, TSLexer *lexer, const bool *valid_symbols,
                                              THEMATIC_BREAK_STAR, declined_run);
 }
 
+/// The content column of the item holding `list`, or 0 at the root.
+static uint8_t enclosing_item_content_col(Scanner *s, Block *list) {
+  bool below = false;
+  for (int i = s->open_blocks->size - 1; i >= 0; --i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (b == list) {
+      below = true;
+    } else if (below && is_list(b->type)) {
+      return b->content_col;
+    }
+  }
+  return 0;
+}
+
 static bool parse_list_item_end(Scanner *s, TSLexer *lexer,
                                 const bool *valid_symbols, bool at_eof) {
   // Captured before the block-quote / list-marker scans below advance the
@@ -7151,6 +7179,13 @@ static bool parse_list_item_end(Scanner *s, TSLexer *lexer,
         list->data != s->indent + 1 &&
         (marker_col == 0 || (list->data != marker_col + 1 &&
                              list->data != line_indent + 1));
+    // Past a missed item a marker is a sibling wherever it stands short of the
+    // item, as long as it reaches the item's owner (PART 0 S4, carve#4545).
+    if (different_indent && count_blocks(s, BLOCK_QUOTE) == 0 &&
+        list->content_col != 0 && s->indent < list->content_col &&
+        s->indent >= enclosing_item_content_col(s, list)) {
+      different_indent = false;
+    }
 
     // If we're continuing the list we shouldn't emit a BLOCK_CLOSE.
     if (different_type || different_indent || hard_boundary) {
