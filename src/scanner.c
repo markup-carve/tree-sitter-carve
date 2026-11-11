@@ -6151,6 +6151,7 @@ static bool parse_list_marker_or_thematic_break(
       advance(s, lexer);
       ++spaced;
       if (lexer->lookahead != ' ') {
+        while (lexer->lookahead == '\t' || lexer->lookahead == ' ') advance(s, lexer);
         spaced_ok = at_line_end(lexer) || lexer->eof(lexer);
         break;
       }
@@ -10916,6 +10917,7 @@ static bool scan_row_or_break_at_paragraph_end(Scanner *s, TSLexer *lexer) {
         advance(s, lexer);
         ++spaced;
         if (lexer->lookahead != ' ') {
+          while (lexer->lookahead == '\t' || lexer->lookahead == ' ') advance(s, lexer);
           spaced_ok = at_line_end(lexer) || lexer->eof(lexer);
           break;
         }
