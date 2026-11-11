@@ -21,6 +21,7 @@ This release follows the Carve 0.1.14 readings: braced cell alignment, spaced th
 - A letter or roman dot marker needs two spaces after it to open a list item, so `A. Smith said so` is a paragraph (#639, markup-carve/carve#4828).
 - A quote nested behind a task box continues on later lines at the box's column (#639).
 - A quote prefix may be indented (`> q` over `  > r`, `>  > r`), and an unprefixed list marker after a quoted list opens a list outside the quote (#653).
+- Leading space no longer stops a block opener at the document, in a list item or in a quote: ` > r`, `  # h`, an indented fence, div, table, break, attribute or definition opens its block, and an opener short of an item's content column closes the item (#656, markup-carve/carve#3887).
 - A span end right before a CR no longer refuses a later `{%`, `{#` or `{*` opener with CRLF or CR line ends (#639).
 - Long one-line paragraphs of spans parse in linear time: column reads only a fallback needs are deferred (#649), and a bare closer right before another delimiter, as in `*/z/*`, `_z_*` or `~z~*`, no longer rereads the line (#652).
 
