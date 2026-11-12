@@ -11502,8 +11502,8 @@ static bool close_paragraph_after_quote(Scanner *s, TSLexer *lexer,
 
   // A LAZY line inside a quote (no `>` marker) is asked the paragraph's
   // interrupt rules like any other line: an opener on it ends the quote at any
-  // indentation (PART 0 S3/S4). Only a `+` is decided here: on a lazy line it
-  // attaches nothing and stays text.
+  // indentation (PART 0 S3/S4). Only a `+` or a caption is decided here: on a
+  // lazy line past its attachment column it is text.
   //
   // Decided HERE, from the marker count this very call just computed, because
   // nothing downstream can tell a lazy line from a marked one: at this peek
@@ -11514,6 +11514,11 @@ static bool close_paragraph_after_quote(Scanner *s, TSLexer *lexer,
     uint32_t column = line_column(s, lexer);
     if (quote && quote->content_col != 0 && column >= quote->content_col &&
         lexer->lookahead == '+' && !item_outside_quotes_reached(s, column)) {
+      return false;
+    }
+    // A caption attaches only at the margin of the context holding the quote.
+    if (quote && lexer->lookahead == '^' &&
+        !escapes_open_block_quote(s, column)) {
       return false;
     }
     // The line start still lets an unmarked line reach an item or note opened

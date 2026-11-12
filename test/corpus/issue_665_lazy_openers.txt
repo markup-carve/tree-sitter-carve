@@ -183,3 +183,49 @@ A description marker under a quoted item folds into the item
           marker: (list_marker_dash)
           content: (list_item_content
             (paragraph)))))))
+
+================================================================================
+An unprefixed caption at a quote's content column stays quoted text
+================================================================================
+> q
+  ^ cap
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (paragraph))))
+
+================================================================================
+An unprefixed caption one column into a quote stays quoted text
+================================================================================
+> q
+ ^ cap
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (paragraph))))
+
+================================================================================
+An unprefixed caption past the item holding a quote stays quoted text
+================================================================================
+- > q
+   ^ cap
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (block_quote
+          (block_quote_marker)
+          content: (content
+            (paragraph)))))))
