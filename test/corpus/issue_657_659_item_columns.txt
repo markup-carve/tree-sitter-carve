@@ -360,3 +360,19 @@ An indented line after a closed comment fence below the column leaves the item (
           content: (content)
           (comment_fence_marker_end)))))
   (paragraph))
+
+================================================================================
+A spaced dash break after a dash item is a thematic break (#664)
+================================================================================
+- q
+- - -
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph))))
+  (thematic_break))

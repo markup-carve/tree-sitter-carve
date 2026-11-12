@@ -7190,6 +7190,7 @@ static bool parse_list_item_end(Scanner *s, TSLexer *lexer,
   //
   //    - b     <- different indent should close the `a` list.
   uint32_t marker_col = list_opened_in_quote(s, list) ? line_column(s, lexer) : 0;
+  uint32_t marker_start = line_column(s, lexer);
   TokenType next_marker = scan_list_marker_token(s, lexer);
 
   // While a `+`-attached flush-left block is being parsed, an indent-0 line
@@ -7233,6 +7234,31 @@ static bool parse_list_item_end(Scanner *s, TSLexer *lexer,
     // takes a valid document out of ERROR, which is the half that breaks
     // highlighting today.
     next_marker = IGNORED;
+  }
+
+  // A spaced break of the list's own marker (`- - -`) is no sibling: it is
+  // tested before a list marker (PART 9 section 10, carve#4814).
+  if ((next_marker == LIST_MARKER_DASH || next_marker == LIST_MARKER_STAR) &&
+      line_column(s, lexer) == marker_start + 2) {
+    int32_t c = next_marker == LIST_MARKER_DASH ? '-' : '*';
+    uint32_t spaced = 1;
+    bool spaced_ok = false;
+    while (lexer->lookahead == c) {
+      advance(s, lexer);
+      ++spaced;
+      if (lexer->lookahead != ' ') {
+        while (lexer->lookahead == '\t' || lexer->lookahead == ' ') advance(s, lexer);
+        spaced_ok = at_line_end(lexer) || lexer->eof(lexer);
+        break;
+      }
+      advance(s, lexer);
+      if (lexer->lookahead != c) {
+        while (lexer->lookahead == ' ' || lexer->lookahead == '\t') advance(s, lexer);
+        spaced_ok = at_line_end(lexer) || lexer->eof(lexer);
+        break;
+      }
+    }
+    if (spaced_ok && spaced >= 3) next_marker = IGNORED;
   }
 
   bool hard_boundary = (list->flags & BLOCK_FLAG_LIST_HARD_BOUNDARY) != 0;
