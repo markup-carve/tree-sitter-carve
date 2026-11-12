@@ -6008,10 +6008,79 @@
               },
               "named": true,
               "value": "comment_line"
+            },
+            {
+              "type": "SYMBOL",
+              "name": "_erased_line"
             }
           ]
         }
       }
+    },
+    "_erased_line": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "_erased_line_newline"
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "_block_quote_prefix"
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "_whitespace1"
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "ALIAS",
+              "content": {
+                "type": "SYMBOL",
+                "name": "_verbatim_comment_line"
+              },
+              "named": true,
+              "value": "comment_line"
+            },
+            {
+              "type": "ALIAS",
+              "content": {
+                "type": "SYMBOL",
+                "name": "_erased_link_definition"
+              },
+              "named": true,
+              "value": "link_reference_definition"
+            },
+            {
+              "type": "ALIAS",
+              "content": {
+                "type": "SYMBOL",
+                "name": "_erased_abbreviation_definition"
+              },
+              "named": true,
+              "value": "abbreviation_definition"
+            }
+          ]
+        }
+      ]
     },
     "_inline_single_line": {
       "type": "PREC_LEFT",
@@ -6059,6 +6128,10 @@
                 {
                   "type": "SYMBOL",
                   "name": "_table_row_continuation_seam"
+                },
+                {
+                  "type": "SYMBOL",
+                  "name": "_erased_line"
                 }
               ]
             }
@@ -11725,6 +11798,18 @@
     {
       "type": "SYMBOL",
       "name": "_mid_line_space"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_erased_line_newline"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_erased_link_definition"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_erased_abbreviation_definition"
     }
   ],
   "inline": [],

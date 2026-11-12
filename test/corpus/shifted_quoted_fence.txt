@@ -31,9 +31,10 @@ A shifted fence leaves an inner item inside two quoted levels
                         (block_quote_marker)
                         (list_marker_dash)
                         (list_item_content
-                          (paragraph)
-                          (block_quote_marker)
-                          (comment_line))))
+                          (paragraph
+                            (block_quote_marker)
+                            (block_quote_marker)
+                            (comment_line)))))
                     (block_quote_marker)
                     (code_block
                       (code_block_marker_begin)

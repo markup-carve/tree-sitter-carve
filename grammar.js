@@ -2050,7 +2050,25 @@ module.exports = grammar({
             // A comment-only line inside a line block, with the line end
             // before it.
             alias($._verbatim_comment_line, $.comment_line),
+            $._erased_line,
           ),
+        ),
+      ),
+
+    // A comment or one-line definition between two lines of a paragraph is
+    // erased and supplies no boundary (PART 0 CARVE-P0-011), so the paragraph
+    // holds it. The scanner announces it with its own line end and reads the
+    // line as one token, which keeps the definition's own tokens out of inline
+    // lexing.
+    _erased_line: ($) =>
+      seq(
+        $._erased_line_newline,
+        optional($._block_quote_prefix),
+        optional($._whitespace1),
+        choice(
+          alias($._verbatim_comment_line, $.comment_line),
+          alias($._erased_link_definition, $.link_reference_definition),
+          alias($._erased_abbreviation_definition, $.abbreviation_definition),
         ),
       ),
 
@@ -2066,6 +2084,7 @@ module.exports = grammar({
               $._newline_inline,
               $._whitespace1,
               $._table_row_continuation_seam,
+              $._erased_line,
             ),
           ),
         ),
@@ -3400,5 +3419,8 @@ module.exports = grammar({
     $._after_bare_closer,
     // One space between words; see `_whitespace1`.
     $._mid_line_space,
+    $._erased_line_newline,
+    $._erased_link_definition,
+    $._erased_abbreviation_definition,
   ],
 });
