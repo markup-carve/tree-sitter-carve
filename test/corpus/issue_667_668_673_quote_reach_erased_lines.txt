@@ -507,3 +507,44 @@ A description marker in the folding zone of the item holding the list folds
           (list_item
             marker: (list_marker_description)
             definition: (definition)))))))
+
+================================================================================
+A comment line inside an open strong span is erased in the span
+================================================================================
+
+*q
+%% c
+z*
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (strong
+      begin_marker: (strong_begin)
+      content: (content
+        (comment_line))
+      end_marker: (strong_end))))
+
+================================================================================
+A reference definition inside an open emphasis span is erased in the span
+================================================================================
+
+/q
+[r]: /u
+z/
+
+[r][]
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (emphasis
+      begin_marker: (emphasis_begin)
+      content: (content
+        (link_reference_definition))
+      end_marker: (emphasis_end)))
+  (paragraph
+    (collapsed_reference_link
+      text: (link_text))))

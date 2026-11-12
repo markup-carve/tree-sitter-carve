@@ -2084,6 +2084,7 @@ module.exports = grammar({
               $._newline_inline,
               $._whitespace1,
               $._table_row_continuation_seam,
+              $._erased_line,
             ),
           ),
         ),
