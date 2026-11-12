@@ -8832,12 +8832,11 @@
             "type": "SEQ",
             "members": [
               {
-                "type": "ALIAS",
-                "content": {
-                  "type": "SYMBOL",
-                  "name": "_inline_attribute_continue"
-                },
-                "named": false,
+                "type": "SYMBOL",
+                "name": "_inline_attribute_continue"
+              },
+              {
+                "type": "STRING",
                 "value": "{"
               },
               {
