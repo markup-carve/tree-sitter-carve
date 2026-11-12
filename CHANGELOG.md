@@ -38,7 +38,7 @@ This release follows the Carve 0.1.14 readings: braced cell alignment, spaced th
 - An incremental reparse after a bare `=` before `~ < > =` or a space, or after an inline attribute followed by a `{` that does not continue it, gives the same tree as a fresh parse; a fresh parse now reads such a `{` as the brace it is everywhere else (#675, part of #671 and #655).
 - A quote line holding only its `>` and spaces at the end of input is a blank quote line, so an unclosed code run before it finishes parsing instead of running forever, and a paragraph before it no longer gives an ERROR tree (#681).
 - An incremental reparse after an edit earlier on the same line no longer misreads the delimiter behind a `/` or `*` that opened nothing, so it gives the same tree as a fresh parse; a fresh parse now reads `/_x_` with an underline, as the engines do (#671, #655).
-- A long line of inline attributes followed by a `{` that does not continue them, or of bracketed text followed by an unclosed `{`, parses in linear time again (#684).
+- A long line of inline attributes followed by a `{` that does not continue them, or of bracketed text followed by an unclosed `{`, parses in linear time (#684).
 
 ### Improvements
 
