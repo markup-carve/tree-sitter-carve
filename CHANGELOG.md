@@ -6,6 +6,41 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.1.14] - 2026-11-12
+
+This release follows the Carve 0.1.14 readings: braced cell alignment, spaced thematic breaks, unclosed frontmatter, the inline extension closer and the PART 0 block layout (indented openers, quote reach, lazy lines).
+
+### Fixes
+
+- Padded link and image titles and citation separators parse the way the engine reads them (#637).
+- An inline extension's content ends at its depth-zero `]`, so links, bracketed text and nested extensions open inside the payload (#643, markup-carve/carve#4513).
+- A bare span around an inline extension whose first `]` sits in code keeps its closer instead of leaving an ERROR node (#644).
+- An unclosed code run in a table cell ends before the spaces that pad the cell's closing pipe; a tab there stays content (#647).
+- Spaced thematic breaks such as `* * *` and `- - -` parse as breaks, also with a trailing tab (#639, markup-carve/carve#4814).
+- An unclosed `---` frontmatter opener reads as frontmatter, and a closer at the end of input without a final newline no longer leaves a MISSING node (#639, markup-carve/carve#5016, markup-carve/carve#5085).
+- A letter or roman dot marker needs two spaces after it to open a list item, so `A. Smith said so` is a paragraph (#639, markup-carve/carve#4828).
+- A quote nested behind a task box continues on later lines at the box's column (#639).
+- A quote prefix may be indented (`> q` over `  > r`, `>  > r`), and an unprefixed list marker after a quoted list opens a list outside the quote (#653).
+- Leading space no longer stops a block opener at the document, in a list item or in a quote: ` > r`, `  # h`, an indented fence, div, table, break, attribute or definition opens its block, and an opener short of an item's content column closes the item (#656, markup-carve/carve#3887).
+- A span end right before a CR no longer refuses a later `{%`, `{#` or `{*` opener with CRLF or CR line ends (#639).
+- Long one-line paragraphs of spans parse in linear time: column reads only a fallback needs are deferred (#649), and a bare closer right before another delimiter, as in `*/z/*`, `_z_*` or `~z~*`, no longer rereads the line (#652).
+- An incremental reparse no longer drops or adds a delimiter behind a bare `=` followed by `~`, `<` or `>`, so it gives the same tree as a fresh parse (#661, part of #655).
+- An indented list marker short of an item's content column opens a sibling or a new list instead of folding into the item, and indented openers inside quoted items open their block (#663, #657, #658).
+- A lazy line after a footnote's paragraph folds into the note unless it opens a block (#663, #659).
+- A line short of an item after a closed `%%%` fence below the item's column is measured against the item again (#663, #662).
+- A spaced break of a list's own marker, `- - -` after `- q`, is a thematic break instead of a nested item (#666, #664).
+- An opener on an unprefixed line after a quoted paragraph, such as an unprefixed fence, ends the quote (#672, #665).
+- An unprefixed line at a quoted item's or note's column no longer stays inside the quote (#676, #667).
+- A one-line comment, reference definition or abbreviation definition between paragraph lines no longer splits the paragraph (#676, #668).
+- A note or description body opens a child list at its content column, and a `: ` line past a description body is that body's content (#676, #673).
+- Long lines of glued `=~` units and long lines of plain prose parse in linear time (#670, #674).
+
+### Improvements
+
+- Braced table cell alignment (`|={>} Price |`, `|{<} a |`) parses into a `table_cell_attributes` node; the 0.1.13 glued prefix stays readable (#639, markup-carve/carve#5091).
+
+**Full Changelog**: https://github.com/markup-carve/tree-sitter-carve/compare/0.1.13...0.1.14
+
 ## [0.1.13] - 2026-10-25
 
 Task lists now follow the published carve 0.1.13 task state rules.
