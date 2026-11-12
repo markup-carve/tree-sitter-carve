@@ -45,6 +45,8 @@ int main(int argc, char **argv) {
     {"plain prose in a quote", "The quick brown fox jumps over the lazy dog. ", "\n", 2.5, 2.5, "> "},
     {"glued unclosed strikethrough in a quote", "a=~z ", "\n", 2.5, 2.5, "> "},
     {"spaced strikethrough", "a =~ b ", "\n", 2.5, 2.5},
+    {"attributes followed by an unclosed brace", "*x*{.a}{z ", "\n", 2.5, 2.5},
+    {"bracketed text followed by an unclosed brace", "[x]{z ", "\n", 2.5, 2.5},
   };
   const unsigned sizes[] = {512, 1024, 2048, 4096};
   for (unsigned f = 0; f < sizeof(families) / sizeof(families[0]); ++f) {
