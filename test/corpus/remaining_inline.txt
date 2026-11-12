@@ -44,13 +44,13 @@ _*x*_ q
 (document (paragraph (underline begin_marker: (underline_begin) content: (content (strong begin_marker: (strong_begin) content: (content) end_marker: (strong_end))) end_marker: (underline_end))))
 
 ==================
-An unpaired slash blocks adjacent underline
+A slash before a paired underline stays text (carve corpus 484)
 ==================
 /_x_ q
 
 ---
 
-(document (paragraph))
+(document (paragraph (underline begin_marker: (underline_begin) content: (content) end_marker: (underline_end))))
 
 ==================
 Combined markup admits a literal less-than

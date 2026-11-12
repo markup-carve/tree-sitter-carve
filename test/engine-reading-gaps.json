@@ -1118,21 +1118,6 @@
         "::: note\n{_/*/\n:::\n",
         "::: note\r\n{_/*/\r\n:::\r\n",
         "::: note\r{_/*/\r:::\r",
-        "{/_{_\n",
-        "{/_{_\r\n",
-        "{/_{_\r",
-        "# {/_{_\n",
-        "# {/_{_\r\n",
-        "# {/_{_\r",
-        "- {/_{_\n",
-        "- {/_{_\r\n",
-        "- {/_{_\r",
-        "> {/_{_\n",
-        "> {/_{_\r\n",
-        "> {/_{_\r",
-        "::: note\n{/_{_\n:::\n",
-        "::: note\r\n{/_{_\r\n:::\r\n",
-        "::: note\r{/_{_\r:::\r",
         "_=x= q\n",
         "_=x= q\r\n",
         "_=x= q\r",
@@ -1153,8 +1138,7 @@
     "inline-reading-boundaries": {
       "reason": "The next carve release makes the inline pairing procedure normative: an unpaired opener before another opener stays literal (`_*x* q`); the grammar still pairs these delimiters the released way.",
       "sources": [
-        "_*x* q\n",
-        "/_x_ q\n"
+        "_*x* q\n"
       ]
     },
     "block-boundaries": {

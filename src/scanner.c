@@ -14159,6 +14159,23 @@ static bool note_declines(Scanner *s, uint8_t marker, int32_t next) {
   return (marker == AFTER_COMBINED_CLOSER || marker == '/') && next != '/' && next != '_' &&
          !marker_of_open_inline(s, next);
 }
+
+// The note an empty fallback leaves behind a declined bare opener, written as
+// a closer writes its own: only a delimiter right behind reads it, and a
+// column in an empty token goes stale when node reuse shifts it along the row.
+static void note_behind_fallback(Scanner *s, TSLexer *lexer, uint8_t marker) {
+  uint32_t column = deferred_column(s, lexer);
+  InlineType following;
+  if (!is_bare_delim_kind(lexer->lookahead, &following)) {
+    s->after_closer_char = 0;
+    s->after_closer_col = 0;
+    return;
+  }
+  bool next = !note_declines(s, marker, lexer->lookahead);
+  s->after_closer_char = marker;
+  s->after_closer_col = next ? NOTE_NEXT_TOKEN(lexer->lookahead) : column;
+  s->note_written = next;
+}
 #define AFTER_WORD_BEFORE_COMBINED (UINT8_MAX - 5)
 #define NO_STRONG_IN_EMPHASIS (UINT8_MAX - 3)
 #define NO_COMBINED_CLOSER UINT8_MAX
@@ -15945,8 +15962,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       return true;
     s->state &= ~STATE_BARE_SPAN_OPENER;
     if (!valid_symbols[IN_FALLBACK]) return false;
-    s->after_closer_char = '/';
-    s->after_closer_col = deferred_column(s, lexer);
+    note_behind_fallback(s, lexer, '/');
     lexer->result_symbol = IN_FALLBACK;
     return true;
   }
@@ -15962,8 +15978,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       return true;
     s->state &= ~STATE_BARE_SPAN_OPENER;
     if (!valid_symbols[IN_FALLBACK]) return false;
-    s->after_closer_char = '*';
-    s->after_closer_col = deferred_column(s, lexer);
+    note_behind_fallback(s, lexer, '*');
     lexer->result_symbol = IN_FALLBACK;
     return true;
   }
