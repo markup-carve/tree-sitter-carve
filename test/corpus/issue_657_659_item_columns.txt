@@ -246,6 +246,76 @@ x[^f]
       (footnote_marker_end))))
 
 ================================================================================
+Emphasis short of a footnote folds into its paragraph (#659)
+================================================================================
+[^f]: note
+*not-list
+
+x[^f]
+
+--------------------------------------------------------------------------------
+
+(document
+  (footnote
+    (footnote_marker_begin)
+    label: (reference_label)
+    (footnote_marker_end)
+    content: (footnote_content
+      (paragraph)))
+  (paragraph
+    (footnote_reference
+      (footnote_marker_begin)
+      (reference_label)
+      (footnote_marker_end))))
+
+================================================================================
+A hash word short of a footnote folds into its paragraph (#659)
+================================================================================
+[^f]: note
+#not-heading
+
+x[^f]
+
+--------------------------------------------------------------------------------
+
+(document
+  (footnote
+    (footnote_marker_begin)
+    label: (reference_label)
+    (footnote_marker_end)
+    content: (footnote_content
+      (paragraph
+        (tag))))
+  (paragraph
+    (footnote_reference
+      (footnote_marker_begin)
+      (reference_label)
+      (footnote_marker_end))))
+
+================================================================================
+A bracketed word short of a footnote folds into its paragraph (#659)
+================================================================================
+[^f]: note
+[not-link]
+
+x[^f]
+
+--------------------------------------------------------------------------------
+
+(document
+  (footnote
+    (footnote_marker_begin)
+    label: (reference_label)
+    (footnote_marker_end)
+    content: (footnote_content
+      (paragraph)))
+  (paragraph
+    (footnote_reference
+      (footnote_marker_begin)
+      (reference_label)
+      (footnote_marker_end))))
+
+================================================================================
 A line short of an item after a closed comment fence below its column leaves the item (#662)
 ================================================================================
 - q

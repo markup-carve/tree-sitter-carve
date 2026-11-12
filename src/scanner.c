@@ -6032,7 +6032,8 @@ static void record_list_marker_margin(Scanner *s, uint8_t col,
   s->marker_end_col = col;
 }
 
-/// The content column of the item or quote holding `list`, or 0 at the root.
+/// The content column of the item, quote or note holding `list`, or 0 at the
+/// root.
 static uint8_t enclosing_item_content_col(Scanner *s, Block *list) {
   bool below = false;
   for (int i = s->open_blocks->size - 1; i >= 0; --i) {
@@ -6041,6 +6042,17 @@ static uint8_t enclosing_item_content_col(Scanner *s, Block *list) {
       below = true;
     } else if (below && (is_list(b->type) || b->type == BLOCK_QUOTE)) {
       return b->content_col;
+    } else if (below && b->type == FOOTNOTE) {
+      // The note's margin counts from the prefix of the quote holding it.
+      uint8_t margin = b->data;
+      for (int j = i - 1; j >= 0; --j) {
+        Block *q = *array_get(s->open_blocks, j);
+        if (q->type == BLOCK_QUOTE) {
+          margin = (uint8_t)(margin + q->content_col);
+          break;
+        }
+      }
+      return margin;
     }
   }
   return 0;
@@ -11404,12 +11416,26 @@ static bool close_paragraph_after_quote(Scanner *s, TSLexer *lexer,
         (column == s->continuation_col ||
          column == s->continuation_col + quote_prefix);
     // A line short of the note folds into its paragraph unless it opens a
-    // block (PART 0 S4). A line led by an opener character ends the note as
-    // before; plain text and a word that is no list marker fold.
+    // block (PART 0 S4). A line that drops or skips a quote prefix is not
+    // asked the quote's lazy rules: a line led by an opener character ends it.
     int32_t lead = lexer->lookahead;
     if (column < margin && !attached_lazy_line && lead != '+') {
       if (carve_is_alnum_ascii(lead) || lead == '(' || lead == '.') {
         return scan_list_marker(s, lexer) && marker_line_has_content(s, lexer);
+      }
+      bool list_in_note = false;
+      for (int i = s->open_blocks->size - 1; i >= 0; --i) {
+        Block *b = *array_get(s->open_blocks, i);
+        if (b == note) break;
+        if (is_list(b->type)) list_in_note = true;
+      }
+      // A fence ends the note even unclosed; the probes ask for a closer.
+      bool fence_lead = lead == '`' || lead == '~' || lead == '%';
+      if (lead != '>' && !fence_lead && !list_in_note &&
+          (markers_seen < 0 ||
+           markers_seen == count_blocks(s, BLOCK_QUOTE))) {
+        s->paragraph_markers_seen = markers_seen;
+        return paragraph_block_opener_ahead(s, lexer, markers_seen);
       }
       switch (lead) {
       case '#': case '>': case '`': case '~': case ':': case '|': case '*':
