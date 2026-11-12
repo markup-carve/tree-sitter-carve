@@ -8,11 +8,10 @@ runs:
       with:
         node-version: 22
 
-    # npm ci spends about a minute cloning and building the carve-js git
-    # dependency and compiling the tree-sitter binding. node_modules is safe to
-    # reuse across runs because every input is in the key: the lockfile pins
-    # each package (the git dependency by commit), and the native modules are
-    # tied to the OS, architecture and Node major.
+    # npm ci spends most of its time compiling the tree-sitter binding.
+    # node_modules is safe to reuse across runs because every input is in the
+    # key: the lockfile pins each package, and the native modules are tied to
+    # the OS, architecture and Node major.
     - id: node-version
       shell: bash
       run: echo "major=$(node -p 'process.versions.node.split(".")[0]')" >> "$GITHUB_OUTPUT"
