@@ -165,8 +165,8 @@ A comment line at column 0 keeps the list together
     (list_item
       (list_marker_dash)
       (list_item_content
-        (paragraph)
-        (comment_line)))
+        (paragraph
+          (comment_line))))
     (list_item
       (list_marker_dash)
       (list_item_content
@@ -186,9 +186,8 @@ b
     (list_item
       (list_marker_dash)
       (list_item_content
-        (paragraph)
-        (comment_line)
-        (paragraph)))))
+        (paragraph
+          (comment_line))))))
 
 ================================================================================
 A line after a comment at the content column leaves the item
@@ -209,7 +208,7 @@ A line after a comment at the content column leaves the item
   (paragraph))
 
 ================================================================================
-A column 0 line after a comment at the content column leaves the item
+A column 0 line after a comment at the content column folds into the item
 ================================================================================
 - a
   %% c
@@ -222,9 +221,8 @@ b
     (list_item
       (list_marker_dash)
       (list_item_content
-        (paragraph)
-        (comment_line))))
-  (paragraph))
+        (paragraph
+          (comment_line))))))
 
 ================================================================================
 A below-column marker after a comment at the content column leaves the item
@@ -267,8 +265,8 @@ A column 0 marker after a comment opens a new list
     (list_item
       (list_marker_dash)
       (list_item_content
-        (paragraph)
-        (comment_line))))
+        (paragraph
+          (comment_line)))))
   (list
     (list_item
       (list_marker_decimal_period)

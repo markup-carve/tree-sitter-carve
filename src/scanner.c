@@ -298,6 +298,11 @@ typedef enum {
   // (see `scan_right_behind`).
   AFTER_BARE_CLOSER,
   MID_LINE_SPACE,
+  // A paragraph's line end before a line S1 erases (CARVE-P0-011).
+  ERASED_LINE_NEWLINE,
+  // The definition on an erased line, read as one token.
+  ERASED_LINK_DEFINITION,
+  ERASED_ABBREVIATION_DEFINITION,
 } TokenType;
 
 // The different blocks in Carve that we track,
@@ -799,6 +804,8 @@ typedef struct {
   // A refused `+` folded into the open paragraph keeps later short marked
   // lines in that paragraph until its boundary.
   bool folded_plus_paragraph;
+  // The paragraph-end probe found a line S1 erases. Transient.
+  bool erasable_line;
   // The last quote line outside a paragraph reached its marker-line quote
   // only at that quote's content column, so a paragraph it opened keeps
   // reading such markers as markers.
@@ -1960,10 +1967,27 @@ static bool list_opened_in_quote(Scanner *s, Block *list) {
   return false;
 }
 
-/// Does this line reach `list`'s items?
+/// How many quotes hold `b`?
+static uint8_t quotes_below(Scanner *s, Block *b) {
+  uint8_t n = 0;
+  for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
+    Block *x = *array_get(s->open_blocks, i);
+    if (x == b) return n;
+    if (x->type == BLOCK_QUOTE) ++n;
+  }
+  return n;
+}
+
+/// Does this line reach `list`'s items? A line reaches a quote only by its
+/// marker, so a column never reaches an item opened in one (PART 0 S4).
 static bool quoted_line_reaches_list(Scanner *s, TSLexer *lexer, Block *list) {
   if (list_opened_in_quote(s, list)) {
-    return line_column(s, lexer) >= list->content_col;
+    // An unmarked blank line has ended the quote.
+    // A blank remainder has lost its marker count; it ends nothing here.
+    bool blank = at_line_end(lexer) || lexer->eof(lexer);
+    return (blank || s->block_quote_level >= quotes_below(s, list)) &&
+        !(s->state & STATE_AFTER_BLANK_LINE) &&
+        line_column(s, lexer) >= list->content_col;
   }
   return s->indent >= list_item_margin(s, list);
 }
@@ -2614,11 +2638,15 @@ static bool verbatim_line_continues(Scanner *s, TSLexer *lexer) {
   uint16_t state = s->state;
   uint8_t level = s->block_quote_level;
   s->indent = line_indent;
+  s->erasable_line = false;
   bool ends = close_paragraph(s, lexer);
   s->indent = indent;
   s->state = state;
   s->block_quote_level = level;
-  return !ends;
+  // An erased line ends the run; the paragraph holds it.
+  bool erased = s->erasable_line;
+  s->erasable_line = false;
+  return !ends && !erased;
 }
 
 static bool try_implicit_close_verbatim(Scanner *s, TSLexer *lexer) {
@@ -4198,6 +4226,13 @@ static bool parse_code_fence(Scanner *s, TSLexer *lexer,
         count_blocks(s, BLOCK_QUOTE) == s->block_quote_level + 1 &&
         list->content_col == s->continuation_col;
     if (!attached_prefix) return false;
+  }
+  // A line short of an open quote's markers closes that quote before a fence
+  // opens (PART 0 S4).
+  if (valid_symbols[BLOCK_CLOSE] && !closer_possible &&
+      !(s->state & STATE_LIST_CONTINUATION) &&
+      count_blocks(s, BLOCK_QUOTE) > s->block_quote_level) {
+    return false;
   }
 
   // Where the run STARTS, read before it is consumed: the opener guard below
@@ -5979,6 +6014,25 @@ static bool scan_paragraph_closing_marker(Scanner *s, TSLexer *lexer) {
     if (find_block(s, LIST_DEFINITION) == NULL) {
       return false;
     }
+    // At or past a description body's column the line is that body's
+    // content, where no definition list is open (PART 0 S2/S4).
+    Block *dl = find_block(s, LIST_DEFINITION);
+    if (!(dl->flags & BLOCK_FLAG_DEFINITION_TERM) && dl->content_col != 0 &&
+        marker_column >= dl->content_col) {
+      return false;
+    }
+    // In the folding zone of the item holding the definition list the line
+    // misses that list and folds (PART 0 S4).
+    if (count_blocks(s, BLOCK_QUOTE) == 0 && marker_column + 1u < dl->data &&
+        count_blocks(s, LIST_DEFINITION) == 1) {
+      Block *item = NULL;
+      for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
+        Block *b = *array_get(s->open_blocks, i);
+        if (b == dl) break;
+        if (is_list(b->type)) item = b;
+      }
+      if (item && marker_column >= item->data) return false;
+    }
     // A description takes one or more spaces. The separator width sets the
     // body's authored content column; one space is canonical (carve#1757).
     if (lexer->lookahead != ' ') {
@@ -5988,8 +6042,14 @@ static bool scan_paragraph_closing_marker(Scanner *s, TSLexer *lexer) {
     // A colon followed by only whitespace is not a description (corpus 439).
     return marker_line_has_content(s, lexer);
   }
-  // A description's paragraph keeps bullet lines as text. An intervening
-  // footnote or other block owns its paragraph independently.
+  // A note or description body opens a child list at its content column
+  // (PART 9 section 10 I2); below it the marker reads in the body's owner.
+  Block *body = peek_block(s);
+  if (body && (body->type == FOOTNOTE ||
+               (body->type == LIST_DEFINITION &&
+                !(body->flags & BLOCK_FLAG_DEFINITION_TERM)))) {
+    return scan_list_marker(s, lexer) && marker_line_has_content(s, lexer);
+  }
   Block *list = find_list(s);
   bool in_list_item = false;
   for (int i = 0; i < s->open_blocks->size; ++i) {
@@ -6961,6 +7021,15 @@ static bool parse_star(Scanner *s, TSLexer *lexer, const bool *valid_symbols,
                                              THEMATIC_BREAK_STAR, declined_run);
 }
 
+/// Does a description marker at `column` continue `list`? It stands short of
+/// the open term's or body's content column and not left of the list.
+static bool description_reaches_list(Scanner *s, Block *list,
+                                     uint32_t column) {
+  return count_blocks(s, BLOCK_QUOTE) == 0 && list->content_col != 0 &&
+         column < list->content_col &&
+         (s->indent + 1u >= list->data || column + 1u >= list->data);
+}
+
 static bool parse_list_item_end(Scanner *s, TSLexer *lexer,
                                 const bool *valid_symbols, bool at_eof) {
   // Captured before the block-quote / list-marker scans below advance the
@@ -7069,7 +7138,7 @@ static bool parse_list_item_end(Scanner *s, TSLexer *lexer,
   bool stray_marker = lexer->lookahead == '>' && quoted_list &&
       !quote_marker_at_column(s, 1, line_column(s, lexer), false);
   if ((lexer->lookahead != '>' || stray_marker) && quoted_list) {
-    if (line_column(s, lexer) >= list->content_col) return false;
+    if (quoted_line_reaches_list(s, lexer, list)) return false;
   } else if (s->indent >= list_item_margin(s, list)) {
     return false;
   }
@@ -7195,10 +7264,17 @@ static bool parse_list_item_end(Scanner *s, TSLexer *lexer,
     }
     if (has_block_quote_continuation) {
       s->indent = consume_whitespace(s, lexer);
-      if (quoted_line_reaches_list(s, lexer, list)) {
+      uint8_t level = s->block_quote_level;
+      s->block_quote_level = block_quote_markers;
+      bool reaches = quoted_line_reaches_list(s, lexer, list);
+      s->block_quote_level = level;
+      if (reaches) {
         mark_end(s, lexer);
         output_block_quote_continuation(s, lexer, block_quote_markers,
                                         ending_newline);
+        // After a blank quoted line the token ends past the next line's own
+        // markers, which the item's continuation is measured by.
+        s->block_quote_level = block_quote_markers;
         return true;
       }
     }
@@ -7310,6 +7386,14 @@ static bool parse_list_item_end(Scanner *s, TSLexer *lexer,
       different_indent = false;
     }
 
+    // A description short of the body's column is a sibling wherever it
+    // stands from the list's own column (PART 0 S2).
+    if (different_indent && next_marker == LIST_MARKER_DESCRIPTION &&
+        list->type == LIST_DEFINITION &&
+        description_reaches_list(s, list, marker_start)) {
+      different_indent = false;
+    }
+
     // If we're continuing the list we shouldn't emit a BLOCK_CLOSE.
     if (different_type || different_indent || hard_boundary) {
       s->blocks_to_close = 1;
@@ -7401,9 +7485,18 @@ static bool parse_colon(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       Block *open_definition_list = find_list(s);
       if (open_definition_list &&
           open_definition_list->type == LIST_DEFINITION) {
+        // Past the body's column a term opens in the body as if written at
+        // the body's column (PART 0 S3).
         bool nested_in_description =
             !(open_definition_list->flags & BLOCK_FLAG_DEFINITION_TERM) &&
-            list_indent == open_definition_list->content_col;
+            open_definition_list->content_col != 0 &&
+            list_indent >= open_definition_list->content_col;
+        if (nested_in_description && count_blocks(s, BLOCK_QUOTE) == 0) {
+          list_indent = open_definition_list->content_col;
+        } else if (nested_in_description) {
+          nested_in_description =
+              list_indent == open_definition_list->content_col;
+        }
         if (!marker_line_nested && !nested_in_description &&
             list_indent + 1 != open_definition_list->data) {
           return false;
@@ -7447,6 +7540,16 @@ static bool parse_colon(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     Block *open_list = find_list(s);
     if (!open_list || open_list->type != LIST_DEFINITION) {
       return false;
+    }
+    // At or past a description body's column the line is that body's
+    // content, where no definition list is open (PART 0 S2).
+    if (!(open_list->flags & BLOCK_FLAG_DEFINITION_TERM) &&
+        open_list->content_col != 0 && start_col >= open_list->content_col) {
+      return false;
+    }
+    if (open_list->data != list_indent + 1u &&
+        description_reaches_list(s, open_list, start_col)) {
+      list_indent = (uint8_t)(open_list->data - 1u);
     }
     while (lexer->lookahead == ' ') {
       advance(s, lexer);
@@ -7836,7 +7939,9 @@ static bool parse_footnote_end(Scanner *s, TSLexer *lexer,
     bool ending_newline = false;
     uint8_t markers = scan_block_quote_markers(s, lexer, &ending_newline);
     uint8_t quotes = count_blocks(s, BLOCK_QUOTE);
-    bool continuation = markers == quotes;
+    // An unmarked blank line has ended the quote.
+    bool continuation = markers == quotes &&
+        !(s->state & STATE_AFTER_BLANK_LINE);
     if (continuation && ending_newline) {
       bool second_newline = false;
       continuation = scan_block_quote_markers(s, lexer, &second_newline) == quotes;
@@ -7845,6 +7950,7 @@ static bool parse_footnote_end(Scanner *s, TSLexer *lexer,
     if (continuation && s->indent >= top->data) {
       mark_end(s, lexer);
       output_block_quote_continuation(s, lexer, markers, ending_newline);
+      s->block_quote_level = markers;
       return true;
     }
     remove_block(s);
@@ -7854,7 +7960,8 @@ static bool parse_footnote_end(Scanner *s, TSLexer *lexer,
 
   // At the end of input the body ends whatever column its last line reached,
   // for the reason given above `parse_list_item_end`'s own end-of-input branch.
-  if (!at_eof && s->indent >= top->data) {
+  if (!at_eof && s->indent >= top->data &&
+      (at_line_end(lexer) || s->block_quote_level >= quotes_below(s, top))) {
     return false;
   }
   // A lone `+` at column 0 continues the body (PART 9 section 17).
@@ -7912,7 +8019,9 @@ static bool parse_footnote_continuation(Scanner *s, TSLexer *lexer,
     return false;
   }
 
-  if (s->indent < footnote->data) {
+  if (s->indent < footnote->data ||
+      (!at_line_end(lexer) && !lexer->eof(lexer) &&
+       s->block_quote_level < quotes_below(s, footnote))) {
     return false;
   }
 
@@ -10426,6 +10535,24 @@ static bool scan_caption_at_paragraph_end(Scanner *s, TSLexer *lexer) {
 // probe: this is the one place already consuming the run, and a SEPARATE
 // probe run afterward in this chain would see a lexer position this one has
 // already moved past, with no way to rewind it.
+/// After a line's leading `%%`: is it a comment S1 erases? Not a `%%%`
+/// fence, and not a region marker, which keeps its boundary (CARVE-P11-073).
+static bool comment_line_is_erased(Scanner *s, TSLexer *lexer) {
+  if (lexer->lookahead == '%') return false;
+  while (lexer->lookahead == ' ' || lexer->lookahead == '\t') advance(s, lexer);
+  if (lexer->lookahead != '#') return true;
+  advance(s, lexer);
+  const char *word = "region";
+  if (lexer->lookahead == 'e') {
+    word = "endregion";
+  }
+  for (const char *c = word; *c; ++c) {
+    if (lexer->lookahead != *c) return true;
+    advance(s, lexer);
+  }
+  return carve_is_alnum_ascii(lexer->lookahead) || lexer->lookahead == '_';
+}
+
 static bool scan_fenced_comment_at_paragraph_end(Scanner *s, TSLexer *lexer) {
   if (lexer->lookahead != '%' || line_block_body(s)) {
     return false;
@@ -10435,6 +10562,11 @@ static bool scan_fenced_comment_at_paragraph_end(Scanner *s, TSLexer *lexer) {
     return false;
   }
   advance(s, lexer);
+  if (lexer->lookahead != '%') {
+    if (!comment_line_is_erased(s, lexer)) return true;
+    s->erasable_line = true;
+    return false;
+  }
   Block *top = peek_block(s);
   if (top && is_list(top->type) &&
       !(top->type == LIST_DEFINITION && (top->flags & BLOCK_FLAG_DEFINITION_TERM))) {
@@ -10981,9 +11113,11 @@ static bool scan_definition_at_paragraph_end(Scanner *s, TSLexer *lexer) {
   // and `close_paragraph` has already stopped a lazy one.
   advance(s, lexer);
   if (lexer->lookahead != '^') {
-    // I5: a reference definition interrupts too. `scan_ref_def` validates the
-    // whole line, so `[x]: /u trailing junk` stays paragraph text.
-    return scan_ref_def(s, lexer);
+    // S1 erases a reference definition without a boundary (CARVE-P0-011).
+    // A citation definition (`[@k]:`) still ends the paragraph.
+    if (lexer->lookahead == '@') return scan_ref_def(s, lexer);
+    if (scan_ref_def(s, lexer)) s->erasable_line = true;
+    return false;
   }
   advance(s, lexer);
   return scan_footnote_after_caret(s, lexer);
@@ -11106,15 +11240,9 @@ static bool scan_block_attribute_at_paragraph_end(Scanner *s, TSLexer *lexer) {
   return false;
 }
 
-/// An abbreviation definition interrupts a paragraph (corpus 95), but only at
-/// document level and column zero, where `abbreviation_definition` exists.
-/// Call with the lexer just past the `*`.
-static bool abbreviation_definition_follows(Scanner *s, TSLexer *lexer,
-                                            uint32_t column) {
-  if (column != 0) return false;
-  for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
-    if ((*array_get(s->open_blocks, i))->type != SECTION) return false;
-  }
+/// Does an abbreviation definition follow? Call with the lexer just past the
+/// `*`. In a paragraph S1 erases it in every container (corpus 95, 180).
+static bool abbreviation_definition_follows(Scanner *s, TSLexer *lexer) {
   advance(s, lexer);
   if (!carve_is_alnum_ascii(lexer->lookahead)) return false;
   while (carve_is_alnum_ascii(lexer->lookahead)) advance(s, lexer);
@@ -11205,7 +11333,10 @@ static bool scan_row_or_break_at_paragraph_end(Scanner *s, TSLexer *lexer) {
   }
   uint8_t count = consume_chars(s, lexer, (char)c);
   if (c == '*' && count == 1 && lexer->lookahead == '[') {
-    return abbreviation_definition_follows(s, lexer, column);
+    if (abbreviation_definition_follows(s, lexer)) {
+      s->erasable_line = true;
+    }
+    return false;
   }
   bool attributed = false;
   if (count == 1 && lexer->lookahead == '{') {
@@ -11249,8 +11380,18 @@ static bool scan_row_or_break_at_paragraph_end(Scanner *s, TSLexer *lexer) {
   if (at_margin && count >= 3 && !attributed && !content) {
     return true;
   }
-  if (c == '_' || count != 1 || !separated || !content ||
-      marker_folds_into_item(s, column) ||
+  if (c == '_' || count != 1 || !separated || !content) {
+    return false;
+  }
+  // A note or description body opens a child list at its content column
+  // (PART 9 section 10 I2); below it the marker reads in the body's owner.
+  Block *body = peek_block(s);
+  if (body && (body->type == FOOTNOTE ||
+               (body->type == LIST_DEFINITION &&
+                !(body->flags & BLOCK_FLAG_DEFINITION_TERM)))) {
+    return true;
+  }
+  if (marker_folds_into_item(s, column) ||
       marker_folds_into_nested_paragraph(s, column)) {
     return false;
   }
@@ -11422,18 +11563,6 @@ static bool close_paragraph(Scanner *s, TSLexer *lexer) {
   return close_paragraph_after_quote(s, lexer, markers_seen);
 }
 
-/// Does an unmarked line at `column` reach an item or note opened inside the
-/// innermost quote?
-static bool lazy_line_reaches_quoted_container(Scanner *s, uint32_t column) {
-  if (quoted_item_column_reached(s, column)) return true;
-  for (int i = (int)s->open_blocks->size - 1; i >= 0; --i) {
-    Block *b = *array_get(s->open_blocks, i);
-    if (b->type == BLOCK_QUOTE) return false;
-    if (b->type == FOOTNOTE) return !line_misses_note(s, column);
-  }
-  return false;
-}
-
 static bool close_paragraph_after_quote(Scanner *s, TSLexer *lexer,
                                         int markers_seen) {
   // A refused lone `+` is this paragraph's text, and the lexer now stands on
@@ -11443,6 +11572,14 @@ static bool close_paragraph_after_quote(Scanner *s, TSLexer *lexer,
   }
 
   Block *note = find_block(s, FOOTNOTE);
+  // A line missing a quote that holds the note is asked the quote's rules,
+  // except a fence or marker lead, which ends the note even unclosed.
+  int32_t note_lead = lexer->lookahead;
+  if (note && markers_seen >= 0 && markers_seen < quotes_below(s, note) &&
+      note_lead != '>' && note_lead != '`' && note_lead != '~' &&
+      note_lead != '%' && peek_block(s) == note) {
+    note = NULL;
+  }
   if (note && !at_line_end(lexer) && !lexer->eof(lexer)) {
     uint32_t margin = note->data;
     uint32_t quote_prefix = 0;
@@ -11483,6 +11620,22 @@ static bool close_paragraph_after_quote(Scanner *s, TSLexer *lexer,
            markers_seen == count_blocks(s, BLOCK_QUOTE))) {
         s->paragraph_markers_seen = markers_seen;
         return paragraph_block_opener_ahead(s, lexer, markers_seen);
+      }
+      // S1 erases a one-line comment or definition (CARVE-P0-011).
+      if (lead == '%' || lead == '[' || lead == '*') {
+        advance(s, lexer);
+        bool erased = false;
+        if (lead == '%' && lexer->lookahead == '%') {
+          advance(s, lexer);
+          erased = comment_line_is_erased(s, lexer);
+        } else if (lead == '[' && lexer->lookahead != '^' &&
+                   lexer->lookahead != '@') {
+          erased = scan_ref_def(s, lexer);
+        } else if (lead == '*' && lexer->lookahead == '[') {
+          erased = abbreviation_definition_follows(s, lexer);
+        }
+        if (erased) s->erasable_line = true;
+        return !erased;
       }
       switch (lead) {
       case '#': case '>': case '`': case '~': case ':': case '|': case '*':
@@ -11532,13 +11685,6 @@ static bool close_paragraph_after_quote(Scanner *s, TSLexer *lexer,
     // A caption attaches only at the margin of the context holding the quote.
     if (quote && lexer->lookahead == '^' &&
         !escapes_open_block_quote(s, column)) {
-      return false;
-    }
-    // The line start still lets an unmarked line reach an item or note opened
-    // in the quote, so a visible opener there would land inside the quote: it
-    // folds (#667). Definitions and comments render nothing.
-    if (quote && lexer->lookahead != '[' && lexer->lookahead != '%' &&
-        lazy_line_reaches_quoted_container(s, column)) {
       return false;
     }
   }
@@ -11666,6 +11812,7 @@ static bool emit_newline_inline(Scanner *s, TSLexer *lexer,
     uint8_t marker_end_col = s->marker_end_col;
     s->chain_col = UINT8_MAX;
     s->marker_end_col = 0;
+    s->erasable_line = false;
     ends = close_paragraph(s, lexer);
     s->chain_col = chain_col;
     s->marker_end_col = marker_end_col;
@@ -11674,6 +11821,18 @@ static bool emit_newline_inline(Scanner *s, TSLexer *lexer,
   if (ends) return false;
 
   lexer->result_symbol = NEWLINE_INLINE;
+  return true;
+}
+
+static bool emit_paragraph_newline(Scanner *s, TSLexer *lexer,
+                                   const bool *valid_symbols,
+                                   uint32_t newline_column) {
+  s->erasable_line = false;
+  if (!emit_newline_inline(s, lexer, newline_column)) return false;
+  if (s->erasable_line && valid_symbols[ERASED_LINE_NEWLINE]) {
+    lexer->result_symbol = ERASED_LINE_NEWLINE;
+  }
+  s->erasable_line = false;
   return true;
 }
 
@@ -11728,8 +11887,7 @@ static bool parse_newline(Scanner *s, TSLexer *lexer,
   // When they're no longer accepted, this marks the end of a paragraph
   // and a regular NEWLINE (or EOF_OR_NEWLINE) can be emitted.
   if (valid_symbols[NEWLINE_INLINE] &&
-      emit_newline_inline(s, lexer, newline_column)) {
-    lexer->result_symbol = NEWLINE_INLINE;
+      emit_paragraph_newline(s, lexer, valid_symbols, newline_column)) {
     return true;
   }
 
@@ -15207,7 +15365,7 @@ static bool parse_attribute_mark_begin(Scanner *s, TSLexer *lexer,
   }
   // The attribute's own path: the fallback is not taken here, so its marker
   // must not steer the bookkeeping to the fallback's branch.
-  bool attribute_only[MID_LINE_SPACE + 1];
+  bool attribute_only[ERASED_ABBREVIATION_DEFINITION + 1];
   memcpy(attribute_only, valid_symbols, sizeof(attribute_only));
   attribute_only[IN_FALLBACK] = false;
   if (!mark_span_begin(s, lexer, attribute_only, CURLY_BRACKET_SPAN, shared)) {
@@ -15430,7 +15588,7 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
   // EQ_CHECK_NOTE: a fresh parse scans the spot right behind a bare `=` in the
   // state before the `=` is reduced, which offers the highlight check; after
   // reuse the goto state does not. Read it as offered either way.
-  bool with_check[MID_LINE_SPACE + 1];
+  bool with_check[ERASED_ABBREVIATION_DEFINITION + 1];
   const bool *symbols = valid_symbols;
   if (s->eq_check_note && !valid_symbols[ERROR] && !valid_symbols[HIGHLIGHTED_OPEN_CHECK] &&
       lexer->lookahead == (int32_t)(s->eq_check_note & 0xff) &&
@@ -15583,6 +15741,18 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       return true;
     }
     return false;
+  }
+  // The erased line was validated where its line end was announced,
+  // wherever its column stands.
+  if (valid_symbols[ERASED_LINK_DEFINITION] && !valid_symbols[ERROR] &&
+      (lexer->lookahead == '[' || lexer->lookahead == '*' ||
+       lexer->lookahead == '%')) {
+    int32_t lead = lexer->lookahead;
+    while (!lexer->eof(lexer) && !at_line_end(lexer)) advance(s, lexer);
+    mark_end(s, lexer);
+    lexer->result_symbol = lead == '[' ? ERASED_LINK_DEFINITION
+        : lead == '*' ? ERASED_ABBREVIATION_DEFINITION : VERBATIM_COMMENT_LINE;
+    return true;
   }
   if (s->after_closer_char == PLAIN_BRACKET_REMAINDER &&
       (lexer->lookahead != '[' || line_column(s, lexer) != s->after_closer_col)) {
@@ -15779,7 +15949,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       (s->state & STATE_BARE_SPAN_OPENER)) {
     defer_column(s);
     mark_end(s, lexer);
-    bool real_symbols[MID_LINE_SPACE + 1];
+    bool real_symbols[ERASED_ABBREVIATION_DEFINITION + 1];
     memcpy(real_symbols, valid_symbols, sizeof(real_symbols));
     real_symbols[IN_FALLBACK] = false;
     bool same_marker_before = (s->after_closer_char == '=' || s->after_closer_char == '_') &&
@@ -15797,7 +15967,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       (s->state & STATE_BARE_SPAN_OPENER) && lexer->lookahead != '*') {
     defer_column(s);
     mark_end(s, lexer);
-    bool real_symbols[MID_LINE_SPACE + 1];
+    bool real_symbols[ERASED_ABBREVIATION_DEFINITION + 1];
     memcpy(real_symbols, valid_symbols, sizeof(real_symbols));
     real_symbols[IN_FALLBACK] = false;
     if (lexer->lookahead != '/' && mark_span_begin(s, lexer, real_symbols, EMPHASIS, EMPHASIS_QUALIFIED_MARK_BEGIN))
@@ -15813,7 +15983,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       (s->state & STATE_BARE_SPAN_OPENER)) {
     defer_column(s);
     mark_end(s, lexer);
-    bool real_symbols[MID_LINE_SPACE + 1];
+    bool real_symbols[ERASED_ABBREVIATION_DEFINITION + 1];
     memcpy(real_symbols, valid_symbols, sizeof(real_symbols));
     real_symbols[IN_FALLBACK] = false;
     if (lexer->lookahead != '*' &&
@@ -17452,6 +17622,7 @@ static void init_scalars(Scanner *s) {
   s->glued_quote_marker = false;
   s->probe_first_marker_col = 0;
   s->paragraph_plus_probe = false;
+  s->erasable_line = false;
   s->folded_plus_paragraph = false;
   s->band_prefix = false;
   s->band_sticky = false;

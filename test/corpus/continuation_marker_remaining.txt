@@ -501,7 +501,18 @@ Quote table after a nested task
     (reference_label)
     (footnote_marker_end)
     (footnote_content
-      (paragraph)))
+      (paragraph)
+      (list
+        (list_item
+          (list_marker_task
+            (unchecked))
+          (list_item_content
+            (paragraph)
+            (list
+              (list_item
+                (list_marker_dash)
+                (list_item_content
+                  (paragraph)))))))))
   (block_quote
     (block_quote_marker)
     (content

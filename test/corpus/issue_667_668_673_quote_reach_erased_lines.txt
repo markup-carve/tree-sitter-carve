@@ -1,0 +1,509 @@
+================================================================================
+An unprefixed line past a quoted item's column after a blank line leaves the quote (#667)
+================================================================================
+
+> - q
+
+    r
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (paragraph))))))
+  (paragraph))
+
+================================================================================
+An unprefixed heading at a quoted item's content column opens after the quote (#667)
+================================================================================
+
+> - q
+    # h
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (paragraph))))))
+  (section
+    heading: (heading
+      marker: (marker)
+      content: (content))))
+
+================================================================================
+An unprefixed fence under a quoted note opens after the quote (#667)
+================================================================================
+
+> [^f]: q
+  ```
+  x
+  ```
+
+r[^f]
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (footnote
+        (footnote_marker_begin)
+        label: (reference_label)
+        (footnote_marker_end)
+        content: (footnote_content
+          (paragraph)))))
+  (code_block
+    (code_block_marker_begin)
+    code: (code)
+    (code_block_marker_end))
+  (paragraph
+    (footnote_reference
+      (footnote_marker_begin)
+      (reference_label)
+      (footnote_marker_end))))
+
+================================================================================
+A marked line after an unmarked blank line opens a new quote, not the quoted item (#667)
+================================================================================
+
+> - q
+
+>   y
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (paragraph))))))
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (paragraph))))
+
+================================================================================
+A marked line after a quoted blank line stays in the quoted item
+================================================================================
+
+> - q
+>
+>   y
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (paragraph)
+            (block_quote_marker)
+            (paragraph)))))))
+
+================================================================================
+An unprefixed fence after a quoted blank line opens after the quote
+================================================================================
+
+> q
+>
+```
+x
+```
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (paragraph)
+      (block_quote_marker)))
+  (code_block
+    (code_block_marker_begin)
+    code: (code)
+    (code_block_marker_end)))
+
+================================================================================
+A line short of a quoted note's quote folds into the note's paragraph
+================================================================================
+
+> [^f]: q
+  : d
+
+x[^f]
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (footnote
+        (footnote_marker_begin)
+        label: (reference_label)
+        (footnote_marker_end)
+        content: (footnote_content
+          (paragraph)))))
+  (paragraph
+    (footnote_reference
+      (footnote_marker_begin)
+      (reference_label)
+      (footnote_marker_end))))
+
+================================================================================
+A comment line between two paragraph lines is erased in the paragraph (#668)
+================================================================================
+
+q
+%% c
+z
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (comment_line)))
+
+================================================================================
+A reference definition between two paragraph lines is erased in the paragraph (#668)
+================================================================================
+
+q
+[r]: /u
+z
+
+[r][]
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (link_reference_definition))
+  (paragraph
+    (collapsed_reference_link
+      text: (link_text))))
+
+================================================================================
+An unprefixed definition under a quoted note is erased and the next line folds (#668)
+================================================================================
+
+> [^f]: q
+    [r]: /u
+z
+
+x[^f]
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (footnote
+        (footnote_marker_begin)
+        label: (reference_label)
+        (footnote_marker_end)
+        content: (footnote_content
+          (paragraph
+            (link_reference_definition))))))
+  (paragraph
+    (footnote_reference
+      (footnote_marker_begin)
+      (reference_label)
+      (footnote_marker_end))))
+
+================================================================================
+An erased line on a quoted line keeps the quote's paragraph
+================================================================================
+
+> q
+> %% c
+> z
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (paragraph
+        (block_quote_marker)
+        (comment_line)
+        (block_quote_marker)))))
+
+================================================================================
+An unmarked erased line does not end a quoted paragraph
+================================================================================
+
+> q
+%% c
+> z
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (paragraph
+        (comment_line)
+        (block_quote_marker)))))
+
+================================================================================
+An abbreviation definition in a list item is erased in its paragraph
+================================================================================
+
+- q
+  *[H]: x
+  z
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph
+          (abbreviation_definition))))))
+
+================================================================================
+A citation definition still ends the paragraph
+================================================================================
+
+q
+[@k]: x
+z
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph)
+  (citation_definition
+    label: (citation_label)
+    entry: (citation_entry))
+  (paragraph))
+
+================================================================================
+Two erased lines in a row keep one paragraph
+================================================================================
+
+q
+%% c
+[r]: /u
+z
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (comment_line)
+    (link_reference_definition)))
+
+================================================================================
+A region marker keeps its boundary between two paragraph lines (CARVE-P11-073)
+================================================================================
+
+p
+%% #region x
+q
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph)
+  (comment_line)
+  (paragraph))
+
+================================================================================
+A bullet at a description's body column opens a list in the body (#673)
+================================================================================
+
+:: term
+: desc
+  - item
+    : d
+
+--------------------------------------------------------------------------------
+
+(document
+  (definition_list
+    (list_item
+      marker: (list_marker_definition)
+      term: (term))
+    (list_item
+      marker: (list_marker_description)
+      definition: (definition)
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (paragraph)))))))
+
+================================================================================
+A description marker below the body's column after a bullet is a sibling (#673)
+================================================================================
+
+:: t
+: d
+  - q
+: e
+
+--------------------------------------------------------------------------------
+
+(document
+  (definition_list
+    (list_item
+      marker: (list_marker_definition)
+      term: (term))
+    (list_item
+      marker: (list_marker_description)
+      definition: (definition)
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (paragraph)))))
+    (list_item
+      marker: (list_marker_description)
+      definition: (definition))))
+
+================================================================================
+A description marker at the body's column is body text
+================================================================================
+
+:: t
+: d
+  : e
+
+--------------------------------------------------------------------------------
+
+(document
+  (definition_list
+    (list_item
+      marker: (list_marker_definition)
+      term: (term))
+    (list_item
+      marker: (list_marker_description)
+      definition: (definition))))
+
+================================================================================
+A bullet at a note's body column opens a list in the note
+================================================================================
+
+[^f]: q
+  - b
+
+x[^f]
+
+--------------------------------------------------------------------------------
+
+(document
+  (footnote
+    (footnote_marker_begin)
+    label: (reference_label)
+    (footnote_marker_end)
+    content: (footnote_content
+      (paragraph)
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (paragraph))))))
+  (paragraph
+    (footnote_reference
+      (footnote_marker_begin)
+      (reference_label)
+      (footnote_marker_end))))
+
+================================================================================
+A bullet below a description's body column ends the definition list
+================================================================================
+
+:: t
+: d
+- b
+
+--------------------------------------------------------------------------------
+
+(document
+  (definition_list
+    (list_item
+      marker: (list_marker_definition)
+      term: (term))
+    (list_item
+      marker: (list_marker_description)
+      definition: (definition)))
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)))))
+
+================================================================================
+An indented description marker short of the body's column is a sibling
+================================================================================
+
+:: t
+:   d
+  : e
+
+--------------------------------------------------------------------------------
+
+(document
+  (definition_list
+    (list_item
+      marker: (list_marker_definition)
+      term: (term))
+    (list_item
+      marker: (list_marker_description)
+      definition: (definition))
+    (list_item
+      marker: (list_marker_description)
+      definition: (definition))))
+
+================================================================================
+A description marker in the folding zone of the item holding the list folds
+================================================================================
+
+- q
+  :: t
+  : d
+ : e
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)
+        (definition_list
+          (list_item
+            marker: (list_marker_definition)
+            term: (term))
+          (list_item
+            marker: (list_marker_description)
+            definition: (definition)))))))
