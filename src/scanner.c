@@ -15527,7 +15527,7 @@ static bool keeps_inline_notes(TokenType token) {
   case STRONG_QUALIFIED_MARK_BEGIN: case BOLD_ITALIC_LITERAL_STAR:
   case EMPHASIS_QUALIFIED_MARK_BEGIN: case WORD_END:
   case HIGHLIGHTED_QUALIFIED_MARK_BEGIN: case LITERAL_STAR: case LITERAL_SLASH:
-  case LITERAL_SLASH_BOUNDARY:
+  case LITERAL_SLASH_BOUNDARY: case AFTER_BARE_CLOSER:
     return true;
   default:
     return false;
@@ -16644,10 +16644,14 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   // on a line terminator; where one may be in progress the column is read.
   bool comment_body = valid_symbols[COMMENT_BODY_PERCENT] || valid_symbols[COMMENT_BODY_HASH] ||
                       valid_symbols[COMMENT_END_MARKER] || valid_symbols[COMMENT_HASH_END_MARKER];
-  bool known_mid_line = s->mid_line && s->col_base == 0 && !valid_symbols[ERROR] &&
-                        (!comment_body || s->comment_one_line) &&
-                        !valid_symbols[COMMENT_CLOSE] && !valid_symbols[TABLE_CELL_END] &&
-                        !valid_symbols[TABLE_ESCAPED_CELL_END] &&
+  // Error recovery offers every symbol, so its valid set says nothing about a
+  // pending comment body; a column read there would rescan the line from a
+  // cold cache once per dead parse version, which makes long lines quadratic.
+  bool known_mid_line = s->mid_line && s->col_base == 0 &&
+                        (valid_symbols[ERROR] ||
+                         ((!comment_body || s->comment_one_line) &&
+                          !valid_symbols[COMMENT_CLOSE] && !valid_symbols[TABLE_CELL_END] &&
+                          !valid_symbols[TABLE_ESCAPED_CELL_END])) &&
                         !lexer->is_at_included_range_start(lexer);
   // A whole-line negative proof starts after a combined opener and admits no
   // nested token that crosses the line end. Its remaining tokens are midline.
