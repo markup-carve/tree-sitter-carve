@@ -1649,6 +1649,8 @@
   },
   "errorFamilies": {},
   "inlineReadingGaps": {
+    "a-tab-led-attribute-line-in-a-note-a-nested-plus-passes-stays-the-note-s": {"reading": "strong html=0 tree=1", "reason": "A tab-led attribute line in a note that a nested `+` passes stays the note's attribute line in the next carve release (carve#5957); the grammar reads it and the line after it into the note's paragraph."},
+    "a-line-that-ends-a-span-in-an-item-s-description-leaves-the-item-s-paragraph-open-5": {"reading": "code html=0 tree=1", "reason": "A code fence interrupts a paragraph without a closer ahead in the next carve release (carve#4018); the grammar still reads the fence run as an inline code span."},
     "emphasis-6": {"reading": "em html=0 tree=1", "reason": "The next carve release makes the inline pairing procedure normative (delimiter stack, braced openers, combined tokens); the grammar still pairs these delimiters the released way."},
     "fenced-code-11": {"reading": "code html=0 tree=1", "reason": "A code fence interrupts a paragraph without a closer ahead in the next carve release (carve#4018); the grammar still reads the fence run as an inline code span."},
     "fenced-code-12": {"reading": "code html=0 tree=1", "reason": "A code fence interrupts a paragraph without a closer ahead in the next carve release (carve#4018); the grammar still reads the fence run as an inline code span."},
