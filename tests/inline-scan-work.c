@@ -36,6 +36,8 @@ int main(int argc, char **argv) {
     {"strikethrough closed right before a star", "a ~z~* b ", "\n", 2.5, 2.5},
     {"braced comments", "a {% c %} b ", "\n", 2.5, 2.5},
     {"editorial comments", "a {# c #} b ", "\n", 2.5, 2.5},
+    {"glued unclosed strikethrough", "a=~z ", "\n", 2.5, 2.5},
+    {"glued strikethrough closed at the line end", "a=~z ", "a=~\n", 2.5, 2.5},
   };
   const unsigned sizes[] = {512, 1024, 2048, 4096};
   for (unsigned f = 0; f < sizeof(families) / sizeof(families[0]); ++f) {
