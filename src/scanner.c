@@ -10366,7 +10366,8 @@ static bool end_paragraph_in_block_quote(Scanner *s, TSLexer *lexer,
   }
 keep_reading:
 
-  if (ending_newline) {
+  // Markers with nothing after them at the end of input are a blank quote line.
+  if (ending_newline || lexer->eof(lexer)) {
     return true;
   }
   // Down a quote level: the line continues the paragraph lazily unless it
