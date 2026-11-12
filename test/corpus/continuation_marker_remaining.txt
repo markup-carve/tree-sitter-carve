@@ -529,12 +529,16 @@ Quote table after nested ordered items
     (list_item
       (list_marker_decimal_period)
       (list_item_content
-        (paragraph)
-        (list
-          (list_item
-            (list_marker_dash)
-            (list_item_content
-              (paragraph)))))))
+        (paragraph)))
+    (list_item
+      (list_marker_decimal_period)
+      (list_item_content
+        (paragraph))))
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph))))
   (block_quote
     (block_quote_marker)
     (content
@@ -1181,7 +1185,7 @@ Quoted attached footnote paragraph continues across quote lines
             (block_quote_marker)))))))
 
 ============================================================
-Quoted footnote marker does not attach an unquoted paragraph
+An unquoted line folds into the paragraph of a quoted footnote (PART 0 S4)
 ============================================================
 r[^a]
 
@@ -1204,8 +1208,7 @@ z
         (reference_label)
         (footnote_marker_end)
         (footnote_content
-          (paragraph)))))
-  (paragraph))
+          (paragraph))))))
 
 ============================================================
 Quoted footnote marker does not attach an unquoted table

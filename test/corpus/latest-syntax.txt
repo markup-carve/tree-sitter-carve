@@ -4292,7 +4292,7 @@ tail
 (document (definition_list (list_item (list_marker_definition) (term)) (list_item (list_marker_description) (footnote (footnote_marker_begin) (reference_label) (footnote_marker_end) (footnote_content (paragraph))) (list (list_item (list_marker_dash) (list_item_content (paragraph)))))))
 
 =============================
-A lazy line after a description-hosted note is a document sibling (#459)
+A lazy line after a description-hosted note folds into the note (PART 0 S4)
 =============================
 :: t
 :  [^f]: note
@@ -4301,10 +4301,10 @@ tail
 
 ---
 
-(document (definition_list (list_item (list_marker_definition) (term)) (list_item (list_marker_description) (footnote (footnote_marker_begin) (reference_label) (footnote_marker_end) (footnote_content (paragraph))))) (paragraph))
+(document (definition_list (list_item (list_marker_definition) (term)) (list_item (list_marker_description) (footnote (footnote_marker_begin) (reference_label) (footnote_marker_end) (footnote_content (paragraph))))))
 
 =============================
-A lazy line after a nested list in a note is a document sibling (#459)
+A lazy line after a nested list in a note folds into the item (PART 0 S4)
 =============================
 :: t
 :  [^f]: note
@@ -4313,10 +4313,10 @@ tail
 
 ---
 
-(document (definition_list (list_item (list_marker_definition) (term)) (list_item (list_marker_description) (footnote (footnote_marker_begin) (reference_label) (footnote_marker_end) (footnote_content (paragraph) (list (list_item (list_marker_dash) (list_item_content (paragraph)))))))) (paragraph))
+(document (definition_list (list_item (list_marker_definition) (term)) (list_item (list_marker_description) (footnote (footnote_marker_begin) (reference_label) (footnote_marker_end) (footnote_content (paragraph) (list (list_item (list_marker_dash) (list_item_content (paragraph)))))))))
 
 =============================
-A line at the description margin follows its hosted note (#459)
+A line at the description margin folds into the note's nested item (PART 0 S4)
 =============================
 :: t
 :  [^f]: note
@@ -4325,7 +4325,7 @@ A line at the description margin follows its hosted note (#459)
 
 ---
 
-(document (definition_list (list_item (list_marker_definition) (term)) (list_item (list_marker_description) (footnote (footnote_marker_begin) (reference_label) (footnote_marker_end) (footnote_content (paragraph) (list (list_item (list_marker_dash) (list_item_content (paragraph)))))) (paragraph))))
+(document (definition_list (list_item (list_marker_definition) (term)) (list_item (list_marker_description) (footnote (footnote_marker_begin) (reference_label) (footnote_marker_end) (footnote_content (paragraph) (list (list_item (list_marker_dash) (list_item_content (paragraph)))))))))
 
 =============================
 A description in a bullet item can end before a nested list (#459)
@@ -4350,7 +4350,7 @@ A description in an ordered item can end before a deeper list (#459)
 (document (list (list_item (list_marker_decimal_period) (list_item_content (definition_list (list_item (list_marker_definition) (term)) (list_item (list_marker_description) (definition) (list (list_item (list_marker_dash) (list_item_content (paragraph))))))))))
 
 =============================
-A shallower quote marker ends a nested quoted footnote (#459)
+A shallower quoted line folds into a nested quoted footnote (PART 0 S4)
 =============================
 > > [^f]: t
 >   x
@@ -4359,7 +4359,7 @@ y[^f]
 
 ---
 
-(document (block_quote (block_quote_marker) (content (block_quote (block_quote_marker) (content (footnote (footnote_marker_begin) (reference_label) (footnote_marker_end) (footnote_content (paragraph))))) (block_quote_marker) (paragraph))) (paragraph (footnote_reference (footnote_marker_begin) (reference_label) (footnote_marker_end))))
+(document (block_quote (block_quote_marker) (content (block_quote (block_quote_marker) (content (footnote (footnote_marker_begin) (reference_label) (footnote_marker_end) (footnote_content (paragraph (block_quote_marker)))))))) (paragraph (footnote_reference (footnote_marker_begin) (reference_label) (footnote_marker_end))))
 
 =============================
 A quoted blank line before a shallower quote ends the footnote (#459)

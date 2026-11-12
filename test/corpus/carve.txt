@@ -6920,7 +6920,7 @@ A padded bullet's content column is past the whole space run (tree-sitter-carve#
       content: (content))))
 
 ===============================================================================
-A marker short of a padded item's content column folds into its paragraph (tree-sitter-carve#380)
+A marker short of a padded item's content column opens a sibling item (PART 0 S4)
 ===============================================================================
 -   lead
   - x
@@ -6929,6 +6929,10 @@ A marker short of a padded item's content column folds into its paragraph (tree-
 
 (document
   (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)))
     (list_item
       marker: (list_marker_dash)
       content: (list_item_content

@@ -1,0 +1,362 @@
+================================================================================
+A marker one column short of an item opens a sibling (#657)
+================================================================================
+- a
+ - b
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)))
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)))))
+
+================================================================================
+An unordered marker short of an ordered item opens a new list (#657)
+================================================================================
+1. a
+  - b
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_decimal_period)
+      content: (list_item_content
+        (paragraph))))
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)))))
+
+================================================================================
+A quoted marker short of a quoted item opens a sibling (#657)
+================================================================================
+> - q
+>  - b
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (paragraph)))
+        (list_item
+          (block_quote_marker)
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (paragraph)))))))
+
+================================================================================
+A quote marker short of a quoted item opens a quote beside the list (#658)
+================================================================================
+> - q
+>  > r
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (paragraph))))
+      (block_quote_marker)
+      (block_quote
+        (block_quote_marker)
+        content: (content
+          (paragraph))))))
+
+================================================================================
+A break at a quoted item content column stays in the item (#658)
+================================================================================
+> - q
+>   ***
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (paragraph)
+            (block_quote_marker)
+            (thematic_break)))))))
+
+================================================================================
+An indented quote marker in an item-held quote opens a nested quote (#658)
+================================================================================
+- > q
+  >  > r
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (block_quote
+          (block_quote_marker)
+          content: (content
+            (paragraph)
+            (block_quote_marker)
+            (block_quote
+              (block_quote_marker)
+              content: (content
+                (paragraph)))))))))
+
+================================================================================
+A fence on a shallower quoted line opens in the outer quote (#658)
+================================================================================
+> > q
+>    ```
+>    x
+>    ```
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (block_quote
+        (block_quote_marker)
+        content: (content
+          (paragraph)))
+      (block_quote_marker)
+      (code_block
+        (code_block_marker_begin)
+        code: (code
+          (block_quote_marker))
+        (block_quote_marker)
+        (code_block_marker_end)))))
+
+================================================================================
+A list marker in a list-less quote inside an item is text (#658)
+================================================================================
+- > q
+  > - b
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (block_quote
+          (block_quote_marker)
+          content: (content
+            (paragraph
+              (block_quote_marker))))))))
+
+================================================================================
+An unprefixed line folds into a footnote paragraph (#659)
+================================================================================
+[^f]: n
+z
+
+x[^f]
+
+--------------------------------------------------------------------------------
+
+(document
+  (footnote
+    (footnote_marker_begin)
+    label: (reference_label)
+    (footnote_marker_end)
+    content: (footnote_content
+      (paragraph)))
+  (paragraph
+    (footnote_reference
+      (footnote_marker_begin)
+      (reference_label)
+      (footnote_marker_end))))
+
+================================================================================
+An unprefixed line folds into an indented footnote paragraph (#659)
+================================================================================
+ [^f]: n
+z
+
+x[^f]
+
+--------------------------------------------------------------------------------
+
+(document
+  (footnote
+    (footnote_marker_begin)
+    label: (reference_label)
+    (footnote_marker_end)
+    content: (footnote_content
+      (paragraph)))
+  (paragraph
+    (footnote_reference
+      (footnote_marker_begin)
+      (reference_label)
+      (footnote_marker_end))))
+
+================================================================================
+A list marker short of a footnote opens a list (#659)
+================================================================================
+[^f]: n
+- z
+
+x[^f]
+
+--------------------------------------------------------------------------------
+
+(document
+  (footnote
+    (footnote_marker_begin)
+    label: (reference_label)
+    (footnote_marker_end)
+    content: (footnote_content
+      (paragraph)))
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph))))
+  (paragraph
+    (footnote_reference
+      (footnote_marker_begin)
+      (reference_label)
+      (footnote_marker_end))))
+
+================================================================================
+Emphasis short of a footnote folds into its paragraph (#659)
+================================================================================
+[^f]: note
+*not-list
+
+x[^f]
+
+--------------------------------------------------------------------------------
+
+(document
+  (footnote
+    (footnote_marker_begin)
+    label: (reference_label)
+    (footnote_marker_end)
+    content: (footnote_content
+      (paragraph)))
+  (paragraph
+    (footnote_reference
+      (footnote_marker_begin)
+      (reference_label)
+      (footnote_marker_end))))
+
+================================================================================
+A hash word short of a footnote folds into its paragraph (#659)
+================================================================================
+[^f]: note
+#not-heading
+
+x[^f]
+
+--------------------------------------------------------------------------------
+
+(document
+  (footnote
+    (footnote_marker_begin)
+    label: (reference_label)
+    (footnote_marker_end)
+    content: (footnote_content
+      (paragraph
+        (tag))))
+  (paragraph
+    (footnote_reference
+      (footnote_marker_begin)
+      (reference_label)
+      (footnote_marker_end))))
+
+================================================================================
+A bracketed word short of a footnote folds into its paragraph (#659)
+================================================================================
+[^f]: note
+[not-link]
+
+x[^f]
+
+--------------------------------------------------------------------------------
+
+(document
+  (footnote
+    (footnote_marker_begin)
+    label: (reference_label)
+    (footnote_marker_end)
+    content: (footnote_content
+      (paragraph)))
+  (paragraph
+    (footnote_reference
+      (footnote_marker_begin)
+      (reference_label)
+      (footnote_marker_end))))
+
+================================================================================
+A line short of an item after a closed comment fence below its column leaves the item (#662)
+================================================================================
+- q
+ %%%
+ c
+ %%%
+z
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)
+        (fenced_comment_block
+          (comment_fence_marker_begin)
+          content: (content)
+          (comment_fence_marker_end)))))
+  (paragraph))
+
+================================================================================
+An indented line after a closed comment fence below the column leaves the item (#662)
+================================================================================
+- q
+ %%%
+ c
+ %%%
+ z
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)
+        (fenced_comment_block
+          (comment_fence_marker_begin)
+          content: (content)
+          (comment_fence_marker_end)))))
+  (paragraph))
