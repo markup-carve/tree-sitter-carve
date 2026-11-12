@@ -2004,7 +2004,9 @@ module.exports = grammar({
       ),
 
     _whitespace: (_) => token.immediate(/[ \t]*/),
-    _whitespace1: (_) => token.immediate(/[ \t]+/),
+    // The scanner hands a space over as `_mid_line_space` to note that its
+    // line has passed its start (#669).
+    _whitespace1: ($) => choice(token.immediate(/[ \t]+/), $._mid_line_space),
 
     // A SLOT SPELLED `space`, in its two cardinalities. grammar.ebnf PART 7
     // (MARKER SEPARATORS AND PADDING SLOTS) spells every separator and every
@@ -2478,7 +2480,7 @@ module.exports = grammar({
     // parts it is optional, because `include_path` stops at `#` and `@` and
     // neither identifier class holds one, so `{{ c.crv@shift:1 }}` is well
     // formed (grammar PART 6 `include_options`).
-    _include_pad: (_) => token.immediate(/[ \t]+/),
+    _include_pad: ($) => choice(token.immediate(/[ \t]+/), $._mid_line_space),
 
     // The PARTS, not one opaque run. Highlighting only needs the directive not
     // to be shredded into `tag` and `mention`, which the context already
@@ -3396,5 +3398,7 @@ module.exports = grammar({
     $._frontmatter_unclosed_marker,
     $._frontmatter_rest,
     $._after_bare_closer,
+    // One space between words; see `_whitespace1`.
+    $._mid_line_space,
   ],
 });

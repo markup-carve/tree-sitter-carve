@@ -297,6 +297,7 @@ typedef enum {
   // Empty; carries a next-token note's state past the internal lexer's token
   // (see `scan_right_behind`).
   AFTER_BARE_CLOSER,
+  MID_LINE_SPACE,
 } TokenType;
 
 // The different blocks in Carve that we track,
@@ -686,6 +687,11 @@ typedef struct {
   // The serialized state this scan call started from.
   unsigned entry_length;
   char entry_state[TREE_SITTER_SERIALIZATION_BUFFER_SIZE];
+  // The entry state is the initial one, or that plus the `mid_line` of a
+  // `MID_LINE_SPACE`, which serializes it as one byte. The second is
+  // transient: the token about to be serialized is such a space.
+  bool entry_initial;
+  bool initial_mid_line;
 
   // Parser state flags.
   uint16_t state;
@@ -734,6 +740,10 @@ typedef struct {
   // The ordered-marker probe stopped right after a word it consumed, so the
   // character behind the lexer is alphanumeric. Transient, never serialized.
   bool ordered_word_end;
+  // The line-start check read a nonzero column in this scan call, or the
+  // quote indent check one past the quote's content column. Transient.
+  bool read_mid_line;
+  bool read_past_quote;
 
   // Characters advanced over in this scan call, so a probe can tell whether
   // the lexer moved without asking for a column: `get_column` rewinds and
@@ -6107,10 +6117,13 @@ static bool ensure_list_open(Scanner *s, BlockType type, uint8_t indent,
 }
 
 static bool handle_ordered_list_marker(Scanner *s, TSLexer *lexer,
-                                       const bool *valid_symbols,
-                                       TokenType marker, uint32_t start_col) {
-  if (marker != IGNORED && valid_symbols[marker] &&
-      line_column(s, lexer) <= MAX_LIST_MARKER_COLUMN) {
+                                       const bool *valid_symbols, TokenType marker,
+                                       bool after_marker, uint32_t start_at) {
+  uint32_t column = marker != IGNORED && valid_symbols[marker] ? line_column(s, lexer) : UINT32_MAX;
+  // `start_at` is in host advances, all on this line: the marker is on it.
+  uint32_t moved = s->host_advances - start_at;
+  uint32_t start_col = after_marker && column != UINT32_MAX && column >= moved ? column - moved : 0;
+  if (column <= MAX_LIST_MARKER_COLUMN) {
     // Mark the token end (after the marker's space) before the content probe,
     // so the scratch advances in `marker_line_has_content` cannot extend it.
     mark_end(s, lexer);
@@ -14838,6 +14851,9 @@ static bool zero_width_mark_pending(const bool *valid_symbols) {
 
 void tree_sitter_carve_external_scanner_deserialize(void *payload, char *buffer,
                                                    unsigned length);
+unsigned tree_sitter_carve_external_scanner_serialize(void *payload, char *buffer);
+// The one-byte state of a `MID_LINE_SPACE` read from the initial state.
+#define INITIAL_MID_LINE 1
 
 /// -1: the reader moved the lexer and produced nothing, so the call is over.
 ///  0: the reader did not move the lexer; the rest of the call still applies.
@@ -15191,7 +15207,7 @@ static bool parse_attribute_mark_begin(Scanner *s, TSLexer *lexer,
   }
   // The attribute's own path: the fallback is not taken here, so its marker
   // must not steer the bookkeeping to the fallback's branch.
-  bool attribute_only[AFTER_BARE_CLOSER + 1];
+  bool attribute_only[MID_LINE_SPACE + 1];
   memcpy(attribute_only, valid_symbols, sizeof(attribute_only));
   attribute_only[IN_FALLBACK] = false;
   if (!mark_span_begin(s, lexer, attribute_only, CURLY_BRACKET_SPAN, shared)) {
@@ -15389,6 +15405,7 @@ static bool scan_right_behind(Scanner *s, TSLexer *lexer, const bool *valid_symb
 bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
                                             const bool *valid_symbols) {
   Scanner *s = (Scanner *)payload;
+  s->initial_mid_line = false;
   s->col_base_marked = false;
   s->host_previous = -1;
   s->host_previous_at_mark = -1;
@@ -15413,7 +15430,7 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
   // EQ_CHECK_NOTE: a fresh parse scans the spot right behind a bare `=` in the
   // state before the `=` is reduced, which offers the highlight check; after
   // reuse the goto state does not. Read it as offered either way.
-  bool with_check[AFTER_BARE_CLOSER + 1];
+  bool with_check[MID_LINE_SPACE + 1];
   const bool *symbols = valid_symbols;
   if (s->eq_check_note && !valid_symbols[ERROR] && !valid_symbols[HIGHLIGHTED_OPEN_CHECK] &&
       lexer->lookahead == (int32_t)(s->eq_check_note & 0xff) &&
@@ -15425,10 +15442,33 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
   // A `=` the scanner declines goes to the internal lexer, so only an empty
   // token can carry the note past it.
   bool eq_start = lexer->lookahead == '=' && valid_symbols[AFTER_BARE_CLOSER] &&
-                  !valid_symbols[ERROR] && s->entry_length;
+                  !valid_symbols[ERROR] && !s->entry_initial;
   if (eq_start) lexer->mark_end(lexer);
+  // MID_LINE_SPACE: a line of internal tokens emits nothing that could set
+  // `mid_line`, so every scan on it would reread the line for its column.
+  bool mid_line_start = (!s->mid_line || s->block_quote_level) && valid_symbols[MID_LINE_SPACE] &&
+                        !valid_symbols[ERROR] && lexer->lookahead == ' ' && !eq_start &&
+                        !s->note_here && symbols == valid_symbols;
+  s->read_mid_line = false;
+  s->read_past_quote = false;
   s->first_next = -1;
   bool found = scan(s, lexer, symbols);
+  // The scan read past exactly one space to a word: hand that space over.
+  if (mid_line_start && !found && (s->read_mid_line || s->read_past_quote) && s->col_base == 0 &&
+      s->host_advances == 1 &&
+      s->host_previous == ' ' && carve_is_alnum_ascii(lexer->lookahead)) {
+    uint16_t generation = s->parse_generation;
+    tree_sitter_carve_external_scanner_deserialize(s, s->entry_state, s->entry_length);
+    s->parse_generation = generation;
+    s->mid_line = true;
+    // Past the quote's content column, the indent check has nothing to read.
+    if (s->read_past_quote) s->block_quote_level = 0;
+    // Keeps the `=` note off where it was off before: no token before it.
+    s->initial_mid_line = s->entry_initial;
+    lexer->mark_end(lexer);
+    lexer->result_symbol = MID_LINE_SPACE;
+    return true;
+  }
   if (eq_start && found && !s->host_marked) lexer->mark_end(lexer);
   if (eq_start && !found && (!s->host_marked || !s->host_advances_at_mark) &&
       !s->host_crossed_line && !s->host_jumped && s->host_advances &&
@@ -15739,7 +15779,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       (s->state & STATE_BARE_SPAN_OPENER)) {
     defer_column(s);
     mark_end(s, lexer);
-    bool real_symbols[AFTER_BARE_CLOSER + 1];
+    bool real_symbols[MID_LINE_SPACE + 1];
     memcpy(real_symbols, valid_symbols, sizeof(real_symbols));
     real_symbols[IN_FALLBACK] = false;
     bool same_marker_before = (s->after_closer_char == '=' || s->after_closer_char == '_') &&
@@ -15757,7 +15797,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       (s->state & STATE_BARE_SPAN_OPENER) && lexer->lookahead != '*') {
     defer_column(s);
     mark_end(s, lexer);
-    bool real_symbols[AFTER_BARE_CLOSER + 1];
+    bool real_symbols[MID_LINE_SPACE + 1];
     memcpy(real_symbols, valid_symbols, sizeof(real_symbols));
     real_symbols[IN_FALLBACK] = false;
     if (lexer->lookahead != '/' && mark_span_begin(s, lexer, real_symbols, EMPHASIS, EMPHASIS_QUALIFIED_MARK_BEGIN))
@@ -15773,7 +15813,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       (s->state & STATE_BARE_SPAN_OPENER)) {
     defer_column(s);
     mark_end(s, lexer);
-    bool real_symbols[AFTER_BARE_CLOSER + 1];
+    bool real_symbols[MID_LINE_SPACE + 1];
     memcpy(real_symbols, valid_symbols, sizeof(real_symbols));
     real_symbols[IN_FALLBACK] = false;
     if (lexer->lookahead != '*' &&
@@ -16446,7 +16486,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   // consume the line boundary before ordinary inline scanning resumes.
   bool at_line_start = s->after_closer_char != NO_COMBINED_CLOSER_LINE &&
                        (valid_symbols[ERROR] || !find_block(s, TABLE_ROW)) &&
-                       !known_mid_line && line_column(s, lexer) == 0;
+                       !known_mid_line && !(s->read_mid_line = line_column(s, lexer) != 0);
   if (at_line_start) {
     s->indent = consume_whitespace(s, lexer);
     // A new line starts a new marker chain (see `marker_end_col`).
@@ -16472,15 +16512,17 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     // the line's indent, as it is outside a quote: `>  - a` opens a list.
     Block *quote = find_block(s, BLOCK_QUOTE);
     Block *quoted_list = peek_block(s);
+    uint32_t column = quote && quote->content_col != 0 ? line_column(s, lexer) : 0;
+    if (quote && quote->content_col != 0 && column > quote->content_col) s->read_past_quote = true;
     if (quote && quote == peek_block(s) && quote->content_col != 0 &&
-        line_column(s, lexer) == quote->content_col) {
+        column == quote->content_col) {
       consume_whitespace(s, lexer);
       s->indent = (uint8_t)line_column(s, lexer);
     } else if (quote && quote->content_col != 0 && quoted_list &&
                is_list(quoted_list->type) &&
                quoted_list->type != LIST_DEFINITION &&
                list_opened_in_quote(s, quoted_list) &&
-               line_column(s, lexer) == quote->content_col) {
+               column == quote->content_col) {
       // A sibling short of a quoted item's content column (PART 0 S4) counts
       // its indent from the quote's prefix, as the list's own marker did.
       consume_whitespace(s, lexer);
@@ -17233,14 +17275,15 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   // closing of lists (both may try to parse the same characters).
   bool from_word = deferred_word && s->advances == deferred_at;
   uint32_t word_at = s->advances;
-  // Only a marker after another marker on this line needs its column.
-  uint32_t ordered_col =
-      !list_text_line(s) && s->marker_end_col != 0 ? line_column(s, lexer) : 0;
+  // Only a marker after another marker on this line needs its column, read
+  // once a marker is found: a read per token is quadratic on a long line.
+  bool ordered_after_marker = !list_text_line(s) && s->marker_end_col != 0;
+  uint32_t ordered_at = s->host_advances;
   TokenType ordered_list_marker =
       list_text_line(s) ? IGNORED : scan_ordered_list_marker_token(s, lexer);
   if (ordered_list_marker != IGNORED &&
-      handle_ordered_list_marker(s, lexer, valid_symbols,
-                                 ordered_list_marker, ordered_col)) {
+      handle_ordered_list_marker(s, lexer, valid_symbols, ordered_list_marker,
+                                 ordered_after_marker, ordered_at)) {
     return true;
   }
   // THE READER'S SECOND CHANCE FOR A WORD. At a line start the reader stands
@@ -17495,6 +17538,8 @@ void *tree_sitter_carve_external_scanner_create() {
   s->entry_length = 0;
   s->parse_generation = 0;
   init(s);
+  s->entry_initial = true;
+  s->initial_mid_line = false;
   return s;
 }
 
@@ -17513,6 +17558,10 @@ void tree_sitter_carve_external_scanner_destroy(void *payload) {
 unsigned tree_sitter_carve_external_scanner_serialize(void *payload,
                                                      char *buffer) {
   Scanner *s = (Scanner *)payload;
+  if (s->initial_mid_line) {
+    buffer[0] = INITIAL_MID_LINE;
+    return 1;
+  }
   // The wire format stores the block count in one byte.  Do not let 256 wrap
   // to zero and turn the following block payload into invented inline state on
   // deserialize (#269).  Returning zero is tree-sitter's documented way for
@@ -17671,7 +17720,12 @@ void tree_sitter_carve_external_scanner_deserialize(void *payload, char *buffer,
   if (buffer != s->entry_state && length) memcpy(s->entry_state, buffer, length);
   if (!length) ++s->parse_generation;
   s->entry_length = length;
+  s->entry_initial = !length || (length == 1 && buffer[0] == INITIAL_MID_LINE);
   reset(s);
+  if (length == 1) {
+    s->mid_line = buffer[0] == INITIAL_MID_LINE;
+    return;
+  }
   if (length >= 20) {
     uint16_t tail = (uint8_t)buffer[length - 2] | (uint16_t)(uint8_t)buffer[length - 1] << 8;
     s->after_literal_star = (tail & (1 << 14)) != 0;

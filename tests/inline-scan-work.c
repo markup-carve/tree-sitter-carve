@@ -13,6 +13,7 @@ extern unsigned long long carve_scanner_advances, carve_lexer_advances;
 typedef struct {
   const char *name, *fragment, *tail;
   double scanner_ratio, lexer_ratio;
+  const char *prefix;
 } Family;
 
 int main(int argc, char **argv) {
@@ -38,6 +39,12 @@ int main(int argc, char **argv) {
     {"editorial comments", "a {# c #} b ", "\n", 2.5, 2.5},
     {"glued unclosed strikethrough", "a=~z ", "\n", 2.5, 2.5},
     {"glued strikethrough closed at the line end", "a=~z ", "a=~\n", 2.5, 2.5},
+    {"plain prose", "The quick brown fox jumps over the lazy dog. ", "\n", 2.5, 2.5},
+    {"plain prose on a second line", "The quick brown fox jumps over the lazy dog. ", "\n", 2.5, 2.5, "x\n"},
+    {"plain prose in a list item", "The quick brown fox jumps over the lazy dog. ", "\n", 2.5, 2.5, "- "},
+    {"plain prose in a quote", "The quick brown fox jumps over the lazy dog. ", "\n", 2.5, 2.5, "> "},
+    {"glued unclosed strikethrough in a quote", "a=~z ", "\n", 2.5, 2.5, "> "},
+    {"spaced strikethrough", "a =~ b ", "\n", 2.5, 2.5},
   };
   const unsigned sizes[] = {512, 1024, 2048, 4096};
   for (unsigned f = 0; f < sizeof(families) / sizeof(families[0]); ++f) {
@@ -45,11 +52,14 @@ int main(int argc, char **argv) {
     for (unsigned i = 0; i < sizeof(sizes) / sizeof(sizes[0]); ++i) {
       unsigned n = sizes[i];
       if (baseline && n > 1024) break;
-      size_t width = strlen(families[f].fragment), bytes = width * n + strlen(families[f].tail);
+      const char *prefix = families[f].prefix ? families[f].prefix : "";
+      size_t lead = strlen(prefix), width = strlen(families[f].fragment);
+      size_t bytes = lead + width * n + strlen(families[f].tail);
       char *source = malloc(bytes + 1);
       assert(source);
-      for (unsigned j = 0; j < n; ++j) memcpy(source + j * width, families[f].fragment, width);
-      strcpy(source + n * width, families[f].tail);
+      memcpy(source, prefix, lead);
+      for (unsigned j = 0; j < n; ++j) memcpy(source + lead + j * width, families[f].fragment, width);
+      strcpy(source + lead + n * width, families[f].tail);
       carve_scanner_advances = carve_lexer_advances = 0;
       TSTree *tree = ts_parser_parse_string(parser, NULL, source, bytes);
       assert(tree && !ts_node_has_error(ts_tree_root_node(tree)));
