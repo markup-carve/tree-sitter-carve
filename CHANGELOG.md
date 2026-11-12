@@ -24,6 +24,7 @@ This release follows the Carve 0.1.14 readings: braced cell alignment, spaced th
 - Leading space no longer stops a block opener at the document, in a list item or in a quote: ` > r`, `  # h`, an indented fence, div, table, break, attribute or definition opens its block, and an opener short of an item's content column closes the item (#656, markup-carve/carve#3887).
 - A span end right before a CR no longer refuses a later `{%`, `{#` or `{*` opener with CRLF or CR line ends (#639).
 - Long one-line paragraphs of spans parse in linear time: column reads only a fallback needs are deferred (#649), and a bare closer right before another delimiter, as in `*/z/*`, `_z_*` or `~z~*`, no longer rereads the line (#652).
+- A line of unclosed braced openers such as `{*z {*z` parses in linear time instead of quadratic (#687, #685).
 - An incremental reparse no longer drops or adds a delimiter behind a bare `=` followed by `~`, `<` or `>`, so it gives the same tree as a fresh parse (#661, part of #655).
 - An indented list marker short of an item's content column opens a sibling or a new list instead of folding into the item, and indented openers inside quoted items open their block (#663, #657, #658).
 - A lazy line after a footnote's paragraph folds into the note unless it opens a block (#663, #659).
