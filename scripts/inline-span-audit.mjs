@@ -122,6 +122,22 @@ for (const host of ['', '- ', '> ', '- =}[x]\n- ']) for (const next of ['~', '<'
   compareEdit('a\n' + body, 'xa\n' + body);
   compareEdit('xa\n' + body, 'a\n' + body);
 }
+// #675, #671: a node reused up to a bare `=` or an attribute's `}` leaves the
+// spot behind it to the goto state, which offers no highlight check and no
+// attribute continuation.
+for (const host of ['', '> ', '- ', '> _b\n', 'x_. ']) for (const next of ['~', '<', '>', '=', ' ']) {
+  const body = `${host}ab =${next}z\n`;
+  compareEdit(body, body.replace('ab', 'acb'));
+  compareEdit(body.replace('ab', 'acb'), body);
+  compareEdit(body, body.replace('z\n', 'z \n'));
+}
+compareEdit('> _b\nx_. a =~', '> _b*x_. a =~');
+for (const head of ['@_{}', '[x]{.a}', 'a{}', '> [x]{#i}']) for (const tail of ['{_z_`', '{*z*`', '{_z_} x', '{.b} x', '{% c %}', '{_', '{']) {
+  const body = head + tail;
+  compareEdit(body, body + ' ');
+  compareEdit(body + ' ', body);
+  compareEdit(body + '\n', 'x' + body + '\n');
+}
 for (const marker of ['*', '/', '_', '~', '=']) {
   const before = (`{${marker}a `).repeat(8) + '\n';
   const after = before.slice(0, -1) + marker + '}\n';

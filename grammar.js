@@ -2709,7 +2709,8 @@ module.exports = grammar({
         $._inline_attribute_block,
         repeat(
           seq(
-            alias($._inline_attribute_continue, "{"),
+            $._inline_attribute_continue,
+            "{",
             $._attribute_mark_begin,
             attributeArgs($),
             alias($._curly_bracket_span_end, "}"),

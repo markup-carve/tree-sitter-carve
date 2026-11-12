@@ -499,10 +499,6 @@ typedef enum {
   EXTENSION,
 } InlineType;
 
-// Serialized inline type byte of `eq_check_note`, never an open inline.
-#define EQ_CHECK_ENTRY 0x3f
-_Static_assert(EXTENSION < EQ_CHECK_ENTRY, "inline types fit below the note entry");
-
 // What kind of span we should parse.
 typedef enum {
   // Only delimited by a single character, for example `[text]`.
@@ -736,11 +732,6 @@ typedef struct {
   bool braced_probe_closer_in_code;
   uint8_t after_closer_char;
   uint32_t after_closer_col;
-  // The column and character right behind a bare `=` whose highlight check
-  // fails there, packed `col << 8 | char`; see the scan wrapper.
-  uint32_t eq_check_note;
-  // The character after the first one this scan call advanced over. Transient.
-  int32_t first_next;
 
   // The ordered-marker probe stopped right after a word it consumed, so the
   // character behind the lexer is alphanumeric. Transient, never serialized.
@@ -1111,8 +1102,6 @@ static void advance(Scanner *s, TSLexer *lexer) {
     s->row_cell_start_col = s->row_capture_col + 1;
   }
   lexer->advance(lexer, false);
-  if (lexer->advance != bracket_probe_advance && s->host_advances == 1 && s->first_next < 0)
-    s->first_next = lexer->lookahead;
   if (lexer->advance != bracket_probe_advance && lexer->is_at_included_range_start(lexer)) {
     s->host_jumped = true;
     resolve_deferred_column(s, lexer);
@@ -15428,22 +15417,15 @@ static bool check_non_whitespace(Scanner *s, TSLexer *lexer) {
 // It must NOT open on whitespace, nor on `=> =~ =< ==`: in Carve those are
 // smart-typography ligatures (`=>` is `⇒`) or table alignment / header markers
 // (`|=>`, `|=~`, `|=<`, `|=`), not a highlight. Matches carve-js.
+static bool highlighted_open_declines(int32_t c) {
+  return c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == '>' || c == '~' || c == '<' || c == '=';
+}
+
 static bool check_highlighted_open(Scanner *s, TSLexer *lexer) {
-  switch (lexer->lookahead) {
-  case ' ':
-  case '\t':
-  case '\r':
-  case '\n':
-  case '>':
-  case '~':
-  case '<':
-  case '=':
-    return false;
-  default:
-    s->state |= STATE_BARE_SPAN_OPENER;
-    lexer->result_symbol = HIGHLIGHTED_OPEN_CHECK;
-    return true;
-  }
+  if (highlighted_open_declines(lexer->lookahead)) return false;
+  s->state |= STATE_BARE_SPAN_OPENER;
+  lexer->result_symbol = HIGHLIGHTED_OPEN_CHECK;
+  return true;
 }
 
 /// The RESERVED kind word `figure`, and only where it opens a composite figure.
@@ -15596,31 +15578,25 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
   // A token that never marks its end ends where the scan stopped; marking the
   // start first lets a declined scan still hand back an empty marker.
   if (s->note_here) lexer->mark_end(lexer);
-  // EQ_CHECK_NOTE: a fresh parse scans the spot right behind a bare `=` in the
-  // state before the `=` is reduced, which offers the highlight check; after
-  // reuse the goto state does not. Read it as offered either way.
-  bool with_check[ERASED_ABBREVIATION_DEFINITION + 1];
+  // A fresh parse scans the spot right behind a bare `=` in the state before
+  // the `=` is reduced, which offers the highlight check; after node reuse the
+  // goto state does not. A check its lookahead already fails is not pending,
+  // so both states read the spot the same way.
+  bool without_check[ERASED_ABBREVIATION_DEFINITION + 1];
   const bool *symbols = valid_symbols;
-  if (s->eq_check_note && !valid_symbols[ERROR] && !valid_symbols[HIGHLIGHTED_OPEN_CHECK] &&
-      lexer->lookahead == (int32_t)(s->eq_check_note & 0xff) &&
-      s->eq_check_note >> 8 == line_column(s, lexer)) {
-    memcpy(with_check, valid_symbols, sizeof(with_check));
-    with_check[HIGHLIGHTED_OPEN_CHECK] = true;
-    symbols = with_check;
+  if (valid_symbols[HIGHLIGHTED_OPEN_CHECK] && !valid_symbols[ERROR] &&
+      highlighted_open_declines(lexer->lookahead)) {
+    memcpy(without_check, valid_symbols, sizeof(without_check));
+    without_check[HIGHLIGHTED_OPEN_CHECK] = false;
+    symbols = without_check;
   }
-  // A `=` the scanner declines goes to the internal lexer, so only an empty
-  // token can carry the note past it.
-  bool eq_start = lexer->lookahead == '=' && valid_symbols[AFTER_BARE_CLOSER] &&
-                  !valid_symbols[ERROR] && !s->entry_initial;
-  if (eq_start) lexer->mark_end(lexer);
   // MID_LINE_SPACE: a line of internal tokens emits nothing that could set
   // `mid_line`, so every scan on it would reread the line for its column.
   bool mid_line_start = (!s->mid_line || s->block_quote_level) && valid_symbols[MID_LINE_SPACE] &&
-                        !valid_symbols[ERROR] && lexer->lookahead == ' ' && !eq_start &&
-                        !s->note_here && symbols == valid_symbols;
+                        !valid_symbols[ERROR] && lexer->lookahead == ' ' &&
+                        !s->note_here;
   s->read_mid_line = false;
   s->read_past_quote = false;
-  s->first_next = -1;
   bool found = scan(s, lexer, symbols);
   // The scan read past exactly one space to a word: hand that space over.
   if (mid_line_start && !found && (s->read_mid_line || s->read_past_quote) && s->col_base == 0 &&
@@ -15638,23 +15614,6 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
     lexer->result_symbol = MID_LINE_SPACE;
     return true;
   }
-  if (eq_start && found && !s->host_marked) lexer->mark_end(lexer);
-  if (eq_start && !found && (!s->host_marked || !s->host_advances_at_mark) &&
-      !s->host_crossed_line && !s->host_jumped && s->host_advances &&
-      (s->first_next == '~' || s->first_next == '<' || s->first_next == '>')) {
-    uint32_t column = line_column(s, lexer);
-    uint32_t note = (column + 1 - s->host_advances) << 8 | (uint8_t)s->first_next;
-    if (column >= s->host_advances && column - s->host_advances < UINT16_MAX &&
-        s->eq_check_note != note) {
-      tree_sitter_carve_external_scanner_deserialize(s, s->entry_state, s->entry_length);
-      s->eq_check_note = note;
-      lexer->result_symbol = AFTER_BARE_CLOSER;
-      return true;
-    }
-  }
-  if (found && s->eq_check_note &&
-      (line_end || s->host_crossed_line || (s->host_marked ? s->host_advances_at_mark : s->host_advances)))
-    s->eq_check_note = 0;
   if (s->note_here && !scan_right_behind(s, lexer, valid_symbols, &found, closer_char, closer_col)) return true;
   if (found && s->table_attribute_pending) {
     TokenType token = (TokenType)lexer->result_symbol;
@@ -16068,16 +16027,29 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   // Decide continuations before consuming a malformed group's opening brace.
   if (valid_symbols[INLINE_ATTRIBUTE_CONTINUE] && !valid_symbols[ERROR] &&
       lexer->lookahead == '{') {
-    advance(s, lexer);
+    // The continuation is an empty check ahead of the brace, so a declined one
+    // can still end the attribute here.
     mark_end(s, lexer);
+    advance(s, lexer);
     // `[x]{.a}{% c %}`: the brace opens a comment, not another block.
     if (lexer->lookahead == '%' && valid_symbols[BRACED_COMMENT_BEGIN]) {
+      mark_end(s, lexer);
       if (!scan_braced_comment_to_close(s, lexer)) return false;
       lexer->result_symbol = BRACED_COMMENT_BEGIN;
       return true;
     }
-    if (!scan_inline_attribute_body(s, lexer)) return false;
-    lexer->result_symbol = INLINE_ATTRIBUTE_CONTINUE;
+    if (scan_inline_attribute_body(s, lexer)) {
+      lexer->result_symbol = INLINE_ATTRIBUTE_CONTINUE;
+      return true;
+    }
+    // After node reuse the brace is read in the goto state, where no
+    // continuation is offered; end the attribute so a fresh parse reads it
+    // there too.
+    if (!valid_symbols[AFTER_BARE_CLOSER]) return false;
+    uint16_t generation = s->parse_generation;
+    tree_sitter_carve_external_scanner_deserialize(s, s->entry_state, s->entry_length);
+    s->parse_generation = generation;
+    lexer->result_symbol = AFTER_BARE_CLOSER;
     return true;
   }
   // Decide the combined opener before its star, retaining a slash fallback.
@@ -17622,7 +17594,6 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
 /// that must be released first.
 static void init_scalars(Scanner *s) {
   s->blocks_to_close = 0;
-  s->eq_check_note = 0;
   s->block_quote_level = 0;
   s->indent = 0;
   s->marker_end_col = 0;
@@ -17766,8 +17737,7 @@ unsigned tree_sitter_carve_external_scanner_serialize(void *payload,
     // A data value of 255 or more is the escape byte plus two.
     if (b->data >= UINT8_MAX) block_extra_bytes += 2;
   }
-  // `eq_check_note` travels as one more three-byte inline entry.
-  size_t label_bytes = s->eq_check_note ? inline_bytes : 0;
+  size_t label_bytes = 0;
   for (size_t i = 0; i < s->open_inline->size; ++i) {
     Inline *e = *array_get(s->open_inline, i);
     if ((e->type == SQUARE_BRACKET_SPAN && (e->flags & INLINE_LABEL)) || e->type == LITERAL_BRACKET || e->type == EXTENSION) label_bytes += 3;
@@ -17841,12 +17811,6 @@ unsigned tree_sitter_carve_external_scanner_serialize(void *payload,
       for (unsigned shift = 0; shift < 32; shift += 8)
         buffer[size++] = (char)(x->literal_closes >> shift);
     }
-  }
-  if (s->eq_check_note) {
-    uint8_t c = (uint8_t)s->eq_check_note;
-    buffer[size++] = (char)(EQ_CHECK_ENTRY | (c == '~' ? 0 : c == '<' ? 1 : 2) << 6);
-    buffer[size++] = (char)(s->eq_check_note >> 8);
-    buffer[size++] = (char)(s->eq_check_note >> 16);
   }
 
   // The inline notes are an optimization: drop them rather than the state
@@ -17998,11 +17962,6 @@ void tree_sitter_carve_external_scanner_deserialize(void *payload, char *buffer,
       uint8_t packed = (uint8_t)buffer[size++];
       uint8_t data = (uint8_t)buffer[size++];
       uint32_t literal_closes = (uint8_t)buffer[size++];
-      if ((packed & 0x3f) == EQ_CHECK_ENTRY) {
-        uint8_t c = packed >> 6 == 0 ? '~' : packed >> 6 == 1 ? '<' : '>';
-        s->eq_check_note = (uint32_t)data << 8 | literal_closes << 16 | c;
-        continue;
-      }
       InlineType inline_type = (InlineType)(packed & 0x3f);
       if (((packed & 0x3f) == SQUARE_BRACKET_SPAN && (packed >> 6 & INLINE_LABEL)) || (packed & 0x3f) == LITERAL_BRACKET ||
           (packed & 0x3f) == EXTENSION) {
