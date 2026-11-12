@@ -202,7 +202,7 @@ A list marker folds into a raised div paragraph in a list item
             (paragraph)))))))
 
 ================================================================================
-A heading past the item column under a quote folds into the quote
+A heading past the item column under a quote opens in the item (corpus 531)
 ================================================================================
 - a
   > q
@@ -219,7 +219,10 @@ A heading past the item column under a quote folds into the quote
         (block_quote
           (block_quote_marker)
           (content
-            (paragraph)))))))
+            (paragraph)))
+        (heading
+          (marker)
+          (content))))))
 
 ================================================================================
 A quote marker between the item columns closes the item and opens a quote
