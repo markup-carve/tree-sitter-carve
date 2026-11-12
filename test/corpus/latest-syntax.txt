@@ -908,7 +908,7 @@ Inside a braced delete the dash before the brace belongs to the closer
       end_marker: (delete_end))))
 
 ==================
-A lazy footnote definition inside a quote is paragraph text, not an interrupter
+A lazy footnote definition after a quoted paragraph ends the quote (PART 0 S4)
 ==================
 
 > x
@@ -922,11 +922,13 @@ See [^a].
   (block_quote
     (block_quote_marker)
     content: (content
-      (paragraph
-        (footnote_reference
-          (footnote_marker_begin)
-          (reference_label)
-          (footnote_marker_end)))))
+      (paragraph)))
+  (footnote
+    (footnote_marker_begin)
+    label: (reference_label)
+    (footnote_marker_end)
+    content: (footnote_content
+      (paragraph)))
   (paragraph
     (footnote_reference
       (footnote_marker_begin)
@@ -959,15 +961,10 @@ See [^a].
       (footnote_marker_end))))
 
 ==================
-A lazy line indented to a quote's content column continues the quoted paragraph
-;; carve-js keeps both lines as ONE quoted paragraph (`x` then `# H`), and so
-;; does this now. It is also the REGRESSION GUARD for #352, which tried the same
-;; fix, ended the quote early and left an ERROR with `x` read as a definition.
-;; What must hold beyond the reading: no ERROR node, and one paragraph in the
-;; quote rather than a definition.
-;;
-;; No corpus document covers this shape, so no ledger gate can see it. Do not
-;; delete this case.
+A lazy heading indented to a quote's content column ends the quote (PART 0 S4)
+;; The heading interrupts the quoted paragraph, as in the spec model and
+;; carve-js (#665). It is also the REGRESSION GUARD for #352, which once left an
+;; ERROR with `x` read as a definition: no ERROR node, and `x` stays a paragraph.
 ==================
 
 > x
@@ -982,12 +979,16 @@ tail
     (block_quote_marker)
     content: (content
       (paragraph)))
-  (paragraph))
+  (section
+    heading: (heading
+      marker: (marker)
+      content: (content))
+    content: (section_content
+      (paragraph))))
 
 ==================
-A lazy fence indented to a quote's content column opens no code block
-;; The same rule over a fence: carve-js keeps `> x` over an indented fence as
-;; one quoted paragraph holding an inline code run, not a code block.
+A lazy fence indented to a quote's content column opens a code block (PART 0 S4)
+;; The same rule over a fence (#665).
 ==================
 
 > x
@@ -1003,11 +1004,11 @@ tail
   (block_quote
     (block_quote_marker)
     content: (content
-      (paragraph
-        (verbatim
-          begin_marker: (verbatim_marker_begin)
-          content: (content)
-          end_marker: (verbatim_marker_end)))))
+      (paragraph)))
+  (code_block
+    (code_block_marker_begin)
+    code: (code)
+    (code_block_marker_end))
   (paragraph))
 
 ==================
@@ -1901,7 +1902,7 @@ See [r][].
       text: (link_text))))
 
 ==================
-An unmarked heading line past the item column folds into the quote
+An unmarked heading line past the item column opens in the item (corpus 531)
 ==================
 - > x
     # H
@@ -1916,7 +1917,10 @@ An unmarked heading line past the item column folds into the quote
         (block_quote
           (block_quote_marker)
           content: (content
-            (paragraph)))))))
+            (paragraph)))
+        (heading
+          marker: (marker)
+          content: (content))))))
 
 ==================
 Unmarked text under a quote in a list item still folds into the quote
@@ -1941,7 +1945,7 @@ Unmarked text under a quote in a list item still folds into the quote
                   (paragraph))))))))))
 
 ==================
-An unmarked definition line under a quote's own list item stays quoted text
+An unmarked definition line under a quote's own list item ends the quote (corpus 369)
 ==================
 > - x
   [r]: /url
@@ -1959,12 +1963,15 @@ See [r][].
           marker: (list_marker_dash)
           content: (list_item_content
             (paragraph))))))
+  (link_reference_definition
+    label: (link_label)
+    destination: (link_destination))
   (paragraph
     (collapsed_reference_link
       text: (link_text))))
 
 ==================
-An unmarked definition line at a quoted item's content column stays quoted text
+An unmarked definition line at a quoted item's content column ends its paragraph
 ==================
 > - x
     [r]: /url
@@ -1981,7 +1988,10 @@ See [r][].
         (list_item
           marker: (list_marker_dash)
           content: (list_item_content
-            (paragraph))))))
+            (paragraph)
+            (link_reference_definition
+              label: (link_label)
+              destination: (link_destination)))))))
   (paragraph
     (collapsed_reference_link
       text: (link_text))))
@@ -4204,7 +4214,7 @@ A fence after a quote opens at the list content column (#459)
 (document (list (list_item (list_marker_dash) (list_item_content (paragraph) (block_quote (block_quote_marker) (content (paragraph))) (code_block (code_block_marker_begin) (language) (code) (code_block_marker_end))))))
 
 =============================
-A fence one column past the host stays quoted inline text (#459)
+A fence one column past the host opens in the host (corpus 531)
 =============================
 - a
   > q
@@ -4214,7 +4224,21 @@ A fence one column past the host stays quoted inline text (#459)
 
 ---
 
-(document (list (list_item (list_marker_dash) (list_item_content (paragraph) (block_quote (block_quote_marker) (content (paragraph (verbatim (verbatim_marker_begin) (content) (verbatim_marker_end)))))))))
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph)
+        (block_quote
+          (block_quote_marker)
+          (content
+            (paragraph)))
+        (code_block
+          (code_block_marker_begin)
+          (language)
+          (code)
+          (code_block_marker_end))))))
 
 =============================
 A raw fence opens on a footnote marker line (#459)

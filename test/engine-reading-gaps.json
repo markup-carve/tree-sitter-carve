@@ -4,9 +4,6 @@
     "extension-enclosing-boundaries": {
       "reason": "Not the carve#4513 closer, which the grammar follows: inside a braced span whose closer sits in the payload, carve-js pairs the opener by the next carve release's inline pairing procedure (the span stays literal), and the next release's block layout (carve#3887) ends a payload line under an indented heading or a footnote's lazy line differently. The grammar still reads both the released way.",
       "sources": [
-        "> :x[a\n  # b]\n",
-        "> :x[a\r\n  # b]\r\n",
-        "> :x[a\r  # b]\r",
         "{*a :x[a `b*} c] b*}\n",
         "{*a :x[a `b*} c] b*}\r\n",
         "{*a :x[a `b*} c] b*}\r",

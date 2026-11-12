@@ -5963,10 +5963,10 @@ static bool scan_paragraph_closing_marker(Scanner *s, TSLexer *lexer) {
                      (open_list->flags & BLOCK_FLAG_DEFINITION_TERM);
       return in_term || marker_line_has_content(s, lexer);
     }
-    // One colon: a DESCRIPTION attaches to a TERM, so with no list open at all
-    // it is not a marker and cannot interrupt anything - `x` / `:  d` is one
-    // paragraph in every engine. Same requirement the opener states.
-    if (open_list == NULL) {
+    // One colon: a DESCRIPTION attaches to a TERM, so with no definition list
+    // open it is not a marker and cannot interrupt anything - `x` / `:  d` and
+    // `- q` / `: d` are one paragraph in every engine.
+    if (find_block(s, LIST_DEFINITION) == NULL) {
       return false;
     }
     // A description takes one or more spaces. The separator width sets the
@@ -10606,16 +10606,7 @@ static int drop_reach_top(Scanner *s) {
   return top;
 }
 
-static bool nested_quote_keeps_lazy_line(Scanner *s, uint32_t column) {
-  Block *inner = find_block(s, BLOCK_QUOTE);
-  return inner && count_blocks(s, BLOCK_QUOTE) > 1 &&
-      s->open_inline->size == 0 &&
-      s->block_quote_level == 0 && column > 0 &&
-      column < inner->content_col;
-}
-
 static bool at_block_opener_margin(Scanner *s, uint32_t column) {
-  if (nested_quote_keeps_lazy_line(s, column)) return false;
   // The attachment column takes precedence over the item's content column.
   if (s->state & STATE_LIST_CONTINUATION) {
     return column == s->continuation_col;
@@ -10666,7 +10657,6 @@ static bool list_item_open(Scanner *s) {
 /// A paragraph-end probe and its opener must both ask this: if they disagree,
 /// the probe ends a paragraph the opener refuses.
 static bool opener_reaches_item_margin(Scanner *s, uint32_t column) {
-  if (nested_quote_keeps_lazy_line(s, column)) return false;
   if (s->state & STATE_LIST_CONTINUATION) {
     return column == s->continuation_col;
   }
@@ -10910,9 +10900,6 @@ static bool scan_code_fence_at_paragraph_end(Scanner *s, TSLexer *lexer,
     return false;
   }
   uint32_t column = paragraph_end_line_column(s, lexer);
-  if (markers_seen == 0 && !escapes_open_block_quote(s, column)) {
-    return false;
-  }
   if (!at_block_opener_margin(s, column)) {
     return false;
   }
@@ -10924,7 +10911,7 @@ static bool scan_code_fence_at_paragraph_end(Scanner *s, TSLexer *lexer,
     return false;
   }
   return code_fence_has_closer_ahead(s, lexer, fence_char, width, column, false,
-                                     markers_seen > 0 ? markers_seen : -1);
+                                     markers_seen);
 }
 
 /// A block quote that goes DEEPER than the one we are in interrupts an open
@@ -11422,6 +11409,18 @@ static bool close_paragraph(Scanner *s, TSLexer *lexer) {
   return close_paragraph_after_quote(s, lexer, markers_seen);
 }
 
+/// Does an unmarked line at `column` reach an item or note opened inside the
+/// innermost quote?
+static bool lazy_line_reaches_quoted_container(Scanner *s, uint32_t column) {
+  if (quoted_item_column_reached(s, column)) return true;
+  for (int i = (int)s->open_blocks->size - 1; i >= 0; --i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (b->type == BLOCK_QUOTE) return false;
+    if (b->type == FOOTNOTE) return !line_misses_note(s, column);
+  }
+  return false;
+}
+
 static bool close_paragraph_after_quote(Scanner *s, TSLexer *lexer,
                                         int markers_seen) {
   // A refused lone `+` is this paragraph's text, and the lexer now stands on
@@ -11501,39 +11500,28 @@ static bool close_paragraph_after_quote(Scanner *s, TSLexer *lexer,
     }
   }
 
-  // A LAZY line inside a quote - no `>` marker, indented to the quote's content
-  // column - is continuation text of the quoted paragraph (corpus 369), so no
-  // block opener on it interrupts: carve-js keeps `> x` over `  # H`, and the
-  // same over an indented fence, as one quoted paragraph.
+  // A LAZY line inside a quote (no `>` marker) is asked the paragraph's
+  // interrupt rules like any other line: an opener on it ends the quote at any
+  // indentation (PART 0 S3/S4). Only a `+` is decided here: on a lazy line it
+  // attaches nothing and stays text.
   //
   // Decided HERE, from the marker count this very call just computed, because
   // nothing downstream can tell a lazy line from a marked one: at this peek
   // both read column 2, an `indent` of 0 left over from the previous line, and
-  // a `block_quote_level` of 0. A lazy line at column ZERO is left to the peeks
-  // below, which end the quote there as carve-js does.
+  // a `block_quote_level` of 0.
   if (markers_seen == 0) {
     Block *quote = find_block(s, BLOCK_QUOTE);
     uint32_t column = line_column(s, lexer);
     if (quote && quote->content_col != 0 && column >= quote->content_col &&
-        !item_outside_quotes_reached(s, column)) {
+        lexer->lookahead == '+' && !item_outside_quotes_reached(s, column)) {
       return false;
     }
-    // Past the content column of the item holding the quote, an unmarked line
-    // opens nothing and folds lazily (corpus 531).
-    if (quote && lexer->lookahead != '[') {
-      for (int i = (int)s->open_blocks->size - 1; i >= 0; --i) {
-        Block *b = *array_get(s->open_blocks, i);
-        if (b == quote) {
-          for (int j = i - 1; j >= 0; --j) {
-            Block *l = *array_get(s->open_blocks, j);
-            if (is_list(l->type) && l->content_col != 0) {
-              if (column > l->content_col) return false;
-              break;
-            }
-          }
-          break;
-        }
-      }
+    // The line start still lets an unmarked line reach an item or note opened
+    // in the quote, so a visible opener there would land inside the quote: it
+    // folds (#667). Definitions and comments render nothing.
+    if (quote && lexer->lookahead != '[' && lexer->lookahead != '%' &&
+        lazy_line_reaches_quoted_container(s, column)) {
+      return false;
     }
   }
 
