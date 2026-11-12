@@ -5947,11 +5947,20 @@
       }
     },
     "_whitespace1": {
-      "type": "IMMEDIATE_TOKEN",
-      "content": {
-        "type": "PATTERN",
-        "value": "[ \\t]+"
-      }
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "IMMEDIATE_TOKEN",
+          "content": {
+            "type": "PATTERN",
+            "value": "[ \\t]+"
+          }
+        },
+        {
+          "type": "SYMBOL",
+          "name": "_mid_line_space"
+        }
+      ]
     },
     "_padding_spaces": {
       "type": "IMMEDIATE_TOKEN",
@@ -8153,11 +8162,20 @@
       }
     },
     "_include_pad": {
-      "type": "IMMEDIATE_TOKEN",
-      "content": {
-        "type": "PATTERN",
-        "value": "[ \\t]+"
-      }
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "IMMEDIATE_TOKEN",
+          "content": {
+            "type": "PATTERN",
+            "value": "[ \\t]+"
+          }
+        },
+        {
+          "type": "SYMBOL",
+          "name": "_mid_line_space"
+        }
+      ]
     },
     "include_path": {
       "type": "TOKEN",
@@ -11703,6 +11721,10 @@
     {
       "type": "SYMBOL",
       "name": "_after_bare_closer"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_mid_line_space"
     }
   ],
   "inline": [],
