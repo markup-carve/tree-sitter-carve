@@ -37,6 +37,7 @@ This release follows the Carve 0.1.14 readings: braced cell alignment, spaced th
 - An indented `: ` or `:: ` line short of a description body is a sibling in the definition list, also inside a quote where it left an ERROR node, and a term past a quoted body's column nests in the body (#679, #677).
 - An incremental reparse after a bare `=` before `~ < > =` or a space, or after an inline attribute followed by a `{` that does not continue it, gives the same tree as a fresh parse; a fresh parse now reads such a `{` as the brace it is everywhere else (#675, part of #671 and #655).
 - A quote line holding only its `>` and spaces at the end of input is a blank quote line, so an unclosed code run before it finishes parsing instead of running forever, and a paragraph before it no longer gives an ERROR tree (#681).
+- An incremental reparse after an edit earlier on the same line no longer misreads the delimiter behind a `/` or `*` that opened nothing, so it gives the same tree as a fresh parse; a fresh parse now reads `/_x_` with an underline, as the engines do (#671, #655).
 
 ### Improvements
 
