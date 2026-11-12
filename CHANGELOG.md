@@ -6,9 +6,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-## [0.1.14] - 2026-11-11
+## [0.1.14] - 2026-11-12
 
-This release follows the Carve 0.1.14 readings: braced cell alignment, spaced thematic breaks, unclosed frontmatter and the inline extension closer.
+This release follows the Carve 0.1.14 readings: braced cell alignment, spaced thematic breaks, unclosed frontmatter, the inline extension closer and the PART 0 block layout (indented openers, quote reach, lazy lines).
 
 ### Fixes
 
@@ -25,6 +25,15 @@ This release follows the Carve 0.1.14 readings: braced cell alignment, spaced th
 - A span end right before a CR no longer refuses a later `{%`, `{#` or `{*` opener with CRLF or CR line ends (#639).
 - Long one-line paragraphs of spans parse in linear time: column reads only a fallback needs are deferred (#649), and a bare closer right before another delimiter, as in `*/z/*`, `_z_*` or `~z~*`, no longer rereads the line (#652).
 - An incremental reparse no longer drops or adds a delimiter behind a bare `=` followed by `~`, `<` or `>`, so it gives the same tree as a fresh parse (#661, part of #655).
+- An indented list marker short of an item's content column opens a sibling or a new list instead of folding into the item, and indented openers inside quoted items open their block (#663, #657, #658).
+- A lazy line after a footnote's paragraph folds into the note unless it opens a block (#663, #659).
+- A line short of an item after a closed `%%%` fence below the item's column is measured against the item again (#663, #662).
+- A spaced break of a list's own marker, `- - -` after `- q`, is a thematic break instead of a nested item (#666, #664).
+- An opener on an unprefixed line after a quoted paragraph, such as an unprefixed fence, ends the quote (#672, #665).
+- An unprefixed line at a quoted item's or note's column no longer stays inside the quote (#676, #667).
+- A one-line comment, reference definition or abbreviation definition between paragraph lines no longer splits the paragraph (#676, #668).
+- A note or description body opens a child list at its content column, and a `: ` line past a description body is that body's content (#676, #673).
+- Long lines of glued `=~` units and long lines of plain prose parse in linear time (#670, #674).
 
 ### Improvements
 
