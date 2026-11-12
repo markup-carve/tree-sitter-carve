@@ -6,8 +6,8 @@
       "nodes": 39
     },
     "block_quote": {
-      "documents": 832,
-      "nodes": 1022
+      "documents": 839,
+      "nodes": 1033
     },
     "table": {
       "documents": 338,
@@ -18,20 +18,20 @@
       "nodes": 362
     },
     "code_block": {
-      "documents": 596,
-      "nodes": 705
+      "documents": 597,
+      "nodes": 706
     },
     "list": {
-      "documents": 1868,
-      "nodes": 2608
+      "documents": 1875,
+      "nodes": 2617
     },
     "definition_list": {
-      "documents": 599,
-      "nodes": 642
+      "documents": 605,
+      "nodes": 648
     },
     "line_block": {
-      "documents": 127,
-      "nodes": 127
+      "documents": 128,
+      "nodes": 128
     },
     "div": {
       "documents": 150,
@@ -1243,6 +1243,10 @@
     "a-terminal-heading-hard-break-keeps-its-implicit-reference",
     "a-top-level-sibling-marker-in-an-unclosed-attached-fence-is-payload",
     "a-verse-lead-under-an-indented-opener-is-measured-per-frame",
+    "a-column-after-an-astral-character-is-one-code-point",
+    "a-line-that-ends-a-span-in-an-item-s-description-leaves-the-item-s-paragraph-open",
+    "a-tab-led-attribute-line-in-a-note-a-nested-plus-passes-stays-the-note-s",
+    "an-attribute-line-in-a-note-s-body-stays-the-note-s-under-a-plus",
     "abbreviations-test-rendered-adjacency-across-inline-nodes",
     "an-attribute-line-between-two-sub-lists-of-an-item-makes-the-second-a-different-list",
     "an-attribute-line-left-of-a-note-s-body-column-is-the-plus-host-s",
@@ -1637,14 +1641,11 @@
     "a-line-is-read-in-the-container-whose-column-it-reaches-23": {"gaps": "code_block: want 1 have 0", "reason": "The next carve release's block layout (indented openers at top level, an unclosed fence interrupting a paragraph, containers owning lines at their content column, carve#3887) builds this block; the grammar still folds the line the released way."},
     "a-line-is-read-in-the-container-whose-column-it-reaches-24": {"gaps": "code_block: want 1 have 0", "reason": "The next carve release's block layout (indented openers at top level, an unclosed fence interrupting a paragraph, containers owning lines at their content column, carve#3887) builds this block; the grammar still folds the line the released way."},
     "generated-container-documents-6": {"gaps": "code_block: want 1 have 0", "reason": "The next carve release's block layout (indented openers at top level, an unclosed fence interrupting a paragraph, containers owning lines at their content column, carve#3887) builds this block; the grammar still folds the line the released way."},
-    "a-comment-line-leaves-a-description-s-list-item-open-for-a-fence": {"gaps": "code_block: want 1 have 0", "reason": "The next carve release's block layout (indented openers at top level, an unclosed fence interrupting a paragraph, containers owning lines at their content column, carve#3887) builds this block; the grammar still folds the line the released way."}
+    "a-comment-line-leaves-a-description-s-list-item-open-for-a-fence": {"gaps": "code_block: want 1 have 0", "reason": "The next carve release's block layout (indented openers at top level, an unclosed fence interrupting a paragraph, containers owning lines at their content column, carve#3887) builds this block; the grammar still folds the line the released way."},
+    "a-line-that-ends-a-span-in-an-item-s-description-leaves-the-item-s-paragraph-open-5": {"gaps": "code_block: want 1 have 0", "reason": "The next carve release's block layout (indented openers at top level, an unclosed fence interrupting a paragraph, containers owning lines at their content column, carve#3887) builds this block; the grammar still folds the line the released way."}
   },
   "oracleGoldenDisagreements": {
-    "a-comment-span-under-a-marker-line-note-leaves-no-paragraph-4": "carve-js ends the quoted paragraph before the lazy line the row folds in; next-minor under the 0.1.14 scope freeze (carve#5886, waived in carve's resources/release-waivers/0.1.14.json).",
-    "a-lazy-comment-opener-is-measured-where-its-brace-is-written-4": "every engine hides the tab-led lazy comment run the row refuses; next-minor under the 0.1.14 scope freeze (carve#5940, waived in carve's resources/release-waivers/0.1.14.json).",
-    "a-verse-lead-under-an-indented-opener-is-measured-per-frame": "carve-js measures a verse lead under an indented opener from the line start, the ruling per frame; next-minor (carve#5885, waived in carve's resources/release-waivers/0.1.14.json).",
-    "a-verse-lead-under-an-indented-opener-is-measured-per-frame-2": "carve-js measures a verse lead under an indented opener from the line start, the ruling per frame; next-minor (carve#5885, waived in carve's resources/release-waivers/0.1.14.json).",
-    "a-verse-lead-under-an-indented-opener-is-measured-per-frame-4": "carve-js measures a verse lead under an indented opener from the line start, the ruling per frame; next-minor (carve#5885, waived in carve's resources/release-waivers/0.1.14.json)."
+    "a-lazy-comment-opener-is-measured-where-its-brace-is-written-4": "every engine hides the tab-led lazy comment run the row refuses; next-minor under the 0.1.14 scope freeze (carve#5940, waived in carve's resources/release-waivers/0.1.14.json)."
   },
   "errorFamilies": {},
   "inlineReadingGaps": {
