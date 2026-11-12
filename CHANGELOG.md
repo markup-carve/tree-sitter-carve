@@ -34,6 +34,7 @@ This release follows the Carve 0.1.14 readings: braced cell alignment, spaced th
 - A one-line comment, reference definition or abbreviation definition between paragraph lines no longer splits the paragraph (#676, #668).
 - A note or description body opens a child list at its content column, and a `: ` line past a description body is that body's content (#676, #673).
 - Long lines of glued `=~` units and long lines of plain prose parse in linear time (#670, #674).
+- An indented `: ` or `:: ` line short of a description body is a sibling in the definition list, also inside a quote where it left an ERROR node, and a term past a quoted body's column nests in the body (#679, #677).
 
 ### Improvements
 
