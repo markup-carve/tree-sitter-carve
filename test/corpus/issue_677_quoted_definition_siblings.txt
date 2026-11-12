@@ -1,0 +1,252 @@
+================================================================================
+An indented description short of the body is a sibling inside a quote (#677)
+================================================================================
+
+> :: t
+> : d
+>  : e
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (definition_list
+        (list_item
+          (list_marker_definition)
+          (term))
+        (list_item
+          (block_quote_marker)
+          (list_marker_description)
+          (definition))
+        (list_item
+          (block_quote_marker)
+          (list_marker_description)
+          (definition))))))
+
+================================================================================
+An indented description short of a wide body is a sibling inside a quote (#677)
+================================================================================
+
+> :: t
+> :   d
+>   : e
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (definition_list
+        (list_item
+          (list_marker_definition)
+          (term))
+        (list_item
+          (block_quote_marker)
+          (list_marker_description)
+          (definition))
+        (list_item
+          (block_quote_marker)
+          (list_marker_description)
+          (definition))))))
+
+================================================================================
+A description after an indented quoted sibling stays in the same list (#677)
+================================================================================
+
+> :: t
+> : d
+>  : e
+> : f
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (definition_list
+        (list_item
+          (list_marker_definition)
+          (term))
+        (list_item
+          (block_quote_marker)
+          (list_marker_description)
+          (definition))
+        (list_item
+          (block_quote_marker)
+          (list_marker_description)
+          (definition))
+        (list_item
+          (block_quote_marker)
+          (list_marker_description)
+          (definition))))))
+
+================================================================================
+An indented description short of the body is a sibling in a nested quote (#677)
+================================================================================
+
+> > :: t
+> > : d
+> >  : e
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (block_quote
+        (block_quote_marker)
+        (content
+          (definition_list
+            (list_item
+              (list_marker_definition)
+              (term))
+            (list_item
+              (block_quote_marker)
+              (block_quote_marker)
+              (list_marker_description)
+              (definition))
+            (list_item
+              (block_quote_marker)
+              (block_quote_marker)
+              (list_marker_description)
+              (definition))))))))
+
+================================================================================
+An indented description is a sibling in a quote inside a list item (#677)
+================================================================================
+
+- > :: t
+  >  : d
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (block_quote
+          (block_quote_marker)
+          (content
+            (definition_list
+              (list_item
+                (list_marker_definition)
+                (term))
+              (list_item
+                (block_quote_marker)
+                (list_marker_description)
+                (definition)))))))))
+
+================================================================================
+An indented term short of the body is a sibling (#677)
+================================================================================
+
+:: t
+: d
+ :: u
+
+--------------------------------------------------------------------------------
+
+(document
+  (definition_list
+    (list_item
+      (list_marker_definition)
+      (term))
+    (list_item
+      (list_marker_description)
+      (definition))
+    (list_item
+      (list_marker_definition)
+      (term))))
+
+================================================================================
+An indented term short of the body is a sibling inside a quote (#677)
+================================================================================
+
+> :: t
+> : d
+>  :: u
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (definition_list
+        (list_item
+          (list_marker_definition)
+          (term))
+        (list_item
+          (block_quote_marker)
+          (list_marker_description)
+          (definition))
+        (list_item
+          (block_quote_marker)
+          (list_marker_definition)
+          (term))))))
+
+================================================================================
+A term at a quoted description body's column nests in the body (#677)
+================================================================================
+
+> :: t
+>  : d
+>    :: u
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (definition_list
+        (list_item
+          (list_marker_definition)
+          (term))
+        (list_item
+          (block_quote_marker)
+          (list_marker_description)
+          (definition)
+          (block_quote_marker)
+          (definition_list
+            (list_item
+              (list_marker_definition)
+              (term))))))))
+
+================================================================================
+A term past a quoted description body's column nests in the body (#677)
+================================================================================
+
+- > :: t
+  >  : d
+  >     :: u
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (block_quote
+          (block_quote_marker)
+          (content
+            (definition_list
+              (list_item
+                (list_marker_definition)
+                (term))
+              (list_item
+                (block_quote_marker)
+                (list_marker_description)
+                (definition)
+                (block_quote_marker)
+                (definition_list
+                  (list_item
+                    (list_marker_definition)
+                    (term)))))))))))

@@ -7021,13 +7021,17 @@ static bool parse_star(Scanner *s, TSLexer *lexer, const bool *valid_symbols,
                                              THEMATIC_BREAK_STAR, declined_run);
 }
 
-/// Does a description marker at `column` continue `list`? It stands short of
+/// Does a term or description marker at `column` continue `list`? It stands short of
 /// the open term's or body's content column and not left of the list.
 static bool description_reaches_list(Scanner *s, Block *list,
                                      uint32_t column) {
-  return count_blocks(s, BLOCK_QUOTE) == 0 && list->content_col != 0 &&
-         column < list->content_col &&
-         (s->indent + 1u >= list->data || column + 1u >= list->data);
+  if (list->content_col == 0 || column >= list->content_col) return false;
+  // Under a quote the line's indent is relative to the prefix, so only the
+  // absolute column is compared.
+  if (count_blocks(s, BLOCK_QUOTE) > 0) {
+    return list_opened_in_quote(s, list) && column + 1u >= list->data;
+  }
+  return s->indent + 1u >= list->data || column + 1u >= list->data;
 }
 
 static bool parse_list_item_end(Scanner *s, TSLexer *lexer,
@@ -7386,9 +7390,10 @@ static bool parse_list_item_end(Scanner *s, TSLexer *lexer,
       different_indent = false;
     }
 
-    // A description short of the body's column is a sibling wherever it
-    // stands from the list's own column (PART 0 S2).
-    if (different_indent && next_marker == LIST_MARKER_DESCRIPTION &&
+    // A term or description short of the body's column is a sibling
+    // wherever it stands from the list's own column (PART 0 S2).
+    if (different_indent && (next_marker == LIST_MARKER_DESCRIPTION ||
+                             next_marker == LIST_MARKER_DEFINITION) &&
         list->type == LIST_DEFINITION &&
         description_reaches_list(s, list, marker_start)) {
       different_indent = false;
@@ -7487,15 +7492,21 @@ static bool parse_colon(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
           open_definition_list->type == LIST_DEFINITION) {
         // Past the body's column a term opens in the body as if written at
         // the body's column (PART 0 S3).
+        // Under a quote the indent is relative to the prefix and the body's
+        // column absolute, so the line's own column is compared there.
+        bool quoted = count_blocks(s, BLOCK_QUOTE) > 0;
         bool nested_in_description =
             !(open_definition_list->flags & BLOCK_FLAG_DEFINITION_TERM) &&
             open_definition_list->content_col != 0 &&
-            list_indent >= open_definition_list->content_col;
-        if (nested_in_description && count_blocks(s, BLOCK_QUOTE) == 0) {
+            (quoted ? start_col : list_indent) >=
+                open_definition_list->content_col &&
+            (!quoted || list_opened_in_quote(s, open_definition_list));
+        if (nested_in_description) {
           list_indent = open_definition_list->content_col;
-        } else if (nested_in_description) {
-          nested_in_description =
-              list_indent == open_definition_list->content_col;
+        } else if (open_definition_list->data != list_indent + 1u &&
+                   description_reaches_list(s, open_definition_list,
+                                            start_col)) {
+          list_indent = (uint8_t)(open_definition_list->data - 1u);
         }
         if (!marker_line_nested && !nested_in_description &&
             list_indent + 1 != open_definition_list->data) {
@@ -16690,7 +16701,6 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       s->indent = (uint8_t)line_column(s, lexer);
     } else if (quote && quote->content_col != 0 && quoted_list &&
                is_list(quoted_list->type) &&
-               quoted_list->type != LIST_DEFINITION &&
                list_opened_in_quote(s, quoted_list) &&
                column == quote->content_col) {
       // A sibling short of a quoted item's content column (PART 0 S4) counts

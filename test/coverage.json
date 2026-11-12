@@ -6,28 +6,28 @@
       "nodes": 39
     },
     "block_quote": {
-      "documents": 839,
-      "nodes": 1033
+      "documents": 843,
+      "nodes": 1037
     },
     "table": {
       "documents": 338,
       "nodes": 342
     },
     "heading": {
-      "documents": 318,
-      "nodes": 362
+      "documents": 320,
+      "nodes": 365
     },
     "code_block": {
       "documents": 597,
       "nodes": 706
     },
     "list": {
-      "documents": 1875,
-      "nodes": 2617
+      "documents": 1876,
+      "nodes": 2618
     },
     "definition_list": {
-      "documents": 605,
-      "nodes": 648
+      "documents": 608,
+      "nodes": 651
     },
     "line_block": {
       "documents": 128,
@@ -1271,7 +1271,8 @@
     "nested-link-with-an-inline-note-unwraps",
     "nested-reference-labels-contribute-to-heading-text",
     "open-code-makes-brace-run-text-before-fence",
-    "repeated-losing-note-pluses-leave-the-block-with-the-winning-note"
+    "repeated-losing-note-pluses-leave-the-block-with-the-winning-note",
+    "a-plus-after-an-attached-block-reaches-its-host-through-quote-prefixes"
   ],
   "skip": {
     "a-refused-brace-run-keeps-a-following-plus-literal": "`+` attachment and description ownership the next carve release rules (carve#5658); the grammar's reading leaves an ERROR node",
@@ -1281,13 +1282,10 @@
     "a-matched-insertion-or-deletion-hides-a-substitution-s-closer-4": "Inline pairing the next carve release rules (comment, substitution, tag or emphasis boundaries); the grammar's reading leaves an ERROR node",
     "a-quote-on-a-description-body-marker-line-takes-a-plus-at-its-column-3": "`+` attachment and description ownership the next carve release rules; the grammar's reading leaves an ERROR node",
     "an-attribute-run-after-a-lone-plus-leads-a-sublist-at-the-content-column-3": "`+` attachment and description ownership the next carve release rules; the grammar's reading leaves an ERROR node",
-    "a-column-zero-description-is-a-sibling-after-an-indented-description-s-refused-plus-5": "`+` attachment and description ownership the next carve release rules; the grammar's reading leaves an ERROR node",
-    "a-description-a-plus-filled-stays-open-for-a-sibling-4": "`+` attachment and description ownership the next carve release rules; the grammar's reading leaves an ERROR node",
     "a-refused-plus-before-an-attribute-run-and-a-sibling-is-a-letter": "`+` attachment and description ownership the next carve release rules; the grammar's reading leaves an ERROR node",
     "the-first-caption-registers-a-repeated-id": "Inline pairing the next carve release rules (comment, substitution, tag or emphasis boundaries); the grammar's reading leaves an ERROR node",
     "the-third-confirmation-round-s-model-findings-13": "Inline pairing the next carve release rules (comment, substitution, tag or emphasis boundaries); the grammar's reading leaves an ERROR node",
     "the-third-confirmation-round-s-model-findings-14": "Inline pairing the next carve release rules (comment, substitution, tag or emphasis boundaries); the grammar's reading leaves an ERROR node",
-    "a-plus-after-an-attached-block-reaches-its-host-through-quote-prefixes": "`+` attachment and description ownership the next carve release rules; the grammar's reading leaves an ERROR node",
     "a-line-comment-hides-a-substitution-arrow": "Inline pairing the next carve release rules (comment, substitution, tag or emphasis boundaries); the grammar's reading leaves an ERROR node",
     "a-comment-on-the-new-side-of-a-substitution-ends-at-the-first-raw-closer": "Inline pairing the next carve release rules (comment, substitution, tag or emphasis boundaries); the grammar's reading leaves an ERROR node"
   },
