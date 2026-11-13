@@ -10,18 +10,25 @@ Braced cell alignment carries the cell's attribute block (markup-carve/carve#509
   (table
     (table_row
       (table_cell
-        (table_cell_attributes))
+        (table_cell_attributes
+          (table_cell_alignment)))
       (table_cell
-        (table_cell_attributes))
+        (table_cell_attributes
+          (table_cell_alignment)))
       (table_cell
-        (table_cell_attributes)))
+        (table_cell_attributes
+          (table_cell_alignment))))
     (table_row
       (table_cell
-        (table_cell_attributes))
+        (table_cell_attributes
+          (table_cell_alignment)))
       (table_cell
-        (table_cell_attributes))
+        (table_cell_attributes
+          (table_cell_alignment)
+          (args)))
       (table_cell
-        (table_cell_attributes)))))
+        (table_cell_attributes
+          (table_cell_alignment))))))
 
 ================================================================================
 An invalid alignment block stays cell content

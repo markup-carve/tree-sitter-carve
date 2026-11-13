@@ -593,3 +593,52 @@
   (link_label) @nospell)
 
 (invalid_metadata) @error
+
+; Markers inside constructs an earlier pattern paints as a whole. They sit
+; last so they win over those patterns.
+(div_title) @string
+
+(div_title
+  "\"" @punctuation.delimiter)
+
+(code_block_label) @label
+
+(code_block_label
+  [
+    "["
+    "]"
+  ] @punctuation.bracket)
+
+(substitution
+  to: (content) @markup.underline)
+
+(substitution
+  [
+    "{~"
+    "~>"
+    "~}"
+  ] @punctuation.delimiter)
+
+; The opener stays under the note's own capture: it starts where the note
+; starts, and the whole-note capture is what shows a note that closed early.
+(inline_note
+  "]" @punctuation.bracket)
+
+(extension_inline
+  content: (content) @string)
+
+; The parts of a cell marker run, `|={> .x} `.
+(table_cell_attributes
+  "=" @operator)
+
+(table_cell_attributes
+  [
+    "{"
+    "}"
+  ] @punctuation.bracket)
+
+(table_cell_attributes
+  (table_cell_alignment) @operator)
+
+(table_cell_attributes
+  (args) @property)

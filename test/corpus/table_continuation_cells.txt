@@ -98,3 +98,28 @@ A one-cell row still reads on into its continuation line
           begin_marker: (strong_begin)
           content: (content)
           end_marker: (strong_end))))))
+
+================================================================================
+A cell marker run holds its alignment and its attribute list
+================================================================================
+|={> .x #y k="v w"} Name |=>{.c} Old |{} e |
+|{.total}99 | {.y} b |
+
+--------------------------------------------------------------------------------
+
+(document
+  (table
+    (table_row
+      (table_cell
+        (table_cell_attributes
+          (table_cell_alignment)
+          (args)))
+      (table_cell
+        (table_cell_attributes
+          (table_cell_alignment)
+          (args)))
+      (table_cell
+        (table_cell_attributes)))
+    (table_row
+      (table_cell)
+      (table_cell))))

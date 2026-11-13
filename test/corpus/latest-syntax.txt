@@ -4962,7 +4962,8 @@ A table cell class may start with a digit
       (table_cell_alignment))
     (table_row
       (table_cell
-        (table_cell_attributes)))))
+        (table_cell_attributes
+          (args))))))
 
 ==================
 A digit-leading attribute key stays literal

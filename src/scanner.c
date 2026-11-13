@@ -307,6 +307,8 @@ typedef enum {
   TABLE_ROW_CONTINUATION_PLUS,
   // The line end and quote prefix between the seam and that `+`.
   TABLE_ROW_CONTINUATION_LINE,
+  // Zero width, at a cell whose head is a marker run. See `cell_marker_run`.
+  CELL_MARKER_BEGIN,
 } TokenType;
 
 // The different blocks in Carve that we track,
@@ -403,6 +405,8 @@ static const uint8_t BLOCK_FLAG_QUOTE_FENCE = 1 << 1;
 static const uint8_t BLOCK_FLAG_TABLE_ROW_CONTINUES = 1 << 1;
 // TABLE_ROW only: a `+` selected this table, so its next row may be lazy.
 static const uint8_t BLOCK_FLAG_TABLE_ROW_ATTACHED = 1 << 2;
+// TABLE_ROW only: the cell about to open starts with a marker run.
+static const uint8_t BLOCK_FLAG_TABLE_ROW_CELL_MARKER = 1 << 4;
 // FOOTNOTE only: a `+` continuation attached a flush-left block to the body,
 // so its margin is zero until a blank line.
 static const uint8_t BLOCK_FLAG_FOOTNOTE_ATTACHED = 1 << 1;
@@ -769,6 +773,12 @@ typedef struct {
   int32_t row_previous;
   bool row_carry_escape;
 
+  // The head of the cell about to open, copied while the token before it
+  // looks ahead. Transient.
+  bool marker_probe;
+  uint8_t marker_len;
+  char marker_head[96];
+
   // The `>` markers the line under an open paragraph carries, -1 outside a
   // quote. Transient, set by `close_paragraph` for its marker probes.
   int paragraph_markers_seen;
@@ -1082,6 +1092,14 @@ static void advance(Scanner *s, TSLexer *lexer) {
     s->host_previous = current;
     if (current == '\n' || current == '\r') s->host_crossed_line = true;
     if (current == '\n') ++s->host_newlines;
+  }
+  if (s->marker_probe) {
+    if (lexer->advance == bracket_probe_advance || lexer->eof(lexer)) {
+      s->marker_probe = false;
+    } else if (s->marker_len < sizeof(s->marker_head)) {
+      // A character outside ASCII never belongs to a run the matcher accepts.
+      s->marker_head[s->marker_len++] = current > 0 && current < 0x7f ? (char)current : 1;
+    }
   }
   if (s->row_capture && (current == '\r' || current == '\n')) s->row_capture = false;
   // Escapes and opaque runs can hide a pipe from one of the two readers.
@@ -3317,6 +3335,7 @@ static void bracket_probe_advance(TSLexer *lexer, bool skip) {
       if (previous == '\n' || previous == '\r') resolve_deferred_column(probe->scanner, probe->host);
       ++probe->scanner->host_advances;
     }
+    probe->scanner->marker_probe = false;
     probe->host->advance(probe->host, skip);
     if (probe->host->advance != bracket_probe_advance &&
         probe->host->is_at_included_range_start(probe->host)) {
@@ -8385,6 +8404,82 @@ static bool scan_table_row(Scanner *s, TSLexer *lexer, TokenType *row_type,
 // glued row attribute can reuse the same validation.
 static bool scan_valid_inline_attribute(Scanner *s, TSLexer *lexer);
 
+static bool marker_alpha(char c) {
+  return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+}
+static bool marker_word(char c) {
+  return marker_alpha(c) || (c >= '0' && c <= '9') || c == '_';
+}
+
+// One attribute item of a cell marker run; 0 when none starts at `i`.
+static uint32_t cell_marker_item(const char *b, uint32_t n, uint32_t i) {
+  char c = b[i];
+  if (c == '.' || c == '#') {
+    if (++i >= n || !marker_word(b[i])) return 0;
+    while (i < n && (marker_word(b[i]) || b[i] == '-')) ++i;
+    return i;
+  }
+  if (c == ':') {
+    if (++i >= n || !marker_alpha(b[i])) return 0;
+    while (i < n && ((marker_word(b[i]) && b[i] != '_') || b[i] == '-')) ++i;
+    return i;
+  }
+  if (!marker_alpha(c) && c != '_') return 0;
+  while (i < n && (marker_word(b[i]) || b[i] == '-')) ++i;
+  if (i >= n || b[i] != '=') return i;
+  if (++i >= n) return 0;
+  if (b[i] == '"' || b[i] == '\'') {
+    char quote = b[i++];
+    while (i < n && b[i] != quote && b[i] != '\r' && b[i] != '\n' && b[i] != 1) ++i;
+    return i < n && b[i] == quote ? i + 1 : 0;
+  }
+  uint32_t start = i;
+  while (i < n && b[i] > ' ' && b[i] != '"' && b[i] != '\'' && b[i] != '{' &&
+         b[i] != '}') ++i;
+  return i == start ? 0 : i;
+}
+
+static uint32_t cell_marker_alignment(const char *b, uint32_t n, uint32_t i) {
+  if (i >= n) return 0;
+  bool vertical = i + 1 < n && (b[i + 1] == '^' || b[i + 1] == '~' || b[i + 1] == 'v');
+  if (b[i] == '<' || b[i] == '>' || b[i] == '~') return vertical ? 2 : 1;
+  return b[i] == '?' && vertical ? 2 : 0;
+}
+
+/// Does the cell head start with a marker run, `CELL_MARKER_RUN` in grammar.js?
+///
+/// Never wider than that pattern: a head this accepts is one the grammar's
+/// `table_cell_attributes` parts can read. A head it declines keeps the
+/// one-token reading.
+static bool cell_marker_run(const char *b, uint32_t n) {
+  uint32_t i = 0;
+  if (i < n && b[i] == '=') ++i;
+  uint32_t inner = i + 1 < n && b[i] == '{' ? cell_marker_alignment(b, n, i + 1) : 0;
+  bool list_needs_space = inner > 0;
+  if (inner) {
+    i += 1 + inner;
+  } else {
+    i += cell_marker_alignment(b, n, i);
+    if (i >= n || b[i] != '{') return false;
+    ++i;
+  }
+  uint32_t spaces = 0;
+  while (i < n && b[i] == ' ') { ++i; ++spaces; }
+  if (i < n && b[i] != '}') {
+    if (list_needs_space && !spaces) return false;
+    while (true) {
+      uint32_t next = cell_marker_item(b, n, i);
+      if (!next) return false;
+      i = next;
+      uint32_t gap = i;
+      while (gap < n && b[gap] == ' ') ++gap;
+      if (gap == i || gap >= n || b[gap] == '}') { i = gap; break; }
+      i = gap;
+    }
+  }
+  return i + 1 < n && b[i] == '}' && b[i + 1] == ' ';
+}
+
 static void begin_row_capture(Scanner *s, TSLexer *lexer, uint32_t carried,
                               uint32_t column) {
   s->row_capture = true;
@@ -8443,8 +8538,13 @@ static bool parse_table_begin(Scanner *s, TSLexer *lexer,
   TokenType row_type;
   bool one_cell_continues = false;
   begin_row_capture(s, lexer, 0, lexer->get_column(lexer));
+  s->marker_probe = true;
+  s->marker_len = 0;
   bool valid_row = scan_table_row(s, lexer, &row_type, &one_cell_continues);
   s->row_capture = false;
+  bool cell_marker = s->marker_probe &&
+      cell_marker_run(s->marker_head, s->marker_len);
+  s->marker_probe = false;
   if (!valid_row) return false;
 
   Block *note = peek_block(s);
@@ -8467,6 +8567,9 @@ static bool parse_table_begin(Scanner *s, TSLexer *lexer,
   if (s->row_boundary_safe) peek_block(s)->flags |= BLOCK_FLAG_TABLE_ROW_BOUNDARY_SAFE;
   if (one_cell_continues) {
     peek_block(s)->flags |= BLOCK_FLAG_TABLE_ROW_CONTINUES;
+  }
+  if (cell_marker && row_type != TABLE_SEPARATOR_BEGIN) {
+    peek_block(s)->flags |= BLOCK_FLAG_TABLE_ROW_CELL_MARKER;
   }
   s->after_separator_row = row_type == TABLE_SEPARATOR_BEGIN;
   lexer->result_symbol = row_type;
@@ -9447,6 +9550,11 @@ static bool parse_table_cell_end(Scanner *s, TSLexer *lexer) {
     }
   }
   --top->data;
+  top->flags &= (uint8_t)~BLOCK_FLAG_TABLE_ROW_CELL_MARKER;
+  int32_t head = lexer->lookahead;
+  s->marker_len = 0;
+  s->marker_probe = !escaped && (head == '=' || head == '{' || head == '<' ||
+                                 head == '>' || head == '~' || head == '?');
   if (top->bracket_cell_col == UINT32_MAX) {
     top->cell_boundary_col = 0;
     top->cell_carry_ticks = 0;
@@ -9467,6 +9575,15 @@ static bool parse_table_cell_end(Scanner *s, TSLexer *lexer) {
       }
     }
   }
+  // Read the rest of the cell head; the token's end is already marked.
+  while (s->marker_probe && s->marker_len < sizeof(s->marker_head) &&
+         lexer->lookahead != '|' && !at_line_end(lexer) && !lexer->eof(lexer)) {
+    advance(s, lexer);
+  }
+  if (s->marker_probe && cell_marker_run(s->marker_head, s->marker_len)) {
+    top->flags |= BLOCK_FLAG_TABLE_ROW_CELL_MARKER;
+  }
+  s->marker_probe = false;
   lexer->result_symbol = escaped ? TABLE_ESCAPED_CELL_END : TABLE_CELL_END;
   return true;
 }
@@ -10198,7 +10315,9 @@ no_attribute:
 }
 
 static bool parse_hard_line_break(Scanner *s, TSLexer *lexer) {
-  if (lexer->lookahead != '\\') {
+  // A reader that declined earlier in this scan may have read the word in
+  // front of the backslash; the token would start at that word.
+  if (lexer->lookahead != '\\' || s->host_advances) {
     return false;
   }
   advance(s, lexer);
@@ -15502,7 +15621,7 @@ static bool parse_attribute_mark_begin(Scanner *s, TSLexer *lexer,
   }
   // The attribute's own path: the fallback is not taken here, so its marker
   // must not steer the bookkeeping to the fallback's branch.
-  bool attribute_only[TABLE_ROW_CONTINUATION_LINE + 1];
+  bool attribute_only[CELL_MARKER_BEGIN + 1];
   memcpy(attribute_only, valid_symbols, sizeof(attribute_only));
   attribute_only[IN_FALLBACK] = false;
   if (!mark_span_begin(s, lexer, attribute_only, CURLY_BRACKET_SPAN, shared)) {
@@ -15705,6 +15824,17 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
   s->host_advances = 0;
   s->deferred_column_pending = false;
   s->host_jumped = false;
+  s->marker_probe = false;
+  if (valid_symbols[CELL_MARKER_BEGIN] && !valid_symbols[ERROR]) {
+    Block *marker_row = peek_block(s);
+    if (marker_row && marker_row->type == TABLE_ROW &&
+        (marker_row->flags & BLOCK_FLAG_TABLE_ROW_CELL_MARKER)) {
+      marker_row->flags &= (uint8_t)~BLOCK_FLAG_TABLE_ROW_CELL_MARKER;
+      lexer->mark_end(lexer);
+      lexer->result_symbol = CELL_MARKER_BEGIN;
+      return true;
+    }
+  }
   if (at_line_end(lexer) || lexer->eof(lexer)) s->missing_closers = 0;
   bool line_end = at_line_end(lexer);
   uint8_t closer_char = s->after_closer_char;
@@ -15719,7 +15849,7 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
   // the `=` is reduced, which offers the highlight check; after node reuse the
   // goto state does not. A check its lookahead already fails is not pending,
   // so both states read the spot the same way.
-  bool without_check[TABLE_ROW_CONTINUATION_LINE + 1];
+  bool without_check[CELL_MARKER_BEGIN + 1];
   const bool *symbols = valid_symbols;
   if (valid_symbols[HIGHLIGHTED_OPEN_CHECK] && !valid_symbols[ERROR] &&
       highlighted_open_declines(lexer->lookahead)) {
@@ -16056,7 +16186,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       (s->state & STATE_BARE_SPAN_OPENER)) {
     defer_column(s);
     mark_end(s, lexer);
-    bool real_symbols[TABLE_ROW_CONTINUATION_LINE + 1];
+    bool real_symbols[CELL_MARKER_BEGIN + 1];
     memcpy(real_symbols, valid_symbols, sizeof(real_symbols));
     real_symbols[IN_FALLBACK] = false;
     bool same_marker_before = (s->after_closer_char == '=' || s->after_closer_char == '_') &&
@@ -16074,7 +16204,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       (s->state & STATE_BARE_SPAN_OPENER) && lexer->lookahead != '*') {
     defer_column(s);
     mark_end(s, lexer);
-    bool real_symbols[TABLE_ROW_CONTINUATION_LINE + 1];
+    bool real_symbols[CELL_MARKER_BEGIN + 1];
     memcpy(real_symbols, valid_symbols, sizeof(real_symbols));
     real_symbols[IN_FALLBACK] = false;
     if (lexer->lookahead != '/' && mark_span_begin(s, lexer, real_symbols, EMPHASIS, EMPHASIS_QUALIFIED_MARK_BEGIN))
@@ -16089,7 +16219,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       (s->state & STATE_BARE_SPAN_OPENER)) {
     defer_column(s);
     mark_end(s, lexer);
-    bool real_symbols[TABLE_ROW_CONTINUATION_LINE + 1];
+    bool real_symbols[CELL_MARKER_BEGIN + 1];
     memcpy(real_symbols, valid_symbols, sizeof(real_symbols));
     real_symbols[IN_FALLBACK] = false;
     if (lexer->lookahead != '*' &&
@@ -18278,6 +18408,8 @@ static char *token_type_s(TokenType t) {
     return "TABLE_ROW_CONTINUATION_PLUS";
   case TABLE_ROW_CONTINUATION_LINE:
     return "TABLE_ROW_CONTINUATION_LINE";
+  case CELL_MARKER_BEGIN:
+    return "CELL_MARKER_BEGIN";
   case TRAILING_COMMENT:
     return "TRAILING_COMMENT";
   case VERBATIM_CONTENT:
