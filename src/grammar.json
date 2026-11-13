@@ -2574,8 +2574,29 @@
       ]
     },
     "table_continuation_row": {
-      "type": "SYMBOL",
-      "name": "_table_continuation_row"
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_table_continuation_row"
+          },
+          "named": false,
+          "value": "+"
+        },
+        {
+          "type": "REPEAT",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_table_cell"
+          }
+        },
+        {
+          "type": "SYMBOL",
+          "name": "_table_row_end_newline"
+        }
+      ]
     },
     "table_header": {
       "type": "SEQ",
@@ -2782,7 +2803,7 @@
             },
             {
               "type": "SYMBOL",
-              "name": "_table_row_continuation_seam"
+              "name": "_table_continuation_seam"
             }
           ]
         }
@@ -3201,6 +3222,33 @@
           }
         ]
       }
+    },
+    "_table_continuation_seam": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_table_row_continuation_seam"
+          },
+          "named": false,
+          "value": "|"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "_table_row_continuation_line"
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_table_row_continuation_plus"
+          },
+          "named": false,
+          "value": "+"
+        }
+      ]
     },
     "_cell_attribute": {
       "type": "ALIAS",
@@ -5998,7 +6046,7 @@
             },
             {
               "type": "SYMBOL",
-              "name": "_table_row_continuation_seam"
+              "name": "_table_continuation_seam"
             },
             {
               "type": "ALIAS",
@@ -6127,7 +6175,7 @@
                 },
                 {
                   "type": "SYMBOL",
-                  "name": "_table_row_continuation_seam"
+                  "name": "_table_continuation_seam"
                 },
                 {
                   "type": "SYMBOL",
@@ -11809,6 +11857,14 @@
     {
       "type": "SYMBOL",
       "name": "_erased_abbreviation_definition"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_table_row_continuation_plus"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_table_row_continuation_line"
     }
   ],
   "inline": [],

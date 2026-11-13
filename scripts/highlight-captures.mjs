@@ -600,6 +600,72 @@ const CASES = [
         at: [0, 6],
         expect: 'operator',
     },
+    {
+        name: 'a continuation row marker is an operator',
+        source: '| a | b |\n+ c | d |\n',
+        at: [1, 0],
+        expect: 'operator',
+    },
+    {
+        name: 'a continuation row pipe is painted',
+        source: '| a | b |\n+ c | d |\n',
+        at: [1, 4],
+        expect: 'punctuation.special',
+    },
+    {
+        name: 'an inline marker in a continuation cell is painted',
+        source: '| a | b |\n+ *c* | d |\n',
+        at: [1, 2],
+        expect: 'punctuation.delimiter',
+    },
+    {
+        name: 'the pipe a one-cell row reads past is painted',
+        source: '| a |\n+ cont cell |\n',
+        at: [0, 4],
+        expect: 'punctuation.special',
+    },
+    {
+        name: 'the continuation marker behind a one-cell row is an operator',
+        source: '| a |\n+ cont cell |\n',
+        at: [1, 0],
+        expect: 'operator',
+    },
+    {
+        name: 'a native header cell marker is an operator',
+        source: '|= Name |\n',
+        at: [0, 1],
+        expect: 'operator',
+    },
+    {
+        name: 'an equals sign inside a cell is not a header marker',
+        source: '| a = b |\n',
+        at: [0, 4],
+        expect: null,
+    },
+    {
+        name: 'a cell marker run is an attribute',
+        source: '|={>} Name |\n',
+        at: [0, 1],
+        expect: 'attribute',
+    },
+    {
+        name: 'a row span cell is an operator',
+        source: '| a | ^ |\n',
+        at: [0, 6],
+        expect: 'operator',
+    },
+    {
+        name: 'a column span cell is an operator',
+        source: '| a | < |\n',
+        at: [0, 6],
+        expect: 'operator',
+    },
+    {
+        name: 'a caret among cell text is not a span marker',
+        source: '| a ^ b |\n',
+        at: [0, 4],
+        expect: null,
+    },
 ];
 
 const fails = [];

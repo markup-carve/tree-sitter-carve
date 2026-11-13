@@ -1017,7 +1017,12 @@ module.exports = grammar({
         ),
         choice($.table_header, $.table_separator, $.table_row),
       ),
-    table_continuation_row: ($) => $._table_continuation_row,
+    table_continuation_row: ($) =>
+      seq(
+        alias($._table_continuation_row, "+"),
+        repeat($._table_cell),
+        $._table_row_end_newline,
+      ),
     table_header: ($) =>
       seq(
         alias($._table_header_begin, "|"),
@@ -1076,11 +1081,20 @@ module.exports = grammar({
             $._cell_inline_element,
             $._newline_inline,
             $._whitespace1,
-            $._table_row_continuation_seam,
+            $._table_continuation_seam,
           ),
         ),
       ),
     _cell_inline_element: ($) => inlineElement($, { cells: true }),
+
+    // The seam's two markers: the one-cell row's own `|` and the `+` of the
+    // line its content reads on into.
+    _table_continuation_seam: ($) =>
+      seq(
+        alias($._table_row_continuation_seam, "|"),
+        $._table_row_continuation_line,
+        alias($._table_row_continuation_plus, "+"),
+      ),
 
     // The cell's own attribute block. See `CELL_MARKER_RUN` above for why the
     // whole run, the markers and the padding space included, is one token.
@@ -2046,7 +2060,7 @@ module.exports = grammar({
             $._inline_element,
             $._newline_inline,
             $._whitespace1,
-            $._table_row_continuation_seam,
+            $._table_continuation_seam,
             // A comment-only line inside a line block, with the line end
             // before it.
             alias($._verbatim_comment_line, $.comment_line),
@@ -2083,7 +2097,7 @@ module.exports = grammar({
               $._inline_element,
               $._newline_inline,
               $._whitespace1,
-              $._table_row_continuation_seam,
+              $._table_continuation_seam,
               $._erased_line,
             ),
           ),
@@ -3423,5 +3437,7 @@ module.exports = grammar({
     $._erased_line_newline,
     $._erased_link_definition,
     $._erased_abbreviation_definition,
+    $._table_row_continuation_plus,
+    $._table_row_continuation_line,
   ],
 });

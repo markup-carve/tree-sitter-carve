@@ -5473,7 +5473,6 @@ q)
 (document
   (paragraph))
 
-
 ===============================================================================
 A cross-reference with auto text is not an autolink (markup-carve/carve-grammars#311)
 ;; grammar.ebnf `auto_text_link = "</#", crossref_id, '>'`. carve-js renders it
@@ -5603,6 +5602,7 @@ two %} b
   (paragraph
     (braced_comment
       content: (content))))
+
 ===============================================================================
 An empty braced pair is literal text (carve#1447)
 ;; Every braced span's content slot is a one-or-more repetition, so an empty
@@ -6848,6 +6848,7 @@ A lone carriage return after a table continuation row keeps the next line's colu
         (table_row
           (table_cell)))))
   (paragraph))
+
 ===============================================================================
 A comment line ended by a lone carriage return leaves the next line's column alone (#341)
 ;; `comment_line` used to consume its own terminator in the internal lexer, so
@@ -8062,7 +8063,13 @@ A code run open in a row's second cell stops at the row's pipe (#320)
           begin_marker: (verbatim_marker_begin)
           content: (content)
           end_marker: (verbatim_marker_end))))
-    (table_continuation_row)))
+    (table_continuation_row
+      (table_cell)
+      (table_cell
+        (verbatim
+          begin_marker: (verbatim_marker_begin)
+          content: (content)
+          end_marker: (verbatim_marker_end))))))
 
 ===============================================================================
 A `+` line without a closing pipe does not continue a code run (#320)
@@ -8133,7 +8140,9 @@ A span open in a row's second cell does not continue into its continuation row (
     (table_row
       (table_cell)
       (table_cell))
-    (table_continuation_row)))
+    (table_continuation_row
+      (table_cell)
+      (table_cell))))
 
 ===============================================================================
 An open code run's carry-over needs the continuation line's own quote depth (#437)
