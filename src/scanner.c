@@ -777,7 +777,7 @@ typedef struct {
   // looks ahead. Transient.
   bool marker_probe;
   uint8_t marker_len;
-  char marker_head[96];
+  char marker_head[240];
 
   // The `>` markers the line under an open paragraph carries, -1 outside a
   // quote. Transient, set by `close_paragraph` for its marker probes.
