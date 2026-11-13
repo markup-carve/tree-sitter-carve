@@ -4285,6 +4285,25 @@
     }
   },
   {
+    "type": "table_cell_attributes",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "args",
+          "named": true
+        },
+        {
+          "type": "table_cell_alignment",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "table_continuation_row",
     "named": true,
     "fields": {},
@@ -4817,6 +4836,10 @@
     "named": false
   },
   {
+    "type": "^[",
+    "named": false
+  },
+  {
     "type": "_",
     "named": false
   },
@@ -5157,10 +5180,6 @@
     "named": true
   },
   {
-    "type": "table_cell_attributes",
-    "named": true
-  },
-  {
     "type": "trailing_comment",
     "named": true
   },
@@ -5234,6 +5253,14 @@
   },
   {
     "type": "~",
+    "named": false
+  },
+  {
+    "type": "~>",
+    "named": false
+  },
+  {
+    "type": "~}",
     "named": false
   }
 ]

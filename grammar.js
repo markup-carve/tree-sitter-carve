@@ -1099,7 +1099,42 @@ module.exports = grammar({
     // The cell's own attribute block. See `CELL_MARKER_RUN` above for why the
     // whole run, the markers and the padding space included, is one token.
     _cell_attribute: ($) =>
-      alias(token.immediate(CELL_MARKER_RUN), $.table_cell_attributes),
+      choice(
+        $.table_cell_attributes,
+        alias(token.immediate(CELL_MARKER_RUN), $.table_cell_attributes),
+      ),
+
+    // The same run spelled as parts, taken where the scanner has already
+    // matched the whole run from the token before the cell
+    // (`_cell_marker_begin`), so the lexer never commits to a part alone.
+    table_cell_attributes: ($) =>
+      seq(
+        $._cell_marker_begin,
+        optional(token.immediate("=")),
+        choice(
+          seq(
+            token.immediate("{"),
+            $._cell_alignment,
+            optional(seq($._padding_spaces, $._cell_attribute_list)),
+            optional($._padding_spaces),
+          ),
+          seq(
+            optional($._cell_alignment),
+            token.immediate("{"),
+            optional($._padding_spaces),
+            optional(seq($._cell_attribute_list, optional($._padding_spaces))),
+          ),
+        ),
+        token.immediate("}"),
+        token.immediate(" "),
+      ),
+    _cell_alignment: ($) =>
+      alias(
+        token.immediate(new RegExp(CELL_ALIGNMENT)),
+        $.table_cell_alignment,
+      ),
+    _cell_attribute_list: ($) =>
+      alias(token.immediate(new RegExp(CELL_ATTR_LIST)), $.args),
 
     _table_cell_alignment: ($) =>
       seq(
@@ -2364,9 +2399,9 @@ module.exports = grammar({
         "{~",
         $._substitution_begin,
         optional(field("from", alias($._inline, $.content))),
-        $._substitution_arrow,
+        alias($._substitution_arrow, "~>"),
         optional(field("to", alias($._inline, $.content))),
-        $._substitution_end,
+        alias($._substitution_end, "~}"),
       ),
 
     // `{##}` is NOT an empty comment. Every braced construct's content slot is
@@ -2684,7 +2719,7 @@ module.exports = grammar({
     // close and the whole paragraph collapsed to ERROR.
     inline_note: ($) =>
       seq(
-        $._inline_note_begin,
+        alias($._inline_note_begin, "^["),
         $._inline_note_mark_begin,
         field("content", alias($._note_inline, $.content)),
         prec.dynamic(-ELEMENT_PRECEDENCE, alias($._inline_note_end, "]")),
@@ -3439,5 +3474,6 @@ module.exports = grammar({
     $._erased_abbreviation_definition,
     $._table_row_continuation_plus,
     $._table_row_continuation_line,
+    $._cell_marker_begin,
   ],
 });
