@@ -4287,7 +4287,17 @@
   {
     "type": "table_continuation_row",
     "named": true,
-    "fields": {}
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "table_cell",
+          "named": true
+        }
+      ]
+    }
   },
   {
     "type": "table_header",
@@ -4708,6 +4718,10 @@
   },
   {
     "type": "*",
+    "named": false
+  },
+  {
+    "type": "+",
     "named": false
   },
   {

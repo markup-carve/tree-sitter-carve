@@ -106,7 +106,9 @@ A continuation row may start with a tab
     (table_row
       (table_cell)
       (table_cell))
-    (table_continuation_row)))
+    (table_continuation_row
+      (table_cell)
+      (table_cell))))
 
 ================================================================================
 A continuation row joins a table in a list item
@@ -125,7 +127,8 @@ tail
         (table
           (table_row
             (table_cell))
-          (table_continuation_row)))))
+          (table_continuation_row
+            (table_cell))))))
   (paragraph))
 
 ================================================================================

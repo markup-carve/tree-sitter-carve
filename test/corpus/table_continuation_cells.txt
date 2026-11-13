@@ -1,0 +1,100 @@
+================================================================================
+A continuation row holds cells, and a cell holds inline content
+================================================================================
+| Banana | 0.50 |
++ Dragon *fruit* | [l](u) |
+
+--------------------------------------------------------------------------------
+
+(document
+  (table
+    (table_row
+      (table_cell)
+      (table_cell))
+    (table_continuation_row
+      (table_cell
+        (strong
+          begin_marker: (strong_begin)
+          content: (content)
+          end_marker: (strong_end)))
+      (table_cell
+        (inline_link
+          text: (link_text)
+          destination: (inline_link_destination))))))
+
+================================================================================
+A span open in a continuation cell stays in its cell
+================================================================================
+| a | b |
++ c *d | e* |
+
+--------------------------------------------------------------------------------
+
+(document
+  (table
+    (table_row
+      (table_cell)
+      (table_cell))
+    (table_continuation_row
+      (table_cell)
+      (table_cell))))
+
+================================================================================
+A quoted continuation row keeps its quote marker and its cells
+================================================================================
+> | a | b |
+> + c | d |
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (table
+        (table_row
+          (table_cell)
+          (table_cell))
+        (block_quote_marker)
+        (table_continuation_row
+          (table_cell)
+          (table_cell))))))
+
+================================================================================
+Stacked continuation rows each hold their cells, an escaped pipe included
+================================================================================
+| x | y |
++ more | \| |
++ last | z |
+
+--------------------------------------------------------------------------------
+
+(document
+  (table
+    (table_row
+      (table_cell)
+      (table_cell))
+    (table_continuation_row
+      (table_cell)
+      (table_cell
+        (backslash_escape)))
+    (table_continuation_row
+      (table_cell)
+      (table_cell))))
+
+================================================================================
+A one-cell row still reads on into its continuation line
+================================================================================
+| a *b |
++ c* |
+
+--------------------------------------------------------------------------------
+
+(document
+  (table
+    (table_row
+      (table_cell
+        (strong
+          begin_marker: (strong_begin)
+          content: (content)
+          end_marker: (strong_end))))))

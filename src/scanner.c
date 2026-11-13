@@ -303,6 +303,10 @@ typedef enum {
   // The definition on an erased line, read as one token.
   ERASED_LINK_DEFINITION,
   ERASED_ABBREVIATION_DEFINITION,
+  // The `+` of the continuation line a one-cell row reads on into.
+  TABLE_ROW_CONTINUATION_PLUS,
+  // The line end and quote prefix between the seam and that `+`.
+  TABLE_ROW_CONTINUATION_LINE,
 } TokenType;
 
 // The different blocks in Carve that we track,
@@ -9274,6 +9278,8 @@ static bool parse_plus_line(Scanner *s, TSLexer *lexer,
   uint32_t plus_column = line_column(s, lexer);
   bool marker_column = continuation_marker_column(s, plus_column);
   advance(s, lexer);
+  // A continuation row's token is the `+` alone; `emit_plus_line` marks its own end.
+  mark_end(s, lexer);
   if ((at_line_end(lexer) || lexer->eof(lexer)) && marker_column &&
       (valid_symbols[LIST_CONTINUATION_MARKER] ||
        valid_symbols[EMPTY_LIST_CONTINUATION_MARKER])) {
@@ -9301,6 +9307,9 @@ static bool parse_plus_line(Scanner *s, TSLexer *lexer,
   }
   bool saw_pipe = false;
   bool last_nonspace_was_pipe = false;
+  // The cells are read as a row's cells are, so the row opens the same way
+  // `parse_table_begin` opens one.
+  begin_row_capture(s, lexer, 0, lexer->get_column(lexer));
   while (!lexer->eof(lexer) && lexer->lookahead != '\r' &&
          lexer->lookahead != '\n') {
     if (lexer->lookahead == '|') {
@@ -9311,11 +9320,23 @@ static bool parse_plus_line(Scanner *s, TSLexer *lexer,
     }
     advance(s, lexer);
   }
+  s->row_capture = false;
   if (!saw_pipe || !last_nonspace_was_pipe) {
     return false;
   }
-  consume_line_end(s, lexer);
-  mark_end(s, lexer);
+  uint8_t row_prefix = s->block_quote_level;
+  bool attached_row = (s->state & STATE_LIST_CONTINUATION) &&
+      s->attached_row_prefix != UINT8_MAX;
+  s->attached_row_prefix = UINT8_MAX;
+  push_block(s, TABLE_ROW, 0);
+  if (attached_row) {
+    peek_block(s)->content_col = row_prefix;
+    peek_block(s)->flags |= BLOCK_FLAG_TABLE_ROW_ATTACHED;
+  }
+  peek_block(s)->cell_boundary_col = s->row_boundary_col;
+  peek_block(s)->cell_carry_ticks = s->row_carry_ticks;
+  peek_block(s)->bracket_cell_col = s->row_bracket_cell_col;
+  if (s->row_boundary_safe) peek_block(s)->flags |= BLOCK_FLAG_TABLE_ROW_BOUNDARY_SAFE;
   lexer->result_symbol = TABLE_CONTINUATION_ROW;
   return true;
 }
@@ -9492,11 +9513,59 @@ static bool parse_table_row_continuation_seam(Scanner *s, TSLexer *lexer,
   }
 
   // Committed: the row's shape (one cell, a continuation row follows) was
-  // already confirmed at the row's opening token.
+  // already confirmed at the row's opening token. The flag stays set until
+  // `parse_table_row_continuation_plus` has read the `+`.
   advance(s, lexer); // The row's own closing `|`.
+  mark_end(s, lexer);
+  lexer->result_symbol = TABLE_ROW_CONTINUATION_SEAM;
+  return true;
+}
+
+/// The line end between the seam's `|` and the continuation line's `+`, with
+/// the quote prefix that line repeats. Hidden, so neither marker's node
+/// reaches across it.
+static bool parse_table_row_continuation_line(Scanner *s, TSLexer *lexer,
+                                              const bool *valid_symbols) {
+  if (!valid_symbols[TABLE_ROW_CONTINUATION_LINE] || valid_symbols[ERROR] ||
+      (lexer->lookahead != ' ' && lexer->lookahead != '\t' &&
+       !at_line_end(lexer))) {
+    return false;
+  }
+  Block *row = find_block(s, TABLE_ROW);
+  if (!row || row->data != 0 ||
+      (row->flags & BLOCK_FLAG_TABLE_ROW_CONTINUES) == 0) {
+    return false;
+  }
   consume_whitespace(s, lexer);
+  if (!at_line_end(lexer)) {
+    return false;
+  }
   consume_line_end(s, lexer);
+  bool ignored_newline = false;
+  scan_block_quote_markers(s, lexer, &ignored_newline);
+  consume_whitespace(s, lexer);
+  if (lexer->lookahead != '+') {
+    return false;
+  }
+  mark_end(s, lexer);
+  lexer->result_symbol = TABLE_ROW_CONTINUATION_LINE;
+  return true;
+}
+
+/// The `+` behind the seam's `|`.
+static bool parse_table_row_continuation_plus(Scanner *s, TSLexer *lexer,
+                                              const bool *valid_symbols) {
+  if (!valid_symbols[TABLE_ROW_CONTINUATION_PLUS] || valid_symbols[ERROR] ||
+      lexer->lookahead != '+') {
+    return false;
+  }
+  Block *row = find_block(s, TABLE_ROW);
+  if (!row || row->data != 0 ||
+      (row->flags & BLOCK_FLAG_TABLE_ROW_CONTINUES) == 0) {
+    return false;
+  }
   advance(s, lexer); // The continuation row's `+`.
+  mark_end(s, lexer);
   advance(s, lexer); // Its one mandatory space.
   while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
     advance(s, lexer);
@@ -9507,9 +9576,8 @@ static bool parse_table_row_continuation_seam(Scanner *s, TSLexer *lexer,
   // spanning two continuation rows stops at the first one's pipe, matching
   // `parse_verbatim_content`'s same limit for a code run - #437, #320).
   row->flags &= (uint8_t)~BLOCK_FLAG_TABLE_ROW_CONTINUES;
-  mark_end(s, lexer);
   capture_remaining_cell(s, lexer, row, row->cell_carry_ticks, UINT32_MAX);
-  lexer->result_symbol = TABLE_ROW_CONTINUATION_SEAM;
+  lexer->result_symbol = TABLE_ROW_CONTINUATION_PLUS;
   return true;
 }
 
@@ -15434,7 +15502,7 @@ static bool parse_attribute_mark_begin(Scanner *s, TSLexer *lexer,
   }
   // The attribute's own path: the fallback is not taken here, so its marker
   // must not steer the bookkeeping to the fallback's branch.
-  bool attribute_only[ERASED_ABBREVIATION_DEFINITION + 1];
+  bool attribute_only[TABLE_ROW_CONTINUATION_LINE + 1];
   memcpy(attribute_only, valid_symbols, sizeof(attribute_only));
   attribute_only[IN_FALLBACK] = false;
   if (!mark_span_begin(s, lexer, attribute_only, CURLY_BRACKET_SPAN, shared)) {
@@ -15651,7 +15719,7 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
   // the `=` is reduced, which offers the highlight check; after node reuse the
   // goto state does not. A check its lookahead already fails is not pending,
   // so both states read the spot the same way.
-  bool without_check[ERASED_ABBREVIATION_DEFINITION + 1];
+  bool without_check[TABLE_ROW_CONTINUATION_LINE + 1];
   const bool *symbols = valid_symbols;
   if (valid_symbols[HIGHLIGHTED_OPEN_CHECK] && !valid_symbols[ERROR] &&
       highlighted_open_declines(lexer->lookahead)) {
@@ -15988,7 +16056,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       (s->state & STATE_BARE_SPAN_OPENER)) {
     defer_column(s);
     mark_end(s, lexer);
-    bool real_symbols[ERASED_ABBREVIATION_DEFINITION + 1];
+    bool real_symbols[TABLE_ROW_CONTINUATION_LINE + 1];
     memcpy(real_symbols, valid_symbols, sizeof(real_symbols));
     real_symbols[IN_FALLBACK] = false;
     bool same_marker_before = (s->after_closer_char == '=' || s->after_closer_char == '_') &&
@@ -16006,7 +16074,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       (s->state & STATE_BARE_SPAN_OPENER) && lexer->lookahead != '*') {
     defer_column(s);
     mark_end(s, lexer);
-    bool real_symbols[ERASED_ABBREVIATION_DEFINITION + 1];
+    bool real_symbols[TABLE_ROW_CONTINUATION_LINE + 1];
     memcpy(real_symbols, valid_symbols, sizeof(real_symbols));
     real_symbols[IN_FALLBACK] = false;
     if (lexer->lookahead != '/' && mark_span_begin(s, lexer, real_symbols, EMPHASIS, EMPHASIS_QUALIFIED_MARK_BEGIN))
@@ -16021,7 +16089,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       (s->state & STATE_BARE_SPAN_OPENER)) {
     defer_column(s);
     mark_end(s, lexer);
-    bool real_symbols[ERASED_ABBREVIATION_DEFINITION + 1];
+    bool real_symbols[TABLE_ROW_CONTINUATION_LINE + 1];
     memcpy(real_symbols, valid_symbols, sizeof(real_symbols));
     real_symbols[IN_FALLBACK] = false;
     if (lexer->lookahead != '*' &&
@@ -17590,7 +17658,9 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     return true;
   }
 
-  if (parse_table_row_continuation_seam(s, lexer, valid_symbols)) {
+  if (parse_table_row_continuation_seam(s, lexer, valid_symbols) ||
+      parse_table_row_continuation_line(s, lexer, valid_symbols) ||
+      parse_table_row_continuation_plus(s, lexer, valid_symbols)) {
     return true;
   }
   if ((valid_symbols[TABLE_CELL_END] || valid_symbols[TABLE_ESCAPED_CELL_END]) &&
@@ -18204,6 +18274,10 @@ static char *token_type_s(TokenType t) {
     return "VERBATIM_COMMENT_LINE";
   case TABLE_ROW_CONTINUATION_SEAM:
     return "TABLE_ROW_CONTINUATION_SEAM";
+  case TABLE_ROW_CONTINUATION_PLUS:
+    return "TABLE_ROW_CONTINUATION_PLUS";
+  case TABLE_ROW_CONTINUATION_LINE:
+    return "TABLE_ROW_CONTINUATION_LINE";
   case TRAILING_COMMENT:
     return "TRAILING_COMMENT";
   case VERBATIM_CONTENT:
