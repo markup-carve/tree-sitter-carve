@@ -4573,7 +4573,8 @@ static bool quote_chain_from(Scanner *s, uint8_t number) {
     Block *b = *array_get(s->open_blocks, i);
     if (b->type != BLOCK_QUOTE) {
       if (b->type == SECTION || b->type == HEADING) continue;
-      if (seen >= number) return false;
+      // Blocks inside the quote do not move its marker.
+      if (seen >= number) return true;
       frame_between = true;
       continue;
     }
@@ -4617,8 +4618,10 @@ static bool quote_marker_at_column_gap(Scanner *s, uint8_t number,
           !outer_list_reached && column > enclosing_list->data &&
           column < enclosing_list->content_col;
       // Marker-line quotes in an outer list retain their existing band rule.
+      // The item owns only a `>` indented past its marker (C2-B-025).
       return b->content_col == 0 ||
           (seen == 1 && enclosing_list && !lazy_gap &&
+           column >= enclosing_list->data &&
            (column <= enclosing_list->content_col ||
             (!in_paragraph && column == b->content_col))) ||
           (s->state & STATE_LIST_CONTINUATION) ||
@@ -10520,7 +10523,8 @@ static bool end_paragraph_in_block_quote(Scanner *s, TSLexer *lexer,
     return false;
   }
   // A first `>` left of the content column of the item holding the outermost
-  // quote opens a new quote outside the item: `- > q` / `> r`.
+  // quote is no mark of that quote. It would open a new quote, which is no
+  // interrupter, so the line is lazy (C2-B-024): `- > q` / `> r`.
   Block *outer = find_block_from_bottom(s, BLOCK_QUOTE);
   Block *holder = NULL;
   for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
@@ -10530,7 +10534,9 @@ static bool end_paragraph_in_block_quote(Scanner *s, TSLexer *lexer,
   }
   if (holder && first_marker_col < holder->content_col &&
       !(s->state & STATE_LIST_CONTINUATION)) {
-    return true;
+    *markers_seen = 0;
+    s->glued_quote_marker = true;
+    return false;
   }
 
   if (marker_count < block->data && !ending_newline && find_list(s) &&
