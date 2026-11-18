@@ -2675,7 +2675,14 @@ module.exports = grammar({
     // Every part is a token, so the `#` and `@` inside stay part of the
     // directive rather than reaching the inline rules.
     include_path: (_) =>
-      token(choice(/[^#@}\s"][^#@}\s]*/, /"(?:\\.|[^"\\\n])*"/)),
+      token(
+        choice(
+          /[^#@}\s"“][^#@}\s]*/,
+          /"(?:\\.|[^"\\\n])*"/,
+          // A path in curly quotes is read as written (C2-B-202).
+          /“[^”\n]+”/,
+        ),
+      ),
     // Higher token precedence than `include_extra`, which matches the same
     // characters: without it the tolerant catch-all wins the tie and a valid
     // selector is reported as "something else".

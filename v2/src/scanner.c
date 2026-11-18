@@ -39,6 +39,9 @@ static bool carve_is_grapheme_extender(int32_t c) {
 
 // Carve 0.2 keeps plus only as a table continuation row (C2-B-059).
 #define CARVE2_PLUS_ATTACHMENT 0
+// In Carve 0.2 a spaced run (`- - -`, `* * *`) is nested markers, not a
+// thematic break (C2-B-160).
+#define CARVE2_SPACED_BREAK 0
 
 #ifdef DEBUG
 #include <assert.h>
@@ -6589,7 +6592,7 @@ static bool parse_list_marker_or_thematic_break(
         break;
       }
     }
-    if (spaced_ok && spaced >= 3) {
+    if (CARVE2_SPACED_BREAK && spaced_ok && spaced >= 3) {
       lexer->result_symbol = thematic_break_type;
       mark_end(s, lexer);
       return true;
@@ -7454,7 +7457,7 @@ static bool parse_list_item_end(Scanner *s, TSLexer *lexer,
         break;
       }
     }
-    if (spaced_ok && spaced >= 3) next_marker = IGNORED;
+    if (CARVE2_SPACED_BREAK && spaced_ok && spaced >= 3) next_marker = IGNORED;
   }
 
   bool hard_boundary = (list->flags & BLOCK_FLAG_LIST_HARD_BOUNDARY) != 0;
@@ -7857,9 +7860,15 @@ static bool include_line_ahead(TSLexer *lexer) {
       ++length;
     }
     lexer->advance(lexer, false);
+  } else if (lexer->lookahead == 0x201C) {
+    lexer->advance(lexer, false);
+    while (lexer->lookahead != 0x201D) {
+      if (AT_END) return false;
+      lexer->advance(lexer, false);
+      ++length;
+    }
+    lexer->advance(lexer, false);
   } else {
-    // A path in curly quotes is left to the paragraph: the directive's path
-    // token has no spelling for it.
     while (!AT_END && lexer->lookahead != ' ' && lexer->lookahead != '\t' &&
            lexer->lookahead != '#' && lexer->lookahead != '@' &&
            lexer->lookahead != '}' && lexer->lookahead != '"' &&
@@ -11770,7 +11779,7 @@ static bool scan_row_or_break_at_paragraph_end(Scanner *s, TSLexer *lexer) {
           break;
         }
       }
-      if (at_margin && spaced_ok && spaced >= 3) {
+      if (CARVE2_SPACED_BREAK && at_margin && spaced_ok && spaced >= 3) {
         return true;
       }
     }

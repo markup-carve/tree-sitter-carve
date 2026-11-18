@@ -9367,11 +9367,15 @@
         "members": [
           {
             "type": "PATTERN",
-            "value": "[^#@}\\s\"][^#@}\\s]*"
+            "value": "[^#@}\\s\"“][^#@}\\s]*"
           },
           {
             "type": "PATTERN",
             "value": "\"(?:\\\\.|[^\"\\\\\\n])*\""
+          },
+          {
+            "type": "PATTERN",
+            "value": "“[^”\\n]+”"
           }
         ]
       }
