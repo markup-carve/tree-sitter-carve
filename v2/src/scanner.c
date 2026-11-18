@@ -1981,7 +1981,11 @@ static bool parse_indented_content_spacer(Scanner *s, TSLexer *lexer,
 // An item owns a line indented past its marker (C2-B-025), so the margin is
 // the marker column plus one, not the content column.
 static uint8_t list_item_margin(Scanner *s, Block *list) {
-  (void)s;
+  // A term owns no body, so a definition list keeps its content column.
+  if (list->type == LIST_DEFINITION && list->content_col != 0 &&
+      count_blocks(s, BLOCK_QUOTE) == 0) {
+    return list->content_col;
+  }
   return list->data;
 }
 
@@ -6201,6 +6205,9 @@ static uint8_t enclosing_item_content_col(Scanner *s, Block *list) {
     Block *b = *array_get(s->open_blocks, i);
     if (b == list) {
       below = true;
+    } else if (below && is_list(b->type) && b->type != LIST_DEFINITION) {
+      // An item owns a line indented past its marker (C2-B-025, C2-B-055).
+      return b->data;
     } else if (below && (is_list(b->type) || b->type == BLOCK_QUOTE)) {
       return b->content_col;
     } else if (below && b->type == FOOTNOTE) {
