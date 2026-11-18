@@ -8507,22 +8507,18 @@ static uint32_t cell_marker_alignment(const char *b, uint32_t n, uint32_t i) {
 static bool cell_marker_run(const char *b, uint32_t n) {
   uint32_t i = 0;
   if (i < n && b[i] == '=') ++i;
-  uint32_t inner = i + 1 < n && b[i] == '{' ? cell_marker_alignment(b, n, i + 1) : 0;
-  bool list_needs_space = inner > 0;
-  if (inner) {
-    i += 1 + inner;
-  } else {
-    i += cell_marker_alignment(b, n, i);
-    if (i >= n || b[i] != '{') return false;
-    ++i;
-  }
+  if (i >= n || b[i] != '{') return false;
+  ++i;
+  uint32_t alignment = cell_marker_alignment(b, n, i);
+  i += alignment;
   uint32_t spaces = 0;
   while (i < n && b[i] == ' ') { ++i; ++spaces; }
+  bool has_item = false;
   if (i < n && b[i] != '}') {
-    if (list_needs_space && !spaces) return false;
     while (true) {
       uint32_t next = cell_marker_item(b, n, i);
       if (!next) return false;
+      has_item = true;
       i = next;
       uint32_t gap = i;
       while (gap < n && b[gap] == ' ') ++gap;
@@ -8530,6 +8526,7 @@ static bool cell_marker_run(const char *b, uint32_t n) {
       i = gap;
     }
   }
+  if (!alignment && !has_item) return false;
   return i + 1 < n && b[i] == '}' && b[i + 1] == ' ';
 }
 

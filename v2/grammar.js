@@ -30,18 +30,11 @@ const CELL_ATTR_ITEM =
   "|[A-Za-z_][A-Za-z0-9_-]*(?:=(?:\"[^\"\\r\\n]*\"|'[^'\\r\\n]*'|[^\\s\"'{}]+))?)";
 const CELL_ALIGNMENT = "(?:[<>~][\\^~v]?|\\?[\\^~v])";
 const CELL_ATTR_LIST = CELL_ATTR_ITEM + "(?: +" + CELL_ATTR_ITEM + ")*";
-// Alignment is the first token inside the braces (`|={> .x} `, carve#5091 D3);
-// the glued 0.1.13 prefix (`|=>{.x} `) stays readable through 0.1.x.
+// In 0.2 alignment is inside the first brace block, directly before any
+// attributes. A mark outside braces is cell text (C2-B-171, C2-B-182).
 const CELL_MARKER_RUN = new RegExp(
-  "(?:=?\\{" +
-    CELL_ALIGNMENT +
-    "(?: +" +
-    CELL_ATTR_LIST +
-    ")? *|(?:=?" +
-    CELL_ALIGNMENT +
-    "|=)?\\{ *(?:" +
-    CELL_ATTR_LIST +
-    " *)?)\\} ",
+  "=?\\{(?:" + CELL_ALIGNMENT + "(?: *" + CELL_ATTR_LIST + ")? *| *" +
+    CELL_ATTR_LIST + " *)\\} ",
 );
 
 // The inline element alternatives, shared by ordinary inline content and by a
@@ -50,6 +43,7 @@ const CELL_MARKER_RUN = new RegExp(
 function inlineElement($, options) {
   const notes = options.notes !== false;
   const cells = options.cells === true;
+  const title = options.title === true;
   return prec.left(
     choice(
       // Span is declared separately because it always parses an `inline_attribute`,
@@ -161,9 +155,11 @@ function inlineElement($, options) {
           $.raw_inline,
           $.symbol,
           $.braced_comment,
-          cells
-            ? alias($._cell_trailing_comment, $.trailing_comment)
-            : $.trailing_comment,
+          title
+            ? alias($._title_trailing_comment, $.trailing_comment)
+            : cells
+              ? alias($._cell_trailing_comment, $.trailing_comment)
+              : $.trailing_comment,
           $._todo_highlights,
         ),
         optional(
@@ -310,6 +306,13 @@ function symbolFallback($, options) {
 function codeBlock($, beginToken) {
   return seq(
     alias(beginToken, $.code_block_marker_begin),
+    // Two leading spaces before a word are invalid metadata in 0.2. Offer
+    // the scanner's whole-tail token before the whitespace slot consumes
+    // those spaces, while a single space still reaches a valid info token.
+    optional(
+      field("invalid_metadata",
+        alias($._container_invalid_metadata, $.invalid_metadata)),
+    ),
     // The scanner classifies the opener. Invalid metadata remains a child of
     // the fence in 0.2 (C2-B-122).
     //
@@ -1115,18 +1118,17 @@ module.exports = grammar({
       seq(
         $._cell_marker_begin,
         optional(token.immediate("=")),
+        token.immediate("{"),
         choice(
           seq(
-            token.immediate("{"),
             $._cell_alignment,
-            optional(seq($._padding_spaces, $._cell_attribute_list)),
+            optional(seq(optional($._padding_spaces), $._cell_attribute_list)),
             optional($._padding_spaces),
           ),
           seq(
-            optional($._cell_alignment),
-            token.immediate("{"),
             optional($._padding_spaces),
-            optional(seq($._cell_attribute_list, optional($._padding_spaces))),
+            $._cell_attribute_list,
+            optional($._padding_spaces),
           ),
         ),
         token.immediate("}"),
@@ -1439,10 +1441,15 @@ module.exports = grammar({
     // renders the strong and the code span in the title paragraph.
     div_title: ($) =>
       choice(
-        token(prec(2, seq('"', /[^"\r\n]*%%[^"\r\n]*/, '"'))),
-        seq('"', optional(alias($._inline_single_line, $.content)), '"'),
+        seq('"', optional(alias($._title_inline_single_line, $.content)), '"'),
         seq("'", optional(alias($._inline_single_line, $.content)), "'"),
       ),
+
+    _title_inline_single_line: ($) =>
+      prec.left(repeat1(choice($._title_inline_element, $._whitespace1))),
+    _title_inline_element: ($) => inlineElement($, { title: true }),
+    // A title comment ends at its own quote, leaving the opener complete.
+    _title_trailing_comment: (_) => token(seq(/[ \t]/, "%%", /[^"\r\n]*/)),
 
     code_block: ($) => codeBlock($, $._code_block_begin),
     raw_block: ($) =>

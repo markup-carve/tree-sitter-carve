@@ -515,7 +515,7 @@
         ]
       },
       "invalid_metadata": {
-        "multiple": false,
+        "multiple": true,
         "required": false,
         "types": [
           {
@@ -3980,7 +3980,7 @@
         ]
       },
       "invalid_metadata": {
-        "multiple": false,
+        "multiple": true,
         "required": false,
         "types": [
           {
