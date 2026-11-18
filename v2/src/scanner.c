@@ -1,0 +1,18762 @@
+#include "tree_sitter/alloc.h"
+#include "tree_sitter/array.h"
+#include "tree_sitter/parser.h"
+#include "unicode_marks.h"
+
+// `_Static_assert` is a C11 keyword some MSVC toolchains (e.g. the Windows
+// Python wheel build's cp38-win32 target) don't recognize by default,
+// mis-parsing everything after it. This works on every C standard.
+#define CARVE_CONCAT_(a, b) a##b
+#define CARVE_CONCAT(a, b) CARVE_CONCAT_(a, b)
+#define CARVE_STATIC_ASSERT(cond) \
+    typedef char CARVE_CONCAT(carve_static_assert_line_, __LINE__)[(cond) ? 1 : -1]
+
+// WASM-host compatibility: avoid linking against libc's ctype helpers.
+// Some Tree-sitter consumers (e.g. Zed via wasi-sdk + wasmtime) cannot
+// resolve `isalnum` as an import. The lookahead is a Unicode codepoint
+// (int32_t); for the syntax we use this in (identifier-style tokens), the
+// ASCII alphanumeric range is sufficient.
+static inline bool carve_is_alnum_ascii(int32_t c) {
+    return (c >= '0' && c <= '9')
+        || (c >= 'A' && c <= 'Z')
+        || (c >= 'a' && c <= 'z');
+}
+
+static bool carve_is_grapheme_extender(int32_t c) {
+    size_t low = 0;
+    size_t high = sizeof(carve_grapheme_extender_ranges) /
+                  sizeof(carve_grapheme_extender_ranges[0]);
+    while (low < high) {
+        size_t mid = low + (high - low) / 2;
+        if (c < (int32_t)carve_grapheme_extender_ranges[mid][0]) high = mid;
+        else if (c > (int32_t)carve_grapheme_extender_ranges[mid][1]) low = mid + 1;
+        else return true;
+    }
+    return false;
+}
+
+// #define DEBUG
+
+// Carve 0.2 keeps plus only as a table continuation row (C2-B-059).
+#define CARVE2_PLUS_ATTACHMENT 0
+
+#ifdef DEBUG
+#include <assert.h>
+#endif
+
+// The different tokens the external scanner support
+// See `externals` in `grammar.js` for a description of most of them.
+typedef enum {
+  IGNORED,
+
+  BLOCK_CLOSE,
+  EOF_OR_NEWLINE,
+  NEWLINE,
+  NEWLINE_INLINE,
+  NON_WHITESPACE_CHECK,
+  HIGHLIGHTED_OPEN_CHECK,
+  HARD_LINE_BREAK,
+
+  FRONTMATTER_MARKER,
+
+  HEADING_BEGIN,
+  DIV_BEGIN,
+  DIV_END,
+  CODE_BLOCK_BEGIN,
+  CODE_BLOCK_END,
+  COMMENT_FENCE_BEGIN,
+  COMMENT_FENCE_CONTENT,
+  COMMENT_FENCE_END,
+  NOT_A_CONTAINER_OPENER,
+  LIST_MARKER_DASH,
+  LIST_MARKER_STAR,
+  LIST_MARKER_TASK_BEGIN,
+  LIST_MARKER_DEFINITION,
+  LIST_MARKER_DESCRIPTION,
+  LIST_MARKER_DECIMAL_PERIOD,
+  LIST_MARKER_LOWER_ALPHA_PERIOD,
+  LIST_MARKER_UPPER_ALPHA_PERIOD,
+  LIST_MARKER_LOWER_ROMAN_PERIOD,
+  LIST_MARKER_UPPER_ROMAN_PERIOD,
+  LIST_MARKER_DECIMAL_PAREN,
+  LIST_MARKER_LOWER_ALPHA_PAREN,
+  LIST_MARKER_UPPER_ALPHA_PAREN,
+  LIST_MARKER_LOWER_ROMAN_PAREN,
+  LIST_MARKER_UPPER_ROMAN_PAREN,
+  LIST_MARKER_DECIMAL_PARENS,
+  LIST_MARKER_LOWER_ALPHA_PARENS,
+  LIST_MARKER_UPPER_ALPHA_PARENS,
+  LIST_MARKER_LOWER_ROMAN_PARENS,
+  LIST_MARKER_UPPER_ROMAN_PARENS,
+  LIST_ITEM_CONTINUATION,
+  LIST_ITEM_END,
+  INDENTED_CONTENT_SPACER,
+  CLOSE_PARAGRAPH,
+  BLOCK_QUOTE_BEGIN,
+  BLOCK_QUOTE_CONTINUATION,
+  THEMATIC_BREAK_DASH,
+  THEMATIC_BREAK_STAR,
+  FOOTNOTE_MARK_BEGIN,
+  FOOTNOTE_CONTINUATION,
+  FOOTNOTE_END,
+  LINK_REF_DEF_MARK_BEGIN,
+  LINK_REF_DEF_LABEL_END,
+  TABLE_HEADER_BEGIN,
+  TABLE_SEPARATOR_BEGIN,
+  TABLE_ROW_BEGIN,
+  TABLE_ROW_END_NEWLINE,
+  TABLE_CELL_END,
+  TABLE_CAPTION_BEGIN,
+  TABLE_CAPTION_END,
+  BLOCK_ATTRIBUTE_BEGIN,
+  COMMENT_END_MARKER,
+  COMMENT_CLOSE,
+
+  BRACED_COMMENT_BEGIN,
+
+  VERBATIM_BEGIN,
+  VERBATIM_END,
+  VERBATIM_CONTENT,
+
+  // The different spans.
+  // Begin is marked by a zero-width token to push elements on the open stack
+  // (unless when we're parsing a fallback token).
+  // End scans an actual ending token (such as `_}` or `_`) and checks the open
+  // stack.
+  EMPHASIS_MARK_BEGIN,
+  EMPHASIS_END,
+  STRONG_MARK_BEGIN,
+  STRONG_END,
+  UNDERLINE_MARK_BEGIN,
+  UNDERLINE_END,
+  STRIKETHROUGH_MARK_BEGIN,
+  STRIKETHROUGH_END,
+  SUPERSCRIPT_MARK_BEGIN,
+  SUPERSCRIPT_END,
+  SUBSCRIPT_MARK_BEGIN,
+  SUBSCRIPT_END,
+  HIGHLIGHTED_MARK_BEGIN,
+  HIGHLIGHTED_END,
+  INSERT_MARK_BEGIN,
+  INSERT_END,
+  DELETE_MARK_BEGIN,
+  DELETE_END,
+
+  PARENS_SPAN_MARK_BEGIN,
+  PARENS_SPAN_END,
+  CURLY_BRACKET_SPAN_MARK_BEGIN,
+  CURLY_BRACKET_SPAN_END,
+  SQUARE_BRACKET_SPAN_MARK_BEGIN,
+  SQUARE_BRACKET_SPAN_END,
+
+  LANGUAGE_ATTRIBUTE,
+
+  IN_FALLBACK,
+
+  ERROR,
+
+  // A lone `+` on its own line: the list/block-quote continuation marker
+  // (PART 9 §17). Appended at the END of the enum so every existing token keeps
+  // its index (must stay aligned with the `externals` array in grammar.js).
+  LIST_CONTINUATION_MARKER,
+
+  // Bold-italic `/*…*/`. Appended for the same reason, and last so the two
+  // stay adjacent to the marker above them.
+  BOLD_ITALIC_MARK_BEGIN,
+  BOLD_ITALIC_END,
+
+  // The zero-width mark that opens an inline note, `^[content]`. Appended for
+  // the same index reason as the two above.
+  INLINE_NOTE_MARK_BEGIN,
+
+  // The note's `^[` itself. External rather than a grammar token so the
+  // refusal happens BEFORE the characters are consumed: a grammar token is
+  // chosen by longest match, and once `^[` is taken there is no lexing left
+  // that reads the caret as text.
+  INLINE_NOTE_BEGIN,
+  INLINE_NOTE_END,
+  TABLE_CONTINUATION_ROW,
+
+  // A NUL byte standing in a line of content. Appended last for the same index
+  // reason as the tokens above it. External because tree-sitter's internal
+  // lexer reserves the value 0 for end-of-input, so no token regex can match a
+  // real NUL - only a scanner that can ask `lexer->eof` can tell the two
+  // apart.
+  NUL_BYTE,
+
+  // A `%` STANDING IN A BRACED COMMENT'S BODY - one that is not the `%` of the
+  // closing `%}`. Appended last for the same index reason as the tokens above
+  // it, and external because the decision needs the character AFTER the `%`:
+  // `braced_comment = "{%", {character - "%}"}, "%}"` closes on the two-
+  // character run and on nothing else, and a token regex here cannot look one
+  // character ahead.
+  COMMENT_BODY_PERCENT,
+
+  // The RESERVED kind word `figure`, when the colon fence's opener is bare.
+  // Appended last for the same index reason as the tokens above it, and
+  // external because the decision needs the REST OF THE LINE - see
+  // `parse_figure_group_marker`.
+  FIGURE_GROUP_MARKER,
+
+  // The `{` OF AN EDITORIAL COMMENT, `{# … #}`. Appended last for the same
+  // index reason as the tokens above it, and external because the same `{`
+  // can open an id attribute (`{#id}`): the two readings are told apart only
+  // by what closes the braces, which is a forward scan and not a regex - see
+  // `parse_open_curly_bracket`.
+  EDITORIAL_COMMENT_BEGIN,
+
+  // A `#` STANDING IN AN EDITORIAL COMMENT'S BODY - one that is not the `#`
+  // of the closing `#}`. Appended last for the same index reason as the
+  // tokens above it, and external for the reason COMMENT_BODY_PERCENT is:
+  // the decision needs the character AFTER the `#`.
+  COMMENT_BODY_HASH,
+
+  // The `#` that CLOSES an editorial comment, the one a `}` follows.
+  // Appended last for the same index reason as the tokens above it.
+  COMMENT_HASH_END_MARKER,
+
+  // The `^` OF A CAPTION together with its whole separator run. Appended last
+  // for the same index reason as the tokens above it, and external because the
+  // decision needs the REST OF THE LINE - see `parse_caption_begin`.
+  CAPTION_BEGIN,
+
+  // A SUBSTITUTION's three marks. Appended last for the same index reason as
+  // the tokens above them. See `substitution_arrow_ahead`.
+  SUBSTITUTION_BEGIN,
+  SUBSTITUTION_ARROW,
+  SUBSTITUTION_END,
+  // The literal reading of a braced marker opener. See `braced_closer_ahead`.
+  BRACED_FALLBACK,
+  EM_DASH_IN_DELETE,
+  EN_DASH_IN_DELETE,
+  DELETE_DASH,
+  // text and bare delimiters that open and close nothing, read in one
+  // left-to-right pass so each delimiter knows the character before it.
+  LITERAL_RUN,
+  // The `*` of a bold-italic opener. See `parse_bold_italic_star`.
+  BOLD_ITALIC_STAR,
+  // An inline attribute's mark after its `{`. See `parse_attribute_mark_begin`.
+  ATTRIBUTE_MARK_BEGIN,
+  // Zero width, between two lines of an unclosed verbatim run.
+  VERBATIM_CONTINUE,
+  // A comment-only line read across an unclosed run inside a line block. See
+  // `verbatim_comment_only_line`.
+  VERBATIM_COMMENT_LINE,
+  // Zero width, at a one-cell row's closing `|`, when the next line is a `+`
+  // continuation row. See `parse_table_row_continuation_seam`.
+  TABLE_ROW_CONTINUATION_SEAM,
+
+  // `text %% to end of line`, moved external so it can stop at a forced
+  // span's or the combined token's own closer instead of running past it -
+  // see `innermost_comment_bound`. Appended last for the same index reason
+  // as the tokens above it.
+  TRAILING_COMMENT,
+  EMPTY_LIST_CONTINUATION_MARKER,
+  LABEL_MARK_BEGIN,
+  LABEL_START_COMMENT,
+  TERM_COMMENT,
+  TABLE_QUOTE_CONTINUATION,
+  TABLE_ESCAPED_CELL_END,
+  TABLE_LIST_ROW_CHECK,
+  TABLE_LIST_END,
+  ATTRIBUTED_SPAN_MARK_BEGIN,
+  BOLD_ITALIC_LITERAL_LT,
+  INLINE_ATTRIBUTE_CONTINUE,
+  BOLD_ITALIC_OPEN_CHECK,
+  BOLD_ITALIC_SCOPED_OPEN_CHECK,
+  BOLD_ITALIC_LITERAL_OPEN_CHECK,
+  EMPHASIS_COMBINED_MARK_BEGIN,
+  CONTAINER_INVALID_METADATA,
+  STRONG_QUALIFIED_MARK_BEGIN,
+  BOLD_ITALIC_LITERAL_STAR,
+  EMPHASIS_QUALIFIED_MARK_BEGIN,
+  WORD_END,
+  HIGHLIGHTED_QUALIFIED_MARK_BEGIN,
+  LITERAL_STAR,
+  LITERAL_SLASH,
+  EXTENSION_CONTENT_BEGIN,
+  EXTENSION_LITERAL_CHECK,
+  EXTENSION_END,
+  LITERAL_SLASH_BOUNDARY,
+
+  // Zero-width, emitted where a fence-shaped run with no closer ahead stands
+  // below an open description body: the run is the body's content rather than a
+  // block of its own, so the item must not end on it. Appended last for the
+  // same index reason as the tokens above it.
+  LAZY_DESCRIPTION_FENCE,
+
+  // A cell with nothing between its pipes, `||`. Appended last.
+  EMPTY_TABLE_CELL,
+  EMPTY_LINK_PADDING,
+  DELIMITED_TABLE_BEGIN,
+  PLUS_OWNER_CHECK,
+  QUOTED_PLUS_OWNER_CHECK,
+  QUOTED_LIST_ITEM_CONTINUATION,
+  UNHOSTED_BLOCK_QUOTE_CONTINUATION,
+  REFUSED_PLUS_LINE,
+  ATTACHED_QUOTE_PREFIX,
+  FRONTMATTER_UNCLOSED_MARKER,
+  FRONTMATTER_REST,
+  // Empty; carries a next-token note's state past the internal lexer's token
+  // (see `scan_right_behind`).
+  AFTER_BARE_CLOSER,
+  MID_LINE_SPACE,
+  // A paragraph's line end before a line S1 erases (CARVE-P0-011).
+  ERASED_LINE_NEWLINE,
+  // The definition on an erased line, read as one token.
+  ERASED_LINK_DEFINITION,
+  ERASED_ABBREVIATION_DEFINITION,
+  // The `+` of the continuation line a one-cell row reads on into.
+  TABLE_ROW_CONTINUATION_PLUS,
+  // The line end and quote prefix between the seam and that `+`.
+  TABLE_ROW_CONTINUATION_LINE,
+  // Zero width, at a cell whose head is a marker run. See `cell_marker_run`.
+  CELL_MARKER_BEGIN,
+} TokenType;
+
+// The different blocks in Carve that we track,
+// in order to match or close them properly.
+// Note that paragraphs are anonymous and aren't tracked.
+typedef enum {
+  BLOCK_QUOTE,
+  COMMENT_FENCE,
+  CODE_BLOCK,
+  DIV,
+  SECTION,
+  HEADING,
+  FOOTNOTE,
+  LINK_REF_DEF,
+  TABLE_ROW,
+  TABLE_CAPTION,
+  LIST_DASH,
+  LIST_STAR,
+  LIST_TASK,
+  LIST_DEFINITION,
+  LIST_DECIMAL_PERIOD,
+  LIST_LOWER_ALPHA_PERIOD,
+  LIST_UPPER_ALPHA_PERIOD,
+  LIST_LOWER_ROMAN_PERIOD,
+  LIST_UPPER_ROMAN_PERIOD,
+  LIST_DECIMAL_PAREN,
+  LIST_LOWER_ALPHA_PAREN,
+  LIST_UPPER_ALPHA_PAREN,
+  LIST_LOWER_ROMAN_PAREN,
+  LIST_UPPER_ROMAN_PAREN,
+  LIST_DECIMAL_PARENS,
+  LIST_LOWER_ALPHA_PARENS,
+  LIST_UPPER_ALPHA_PARENS,
+  LIST_LOWER_ROMAN_PARENS,
+  LIST_UPPER_ROMAN_PARENS,
+
+  // A DIV THAT CARRIES THE RESERVED KIND WORD `figure`. It nests, is counted
+  // and is closed exactly as a `DIV` - every colon-fence rule asks
+  // `number_of_colon_fence_blocks_from_top`, which matches both - and the
+  // separate type exists for ONE question: whether a bare `::: figure` opener
+  // sits inside an already-open group. Appended last so every existing type
+  // keeps its serialized value.
+  FIGURE_GROUP,
+} BlockType;
+
+// The different types of "numbers" in ordered lists.
+typedef enum {
+  DECIMAL,
+  LOWER_ALPHA,
+  UPPER_ALPHA,
+  LOWER_ROMAN,
+  UPPER_ROMAN,
+} OrderedListType;
+
+typedef struct {
+  BlockType type;
+  // Data depends on the block type.
+  // Can be indentation, number of opening/ending symbols, or number of cells in
+  // a table row. Wide enough for a colon fence of more than 255 colons.
+  uint16_t data;
+  // The column where this container's CONTENT starts, or 0 when unknown.
+  //
+  // `data` is the marker's own indent plus one, which is a minimum indent and
+  // not a column: it is 1 for both `- ` (content at column 2) and `1. `
+  // (content at column 3), so no arithmetic on it recovers the column. A block
+  // opener inside a container has to sit exactly AT that column - one space
+  // past is literal text - and nothing could express that
+  // (tree-sitter-carve#84).
+  uint8_t content_col;
+  uint32_t cell_boundary_col;
+  uint32_t cell_carry_ticks;
+  uint32_t bracket_cell_col;
+  // Per-block-type bits with no shared meaning across types, the way
+  // `Inline::flags` already works. Only `BLOCK_FLAG_LINE_BLOCK` exists today.
+  uint8_t flags;
+  // BLOCK_QUOTE only: the task box before this quote on its item's marker
+  // line. A later line's marker reads left by it (CARVE-P9-083).
+  uint8_t box_shift;
+} Block;
+
+/// The div is a line block (`::: |`), set where its `|` marker validates.
+/// A code span read across lines inside one strips a comment-only line rather
+/// than reading it as literal text (tree-sitter-carve#320 row 6).
+static const uint8_t BLOCK_FLAG_LINE_BLOCK = 1 << 0;
+/// The div is a fenced quote (`::: >`), which can carry a caption.
+static const uint8_t BLOCK_FLAG_QUOTE_FENCE = 1 << 1;
+// TABLE_ROW only: this row has exactly ONE cell and the line right after
+// it is a well-shaped `+` continuation row. Computed once, safely, while
+// scan_table_row already reads that line to decide the row's own kind -
+// re-deriving it later at the row's closing `|` would mean a reader that
+// might advance and then have to decline, corrupting the shared lexer
+// position for whatever reads that `|` next. See
+// `parse_table_row_continuation_seam` (tree-sitter-carve#437).
+static const uint8_t BLOCK_FLAG_TABLE_ROW_CONTINUES = 1 << 1;
+// TABLE_ROW only: a `+` selected this table, so its next row may be lazy.
+static const uint8_t BLOCK_FLAG_TABLE_ROW_ATTACHED = 1 << 2;
+// TABLE_ROW only: the cell about to open starts with a marker run.
+static const uint8_t BLOCK_FLAG_TABLE_ROW_CELL_MARKER = 1 << 4;
+// FOOTNOTE only: a `+` continuation attached a flush-left block to the body,
+// so its margin is zero until a blank line.
+static const uint8_t BLOCK_FLAG_FOOTNOTE_ATTACHED = 1 << 1;
+// FOOTNOTE only: the attached block has begun as a table, whose rows may
+// continue at column zero until a different line starts.
+static const uint8_t BLOCK_FLAG_FOOTNOTE_ATTACHED_TABLE = 1 << 2;
+static const uint8_t BLOCK_FLAG_FOOTNOTE_DANGLING_PLUS = 1 << 6;
+static const uint8_t BLOCK_FLAG_FOOTNOTE_BLANK_BEFORE_PLUS = 1 << 3;
+// CODE_BLOCK only: no closer follows, and the fence sits directly in a div.
+static const uint8_t BLOCK_FLAG_FENCE_UNCLOSED_IN_DIV = 1 << 1;
+// Lists only: three or more blank lines stand before the current line.
+static const uint8_t BLOCK_FLAG_LIST_HARD_BOUNDARY = 1 << 1;
+// Lists only, the comment ownership of PART 9 section 24 C3: the item's
+// paragraph was just closed by a comment line (an ordinary-line claim), or the
+// previous line was a comment consumed below the content column (retention).
+static const uint8_t BLOCK_FLAG_LIST_COMMENT_CLAIM = 1 << 3;
+static const uint8_t BLOCK_FLAG_LIST_COMMENT_RETAINS = 1 << 4;
+// Lists other than LIST_DEFINITION, sharing bit 0 with
+// `BLOCK_FLAG_BODY_OWNED_BY_FENCE`: the current line is a follower kept below
+// the content column, so it is paragraph text and opens no list.
+static const uint8_t BLOCK_FLAG_LIST_TEXT_LINE = 1 << 0;
+// Lists only: a `+`-attached block so far holds only attribute lines, so the
+// next line is still the attached block.
+static const uint8_t BLOCK_FLAG_LIST_ATTACHED_ATTRIBUTE = 1 << 7;
+// A prefixed `+` at every open quote level belongs to this quoted item.
+static const uint8_t BLOCK_FLAG_LIST_FULL_QUOTE_PLUS = 1 << 6;
+// A literal, not the two names above: C (and MSVC) rejects a static const
+// initialized from other const objects.
+static const uint8_t LIST_COMMENT_FLAGS = (1 << 3) | (1 << 4);
+static const uint8_t BLOCK_FLAG_TABLE_ROW_BOUNDARY_SAFE = 1 << 2;
+// Definition terms and description bodies use the same block type. Keep the
+// current item kind so nested terms and folded continuation lines stay scoped.
+static const uint8_t BLOCK_FLAG_DEFINITION_TERM = 1 << 2;
+// Lists other than LIST_DEFINITION, sharing bit 2: the paragraph-end probe
+// saw a quote-prefixed `+` short of the paragraph's quote attach.
+static const uint8_t BLOCK_FLAG_LIST_SHORT_PLUS = 1 << 2;
+// BLOCK_QUOTE only: no continuation line has reached the quote yet, so a `+`
+// in it stands on the quote's opening line.
+static const uint8_t BLOCK_FLAG_QUOTE_OPENING_LINE = 1 << 2;
+// The quote opened after a list marker on the same source line.
+static const uint8_t BLOCK_FLAG_QUOTE_ON_ITEM_MARKER_LINE = 1 << 6;
+static const uint8_t BLOCK_FLAG_OPAQUE_QUOTE_TAIL = 1 << 3;
+static const uint8_t BLOCK_FLAG_LATER_OPAQUE_FENCE = 1 << 4;
+static const uint8_t BLOCK_FLAG_QUOTE_CONTINUATION_PENDING = 1 << 5;
+static const uint8_t BLOCK_FLAG_QUOTE_BLANK_PLUS = 1 << 1;
+// A quote-prefixed `+` can be scanned before its enclosing item closes.
+static const uint8_t BLOCK_FLAG_PLUS_AHEAD = 1 << 5;
+// The attached block starts outside the quote prefix.
+static const uint8_t BLOCK_FLAG_QUOTE_DEDENT_PLUS = 1 << 0;
+// BLOCK_QUOTE only: the line under this quote's paragraph carries fewer `>`
+// markers but opens no block, so its markers continue the paragraph lazily.
+static const uint8_t BLOCK_FLAG_QUOTE_LAZY_DROP = 1 << 7;
+static const uint8_t BLOCK_FLAG_COMMENT_RESTORES_LAZY = 1 << 6;
+static const uint8_t BLOCK_FLAG_DESCRIPTION_FENCE_HAS_CLOSER = 1 << 7;
+
+/// On a LIST_DEFINITION: a code fence stood as this description body's OWN
+/// block, rather than inside a nested item of it, so the body is the fence's
+/// and ends where the fence does. Recorded on the item because by the time the
+/// item boundary is reached the fence has been popped, and the two shapes are
+/// indistinguishable then - the same reason the fence scanner cannot answer
+/// #514 itself.
+///
+/// Shares bit 0 with `BLOCK_FLAG_LINE_BLOCK`, which is only ever set on and
+/// read from a DIV or a FIGURE_GROUP.
+static const uint8_t BLOCK_FLAG_BODY_OWNED_BY_FENCE = 1 << 0;
+
+typedef enum {
+  VERBATIM,
+  EMPHASIS,
+  STRONG,
+  UNDERLINE,
+  STRIKETHROUGH,
+  SUPERSCRIPT,
+  SUBSCRIPT,
+  HIGHLIGHTED,
+  INSERT,
+  DELETE,
+  // The only span whose delimiters are TWO characters and not mirror images:
+  // `/*` opens and `*/` closes.
+  BOLD_ITALIC,
+  // Spans where the start token is managed by `grammar.js`
+  // and the tokens specify the ending token ), }, or ]
+  PARENS_SPAN,
+  CURLY_BRACKET_SPAN,
+  SQUARE_BRACKET_SPAN,
+  LITERAL_BRACKET,
+  // An inline note, `^[content]`. Its own type rather than another
+  // square-bracket span: a nested `[` bumps the open span's fallback counter
+  // (see `mark_span_begin`), and with the note counted as one, `^[a [b] c]`
+  // could no longer close - `parse_span_end` refuses a span with open tags.
+  // A separate type keeps the note out of that count, which is right anyway:
+  // the note is a construct, not a bracket run.
+  INLINE_NOTE,
+  // `{~ from ~> to ~}`. Its own type rather than a strikethrough: the two share
+  // an opener, and which one a `{~` starts depends on whether a TOP-LEVEL arrow
+  // follows it (corpus 472).
+  SUBSTITUTION,
+  EXTENSION,
+} InlineType;
+
+// What kind of span we should parse.
+typedef enum {
+  // Only delimited by a single character, for example `[text]`.
+  SpanSingle,
+  // Only delimited by a curly bracketed tags, for example `{= highlight =}`.
+  SpanBracketed,
+  // Either single or bracketed, for example `^superscript^}`.
+  SpanBracketedAndSingle,
+  // Either single or bracketed, but no whitespace next to the single tags.
+  // For example `_emphasis_}` (but not `_ emphasis _`).
+  SpanBracketedAndSingleNoWhitespace,
+  // A two-character closer that is not a mirror of its opener: `/*…*/`.
+  SpanPair,
+} SpanType;
+
+// The span was opened in its BRACED form, `{* ... *}` rather than `* ... *`.
+// Only the braced form stops an unterminated verbatim run at its closer
+// (corpus 472), so the two forms cannot share one entry.
+enum {
+  INLINE_BRACED = 1 << 0,
+  // This VERBATIM run has no matching tick run before the braced span it sits
+  // in closes, so its content ends at that closer. Decided at the opening
+  // ticks, where the lexer may still read ahead.
+  INLINE_STOPS_AT_SPAN_CLOSER = 1 << 1,
+  // Square-bracket labels use this type-specific bit to bound comments.
+  INLINE_LABEL = 1 << 1,
+  // On a braced square span, an extension cut can leave literal closes.
+  INLINE_EXTENSION_CUT = 1 << 1,
+  // An emphasis fallback from a combined opener keeps failed pairs literal.
+  INLINE_COMBINED_FALLBACK = 1 << 1,
+  // A strong span keeps a rejected combined opener literal until it closes.
+  INLINE_SCOPED_COMBINED_LITERAL = 1 << 1,
+};
+
+// serialized inline types must fit in six bits
+CARVE_STATIC_ASSERT(SUBSTITUTION < 0x40);
+// serialized inline flags must fit in two bits
+CARVE_STATIC_ASSERT((INLINE_BRACED | INLINE_STOPS_AT_SPAN_CLOSER) < 0x04);
+
+typedef struct {
+  InlineType type;
+  // Different types may use `data` differently.
+  // Spans use it to count how many fallback symbols was returned after the
+  // opening tag.
+  // Verbatim counts the number of open and closing ticks.
+  uint8_t data;
+  // `INLINE_BRACED` and `INLINE_STOPS_AT_SPAN_CLOSER`. Packed into the type
+  // byte's spare bits on the wire.
+  uint8_t flags;
+  // Square-bracket spans only: how many `]` ahead close a balanced pair of
+  // literal brackets inside this one (`[t[z]](/u)`) rather than this span.
+  // Formatting spans store residual extension closes plus 1; zero means no cut.
+  uint32_t literal_closes;
+} Inline;
+
+static const uint32_t INLINE_CUT_CODE = UINT32_C(1) << 31;
+
+// An extension whose closer is not the first raw `]` ahead keeps that
+// closer's position in `literal_closes`: line feeds ahead of the current scan
+// call in the high bits, tree-sitter column plus one in the low ones. Zero
+// keeps the first raw `]` as the closer.
+#define EXTENSION_CLOSE_COLUMN_BITS 20
+static uint32_t extension_close_newlines(const Inline *extension) {
+  return extension->literal_closes >> EXTENSION_CLOSE_COLUMN_BITS;
+}
+static uint32_t extension_close_column(const Inline *extension) {
+  return (extension->literal_closes & ((UINT32_C(1) << EXTENSION_CLOSE_COLUMN_BITS) - 1)) - 1;
+}
+
+static uint32_t square_literal_closes(const Inline *inline_span) {
+  if (inline_span->type == SQUARE_BRACKET_SPAN &&
+      (inline_span->flags & (INLINE_BRACED | INLINE_EXTENSION_CUT)) ==
+          (INLINE_BRACED | INLINE_EXTENSION_CUT))
+    return inline_span->literal_closes & ~INLINE_CUT_CODE;
+  return inline_span->literal_closes;
+}
+
+typedef struct {
+  // Open blocks is a stack of the blocks that haven't been closed.
+  // Used to match closing markers or for implicitly closing blocks.
+  Array(Block *) * open_blocks;
+
+  // Open inline is a stack of non-closed inline elements.
+  Array(Inline *) * open_inline;
+
+  // How many BLOCK_CLOSE we should output right now?
+  uint8_t blocks_to_close;
+
+  // What's our current block quote level?
+  uint8_t block_quote_level;
+
+  // The whitespace indent of the current line.
+  uint8_t indent;
+
+  // Column right after the most recent list marker emitted on the current
+  // line (0 = none). A bullet marker that starts exactly at this column is a
+  // marker-line nested list (`- - A`, corpus 103-marker-line-nested-lists):
+  // its list opens at the marker's own column instead of the line indent.
+  uint8_t marker_end_col;
+  // Indent of the first list marker on the current line (UINT8_MAX = none):
+  // the opener line's own column for a stacked first-block `+`.
+  uint8_t chain_col;
+  // Column of the single block selected by a `+` marker.
+  uint8_t continuation_col;
+  // Quote-prefix count of the next row of an attached table, or UINT8_MAX.
+  uint8_t attached_row_prefix;
+  // One bounded probe decides a lone `+` before the list can consume it.
+  uint8_t plus_decision;
+  // Marker column plus one while a refused one-line paragraph is pending.
+  uint8_t refused_plus_column;
+  uint8_t table_attribute_pending;
+
+  // Where the CURRENT line starts, in tree-sitter's column units.
+  //
+  // tree-sitter's own lexer advances the row and resets the column on '\n' and
+  // on nothing else (`lexer.c`, `ts_lexer__do_advance`), so after a line ended
+  // by a LONE '\r' its `get_column` keeps counting from the last '\n' - it is
+  // an offset, not a column. Every column this scanner reasons about is
+  // therefore `get_column` MINUS this base. It is 0 in a document with no lone
+  // '\r' in it, which is every document that parsed correctly before (#143).
+  uint32_t col_base;
+
+  // `col_base` as it stood at the last `mark_end` of the current scan call.
+  // Transient, never serialized: a probe that reads past the token end can
+  // cross a line terminator and move `col_base`, and the state saved with the
+  // token must describe where the token ENDS.
+  uint32_t col_base_at_mark;
+  bool col_base_marked;
+
+  // The last external token ended on a character other than a line
+  // terminator. Inline internal tokens never end on one, so in inline
+  // context this proves the lexer is past column 0 without `get_column`,
+  // which rereads the line from its start. Serialized in the trailer.
+  bool mid_line;
+  // The braced or editorial comment opened last closes on its opening line,
+  // so no body token ends on a line terminator. Serialized in the trailer.
+  bool comment_one_line;
+  // Bare markers (bit per `BARE_CLOSER_MARKERS` entry) whose closer probe ran
+  // to the end of the paragraph without finding one, valid while the inline
+  // scope matches `no_closer_scope`. Serialized in the trailer.
+  uint16_t no_closer_kinds;
+  uint16_t no_closer_scope;
+  // Bare markers whose probe found a closer on its own line with no later
+  // marker of the kind or opaque run on that line, in the same scope: every
+  // opener of the kind before the line end finds that closer. Serialized in
+  // the trailer behind bit 15 of `no_closer_kinds`.
+  uint16_t closer_ahead_kinds;
+  // A link destination probe on this line reached its end with no `)` and no
+  // space, so every later one on the line does too. Serialized in the trailer.
+  bool link_tail_open_line;
+  // Transient: the character behind the host lexer (-1 unknown), the same at
+  // the last host `mark_end`, and whether a probe reached a paragraph end.
+  int32_t host_previous;
+  int32_t host_previous_at_mark;
+  bool host_marked;
+  bool host_crossed_line;
+  bool host_crossed_line_at_mark;
+  // Line feeds the host lexer passed in this scan call, and at the mark.
+  uint32_t host_newlines;
+  uint32_t host_newlines_at_mark;
+  // Characters the host lexer advanced over in this scan call. A column read
+  // can be deferred to a later point on the same line by subtracting these
+  // (`defer_column`): `get_column` rereads the line from its start, so a read
+  // per opener is quadratic on a long line. Transient.
+  uint32_t host_advances;
+  uint32_t deferred_column_at;
+  uint32_t deferred_column;
+  bool deferred_column_pending;
+  bool deferred_column_known;
+  // The host jumped into the next included range in this scan call; a gap
+  // may have hidden a line terminator. Transient.
+  bool host_jumped;
+  bool probe_reached_end;
+  bool probe_skipped_opaque;
+  // A skipped opaque run held the probed marker, so a later opener of the
+  // kind may stand inside one and read differently. Transient.
+  bool probe_opaque_holds_bare;
+  bool probe_crossed_line;
+  // The probe stopped where `close_paragraph` ends the paragraph, which the
+  // grammar does not always follow.
+  bool probe_end_judged;
+  // Last mark of this scan call, in host advances. Transient.
+  uint32_t host_advances_at_mark;
+  // This scan call is the one right behind the token that left a
+  // `NOTE_NEXT_TOKEN` note, and whether it wrote a new one. Transient.
+  bool note_here;
+  // Counts the parses this scanner has started; see `NOTE_NEXT_TOKEN`.
+  uint16_t parse_generation;
+  bool note_written;
+  // The serialized state this scan call started from.
+  unsigned entry_length;
+  char entry_state[TREE_SITTER_SERIALIZATION_BUFFER_SIZE];
+  // The entry state is the initial one, or that plus the `mid_line` of a
+  // `MID_LINE_SPACE`, which serializes it as one byte. The second is
+  // transient: the token about to be serialized is such a space.
+  bool entry_initial;
+  bool initial_mid_line;
+
+  // Parser state flags.
+  uint16_t state;
+
+  // the bare marker a span just closed with, and the column right
+  // behind it. A delimiter that follows a closer of its own kind can neither
+  // open (its previous character is that marker) nor close (nothing of its
+  // kind is open any more), and the scanner cannot read behind the position it
+  // is called at - so the closer records what it consumed.
+  bool after_literal_star;
+  // The last table row opened was a separator, which a `+` continuation row
+  // cannot join.
+  bool after_separator_row;
+  // A newline token just took a blank line inside a list item, so the item
+  // spacer that follows starts on the run's second blank line.
+  bool blank_line_taken;
+  // Bits 0..8 record missing braced closers.
+  uint16_t missing_closers;
+  // Blank lines before the current line, or CAPTION_GAP_FENCE right after a
+  // colon fence that hosts no caption. Serialized.
+  uint8_t caption_gap;
+  // The current scan call started on a blank line. Transient.
+  bool line_blank;
+  // The bracket probe found `[...]` followed by a `[@...]` label, and the host
+  // lexer stands right after that label. Transient.
+  bool citation_label_tail;
+  // An attribute block standing on its own line may pad with tabs and wrap; an
+  // inline one is space-only (CARVE-P4-001) and stays on its line. Transient,
+  // set around the block reads.
+  bool attribute_block_line;
+  bool attribute_saw_table;
+  char braced_probe_marker;
+  bool braced_probe_raw_closer;
+  // The closer probe stopped at the nesting cap, short of the text a later
+  // opener reads. Transient.
+  bool braced_probe_capped;
+  // The closer probe's closer ended an unterminated code run. Transient.
+  bool braced_probe_closer_in_code;
+  uint8_t after_closer_char;
+  uint32_t after_closer_col;
+
+  // The ordered-marker probe stopped right after a word it consumed, so the
+  // character behind the lexer is alphanumeric. Transient, never serialized.
+  bool ordered_word_end;
+  // The line-start check read a nonzero column in this scan call, or the
+  // quote indent check one past the quote's content column. Transient.
+  bool read_mid_line;
+  bool read_past_quote;
+
+  // Characters advanced over in this scan call, so a probe can tell whether
+  // the lexer moved without asking for a column: `get_column` rewinds and
+  // resets the marked token end. Transient, never serialized.
+  uint32_t advances;
+
+  // Width of the attribute block the ordered marker scan just consumed, read
+  // by the same scan call. Transient, never serialized.
+  uint8_t marker_attribute_width;
+
+  // Transient raw-row facts collected by the existing row validation pass.
+  bool row_capture;
+  bool row_boundary_safe;
+  uint32_t row_capture_braces;
+  int32_t row_capture_quote;
+  uint32_t row_bracket_cell_col, row_cell_start_col;
+  uint32_t row_capture_col, row_boundary_col;
+  uint32_t row_raw_ticks, row_raw_pending, row_carry_ticks, row_carry_pending;
+  int32_t row_previous;
+  bool row_carry_escape;
+
+  // The head of the cell about to open, copied while the token before it
+  // looks ahead. Transient.
+  bool marker_probe;
+  uint8_t marker_len;
+  char marker_head[240];
+
+  // The `>` markers the line under an open paragraph carries, -1 outside a
+  // quote. Transient, set by `close_paragraph` for its marker probes.
+  int paragraph_markers_seen;
+  // The tab-expanded indent of the line `emit_newline_inline` peeks at, -1
+  // where `indent` already describes the line. Transient.
+  int next_line_indent;
+
+  // Transient raw lookahead facts collected only during a combined-opener probe.
+  bool combined_probe;
+  bool combined_raw_closer;
+  bool combined_raw_strong_closer;
+  bool combined_raw_pair;
+  bool combined_raw_line_end;
+  int32_t combined_raw_previous;
+  // Set when a refused `+` already read past its own line: the scan stops so
+  // no later probe emits a token from the moved lexer.
+  bool plus_scan_spent;
+  // Set when the paragraph-end `+` probe read past a lone `+` line it refused.
+  bool plus_probe_refused_line;
+  // A probe read a `>` that is no marker (`>#`): the line is text.
+  bool glued_quote_marker;
+  // The `>` markers of a line under a deeper quoted paragraph while
+  // `close_paragraph` asks its openers; 0 otherwise. Transient.
+  uint8_t lazy_drop_markers;
+  // Set by `close_paragraph` when an opener on such a line ended the
+  // paragraph: the quotes deeper than this many markers close with it.
+  uint8_t drop_close_markers;
+  // Column of the first `>` the paragraph-end quote probe read. Transient.
+  uint32_t probe_first_marker_col;
+  // Set while the paragraph-end `+` probe asks `plus_follower`. Transient.
+  bool paragraph_plus_probe;
+  // A refused `+` folded into the open paragraph keeps later short marked
+  // lines in that paragraph until its boundary.
+  bool folded_plus_paragraph;
+  // The paragraph-end probe found a line S1 erases. Transient.
+  bool erasable_line;
+  // The last quote line outside a paragraph reached its marker-line quote
+  // only at that quote's content column, so a paragraph it opened keeps
+  // reading such markers as markers.
+  bool band_prefix;
+  // Such a paragraph has been continued: the rest of the marker-line quote
+  // keeps reading those markers as markers.
+  bool band_sticky;
+} Scanner;
+
+// Tracks if a `[` starts an inline link.
+// It's used to prune branches where it does not, fixing precedence
+// issues with multiple elements inside the destination.
+static const uint16_t STATE_BRACKET_STARTS_INLINE_LINK = 1 << 0;
+// Tracks if a `[` starts a span (the Carve element).
+// It's used to prune branches where it does not, fixing precedence
+// issues where the span wasn't chosen despite being closed first.
+static const uint16_t STATE_BRACKET_STARTS_SPAN = 1 << 1;
+// Tracks if the next table row is a separator row.
+static const uint16_t STATE_TABLE_SEPARATOR_NEXT = 1 << 2;
+// Tracks the one block attached by a `+` marker (PART 9 §17). Its selected
+// column is `continuation_col`. Indent-based closing must wait until that
+// block ends, including for a fence body or later table rows.
+static const uint16_t STATE_LIST_CONTINUATION = 1 << 3;
+// Tracks that a colon-fence line in the CURRENT paragraph failed the opener
+// test, so the paragraph is left "expecting a closer" (PART 9 §12, NORMATIVE
+// since markup-carve/carve#778). While set, a BARE fence that would otherwise
+// open a new div is paragraph text instead: `::: {.x}` / `not a div` / `:::` is
+// ONE paragraph, and the absorption is not width-tagged, so a `::::` after a
+// malformed `:::` is absorbed too.
+//
+// It suppresses only the bare-fence-as-OPENER case. A valid non-bare opener
+// still interrupts (`::: {.x}` / `x` / `::: note` is a paragraph plus an
+// admonition), and a bare fence that CLOSES a div which is actually open is
+// still that closer. Cleared when the paragraph ends.
+static const uint16_t STATE_FENCE_ABSORBS = 1 << 4;
+// Tracks that the line just crossed was BLANK, and that an open block quote has
+// not yet been ended by it. `grammar.ebnf`'s lazy-continuation note is explicit
+// that a blank line ends the blockquote, so the `>` on the next line opens a NEW
+// quote rather than continuing the open one (#129).
+//
+// This has to be scanner state, and cannot be re-derived where it is read. The
+// two lines are seen in DIFFERENT scanner calls whenever the quote holds a
+// paragraph: `_paragraph` ends with its own `_eof_or_newline` and then a second
+// one for the blank line, so by the time the `>` is scanned the blank line is
+// already a committed token and nothing about the current line records it. (In
+// the shapes whose first line is a bare `>` marker the two DO land in one call,
+// because `parse_newline` advances over the blank line's newline, marks the end,
+// and then declines when only NEWLINE_INLINE was valid - which is why the
+// continuation token there measures three bytes. Both shapes are the same defect
+// and this flag covers both.)
+//
+// Set at every line start whose line is blank; cleared by `parse_block_quote`
+// when it emits, which is the only place it is read.
+static const uint16_t STATE_AFTER_BLANK_LINE = 1 << 5;
+// Tracks that the `]` just closed was followed by a CARRIAGE RETURN.
+//
+// A bare '\r' is an extra, and an extra may be skipped anywhere no token can
+// start. Between `]` and `{` a token CAN start, so it was skipped there and a
+// span reached across a lone-CR blank line to take the next line's block
+// attribute list as its own (#192). A space or a tab in that position already
+// broke the attachment; only the carriage return slipped through, because only
+// it is an extra.
+//
+// The extra cannot simply go: it is what error recovery skips, and without it
+// any document that parses to ERROR degenerates - three corpus documents hang
+// outright. So the adjacency is enforced here instead, where the scanner can
+// see the character the grammar cannot.
+static const uint16_t STATE_SPAN_END_AT_CR = 1 << 6;
+// The span about to open was spelled BARE. Set by the zero-width check that
+// only the bare alternative of an opener carries (`_non_whitespace_check`,
+// `_highlighted_open_check`) and cleared by the `mark_span_begin` behind it,
+// which is the next token in every branch that reaches one. Nothing else can
+// tell the two spellings apart: `{*` and `*` are alternatives of one internal
+// token, and the scanner cannot read behind the position it is called at.
+//
+// Set wrongly, the flag costs the braced reading of an unterminated verbatim
+// run - which is what main does everywhere today - so it fails toward the old
+// behavior rather than toward a wrong extent.
+static const uint16_t STATE_BARE_SPAN_OPENER = 1 << 7;
+static const uint16_t STATE_MULTILINE_IDENTIFIER = 1 << 8;
+// The line after this newline closes the open code fence from inside its
+// quote(s). Read at the newline because deciding at the next line's start would
+// consume its `>` markers, and a code line needs them as its own tokens.
+static const uint16_t STATE_QUOTED_FENCE_CLOSER = 1 << 9;
+// The line after this newline is marked at the fence's quote depth but short
+// of the quoted list item's content column: it ends the fence and the item.
+static const uint16_t STATE_QUOTED_LINE_SHORT_OF_ITEM = 1 << 10;
+// The open code fence sits on a nested item's lead in a description body and
+// has no closer at that item's column, so it owns the rest of the body.
+static const uint16_t STATE_FENCE_OWNS_BODY = 1 << 11;
+// Tracks that the line after the table row just opened is a `+` continuation
+// row. A code run left open in a ONE-CELL row reads on into it, because the
+// reference joins a cell with its continuation before reading inline markup
+// (spec corpus 333). Decided at the row's own token, where the line below may
+// be read freely; the run's content token cannot look that far without
+// passing the position where it may have to end.
+static const uint16_t STATE_TABLE_CONTINUATION_NEXT = 1 << 12;
+// Set by `verbatim_line_continues` when the line it just decided to continue
+// into is a comment-only line inside a line block, so `VERBATIM_COMMENT_LINE`
+// - the very next token requested - knows to claim it instead of
+// `VERBATIM_CONTENT`. Cleared at the top of every decision, so it never
+// outlives the one gap it was set for.
+static const uint16_t STATE_NEXT_VERBATIM_LINE_IS_COMMENT = 1 << 13;
+static const uint16_t STATE_SINGLE_LINE_CAPTION = 1 << 14;
+static const uint16_t STATE_LITERAL_QUOTE_BAND = 1 << 15;
+
+// TWO BLANK LINES DETACH A CAPTION (spec corpus 282), and a colon fence other
+// than a figure group or a fenced quote takes none (318). The gap counts blank
+// lines up to DETACHED and any other line ending resets it; FENCE marks the
+// closer line and becomes DETACHED at its newline.
+static const uint8_t CAPTION_GAP_DETACHED = 2;
+static const uint8_t CAPTION_GAP_FENCE = 3;
+
+// The reference engine's MAX_NESTING_DEPTH (PART 9 §25).
+static const uint32_t MAX_NESTING_DEPTH = 200;
+// List columns are stored in a byte, so a marker past this column is text
+// rather than a list whose columns wrap.
+static const uint32_t MAX_LIST_MARKER_COLUMN = 240;
+
+static TokenType scan_list_marker_token(Scanner *s, TSLexer *lexer);
+static uint8_t scan_quote_marker_run(Scanner *s, TSLexer *lexer,
+                                     bool *ending_newline,
+                                     bool *skipped_indent, bool in_paragraph);
+static uint8_t scan_block_quote_markers(Scanner *s, TSLexer *lexer,
+                                        bool *ending_newline);
+static TokenType scan_unordered_list_marker_token(Scanner *s, TSLexer *lexer);
+static bool scan_valid_inline_attribute(Scanner *s, TSLexer *lexer);
+static bool is_bare_delim_kind(int32_t c, InlineType *kind);
+static bool kind_open_in_scope(Scanner *s, InlineType type);
+static bool braced_same_kind_blocked(Scanner *s, InlineType type);
+static bool braced_closer_ahead(Scanner *s, TSLexer *lexer, char marker);
+static bool at_block_opener_margin(Scanner *s, uint32_t column);
+static bool marker_line_has_content(Scanner *s, TSLexer *lexer);
+static bool continuation_marker_column(Scanner *s, uint32_t column);
+static void plus_owner(Scanner *s, uint32_t column, uint8_t markers,
+                       Block **list_owner_out, Block **quote_owner_out,
+                       uint32_t *reach_out);
+static void note_fence_blank_quote_plus(Scanner *s, TSLexer *lexer);
+static bool opener_reaches_item_margin(Scanner *s, uint32_t column);
+static bool list_item_open(Scanner *s);
+static bool quoted_item_column_reached(Scanner *s, uint32_t column);
+static Block *quoted_note_inside_item(Scanner *s);
+static uint32_t quoted_div_column(Scanner *s, uint8_t marker_count);
+static bool parse_code_fence(Scanner *s, TSLexer *lexer,
+                             const bool *valid_symbols, char fence_char);
+static bool div_host_collects(Scanner *s, int div_index);
+static bool div_line_collected_by_host(Scanner *s, uint32_t column);
+static void record_container_content_column(Scanner *s, uint8_t col);
+
+#ifdef DEBUG
+static char *block_type_s(BlockType t);
+static char *token_type_s(TokenType t);
+static void dump(Scanner *s, TSLexer *lexer);
+static void dump_all_valid_symbols(const bool *valid_symbols);
+static void dump_some_valid_symbols(const bool *valid_symbols);
+#endif
+
+static bool is_list(BlockType type) {
+  switch (type) {
+  case LIST_DASH:
+  case LIST_STAR:
+  case LIST_TASK:
+  case LIST_DEFINITION:
+  case LIST_DECIMAL_PERIOD:
+  case LIST_LOWER_ALPHA_PERIOD:
+  case LIST_UPPER_ALPHA_PERIOD:
+  case LIST_LOWER_ROMAN_PERIOD:
+  case LIST_UPPER_ROMAN_PERIOD:
+  case LIST_DECIMAL_PAREN:
+  case LIST_LOWER_ALPHA_PAREN:
+  case LIST_UPPER_ALPHA_PAREN:
+  case LIST_LOWER_ROMAN_PAREN:
+  case LIST_UPPER_ROMAN_PAREN:
+  case LIST_DECIMAL_PARENS:
+  case LIST_LOWER_ALPHA_PARENS:
+  case LIST_UPPER_ALPHA_PARENS:
+  case LIST_LOWER_ROMAN_PARENS:
+  case LIST_UPPER_ROMAN_PARENS:
+    return true;
+  default:
+    return false;
+  }
+}
+
+static BlockType list_marker_to_block(TokenType type) {
+  switch (type) {
+  case LIST_MARKER_DASH:
+    return LIST_DASH;
+  case LIST_MARKER_STAR:
+    return LIST_STAR;
+  case LIST_MARKER_TASK_BEGIN:
+    return LIST_TASK;
+  case LIST_MARKER_DEFINITION:
+  case LIST_MARKER_DESCRIPTION:
+    return LIST_DEFINITION;
+  case LIST_MARKER_DECIMAL_PERIOD:
+    return LIST_DECIMAL_PERIOD;
+  case LIST_MARKER_LOWER_ALPHA_PERIOD:
+    return LIST_LOWER_ALPHA_PERIOD;
+  case LIST_MARKER_UPPER_ALPHA_PERIOD:
+    return LIST_UPPER_ALPHA_PERIOD;
+  case LIST_MARKER_LOWER_ROMAN_PERIOD:
+    return LIST_LOWER_ROMAN_PERIOD;
+  case LIST_MARKER_UPPER_ROMAN_PERIOD:
+    return LIST_UPPER_ROMAN_PERIOD;
+  case LIST_MARKER_DECIMAL_PAREN:
+    return LIST_DECIMAL_PAREN;
+  case LIST_MARKER_LOWER_ALPHA_PAREN:
+    return LIST_LOWER_ALPHA_PAREN;
+  case LIST_MARKER_UPPER_ALPHA_PAREN:
+    return LIST_UPPER_ALPHA_PAREN;
+  case LIST_MARKER_LOWER_ROMAN_PAREN:
+    return LIST_LOWER_ROMAN_PAREN;
+  case LIST_MARKER_UPPER_ROMAN_PAREN:
+    return LIST_UPPER_ROMAN_PAREN;
+  case LIST_MARKER_DECIMAL_PARENS:
+    return LIST_DECIMAL_PARENS;
+  case LIST_MARKER_LOWER_ALPHA_PARENS:
+    return LIST_LOWER_ALPHA_PARENS;
+  case LIST_MARKER_UPPER_ALPHA_PARENS:
+    return LIST_UPPER_ALPHA_PARENS;
+  case LIST_MARKER_LOWER_ROMAN_PARENS:
+    return LIST_LOWER_ROMAN_PARENS;
+  case LIST_MARKER_UPPER_ROMAN_PARENS:
+    return LIST_UPPER_ROMAN_PARENS;
+  default:
+#ifdef DEBUG
+    assert(false);
+#endif
+    return LIST_DASH;
+  }
+}
+
+static bool is_alpha_list(BlockType type) {
+
+  switch (type) {
+  case LIST_LOWER_ALPHA_PERIOD:
+  case LIST_LOWER_ALPHA_PAREN:
+  case LIST_LOWER_ALPHA_PARENS:
+  case LIST_UPPER_ALPHA_PERIOD:
+  case LIST_UPPER_ALPHA_PAREN:
+  case LIST_UPPER_ALPHA_PARENS:
+    return true;
+  default:
+    return false;
+  }
+}
+
+static void bracket_probe_advance(TSLexer *lexer, bool skip);
+
+// EVERY token end goes through here, never `lexer->mark_end` directly. It
+// records `col_base` at the mark, and the exported scan restores that value
+// when a token is returned, so a probe reading past the mark cannot leave the
+// base describing a line the token does not reach.
+static void mark_end(Scanner *s, TSLexer *lexer) {
+  lexer->mark_end(lexer);
+  s->col_base_at_mark = s->col_base;
+  s->col_base_marked = true;
+  if (lexer->advance != bracket_probe_advance) {
+    s->host_previous_at_mark = s->host_previous;
+    s->host_crossed_line_at_mark = s->host_crossed_line;
+    s->host_newlines_at_mark = s->host_newlines;
+    s->host_advances_at_mark = s->host_advances;
+    s->host_marked = true;
+  }
+}
+
+static void resolve_deferred_column(Scanner *s, TSLexer *host);
+
+static void advance(Scanner *s, TSLexer *lexer) {
+  int32_t current = lexer->lookahead;
+  if (lexer->advance != bracket_probe_advance && !lexer->eof(lexer)) {
+    if (current == '\n' || current == '\r') resolve_deferred_column(s, lexer);
+    ++s->host_advances;
+    s->host_previous = current;
+    if (current == '\n' || current == '\r') s->host_crossed_line = true;
+    if (current == '\n') ++s->host_newlines;
+  }
+  if (s->marker_probe) {
+    if (lexer->advance == bracket_probe_advance || lexer->eof(lexer)) {
+      s->marker_probe = false;
+    } else if (s->marker_len < sizeof(s->marker_head)) {
+      // A character outside ASCII never belongs to a run the matcher accepts.
+      s->marker_head[s->marker_len++] = current > 0 && current < 0x7f ? (char)current : 1;
+    }
+  }
+  if (s->row_capture && (current == '\r' || current == '\n')) s->row_capture = false;
+  // Escapes and opaque runs can hide a pipe from one of the two readers.
+  // Reuse a raw boundary column only when their cell ends must agree.
+  if (s->row_capture && s->row_boundary_col == UINT32_MAX) {
+    if (current == '`' || current == '\\' ||
+        (current == '[' && s->row_previous == ']') ||
+        (!s->row_capture_quote && (current == '(' || current == '<' || current == '^')) ||
+        (s->row_previous == '{' && (current == '%' || current == '#')))
+      s->row_boundary_safe = false;
+    if (s->row_capture_quote) {
+      if (current == s->row_capture_quote) s->row_capture_quote = 0;
+    } else if (s->row_capture_braces && (current == '\'' || current == '"')) {
+      s->row_capture_quote = current;
+    } else if (current == '{') {
+      ++s->row_capture_braces;
+    } else if (current == '}' && s->row_capture_braces) {
+      --s->row_capture_braces;
+    }
+    if (current == '|' && s->row_capture_braces) s->row_boundary_safe = false;
+  }
+  if (s->row_capture && current == '[' && s->row_bracket_cell_col == UINT32_MAX)
+    s->row_bracket_cell_col = s->row_cell_start_col;
+  if (s->row_capture && current == '|' && !s->row_carry_escape && !s->row_raw_ticks) {
+    if (s->row_boundary_col == UINT32_MAX) s->row_boundary_col = s->row_capture_col;
+    s->row_cell_start_col = s->row_capture_col + 1;
+  }
+  lexer->advance(lexer, false);
+  if (lexer->advance != bracket_probe_advance && lexer->is_at_included_range_start(lexer)) {
+    s->host_jumped = true;
+    resolve_deferred_column(s, lexer);
+  }
+  if (s->row_capture) {
+    // An escaped tick opens no run for the cell splitter either (CARVE T1).
+    if (current == '`' && !s->row_carry_escape) ++s->row_raw_pending;
+    if (lexer->lookahead != '`' && s->row_raw_pending) {
+      if (!s->row_raw_ticks) s->row_raw_ticks = s->row_raw_pending;
+      else if (s->row_raw_ticks == s->row_raw_pending) s->row_raw_ticks = 0;
+      s->row_raw_pending = 0;
+    }
+    if (s->row_carry_escape) s->row_carry_escape = false;
+    else if (current == '\\' && !s->row_carry_ticks && !s->row_carry_pending)
+      s->row_carry_escape = true;
+    else if (current == '`') ++s->row_carry_pending;
+    if (lexer->lookahead != '`' && s->row_carry_pending) {
+      if (!s->row_carry_ticks) s->row_carry_ticks = s->row_carry_pending;
+      else if (s->row_carry_ticks == s->row_carry_pending) s->row_carry_ticks = 0;
+      s->row_carry_pending = 0;
+    }
+    s->row_previous = current;
+    ++s->row_capture_col;
+    if (lexer->is_at_included_range_start(lexer)) {
+      s->row_boundary_safe = false;
+      s->row_capture_col = lexer->get_column(lexer);
+    }
+  }
+  s->advances++;
+  if (s->braced_probe_marker && current == s->braced_probe_marker && lexer->lookahead == '}')
+    s->braced_probe_raw_closer = true;
+  if (s->combined_probe) {
+    int32_t previous = s->combined_raw_previous;
+    if ((current == '*' && lexer->lookahead == '/') ||
+        (current == '/' && previous != 0 && previous != ' ' && previous != '\t' &&
+         previous != '\r' && previous != '\n' && !carve_is_alnum_ascii(lexer->lookahead))) {
+      s->combined_raw_closer = true;
+    }
+    if (current == '*' && lexer->lookahead == '/' && previous != 0 &&
+        previous != ' ' && previous != '\t' && previous != '\r' && previous != '\n')
+      s->combined_raw_pair = true;
+    if (current == '*' && previous != 0 && previous != ' ' && previous != '\t' &&
+        previous != '\r' && previous != '\n' && !carve_is_alnum_ascii(lexer->lookahead))
+      s->combined_raw_strong_closer = true;
+    if (current == '\r' || current == '\n') s->combined_raw_line_end = true;
+    s->combined_raw_previous = current;
+  }
+}
+
+// `newline = '\n' | '\r\n' | '\r'` (spec `resources/grammar.ebnf`). All three
+// spellings end a line, so every test for "is the line over here" asks this
+// rather than comparing against '\n' alone. `advance` used to swallow a '\r'
+// wherever it landed on one, which made the CRLF spelling work - the '\n'
+// behind it still terminated the line - and made a LONE '\r' vanish, leaving a
+// file written with it with no terminators at all (#143).
+static bool at_line_end(TSLexer *lexer) {
+  return lexer->lookahead == '\n' || lexer->lookahead == '\r';
+}
+
+// The column of the lexer's current position on ITS OWN LINE. See `col_base`.
+static uint32_t line_column(Scanner *s, TSLexer *lexer) {
+  uint32_t col = lexer->get_column(lexer);
+  if (s->col_base == 0) {
+    // No lone '\r' has been passed, so tree-sitter's column IS the column.
+    // This is the whole of every LF and CRLF document, byte for byte what this
+    // scanner did before the base existed.
+    return col;
+  }
+  // A '\n' anywhere - including inside a token the internal lexer matched
+  // without consulting this scanner - resets tree-sitter's counter, which
+  // strands the base above it. A column can never be smaller than its own
+  // line's start, so that is the signal, and it needs no cooperation from
+  // whoever consumed the '\n'.
+  if (col < s->col_base) {
+    s->col_base = 0;
+    return col;
+  }
+  return col - s->col_base;
+}
+
+// Note the column of the host lexer's position without reading it yet. Read
+// it with `deferred_column` from the same host, later on the line or past a
+// line end the host crossed meanwhile.
+static void defer_column(Scanner *s) {
+  s->deferred_column_pending = true;
+  s->deferred_column_known = false;
+  s->deferred_column_at = s->host_advances;
+}
+
+// The host is about to take a line terminator, or has just jumped into the
+// next included range: read the deferred column now, while the host's own
+// column still counts from the same line. A range gap that hid a line
+// terminator leaves no such line, and `TSLexer` cannot tell a range end is
+// coming: such a column gets a value no real column equals.
+static void resolve_deferred_column(Scanner *s, TSLexer *host) {
+  if (!s->deferred_column_pending || s->deferred_column_known) return;
+  uint32_t column = line_column(s, host), moved = s->host_advances - s->deferred_column_at;
+  s->deferred_column = column >= moved ? column - moved : UINT32_MAX >> 1;
+  s->deferred_column_known = true;
+}
+
+static uint32_t deferred_column(Scanner *s, TSLexer *host) {
+  resolve_deferred_column(s, host);
+  s->deferred_column_pending = false;
+  return s->deferred_column;
+}
+
+// Consume exactly one line terminator, whichever of the three it is, and record
+// where the line it starts begins.
+static void consume_line_end(Scanner *s, TSLexer *lexer) {
+  if (lexer->lookahead == '\r') {
+    // READ THE COLUMN FIRST. `ts_lexer__get_column` rewinds to the start of the
+    // line and re-advances, and the rewind resets the lexer's marked token end
+    // (`ts_lexer_goto`), so a read placed after the terminator was taken emits
+    // a token whose end precedes its start. Reading it here, before anything
+    // moves, keeps the marked end intact.
+    uint32_t column = lexer->get_column(lexer);
+    advance(s, lexer);
+    if (lexer->lookahead == '\n') {
+      advance(s, lexer);
+      s->col_base = 0;
+      return;
+    }
+    // A LONE '\r': tree-sitter advances the row on '\n' alone, so it did not
+    // reset its column and the next line starts one past this one's end.
+    s->col_base = column + 1;
+    return;
+  }
+  if (lexer->lookahead == '\n') {
+    advance(s, lexer);
+    s->col_base = 0;
+  }
+}
+
+static uint8_t consume_chars(Scanner *s, TSLexer *lexer, char c) {
+  uint8_t count = 0;
+  while (lexer->lookahead == c) {
+    advance(s, lexer);
+    ++count;
+  }
+  return count;
+}
+
+// A fence's width, which can pass 255; `consume_chars` would wrap it.
+// Widths past `max` all read as `max`.
+static uint16_t consume_wide_run(Scanner *s, TSLexer *lexer, char c, uint16_t max) {
+  uint16_t count = 0;
+  while (lexer->lookahead == c) {
+    advance(s, lexer);
+    if (count < max) ++count;
+  }
+  return count;
+}
+
+static uint16_t consume_colons(Scanner *s, TSLexer *lexer) {
+  return consume_wide_run(s, lexer, ':', UINT16_MAX);
+}
+
+// A comment fence closes on a run of exactly its width, so a run that reached
+// the cap could not be told from a longer one: such a run opens no fence.
+static const uint16_t COMMENT_FENCE_CAP = UINT16_MAX;
+static uint16_t consume_percents(Scanner *s, TSLexer *lexer) {
+  return consume_wide_run(s, lexer, '%', COMMENT_FENCE_CAP);
+}
+
+// A code fence run, at most `CODE_FENCE_WIDTH` so it packs beside the tilde
+// bit in `Block.data`.
+static const uint16_t CODE_FENCE_WIDTH = 0x7fff;
+static uint16_t consume_fence_run(Scanner *s, TSLexer *lexer, char c) {
+  return consume_wide_run(s, lexer, c, CODE_FENCE_WIDTH);
+}
+
+static uint8_t consume_whitespace(Scanner *s, TSLexer *lexer) {
+  // Saturates rather than wrapping: 256 spaces must not read as column 0.
+  uint32_t indent = 0;
+  for (;;) {
+    if (lexer->lookahead == ' ') {
+      advance(s, lexer);
+      ++indent;
+    } else if (lexer->lookahead == '\t') {
+      advance(s, lexer);
+      // PART 9 §24 C1: a tab advances to the NEXT MULTIPLE OF 4 from wherever
+      // it starts, not by four from wherever it starts. The two agree only
+      // when the tab begins on a tab stop, so `<SPACE><TAB>` is column 4 and
+      // not 5. `s->indent` is compared against list content columns - several
+      // of those comparisons are exact - so the difference changed structure:
+      // a marker at column 4 reached by a space and a tab nested INSIDE a
+      // marker at column 4 reached by four spaces, instead of being its
+      // sibling (#100).
+      indent += 4 - (indent % 4);
+    } else {
+      break;
+    }
+  }
+  return indent > UINT8_MAX ? UINT8_MAX : (uint8_t)indent;
+}
+
+/// Append to one of the scanner's two open-element stacks, growing it when it
+/// is full.
+///
+/// This deliberately does NOT use `array_push`. That macro reaches the same
+/// object through two INCOMPATIBLE struct types: `_array__grow` takes
+/// `struct Array` (the `Array(void)` typedef) and reads `size` and `capacity`
+/// through it, while the macro's own `(self)->contents[(self)->size++]` writes
+/// them back through the element-typed `Array(Block *)`. C says accesses
+/// through incompatible struct types do not alias, and GCC believes it.
+///
+/// At `-O3` - which is what node-gyp compiles this file with, and what every
+/// consumer of the Node binding therefore runs - it took `size` and `capacity`
+/// to be loop-invariant across the push loop in
+/// `tree_sitter_carve2_external_scanner_deserialize`, hoisted the capacity test
+/// out of the loop, and emitted a second copy of the loop that appends WITHOUT
+/// ever growing. Eleven nested `:::: note` openers then wrote a ninth pointer
+/// into an eight-pointer buffer; glibc noticed the smashed chunk header at the
+/// next `realloc` and aborted the process (tree-sitter-carve#266). Blockquote
+/// and list nesting reached the same loop and overran at their own depths.
+///
+/// Every access below goes through the array's OWN type, so the growth is
+/// something the optimizer has to keep. Keep it that way: `array_push` on
+/// either of these stacks reintroduces the mix.
+#define stack_push(stack, element)                                             \
+  do {                                                                         \
+    if ((stack)->size == (stack)->capacity) {                                  \
+      uint32_t grown = (stack)->capacity ? (stack)->capacity * 2 : 8;          \
+      (stack)->contents =                                                      \
+          ts_realloc((stack)->contents, grown * sizeof *(stack)->contents);    \
+      (stack)->capacity = grown;                                               \
+    }                                                                          \
+    (stack)->contents[(stack)->size++] = (element);                            \
+  } while (0)
+
+static Block *create_block(BlockType type, uint16_t data) {
+  Block *b = ts_malloc(sizeof(Block));
+  b->type = type;
+  b->data = data;
+  b->content_col = 0;
+  b->flags = 0;
+  b->box_shift = 0;
+  b->cell_boundary_col = b->cell_carry_ticks = 0;
+  b->bracket_cell_col = UINT32_MAX;
+  return b;
+}
+
+static Inline *create_inline(InlineType type, uint8_t data) {
+  Inline *res = ts_malloc(sizeof(Inline));
+  res->type = type;
+  res->data = data;
+  res->flags = 0;
+  res->literal_closes = 0;
+  return res;
+}
+
+static void clear_opaque_quote_tail(Scanner *s) {
+  for (int i = s->open_blocks->size - 1; i >= 0; --i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (is_list(b->type)) break;
+    if (b->type == BLOCK_QUOTE) b->flags &= ~BLOCK_FLAG_OPAQUE_QUOTE_TAIL;
+  }
+}
+
+static void push_block(Scanner *s, BlockType type, uint16_t data) {
+  s->missing_closers = 0;
+  if (type != CODE_BLOCK) clear_opaque_quote_tail(s);
+  stack_push(s->open_blocks, create_block(type, data));
+}
+
+static void push_inline(Scanner *s, InlineType type, uint8_t data) {
+  s->missing_closers = 0;
+  stack_push(s->open_inline, create_inline(type, data));
+}
+
+// A bracket span's text is text to a root closer probe too, so the root's
+// missing-closer note outlives it.
+static bool keeps_missing_closers(InlineType type) {
+  return type == LITERAL_BRACKET || type == SQUARE_BRACKET_SPAN || type == CURLY_BRACKET_SPAN;
+}
+
+static void push_inline_flagged(Scanner *s, InlineType type, uint8_t data,
+                                uint8_t flags) {
+  if (!keeps_missing_closers(type)) s->missing_closers = 0;
+  Inline *x = create_inline(type, data);
+  x->flags = flags;
+  stack_push(s->open_inline, x);
+}
+
+static void remove_block(Scanner *s) {
+  s->missing_closers = 0;
+  s->after_closer_char = 0;
+  s->after_closer_col = 0;
+  s->after_literal_star = false;
+  if (s->open_blocks->size > 0) {
+    Block *removed = array_pop(s->open_blocks);
+    if (removed->type == CODE_BLOCK &&
+        (removed->flags & BLOCK_FLAG_LATER_OPAQUE_FENCE)) {
+      for (int i = s->open_blocks->size - 1; i >= 0; --i) {
+        Block *b = *array_get(s->open_blocks, i);
+        if (is_list(b->type)) break;
+        if (b->type == BLOCK_QUOTE) b->flags &= ~BLOCK_FLAG_OPAQUE_QUOTE_TAIL;
+      }
+    }
+    // Closing a self-terminating container (fenced code, div, block quote,
+    // nested list, ...) that a `+` marker attached ends the continuation. A
+    // TABLE_ROW / TABLE_CAPTION pop is an INTERNAL table event -- the table is
+    // still being parsed row by row -- so it must NOT clear the flag, or a
+    // multi-row attached table would lose its later rows.
+    if (removed->type != TABLE_ROW && removed->type != TABLE_CAPTION) {
+      s->state &= ~STATE_LIST_CONTINUATION;
+    }
+    ts_free(removed);
+    if (s->blocks_to_close > 0) {
+      --s->blocks_to_close;
+    }
+  }
+}
+
+static Inline *peek_inline(Scanner *s);
+static void remove_inline(Scanner *s) {
+  Inline *top = peek_inline(s);
+  if (!top || !keeps_missing_closers(top->type)) s->missing_closers = 0;
+  if (s->open_inline->size > 0) {
+    ts_free(array_pop(s->open_inline));
+  }
+}
+
+static Block *peek_block(Scanner *s) {
+  if (s->open_blocks->size > 0) {
+    return *array_back(s->open_blocks);
+  } else {
+    return NULL;
+  }
+}
+
+static Inline *peek_inline(Scanner *s) {
+  if (s->open_inline->size > 0) {
+    return *array_back(s->open_inline);
+  } else {
+    return NULL;
+  }
+}
+
+static bool has_open_span(Scanner *s) {
+  for (uint32_t i = 0; i < s->open_inline->size; ++i) {
+    if ((*array_get(s->open_inline, i))->type != LITERAL_BRACKET) return true;
+  }
+  return false;
+}
+
+static void clear_literal_brackets(Scanner *s) {
+  while (peek_inline(s) && peek_inline(s)->type == LITERAL_BRACKET) remove_inline(s);
+}
+
+static bool disallow_newline(Block *top) {
+  if (!top)
+    return false;
+
+  switch (top->type) {
+  case TABLE_ROW:
+  case LINK_REF_DEF:
+    return true;
+  default:
+    return false;
+  }
+}
+
+// How many blocks from the top of the stack can we find a matching block?
+// If it's directly on the top, returns 1.
+// If it cannot be found, returns 0.
+static size_t number_of_blocks_from_top(Scanner *s, BlockType type,
+                                        uint16_t level) {
+  for (int i = s->open_blocks->size - 1; i >= 0; --i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (b->type == type && b->data == level) {
+      return s->open_blocks->size - i;
+    }
+  }
+  return 0;
+}
+
+/// The nearest colon-fence container of exactly `colons` colons, from the top.
+///
+/// A `FIGURE_GROUP` is a `DIV` wearing the reserved kind word, so every rule
+/// that counts colon fences has to see both or a group would stop closing its
+/// own fence. `number_of_blocks_from_top` takes ONE type, which is why this
+/// exists rather than a second call beside each site.
+static size_t number_of_colon_fence_blocks_from_top(Scanner *s,
+                                                    uint16_t colons) {
+  for (int i = s->open_blocks->size - 1; i >= 0; --i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if ((b->type == DIV || b->type == FIGURE_GROUP) && b->data == colons) {
+      return s->open_blocks->size - i;
+    }
+  }
+  return 0;
+}
+
+/// Is a composite figure group already open, ignoring the block on top?
+///
+/// GROUPS DO NOT NEST (grammar.ebnf PART 9 section 4c): "a bare `::: figure`
+/// opener anywhere inside an open group's body -- ANY DEPTH -- is a generic
+/// Tier-2 container, not an inner group". The top is skipped because the group
+/// marker is read one token after its own fence opened, so the block on top IS
+/// the container the word is deciding.
+static bool inside_open_figure_group(Scanner *s) {
+  for (int i = (int)s->open_blocks->size - 2; i >= 0; --i) {
+    if ((*array_get(s->open_blocks, i))->type == FIGURE_GROUP) {
+      return true;
+    }
+  }
+  return false;
+}
+
+static Block *find_block(Scanner *s, BlockType type) {
+  for (int i = s->open_blocks->size - 1; i >= 0; --i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (b->type == type) {
+      return b;
+    }
+  }
+  return NULL;
+}
+
+static Block *find_block_from_bottom(Scanner *s, BlockType type) {
+  for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (b->type == type) {
+      return b;
+    }
+  }
+  return NULL;
+}
+
+/// Is the nearest open div a line block? Divs do not nest inside each other's
+/// inline content in a way that changes this - the nearest one is the one a
+/// run inside it reads lines under.
+static bool inside_line_block(Scanner *s) {
+  Block *div = find_block(s, DIV);
+  return div != NULL && (div->flags & BLOCK_FLAG_LINE_BLOCK) != 0;
+}
+
+/// A line block's body is lines of inline content: no marker or break opens.
+static bool line_block_body(Scanner *s) {
+  Block *top = peek_block(s);
+  return top && (top->type == DIV || top->type == FIGURE_GROUP) &&
+         (top->flags & BLOCK_FLAG_LINE_BLOCK);
+}
+
+static Block *find_list(Scanner *s) {
+  for (int i = s->open_blocks->size - 1; i >= 0; --i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (is_list(b->type)) {
+      return b;
+    }
+  }
+  return NULL;
+}
+
+// Whether the current line's leading whitespace (`s->indent`) stops SHORT of
+// the content column of the innermost indenting container (a list item,
+// footnote or table caption). Leading space past the margin opens an opener in
+// the owner at every level, the document and quotes included (PART 0 S3).
+/// TRUE when the line sits PAST its container's content column.
+///
+/// `has_extra_indent` answers the opposite question - short OF the column - and
+/// a block attribute needs both. Measured against carve-js: inside `- a`, whose
+/// content column is 2, `{.c}` at column 2 attaches to the block under it and
+/// `{.c}` at column 3 is a literal paragraph (corpus 87-compact-list-blocks-10).
+///
+/// Uses the container's recorded content column, NOT `data`: `data` is the
+/// marker's indent plus one, so it is 1 for both `- ` and `1. ` and cannot tell
+/// column 2 from column 3. A container opened before this field existed, or one
+/// whose column was never recorded, reads 0 and is treated as "no opinion" -
+/// the guard then behaves exactly as it did before (tree-sitter-carve#84).
+/// The innermost open container that INDENTS its content, or NULL when the
+/// margin is the document's own zero. A list item, footnote or table caption
+/// indents; a div and a block quote do not (a quote's `>` markers are consumed
+/// separately, leaving the indent at 0). Every margin question below asks this
+/// one first, so the set of indenting containers has a single spelling.
+static Block *indenting_container(Scanner *s) {
+  for (int i = s->open_blocks->size - 1; i >= 0; --i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (is_list(b->type) || b->type == FOOTNOTE || b->type == TABLE_CAPTION) {
+      return b;
+    }
+  }
+  return NULL;
+}
+
+static bool has_surplus_indent(Scanner *s) {
+  // An attached block uses the column selected by its marker.
+  if (s->state & STATE_LIST_CONTINUATION) {
+    return s->indent > s->continuation_col;
+  }
+  Block *b = indenting_container(s);
+  if (b && b->type == FOOTNOTE && (b->flags & BLOCK_FLAG_FOOTNOTE_ATTACHED)) {
+    return s->indent > 0;
+  }
+  if (b) {
+    return b->content_col != 0 && s->indent > b->content_col;
+  }
+  return s->indent > 0;
+}
+
+static bool has_extra_indent(Scanner *s) {
+  // An attached opener uses the selected column instead of the item's
+  // content column.
+  if (s->state & STATE_LIST_CONTINUATION) {
+    return s->indent != s->continuation_col;
+  }
+  Block *b = indenting_container(s);
+  if (b && b->type == FOOTNOTE && (b->flags & BLOCK_FLAG_FOOTNOTE_ATTACHED)) {
+    return s->indent > 0;
+  }
+  if (b) {
+    // Inside such a container, any indent at or above its content threshold
+    // is the container's own margin, not heading-disqualifying fuzz. Where the
+    // container recorded where its content starts, THAT is the threshold: a
+    // line left of it is outside the body, not at its margin.
+    return s->indent < (b->content_col != 0 ? b->content_col : b->data);
+  }
+  for (int i = s->open_blocks->size - 1; i >= 0; --i) {
+    Block *quote = *array_get(s->open_blocks, i);
+    if (quote->type == BLOCK_QUOTE && quote->content_col != 0 &&
+        s->indent == quote->content_col) {
+      return false;
+    }
+  }
+  return false;
+}
+
+static uint8_t count_blocks(Scanner *s, BlockType type) {
+  uint8_t count = 0;
+  for (int i = s->open_blocks->size - 1; i >= 0; --i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (b->type == type) {
+      ++count;
+    }
+  }
+  return count;
+}
+
+/// TRUE when `column` sits SHORT of the innermost INDENTING container's
+/// content margin -- a lazy-continuation line, which belongs to the paragraph
+/// above it only because nothing in the outer context claimed it first.
+///
+/// Takes the column rather than reading `s->indent`, and that is the whole
+/// reason this is not simply `has_extra_indent`. `s->indent` is refreshed only
+/// when a scan STARTS at column 0; the paragraph-closing decision runs from
+/// the newline at the end of the PREVIOUS line, where it still holds whatever
+/// that line left behind - measured as 0 for `  :::` at a list item's own
+/// content column, which would report every fence as lazy and answer nothing.
+/// The lexer's column is correct at that moment, because the container prefix
+/// has already been consumed by the time the decision is made.
+///
+/// Also deliberately narrower than `has_extra_indent` in the no-container
+/// case: that one reports "indented past column zero", and here the absence of
+/// an indenting container has to read as NOT lazy, since at the document root
+/// every line is at its own margin.
+///
+/// SCOPED TO INDENTING CONTAINERS ON PURPOSE. A block quote continues by its
+/// `>` markers rather than by indentation, so it never appears in
+/// `indenting_container` and never moves this margin. A quote has an escape
+/// boundary of its own, and `escapes_open_block_quote` below answers that one.
+static bool below_container_margin(Scanner *s, uint32_t column) {
+  // The attached block has its own column margin.
+  if (s->state & STATE_LIST_CONTINUATION) {
+    return false;
+  }
+  Block *b = indenting_container(s);
+  return b != NULL && column < b->data;
+}
+
+/// TRUE when a colon fence at `column` steps OUT of an open block quote: a
+/// quote is open, and the column is EXACTLY the margin of the context that
+/// holds it -- zero at the document root, the content column of the innermost
+/// indenting container OUTSIDE the quote inside one.
+///
+/// THE COLUMN IS THE WHOLE ANSWER, and that is why this needs no plumbing. The
+/// obvious spelling is a marker count (`count_blocks(BLOCK_QUOTE) >
+/// s->block_quote_level`), and it was written, measured and reverted once
+/// already: `block_quote_level` does not describe the current line at every
+/// route into the paragraph-closing peek -- one of them runs after
+/// `end_paragraph_in_block_quote` has consumed the markers -- so it turned the
+/// fully-marked `> para` / `> :::note` / `> body` / `> :::` / `> tail`, one
+/// quoted paragraph in all three engines, into a quote holding a div. The
+/// column does not have that problem: the quote's own `> ` prefix occupies
+/// columns, so a marked line's fence can never land ON the enclosing margin,
+/// and the fully-marked shape fails this test for the same reason it is not
+/// lazy (tree-sitter-carve#114, and #113 for the same lesson about `s->indent`).
+///
+/// THE MARGIN COMES FROM OUTSIDE THE QUOTE, which is why this walks the block
+/// stack itself instead of reusing `indenting_container`. That helper answers
+/// "the innermost container of any kind", and inside `> - item` / `>   :::note`
+/// / `>   body` / `>   :::` / `>   tail` that is the list item WITHIN the quote,
+/// whose content column already includes the `> ` prefix -- so the fully-marked
+/// closer lands exactly on it and the argument above stops holding. All three
+/// engines keep that document as one quoted list item. Anchoring on the
+/// innermost open quote and looking only BELOW it restores the invariant: a
+/// margin measured outside the quote is always at least two columns left of any
+/// marked line's content.
+///
+/// EXACTLY at the margin, not "at or left of" and not "at or right of". Out in
+/// the holding context a colon fence is a block opener only at that context's
+/// own content column; one space either way is literal text (see
+/// `Block::content_col`), so nothing claims the line and it folds back into the
+/// paragraph above. All three engines agree in both directions: `> para` /
+/// `:::note` / `body` / `  :::` / `tail` is a single quoted paragraph
+/// (over-indented, corpus 158-indented-colon-fence-blocks-stay-literal is the
+/// same rule), and so is the `- item` / `  > para` / `  :::note` / `  body` /
+/// ` :::` / ` tail` form one column short of the item's content column.
+///
+/// The margin is `content_col`, NOT the `data` that `below_container_margin`
+/// uses. The two questions differ: that one asks whether a line escapes a LIST
+/// ITEM, whose boundary is the MARKER's column, and this one asks whether the
+/// line would be a block OPENER outside the quote, which is a content column.
+/// The ordered form separates them - under `1. ` the marker is at 0 and the
+/// content at 3 - and all three engines keep a column-2 fence inside the quote
+/// while a column-3 one ends it.
+///
+/// A container whose content column was never recorded reads 0 and gets no
+/// opinion here, exactly as in `has_surplus_indent`.
+static bool escapes_open_block_quote(Scanner *s, uint32_t column) {
+  int i = s->open_blocks->size - 1;
+  while (i >= 0 && (*array_get(s->open_blocks, i))->type != BLOCK_QUOTE) {
+    --i;
+  }
+  if (i < 0) {
+    // No quote is open, so there is none to step out of.
+    return false;
+  }
+  // The attached block's selected column is the holding margin.
+  if (s->state & STATE_LIST_CONTINUATION) {
+    return column == s->continuation_col;
+  }
+  for (--i; i >= 0; --i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (is_list(b->type)) {
+      // A list keeps its content column in a field of its own, because `data`
+      // is the marker's column plus one and cannot tell `- ` from `1. `. A
+      // container opened before that field existed reads 0 and gets no opinion,
+      // exactly as in `has_surplus_indent`.
+      return b->content_col != 0 && column == b->content_col;
+    }
+    if (b->type == FOOTNOTE || b->type == TABLE_CAPTION) {
+      // The footnote stores its marker column plus two, relative to an
+      // enclosing quote; the caption stores its indentation plus two. `[^a]: > para` and
+      // `[^abcd]: > para` behave identically in all three engines: a fence at
+      // column 2 ends the quote and opens a div in the footnote, one at column
+      // 3 is indented and folds back into the quoted paragraph.
+      return column == b->data;
+    }
+  }
+  // Nothing indenting outside the quote: the document root holds it.
+  return column == 0;
+}
+
+
+// Mark that we should close `count` blocks.
+// This call will only emit a single BLOCK_CLOSE token,
+// the other are emitted in `handle_blocks_to_close`.
+static void close_blocks(Scanner *s, TSLexer *lexer, size_t count) {
+#ifdef DEBUG
+  assert(s->open_blocks->size > 0);
+#endif
+  if (s->open_blocks->size > 0) {
+    remove_block(s);
+    s->blocks_to_close = s->blocks_to_close + count - 1;
+  }
+  lexer->result_symbol = BLOCK_CLOSE;
+}
+
+// Output BLOCK_CLOSE tokens, delegated from previous iteration.
+static bool handle_blocks_to_close(Scanner *s, TSLexer *lexer) {
+  if (s->open_blocks->size == 0) {
+    return false;
+  }
+
+  // If we reach eof with open blocks, we should close them all.
+  if (lexer->eof(lexer) || s->blocks_to_close > 0) {
+    lexer->result_symbol = BLOCK_CLOSE;
+    remove_block(s);
+    return true;
+  } else {
+    return false;
+  }
+}
+
+static bool scan_identifier(Scanner *s, TSLexer *lexer) {
+  bool any_scanned = false;
+  while (!lexer->eof(lexer)) {
+    if (carve_is_alnum_ascii(lexer->lookahead) || lexer->lookahead == '-' ||
+        lexer->lookahead == '_') {
+      any_scanned = true;
+      advance(s, lexer);
+    } else {
+      return any_scanned;
+    }
+  }
+  return any_scanned;
+}
+
+// Like `scan_identifier`, but the first character must be a letter or `_`.
+// Attribute keys are identifiers in this sense: a digit- or hyphen-leading key
+// (`12=v`, `-foo`) is not an attribute, matching the grammar's
+// `_id_no_digit_start`.
+static bool scan_name_no_digit_start(Scanner *s, TSLexer *lexer) {
+  int32_t c = lexer->lookahead;
+  bool valid_first =
+      (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '_';
+  if (!valid_first) {
+    return false;
+  }
+  return scan_identifier(s, lexer);
+}
+
+// `explicit_identifier`, the name of an id or class: it may start with a digit
+// (`.2024`) but not with a hyphen (`#-a`).
+static bool scan_explicit_identifier(Scanner *s, TSLexer *lexer) {
+  int32_t c = lexer->lookahead;
+  if (!carve_is_alnum_ascii(c) && c != '_') {
+    return false;
+  }
+  return scan_identifier(s, lexer);
+}
+
+/// A BARE boolean key may not start with `_` (carve#1450).
+///
+/// An id, a class and a `key=value` may: `{#_id}`, `{._c}`, `{_k=1}` and
+/// `{_="on click"}` are all attributes. Only the value-less shorthand is
+/// refused, because `{_x_}` is a forced underline and a bare `{_foo}` is text -
+/// a line the attribute validator used to swallow whole, rendering nothing
+/// where the fixture wants `<p>{_foo}` + `para</p>`.
+///
+/// Called with the first character of the key, BEFORE it is consumed, from both
+/// attribute validators - the block one and the inline one - so the two cannot
+/// drift apart on it.
+static bool valid_bare_boolean_first_char(int32_t c) { return c != '_'; }
+
+/// The `{:TAG}` language tag envelope: subtags of 1-8 ASCII alphanumerics
+/// joined by `-`, or nothing at all for the bare `{:}` reset.
+///
+/// ONE spelling, called from all three places that have to agree about it: the
+/// block attribute validator, the span lookahead that decides whether `[` opens
+/// a span, and the LANGUAGE_ATTRIBUTE token itself. It was spelled twice before
+/// and the two copies disagreed - the block path knew about `:` and the span
+/// lookahead did not, so `[x]{:fr}` never became a span
+/// (markup-carve/tree-sitter-carve#193).
+///
+/// Consumes the tag. Does NOT check what follows: a caller that needs the tag
+/// to end at an attribute boundary asks for that itself, because the block
+/// validator and the token want different boundaries.
+static bool scan_language_tag(Scanner *s, TSLexer *lexer) {
+  size_t subtag_len = 0;
+  while (carve_is_alnum_ascii(lexer->lookahead)) {
+    if (++subtag_len > 8) {
+      return false;
+    }
+    advance(s, lexer);
+  }
+  // A LEADING separator is not a tag: `{:-en}` is literal text, the same way
+  // `{:en-}` is. Only the trailing half of this was checked before.
+  if (lexer->lookahead == '-' && subtag_len == 0) {
+    return false;
+  }
+  while (lexer->lookahead == '-') {
+    advance(s, lexer);
+    subtag_len = 0;
+    while (carve_is_alnum_ascii(lexer->lookahead)) {
+      if (++subtag_len > 8) {
+        return false;
+      }
+      advance(s, lexer);
+    }
+    if (subtag_len == 0) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/// Is the lexer sitting on a character that may end an attribute?
+static bool at_attribute_boundary(TSLexer *lexer) {
+  return lexer->lookahead == '}' || lexer->lookahead == ' ' ||
+         lexer->lookahead == '\t' || at_line_end(lexer) || lexer->eof(lexer);
+}
+
+static bool scan_until_unescaped(Scanner *s, TSLexer *lexer, char c) {
+  while (!lexer->eof(lexer)) {
+    if (lexer->lookahead == c) {
+      return true;
+    } else if (lexer->lookahead == '\\') {
+      advance(s, lexer);
+    }
+    advance(s, lexer);
+  }
+  return false;
+}
+
+static bool parse_indented_content_spacer(Scanner *s, TSLexer *lexer,
+                                          bool is_newline) {
+  bool blank_line_taken = s->blank_line_taken;
+  s->blank_line_taken = false;
+  if (is_newline) {
+    consume_line_end(s, lexer);
+    mark_end(s, lexer);
+    for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
+      Block *b = *array_get(s->open_blocks, i);
+      if (is_list(b->type)) b->flags &= (uint8_t)~LIST_COMMENT_FLAGS;
+    }
+    // Any number of blank lines separates two blocks of one list item, but a
+    // run of three denies the next sibling marker its list (PART 9 N1a).
+    Block *top = peek_block(s);
+    if (top && is_list(top->type)) {
+      uint32_t run = blank_line_taken ? 2 : 1;
+      for (;;) {
+        consume_whitespace(s, lexer);
+        if (lexer->eof(lexer) || !at_line_end(lexer)) break;
+        consume_line_end(s, lexer);
+        mark_end(s, lexer);
+        ++run;
+      }
+      if (run >= 3 && !lexer->eof(lexer)) {
+        for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
+          Block *b = *array_get(s->open_blocks, i);
+          if (is_list(b->type)) b->flags |= BLOCK_FLAG_LIST_HARD_BOUNDARY;
+        }
+      }
+    }
+  }
+  lexer->result_symbol = INDENTED_CONTENT_SPACER;
+  return true;
+}
+
+/// The column a line must reach to stay in a list item across a blank line:
+/// the recorded content column, so `-   a` / blank / `  b` leaves the item.
+/// Inside a quote the line's indent counts from after the `>` prefix while
+/// `content_col` counts from the line start, so `data` stays the test there.
+static uint8_t list_item_margin(Scanner *s, Block *list) {
+  if (list->content_col == 0 || count_blocks(s, BLOCK_QUOTE) > 0) {
+    return list->data;
+  }
+  return list->content_col;
+}
+
+/// Is `list` opened inside a quote's margin? Then `indent` counts from after
+/// the `>` markers while the list's columns are absolute, so a line is measured
+/// against it by column. A list attached flush left by `+` recorded its columns
+/// without the quote's prefix and is not.
+static bool list_opened_in_quote(Scanner *s, Block *list) {
+  bool below_list = false;
+  for (int i = s->open_blocks->size - 1; list->content_col != 0 && i >= 0;
+       --i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (b == list) {
+      below_list = true;
+    } else if (below_list && b->type == BLOCK_QUOTE) {
+      return list->content_col > b->content_col;
+    }
+  }
+  return false;
+}
+
+/// How many quotes hold `b`?
+static uint8_t quotes_below(Scanner *s, Block *b) {
+  uint8_t n = 0;
+  for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
+    Block *x = *array_get(s->open_blocks, i);
+    if (x == b) return n;
+    if (x->type == BLOCK_QUOTE) ++n;
+  }
+  return n;
+}
+
+/// Does this line reach `list`'s items? A line reaches a quote only by its
+/// marker, so a column never reaches an item opened in one (PART 0 S4).
+static bool quoted_line_reaches_list(Scanner *s, TSLexer *lexer, Block *list) {
+  if (list_opened_in_quote(s, list)) {
+    // An unmarked blank line has ended the quote.
+    // A blank remainder has lost its marker count; it ends nothing here.
+    bool blank = at_line_end(lexer) || lexer->eof(lexer);
+    return (blank || s->block_quote_level >= quotes_below(s, list)) &&
+        !(s->state & STATE_AFTER_BLANK_LINE) &&
+        line_column(s, lexer) >= list->content_col;
+  }
+  return s->indent >= list_item_margin(s, list);
+}
+
+/// `has_extra_indent` reads a quoted line's indent from after its markers, so a
+/// fence at a quoted list item's content column looked short of it.
+static bool quoted_item_column_reached(Scanner *s, uint32_t column) {
+  Block *list = find_list(s);
+  return list && list_opened_in_quote(s, list) && column >= list->content_col;
+}
+
+/// A div in a list item inside a quote records its absolute content column,
+/// and a line reaching it after its last `>` hands the indentation up to that
+/// column to the quote continuation, with `indent` set to the column: the body
+/// is then measured the way an unquoted div's is. Returns 0 when that is not
+/// the case, including on a marker short of the quote's depth.
+static uint32_t quoted_div_column(Scanner *s, uint8_t marker_count) {
+  Block *top = peek_block(s);
+  if (marker_count != count_blocks(s, BLOCK_QUOTE) || !top ||
+      (top->type != DIV && top->type != FIGURE_GROUP) || top->content_col == 0) {
+    return 0;
+  }
+  Block *list = find_list(s);
+  if (!list || !list_opened_in_quote(s, list) ||
+      top->content_col < list->content_col) {
+    return 0;
+  }
+  return top->content_col;
+}
+
+static bool close_paragraph(Scanner *s, TSLexer *lexer);
+
+static bool description_fence_claims_plain_line(Scanner *s, Block *fence,
+                                                Block *body, TSLexer *lexer,
+                                                uint32_t column);
+
+/// Return 0 when a line below the description body closes its fence (spec
+/// 548), 1 when the fence keeps plain text, or -1 when this boundary does not
+/// apply.
+static int description_fence_keeps_line(Scanner *s, TSLexer *lexer) {
+  Block *top = peek_block(s);
+  Block *list = find_list(s);
+  if (!top || top->type != CODE_BLOCK || !list || list != *array_get(
+          s->open_blocks, s->open_blocks->size - 2) ||
+      list->type != LIST_DEFINITION || list->content_col == 0 ||
+      (s->state & (STATE_AFTER_BLANK_LINE | STATE_FENCE_OWNS_BODY | STATE_LIST_CONTINUATION)) ||
+      count_blocks(s, BLOCK_QUOTE) > 0 || s->indent >= list->content_col ||
+      line_column(s, lexer) >= list->content_col || at_line_end(lexer) ||
+      lexer->eof(lexer)) {
+    return -1;
+  }
+  if (description_fence_claims_plain_line(s, top, list, lexer,
+                                          line_column(s, lexer))) {
+    return 1;
+  }
+  return 0;
+}
+
+static Block *find_description_body(Scanner *s) {
+  for (int i = s->open_blocks->size - 1; i >= 0; --i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (b->type == LIST_DEFINITION) {
+      return b;
+    }
+  }
+  return NULL;
+}
+
+// Close open list if list markers are different.
+static bool parse_list_item_continuation(Scanner *s, TSLexer *lexer,
+                                         bool at_eof) {
+  Block *list = find_list(s);
+  if (!list) {
+    return false;
+  }
+
+  // The grammar spells every continuation before a block. At the end of input
+  // there is no block to continue into, so a continuation here promises one the
+  // document does not have and the item can never close (#458). The SNAPSHOT,
+  // never a live `lexer->eof`: see the note where it is taken.
+  if (at_eof) {
+    return false;
+  }
+
+  if (!quoted_line_reaches_list(s, lexer, list)) {
+    return false;
+  }
+
+  for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (is_list(b->type)) b->flags &= (uint8_t)~BLOCK_FLAG_LIST_HARD_BOUNDARY;
+  }
+  mark_end(s, lexer);
+  // A comment at the content column retains nothing (spec 21879d7).
+  list->flags &= (uint8_t)~LIST_COMMENT_FLAGS;
+  lexer->result_symbol = LIST_ITEM_CONTINUATION;
+  return true;
+}
+
+// Close a block inside a list.
+// They should be closed if indentation is too little.
+static bool close_list_nested_block_if_needed(Scanner *s, TSLexer *lexer,
+                                              bool non_newline) {
+  if (s->open_blocks->size == 0) {
+    return false;
+  }
+
+  // No open inline at block boundary.
+  if (has_open_span(s)) {
+    return false;
+  }
+
+  Block *top = peek_block(s);
+  Block *list = find_list(s);
+
+  // A `+`-attached flush-left block (e.g. fenced code) legitimately sits at
+  // indent 0, below the list margin: don't tear it out of the item.
+  if (s->state & STATE_LIST_CONTINUATION) {
+    return false;
+  }
+
+  // If we're in a block that's in a list
+  // we should check the indentation level,
+  // and if it's less than the current list, we need to close that block.
+  if (non_newline && list && list != top && top->type == CODE_BLOCK &&
+      (s->state & STATE_FENCE_OWNS_BODY)) {
+    // The fence owns the description body: a line short of the item stays
+    // fence content until the body ends, at a new entry or after a blank line
+    // the next line does not continue.
+    Block *body = find_description_body(s);
+    if (!body) body = list;
+    bool body_ends =
+        (body->type == LIST_DEFINITION && lexer->lookahead == ':') ||
+        ((s->state & STATE_AFTER_BLANK_LINE) && body != NULL &&
+         s->indent < body->content_col);
+    if (!body_ends && body->type != LIST_DEFINITION &&
+        s->indent + 1 == body->data &&
+        (lexer->lookahead == '-' || lexer->lookahead == '*')) {
+      body_ends = scan_unordered_list_marker_token(s, lexer) != IGNORED &&
+          marker_line_has_content(s, lexer);
+    }
+    if (!body_ends) {
+      return false;
+    }
+    s->state &= ~STATE_FENCE_OWNS_BODY;
+  }
+  if (non_newline && list && list != top) {
+    // A fence body line short of the item's content column is not fence body:
+    // the item's prefix is not supplied, so the fence and the item both end
+    // (grammar.ebnf STEP S1/S2). No lazy fold reaches into code.
+    uint8_t margin =
+        top->type == CODE_BLOCK ? list_item_margin(s, list) : list->data;
+    // A comment fence's body travels with its opener down to the outermost
+    // list's base column.
+    if (top->type == COMMENT_FENCE) {
+      for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
+        Block *b = *array_get(s->open_blocks, i);
+        if (is_list(b->type) && b->data < margin) margin = b->data;
+      }
+    }
+    // In a quote the line start is still before its `>` markers; the line is
+    // measured once they are consumed.
+    // A marked line short of the column was announced by the newline before
+    // it, since its markers are consumed before a close is on offer again.
+    bool short_of_list =
+        list_opened_in_quote(s, list)
+            ? (lexer->lookahead == '>'
+                   ? (top->type == CODE_BLOCK || top->type == DIV ||
+                      top->type == FIGURE_GROUP) &&
+                         (s->state & STATE_QUOTED_LINE_SHORT_OF_ITEM)
+                   : line_column(s, lexer) < list->content_col)
+            : s->indent < margin;
+    if (short_of_list) {
+      lexer->result_symbol = BLOCK_CLOSE;
+      remove_block(s);
+      // A fence closing inside a quoted div leaves the div to close on the
+      // same announcement.
+      Block *next = peek_block(s);
+      if (!next || next == list ||
+          (next->type != DIV && next->type != FIGURE_GROUP &&
+           next->type != CODE_BLOCK)) {
+        s->state &= ~STATE_QUOTED_LINE_SHORT_OF_ITEM;
+      }
+      return true;
+    }
+  }
+
+  return false;
+}
+
+static bool close_different_list_if_needed(Scanner *s, TSLexer *lexer,
+                                           Block *list, TokenType list_marker) {
+  // No open inline at block boundary.
+  if (has_open_span(s)) {
+    return false;
+  }
+  if (list_marker != IGNORED) {
+    BlockType to_open = list_marker_to_block(list_marker);
+    if (list->type != to_open) {
+      lexer->result_symbol = BLOCK_CLOSE;
+      remove_block(s);
+      return true;
+    }
+  }
+  return false;
+}
+
+// Check if we're starting a list of a different type and close the open one.
+static bool try_close_different_typed_list(Scanner *s, TSLexer *lexer,
+                                           TokenType ordered_list_marker) {
+  if (s->open_blocks->size == 0) {
+    return false;
+  }
+
+  Block *top = peek_block(s);
+  if (top->type == CODE_BLOCK) {
+    return false;
+  }
+  Block *list = find_list(s);
+
+  // If we're about to open a list of a different type, we
+  // need to close the previous list.
+  if (list) {
+    if (close_different_list_if_needed(s, lexer, list, ordered_list_marker)) {
+      return true;
+    }
+    TokenType other_list_marker = scan_unordered_list_marker_token(s, lexer);
+    if (close_different_list_if_needed(s, lexer, list, other_list_marker)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/// Consumes the whitespace run at the lexer and reports its SPELLING, which is
+/// what every slot on a fence opener line has to decide on. Returns how many
+/// literal spaces the run held; `*tabbed` is set when it held a tab anywhere.
+///
+/// A caller distinguishes three outcomes from one call: the run is TRAILING
+/// whitespace when the line ends after it (any spelling, dropped), it is a
+/// SEPARATOR when a token follows (spaces only, cardinality per slot), and a
+/// zero-length run means the next token is glued to the one before it.
+static uint16_t consume_ws_run(Scanner *s, TSLexer *lexer, bool *tabbed) {
+  uint16_t spaces = 0;
+  *tabbed = false;
+  while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+    if (lexer->lookahead == '\t') {
+      *tabbed = true;
+    } else {
+      spaces++;
+    }
+    advance(s, lexer);
+  }
+  return spaces;
+}
+
+/// A colon-fence opener line ends at its last modeled token. Everything after
+/// it is trailing whitespace, which takes BOTH spellings (PART 1): `::: note`
+/// plus a space and `::: note` plus a tab are both admonition openers, and both
+/// are the same opener as `::: note`.
+static bool colon_fence_tail_is_only_trailing_whitespace(Scanner *s,
+                                                         TSLexer *lexer) {
+  bool tabbed = false;
+  consume_ws_run(s, lexer, &tabbed);
+  return at_line_end(lexer) || lexer->eof(lexer);
+}
+
+// Read label lookahead into a line buffer so an unclosed comment can be
+// reconsidered as literal text without rewinding the lexer.
+static bool label_slot_closes_the_line(Scanner *s, TSLexer *lexer) {
+  size_t size = 0, capacity = 64;
+  char *line = ts_malloc(capacity);
+  if (!line) return false;
+  while (!at_line_end(lexer) && !lexer->eof(lexer)) {
+    if (size == capacity) {
+      capacity *= 2;
+      char *grown = ts_realloc(line, capacity);
+      if (!grown) { ts_free(line); return false; }
+      line = grown;
+    }
+    line[size++] = lexer->lookahead < 128 ? (char)lexer->lookahead : 'x';
+    advance(s, lexer);
+  }
+  size_t *percent_close = ts_malloc((size + 1) * sizeof(size_t));
+  size_t *hash_close = ts_malloc((size + 1) * sizeof(size_t));
+  if (!percent_close || !hash_close) {
+    ts_free(line); ts_free(percent_close); ts_free(hash_close); return false;
+  }
+  percent_close[size] = hash_close[size] = size;
+  for (size_t i = size; i-- > 0;) {
+    percent_close[i] = i + 1 < size && line[i] == '%' && line[i + 1] == '}'
+                          ? i : percent_close[i + 1];
+    hash_close[i] = i + 1 < size && line[i] == '#' && line[i + 1] == '}'
+                          ? i : hash_close[i + 1];
+  }
+  unsigned depth = 1;
+  bool accepted = false;
+  for (size_t i = 1; i < size;) {
+    char c = line[i];
+    if (c == '\\') { i += i + 1 < size ? 2 : 1; continue; }
+    if (c == '{' && i + 1 < size &&
+        (line[i + 1] == '%' || line[i + 1] == '#')) {
+      size_t end = line[i + 1] == '%' ? percent_close[i + 2]
+                                     : hash_close[i + 2];
+      if (end < size) { i = end + 2; continue; }
+    }
+    if (c == '`') {
+      size_t width = 0;
+      while (i + width < size && line[i + width] == '`') ++width;
+      i += width;
+      bool closed = false;
+      while (i < size) {
+        if (line[i] != '`') { ++i; continue; }
+        size_t run = 0;
+        while (i + run < size && line[i + run] == '`') ++run;
+        i += run;
+        if (run == width) { closed = true; break; }
+      }
+      if (!closed) break;
+      continue;
+    }
+    if (c == '[') ++depth;
+    if (c == ']' && --depth == 0) {
+      accepted = true;
+      for (++i; i < size; ++i) {
+        if (line[i] != ' ' && line[i] != '\t') { accepted = false; break; }
+      }
+      break;
+    }
+    ++i;
+  }
+  ts_free(line); ts_free(percent_close); ts_free(hash_close);
+  return accepted;
+}
+
+static bool colon_fence_label_slot_closes_the_line(Scanner *s, TSLexer *lexer) {
+  return label_slot_closes_the_line(s, lexer);
+}
+
+/// The metadata slot between two tokens on a colon-fence opener. Returns
+/// `MODELED_SLOT_END` when the run turned out to be trailing whitespace and the
+/// line is over, `MODELED_SLOT_OK` when it is a separator this grammar accepts,
+/// and `MODELED_SLOT_NO` when the metadata must be discarded.
+///
+/// grammar.ebnf `admonition_open = colon_fence:open, space, admonition_type,
+/// [space+, quoted_title], [space+, label]`: a RUN of spaces, and no tab. The
+/// slot after `admonition_type` differs from the fence's own separator only in
+/// cardinality - `::: note` + two spaces + `"T"` is an admonition and
+/// `:::` + two spaces + `note` is one too. A tab before the kind is prose;
+/// a tab after it discards the metadata while preserving the container.
+typedef enum {
+  MODELED_SLOT_NO,
+  MODELED_SLOT_OK,
+  MODELED_SLOT_END,
+} ModeledSlot;
+
+static ModeledSlot colon_fence_metadata_slot(Scanner *s, TSLexer *lexer) {
+  bool tabbed = false;
+  uint16_t spaces = consume_ws_run(s, lexer, &tabbed);
+  if (at_line_end(lexer) || lexer->eof(lexer)) {
+    return MODELED_SLOT_END;
+  }
+  if (tabbed || spaces == 0) {
+    return MODELED_SLOT_NO;
+  }
+  return MODELED_SLOT_OK;
+}
+
+// A named opener keeps its container when metadata is invalid (corpus 537).
+// The kind must end at a metadata boundary; a suffix such as `note!` is prose.
+static bool is_destination_space(int32_t c);
+static void scan_to_line_end(Scanner *s, TSLexer *lexer);
+
+static bool colon_fence_named_tail_opens(Scanner *s, TSLexer *lexer) {
+  while (carve_is_alnum_ascii(lexer->lookahead) || lexer->lookahead == '_' || lexer->lookahead == '-') {
+    advance(s, lexer);
+  }
+  // C2-B-225 keeps the longest name and reports every later character as
+  // invalid metadata; it no longer refuses the div opener.
+  scan_to_line_end(s, lexer);
+  return true;
+}
+
+static bool colon_fence_metadata_tail_is_modeled(Scanner *s, TSLexer *lexer) {
+  ModeledSlot slot = colon_fence_metadata_slot(s, lexer);
+  if (slot != MODELED_SLOT_OK) {
+    return slot == MODELED_SLOT_END;
+  }
+  // Optional quoted "title". `quoted_title = '"', {character - '"'}, '"'` -
+  // there is no escape inside it, so an unterminated one makes the line prose.
+  if (lexer->lookahead == '"') {
+    advance(s, lexer);
+    while (lexer->lookahead != '"' && !at_line_end(lexer) &&
+           !lexer->eof(lexer)) {
+      advance(s, lexer);
+    }
+    if (lexer->lookahead != '"') {
+      return false;
+    }
+    advance(s, lexer);
+    slot = colon_fence_metadata_slot(s, lexer);
+    if (slot != MODELED_SLOT_OK) {
+      return slot == MODELED_SLOT_END;
+    }
+  }
+  // Optional `[label]`, and nothing after it. The order is fixed, so a title
+  // AFTER a label (`::: note [L] "T"`) is prose.
+  if (lexer->lookahead == '[') {
+    return colon_fence_label_slot_closes_the_line(s, lexer);
+  }
+  return false;
+}
+
+/// Does the text AFTER a `:::` run open a block?
+///
+/// The one place that answers it. The opener branch in `parse_colon` and the
+/// paragraph-closing peek in `scan_paragraph_closing_marker` both ask, and a
+/// grammar where the two answer differently cuts the paragraph one line early
+/// and then reads the next fence as a fresh opener - which is what produced
+/// four of the five recorded over-acceptances (#103). There used to be a
+/// `scan_div_marker` here that counted colons and stopped; it had no reachable
+/// caller, so the live second spelling was the peek's own `colons >= 3`.
+///
+/// Call with the lexer already past the colons and their separating
+/// whitespace: `bare` is true when the line ends there, `spaced` when any
+/// separator was consumed, `tabbed` when that separator run held a TAB, `c` is
+/// the first character of the tail.
+///
+/// A bare fence, a `[label]` (glued or not), and a line-block bar, hard-break
+/// backslash or class name AFTER a separator are openers. A `{` attribute
+/// block, a glued class name is not - those lines
+/// are paragraph text per PART 9 §12.
+///
+/// The backslash form is the one tail that cannot be answered from its first
+/// character, so this takes the lexer and reads past it. Both callers scan
+/// ahead only; neither has committed a token end at the point it asks.
+/// Open containers that nest content, which MAX_NESTING_DEPTH bounds as one
+/// count: quotes, lists, colon fences and footnotes alike.
+static bool at_nesting_cap(Scanner *s) {
+  uint32_t depth = 0;
+  for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
+    BlockType type = (*array_get(s->open_blocks, i))->type;
+    if (type == DIV || type == FIGURE_GROUP || type == BLOCK_QUOTE ||
+        type == FOOTNOTE || is_list(type)) {
+      ++depth;
+    }
+  }
+  return depth >= MAX_NESTING_DEPTH;
+}
+
+static bool colon_fence_tail_opens_block(Scanner *s, TSLexer *lexer, bool bare,
+                                         bool spaced, bool tabbed, int32_t c) {
+  // Past the nesting cap an opener is paragraph text.
+  if (!bare && at_nesting_cap(s)) return false;
+  // A BARE fence is decided before the separator's SPELLING is read, and
+  // deliberately: a whitespace-only tail is trailing whitespace, not a
+  // separator, so `:::` + tab + newline is the same bare fence as `:::` and
+  // still opens (the same reading `code_fence_closer_tail_is_blank` gives a
+  // closer's tail, #96).
+  if (bare) {
+    return true;
+  }
+  // THE SEPARATOR IS A MARKER SEPARATOR, SO IT IS A LITERAL SPACE.
+  // grammar.ebnf PART 7, MARKER SEPARATORS AND PADDING SLOTS (normative, added
+  // by carve#886 to settle carve#878): the whitespace between a marker and the
+  // token that SELECTS which construct the line opens is spelled `space`, and a
+  // tab never satisfies it. The colon fence has ONE separator slot and all four
+  // openers share it - `:::` + separator + (`note` | `|` | `\` | `[label]`)
+  // decides between an admonition, a line block, a local hard-break block and a
+  // div - so the answer is the same for every tail, and `div_open` making the
+  // slot OPTIONAL is a different property from a different role: `:::[First]`
+  // opens glued and `::: [First]` opens spaced, but `:::` + tab + `[First]` is
+  // paragraph text.
+  //
+  // A tab is meaningful ONLY as indentation, and indentation is at the START of
+  // a line (PART 9 §24 C1); a tab after a marker is neither (carve#692,
+  // carve#698). This is what the heading marker, the bullet and ordered
+  // markers, the definition-list term marker and the three definition markers
+  // already do here.
+  //
+  // A mixed run falls here too: `::: ` + tab + `note` is not a run of spaces.
+  // How MANY separator characters the slot takes is a separate question
+  // (tree-sitter-carve#135) that this does not answer.
+  //
+  // After a recognized kind, invalid metadata is discarded without erasing
+  // the container. The marker separator itself still requires a literal space.
+  if (tabbed) {
+    return false;
+  }
+  if (c == '[') {
+    return colon_fence_label_slot_closes_the_line(s, lexer);
+  }
+  // The local hard-break block, `::: \` (grammar.ebnf
+  // `local_hard_break_block_open = colon_fence:open, space, backslash`). It
+  // takes the separator like every other type token, and the backslash must be
+  // the LAST thing on the line: `::: \ x` is an escaped space and `::: \\` an
+  // escaped backslash, and carve-js renders both as ordinary paragraph text
+  // where `::: \` and `::: \` plus trailing spaces open a `hardbreaks` div.
+  if (c == '\\') {
+    if (!spaced) {
+      return false;
+    }
+    advance(s, lexer);
+    while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+      advance(s, lexer);
+    }
+    return at_line_end(lexer) || lexer->eof(lexer);
+  }
+  bool named = c == '|' || c == '>' || (c >= 'A' && c <= 'Z') ||
+               (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_';
+  if (!spaced) {
+    return false;
+  }
+  // A sigil selects the div. Any text behind it is invalid metadata in 0.2;
+  // it no longer turns the opener back into a paragraph (C2-B-122).
+  if (c == '|' || c == '>') {
+    advance(s, lexer);
+    scan_to_line_end(s, lexer);
+    return true;
+  }
+  if (named) return colon_fence_named_tail_opens(s, lexer);
+  // A quoted title or unrecognized tail still opens an anonymous div.
+  scan_to_line_end(s, lexer);
+  return true;
+}
+
+static Inline *find_inline(Scanner *s, InlineType type);
+static Inline *first_bracket_extension(Scanner *s);
+static bool extension_closes_here(Scanner *s, TSLexer *lexer);
+static char inline_marker(InlineType type);
+
+/// The character that, followed by `}`, ends the span an inline run sits in -
+/// or 0 where no run stops there.
+///
+/// Corpus 472: an unterminated verbatim run inside a BRACED span ends at that
+/// span's closer, so `{~`a~>b~}` is one strikethrough over the code span
+/// `a~>b`. Inside a BARE span it does not: `*a `b*` is a literal asterisk and a
+/// code span reaching the end of the line, and `*a `b*}c*` keeps the `*}` as
+/// content too. Links, bracket spans and the bold-italic pair never stop one.
+static char span_verbatim_stop_marker(const Inline *e) {
+  if (e == NULL) {
+    return 0;
+  }
+  if (e->type == BOLD_ITALIC) return 1;
+  if (e->type == SQUARE_BRACKET_SPAN &&
+      (e->flags & (INLINE_BRACED | INLINE_EXTENSION_CUT)) ==
+          (INLINE_BRACED | INLINE_EXTENSION_CUT) &&
+      (e->literal_closes & INLINE_CUT_CODE)) return 2;
+  if (e->type == SUBSTITUTION) {
+    return '~';
+  }
+  if (!(e->flags & INLINE_BRACED)) {
+    return e->literal_closes && e->type >= EMPHASIS && e->type <= HIGHLIGHTED ? 3 : 0;
+  }
+  switch (e->type) {
+  case EMPHASIS:
+    return '/';
+  case STRONG:
+    return '*';
+  case UNDERLINE:
+    return '_';
+  case STRIKETHROUGH:
+    return '~';
+  case HIGHLIGHTED:
+    return '=';
+  case SUPERSCRIPT:
+    return '^';
+  case SUBSCRIPT:
+    return ',';
+  case INSERT:
+    return '+';
+  case DELETE:
+    return '-';
+  default:
+    return 0;
+  }
+}
+
+/// The closer that ends the run on top of the inline stack, or 0.
+static char open_verbatim_stop_marker(Scanner *s) {
+  Inline *top = peek_inline(s);
+  if (top == NULL || top->type != VERBATIM ||
+      !(top->flags & INLINE_STOPS_AT_SPAN_CLOSER) ||
+      s->open_inline->size < 2) {
+    return 0;
+  }
+  return span_verbatim_stop_marker(
+      *array_get(s->open_inline, s->open_inline->size - 2));
+}
+
+// Try to close an open verbatim implicitly
+// (should happen on a newline).
+static bool code_fence_has_closer_ahead(Scanner *s, TSLexer *lexer, int32_t c,
+                                        uint16_t width, uint32_t column,
+                                        bool ignore_host_list, int max_quotes);
+static bool code_fence_info_is_modeled(Scanner *s, TSLexer *lexer);
+
+/// Does the line after this newline continue the unclosed run, or end it with
+/// its paragraph? Read as a peek: the token end stands at the newline, so both
+/// answers stay zero width however far this reads.
+static bool in_caption(Scanner *s);
+static bool caption_verbatim_line_continues(Scanner *s, TSLexer *lexer);
+
+static bool verbatim_line_continues(Scanner *s, TSLexer *lexer) {
+  Inline *top = peek_inline(s);
+  s->state &= ~STATE_NEXT_VERBATIM_LINE_IS_COMMENT;
+  if (in_caption(s)) return caption_verbatim_line_continues(s, lexer);
+  consume_line_end(s, lexer);
+  uint8_t line_indent = consume_whitespace(s, lexer);
+  if (lexer->eof(lexer) || at_line_end(lexer)) {
+    return false;
+  }
+  if (lexer->lookahead == '`' && top != NULL) {
+    uint16_t run = consume_fence_run(s, lexer, '`');
+    // Under three backticks cannot open a fence, so it can only be a closer.
+    if (run < 3) {
+      return true;
+    }
+    // A fence interrupts only with a closer ahead (I4), and that reading wins
+    // over the run's own closer; without one the content token reads the run.
+    return !code_fence_info_is_modeled(s, lexer) ||
+           !code_fence_has_closer_ahead(s, lexer, '`', run, line_indent, false, -1);
+  }
+  // A tilde fence with a closer ahead interrupts the paragraph the same way.
+  if (lexer->lookahead == '~' && top != NULL) {
+    uint16_t run = consume_fence_run(s, lexer, '~');
+    if (run < 3) {
+      return true;
+    }
+    return !code_fence_info_is_modeled(s, lexer) ||
+           !code_fence_has_closer_ahead(s, lexer, '~', run, line_indent, false, -1);
+  }
+  // A comment-only line (the block-level `comment_line` shape, `%%` with
+  // nothing before it on the line) inside a line block does not end the run:
+  // the reference strips the comment and reads on past it
+  // (tree-sitter-carve#320 row 6). Outside a line block a comment line still
+  // ends the run below, through the ordinary close_paragraph reading.
+  if (lexer->lookahead == '%' && inside_line_block(s)) {
+    advance(s, lexer);
+    if (lexer->lookahead == '%') {
+      s->state |= STATE_NEXT_VERBATIM_LINE_IS_COMMENT;
+      return true;
+    }
+  }
+  uint8_t indent = s->indent;
+  uint16_t state = s->state;
+  uint8_t level = s->block_quote_level;
+  s->indent = line_indent;
+  s->erasable_line = false;
+  bool ends = close_paragraph(s, lexer);
+  s->indent = indent;
+  s->state = state;
+  s->block_quote_level = level;
+  // An erased line ends the run; the paragraph holds it.
+  bool erased = s->erasable_line;
+  s->erasable_line = false;
+  return !ends && !erased;
+}
+
+static bool try_implicit_close_verbatim(Scanner *s, TSLexer *lexer) {
+  Inline *top = peek_inline(s);
+  if (!top || top->type != VERBATIM) {
+    return false;
+  }
+  if (top->data > 0) {
+    remove_inline(s);
+    lexer->result_symbol = VERBATIM_END;
+    return true;
+  } else {
+    return false;
+  }
+}
+
+static bool close_paragraph(Scanner *s, TSLexer *lexer);
+
+static bool verbatim_line_ends_paragraph(Scanner *s, TSLexer *lexer,
+                                         uint8_t line_indent) {
+  uint8_t indent = s->indent;
+  uint16_t state = s->state;
+  uint8_t level = s->block_quote_level;
+  s->indent = line_indent;
+  bool ends = close_paragraph(s, lexer);
+  s->indent = indent;
+  s->state = state;
+  s->block_quote_level = level;
+  return ends;
+}
+
+/// The comment-only line `verbatim_line_continues` already found and flagged
+/// via `STATE_NEXT_VERBATIM_LINE_IS_COMMENT`. Consumes the newline that
+/// decision stood on, the line's own leading whitespace and its `%%...` text
+/// - the same bytes an ordinary line's `VERBATIM_CONTENT` would claim - so the
+/// only difference is which node this becomes: a `comment_line` sibling the
+/// inline-reading gate can subtract from the span's text, not text itself.
+static bool parse_verbatim_comment_line(Scanner *s, TSLexer *lexer) {
+  if ((s->state & STATE_NEXT_VERBATIM_LINE_IS_COMMENT) == 0) {
+    return false;
+  }
+  s->state &= ~STATE_NEXT_VERBATIM_LINE_IS_COMMENT;
+  consume_line_end(s, lexer);
+  consume_whitespace(s, lexer);
+  while (!lexer->eof(lexer) && !at_line_end(lexer)) {
+    advance(s, lexer);
+  }
+  // Every peek this deep in a verbatim run advances freely because it never
+  // marks an end, so nothing it reads sticks. This token is the opposite: it
+  // has to keep what it consumed, or the parse re-lexes the same bytes as the
+  // same zero-width token forever.
+  mark_end(s, lexer);
+  lexer->result_symbol = VERBATIM_COMMENT_LINE;
+  return true;
+}
+
+// Parsing verbatim content is also responsible for parsing VERBATIM_END.
+static bool parse_verbatim_content(Scanner *s, TSLexer *lexer, bool end_valid,
+                                   bool at_eof) {
+  Inline *top = peek_inline(s);
+  if (!top || top->type != VERBATIM) {
+    return false;
+  }
+
+  // Inside a table ROW an open run is closed by the row's own closing pipe:
+  // `| a `b | c d |` is one cell holding `b | c d`, and the `!`-prefixed
+  // spelling (carve#1466) reaches the same rule. The closer is the LAST `|` on
+  // the line and the lexer cannot rewind, so every pipe re-marks the token end
+  // and the last mark standing is the one that counts. A run that DOES close
+  // re-marks once more, immediately before its own ticks, which is why
+  // `| a `x|` | b |` still ends at the ticks with the pipe inside it as
+  // content.
+  bool in_table_row = find_block(s, TABLE_ROW) != NULL;
+  // At end of input there is no content left to take; the run closes through
+  // the implicit end instead, and a zero-width token here would not progress.
+  if (!in_table_row && lexer->eof(lexer)) {
+    // Unless the end is not on offer yet. `_verbatim_body` spells one content
+    // token before it, so a run that reaches the end of input having taken none
+    // can never close and the document lands in ERROR (#458). Zero width: the
+    // next call has the end valid and takes it, so the parse progresses.
+    //
+    // Gated on the SNAPSHOT as well as the read above, because a probe that
+    // advanced and declined can leave the lexer at the end of input on a line
+    // that has not ended, and a zero-width token there restarts the run in the
+    // middle of it (#124).
+    if (!end_valid && at_eof) {
+      lexer->result_symbol = VERBATIM_CONTENT;
+      return true;
+    }
+    return false;
+  }
+  // After a VERBATIM_CONTINUE the scan stands on the newline the decision was
+  // taken at, so this token opens with it and the next line's indentation. A
+  // run that OPENS at a line end reaches here before any decision was taken,
+  // so a blank line below it still has to end the run: the token stays zero
+  // width there, which leaves the newline to the decision on the next call.
+  if (!in_table_row && at_line_end(lexer)) {
+    consume_line_end(s, lexer);
+    uint8_t line_indent = consume_whitespace(s, lexer);
+    if (lexer->eof(lexer) || at_line_end(lexer)) {
+      lexer->result_symbol = VERBATIM_CONTENT;
+      return true;
+    }
+    // In a line block the closer below the opener line ends the run too; the
+    // token stays zero width so the next decision closes it.
+    if (inside_line_block(s) &&
+        verbatim_line_ends_paragraph(s, lexer, line_indent)) {
+      lexer->result_symbol = VERBATIM_CONTENT;
+      return true;
+    }
+    // A tilde fence with a closer ahead interrupts the paragraph, and with it
+    // the run (I4), as it does on any later line of the run. In a quote it
+    // stands after the quote's markers.
+    uint32_t fence_column = line_indent;
+    if (lexer->lookahead == '>' && count_blocks(s, BLOCK_QUOTE) > 0) {
+      bool quoted_newline = false;
+      uint8_t quoted = scan_quote_marker_run(s, lexer, &quoted_newline, NULL,
+                                             true);
+      // A quoted blank line ends the paragraph, and the run with it.
+      if (quoted == count_blocks(s, BLOCK_QUOTE) &&
+          (quoted_newline || at_line_end(lexer) || lexer->eof(lexer))) {
+        lexer->result_symbol = VERBATIM_CONTENT;
+        return true;
+      }
+      if (quoted == count_blocks(s, BLOCK_QUOTE)) {
+        while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+          advance(s, lexer);
+        }
+        fence_column = line_column(s, lexer);
+      }
+    }
+    if (lexer->lookahead == '~') {
+      uint16_t run = consume_fence_run(s, lexer, '~');
+      if (run >= 3 && code_fence_info_is_modeled(s, lexer) &&
+          code_fence_has_closer_ahead(s, lexer, '~', run, fence_column, false, -1)) {
+        lexer->result_symbol = VERBATIM_CONTENT;
+        return true;
+      }
+    }
+    mark_end(s, lexer);
+  }
+  // The closer of the braced span this run sits in, where the opening ticks
+  // established that no matching run comes first. See
+  // `verbatim_run_reaches_span_closer`.
+  char stop_marker = open_verbatim_stop_marker(s);
+  // Does the mark currently stand at a pipe? Set by a `|`, kept across the
+  // whitespace that may trail it, cleared by any other content - the same
+  // question `scan_verbatim_run_in_cell` answers while validating the row.
+  bool marked_at_pipe = false;
+  // Spaces read in a table row but not yet marked: a closing pipe right after
+  // them leaves them out as cell padding (`data_cell` ends in `{space}`).
+  bool pending_space = false;
+  bool extension_payload = find_inline(s, EXTENSION) != NULL;
+  Inline *parent = s->open_inline->size >= 2 ? *array_get(s->open_inline, s->open_inline->size - 2) : NULL;
+  char bare_stop = stop_marker == 3 && parent ? inline_marker(parent->type) : 0;
+  int32_t previous = 0;
+
+  while (!lexer->eof(lexer)) {
+    int32_t current = lexer->lookahead;
+    if (pending_space && lexer->lookahead != ' ' && lexer->lookahead != '|') {
+      mark_end(s, lexer);
+      pending_space = false;
+    }
+    if (lexer->lookahead == ']') {
+      if (extension_payload && extension_closes_here(s, lexer)) break;
+      // Every left-behind `]` counts, also one a closed run swallows.
+      if (stop_marker != 2 && parent && parent->type >= EMPHASIS &&
+          parent->type <= BOLD_ITALIC && parent->literal_closes > 1) {
+        --parent->literal_closes;
+        Inline *bracket = find_inline(s, SQUARE_BRACKET_SPAN);
+        if (bracket && (bracket->flags & INLINE_BRACED) && square_literal_closes(bracket)) {
+          --bracket->literal_closes;
+          if (!square_literal_closes(bracket)) {
+            bracket->literal_closes = 0;
+            if (bracket->flags & INLINE_BRACED) bracket->flags &= ~INLINE_EXTENSION_CUT;
+          }
+        }
+      }
+      if (stop_marker == 2) {
+        Inline *bracket = find_inline(s, SQUARE_BRACKET_SPAN);
+        if (!bracket || !square_literal_closes(bracket)) break;
+        --bracket->literal_closes;
+      }
+    }
+    if (at_line_end(lexer)) {
+      if (in_table_row && marked_at_pipe) {
+        // The row ends here and the mark is at its closing pipe. Stop, and let
+        // the zero-width VERBATIM_END emitted at that pipe close the run.
+        //
+        // Unless a `+` continuation row follows a ONE-CELL row: the reference
+        // joins a cell with its continuation before reading inline markup, so
+        // the run reads on into that line (spec corpus 333). Only one cell,
+        // because a later cell's continuation sits behind the continuation
+        // row's earlier cells and no token can reach across them.
+        Block *row = find_block(s, TABLE_ROW);
+        if ((s->state & STATE_TABLE_CONTINUATION_NEXT) == 0 || !row ||
+            row->data != 0) {
+          break;
+        }
+        // Once only: the line after the continuation row was never read, and
+        // the mark cannot move back to this pipe after it has passed it. The
+        // row-level flag is cleared here too - it is the same one-time
+        // permission `parse_table_row_continuation_seam` reads for a plain
+        // inline join (#437), and this run has already spent it, so the
+        // row's TRUE final `|` must not be offered a second continuation.
+        s->state &= ~STATE_TABLE_CONTINUATION_NEXT;
+        row->flags &= (uint8_t)~BLOCK_FLAG_TABLE_ROW_CONTINUES;
+        consume_line_end(s, lexer);
+        advance(s, lexer);
+        while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+          advance(s, lexer);
+        }
+        marked_at_pipe = false;
+        continue;
+      }
+      // We should only end verbatim if the paragraph is ended by a
+      // blankline.
+
+      // OUTSIDE A TABLE ROW A CONTENT TOKEN IS ONE LINE: the next line is
+      // reached through VERBATIM_CONTINUE, which the scanner emits only after
+      // deciding that the line continues the run (tree-sitter-carve#427).
+      if (!in_table_row) {
+        break;
+      }
+      // Advance over the first newline.
+      consume_line_end(s, lexer);
+      // Remove any whitespace on the next line.
+      consume_whitespace(s, lexer);
+      if (lexer->eof(lexer) || at_line_end(lexer)) {
+        // Found a blankline, meaning the paragraph containing the varbatim
+        // should be closed. So now we can close the verbatim.
+        break;
+      }
+      // No blankline, continue parsing.
+      marked_at_pipe = false;
+      mark_end(s, lexer);
+    } else if (lexer->lookahead == '`') {
+      // Pin the end BEFORE the run: a matching one stops the content exactly
+      // here, whatever a pipe further back marked. In every non-row document
+      // this is the position the previous iteration already marked, so it
+      // changes nothing there.
+      mark_end(s, lexer);
+      // If we find a `, we need to count them to see if we should stop.
+      uint8_t current = consume_chars(s, lexer, '`');
+      if (current == top->data) {
+        // We found a matching number of `, stop content parsing.
+        break;
+      } else {
+        // Found a number of ` that doesn't match the start,
+        // we should consume them.
+        marked_at_pipe = false;
+        mark_end(s, lexer);
+      }
+    } else if (bare_stop && lexer->lookahead == bare_stop) {
+      mark_end(s, lexer);
+      advance(s, lexer);
+      if (parent && parent->literal_closes == 1 && previous && previous != ' ' && previous != '\t' && previous != '\r' && previous != '\n' &&
+          !carve_is_alnum_ascii(lexer->lookahead)) break;
+      marked_at_pipe = false;
+      mark_end(s, lexer);
+    } else if (stop_marker != 0 && lexer->lookahead == (stop_marker == 1 ? '*' : stop_marker)) {
+      // Pin the end BEFORE the candidate, then look at the character behind
+      // it. A lone marker is content and the mark moves on with it.
+      mark_end(s, lexer);
+      advance(s, lexer);
+      if (lexer->lookahead == (stop_marker == 1 ? '/' : '}')) {
+        break;
+      }
+      marked_at_pipe = false;
+      mark_end(s, lexer);
+    } else if (in_table_row && lexer->lookahead == '|') {
+      // A candidate row closer: mark BEFORE it and read on without moving the
+      // mark, so a later pipe (or a closing run) overrides this one.
+      if (!pending_space) mark_end(s, lexer);
+      pending_space = false;
+      marked_at_pipe = true;
+      advance(s, lexer);
+    } else if (in_table_row && marked_at_pipe &&
+               (lexer->lookahead == ' ' || lexer->lookahead == '\t')) {
+      // Whitespace trailing what may be the closing pipe. A row admits it, so
+      // step over it without moving the mark off the pipe.
+      advance(s, lexer);
+    } else if (in_table_row && lexer->lookahead == ' ') {
+      advance(s, lexer);
+      pending_space = true;
+    } else {
+      // Non-` token found, this we should consume.
+      advance(s, lexer);
+      marked_at_pipe = false;
+      mark_end(s, lexer);
+    }
+    previous = current;
+  }
+
+  // Scanned all the verbatim.
+  lexer->result_symbol = VERBATIM_CONTENT;
+  return true;
+}
+
+// Is a run of `ticks` fence characters WIDE ENOUGH to close the open code
+// block?
+//
+// `>=`, not `==`. grammar.ebnf states the guard as
+//
+//     code_fence_close = (backtick_fence | tilde_fence):close
+//                        where char(close) = char(open) and len(close) >= len(open)
+//
+// and all three engines agree: a four-tick run closes a three-tick fence, while
+// a three-tick run inside a four-tick fence is content, because 3 < 4. The
+// second half is what the width comparison is FOR - embedding a ``` sample
+// inside a ```` fence - and `>=` gives it without a second rule.
+//
+// Testing for equality left the fence open to end of input on the first shape,
+// and nothing in this repo could see it: not the corpus, not the no-ERROR
+// sweep, not the block battery, not under-acceptance. The behaviour had never
+// been pinned in either direction (#125).
+//
+// The COMMENT fence is deliberately not this rule - `%%%%` does not close
+// `%%%`, which the corpus pins in both directions - so this stays scoped to
+// CODE_BLOCK.
+static const uint16_t CODE_FENCE_TILDE = 0x8000;
+
+static bool code_fence_run_matches_open_block(Scanner *s, uint16_t width,
+                                               char fence_char,
+                                               uint32_t column) {
+  Block *top = peek_block(s);
+  if (!top || top->type != CODE_BLOCK) {
+    return false;
+  }
+  // A fence that owns its description body was opened only because no closer
+  // at its column lies ahead in that body, so no run in it closes the fence.
+  if (s->state & STATE_FENCE_OWNS_BODY) {
+    return false;
+  }
+  // COLUMN-EXACT DELIMITERS (grammar.ebnf, PART 2, normative). A closer sits
+  // at its container's content column, and "a closing run indented PAST its
+  // opener is not a delimiter but code content -- which is exactly what lets an
+  // indented ``` line appear as sample text inside a fence".
+  //
+  // Without this the run closed the block wherever it sat, so
+  //
+  //     ```
+  //       ```
+  //     *b*
+  //     ```
+  //
+  // ended at the INDENTED run and everything under it was live prose - the
+  // shape every document that writes about Carve in Carve is made of. The
+  // opener is guarded by `has_extra_indent` at the call site; the closer is the
+  // other half of the same rule, and it is `has_surplus_indent` because the
+  // question here is indentation PAST the margin rather than short of it.
+  // A fence opened past that margin closes at its own authored column or at
+  // the enclosing item's content column when the closer leaves the child.
+  Block *owner = find_list(s);
+  bool owner_closer = owner && count_blocks(s, BLOCK_QUOTE) == 0 &&
+      owner->content_col != 0 && top->content_col > owner->content_col &&
+      column == owner->content_col;
+  if (has_surplus_indent(s) &&
+      !(top->content_col != 0 && column == top->content_col) &&
+      !owner_closer) {
+    return false;
+  }
+  bool opened_with_tilde = (top->data & CODE_FENCE_TILDE) != 0;
+  return opened_with_tilde == (fence_char == '~') &&
+         (top->data & CODE_FENCE_WIDTH) <= width;
+}
+
+// A code fence CLOSER carries nothing after its run but optional trailing
+// whitespace: `fenced_code_block = ..., code_fence_close, newline` in the
+// spec's grammar.ebnf, where `code_fence_close` is the run alone. A run that
+// carries anything else -- ``` js -- is fence BODY, and the fence stays open
+// (PART 9 §12 closes it at end of input).
+//
+// Call with the lexer positioned right after the run. It ADVANCES over the
+// trailing whitespace, so a caller whose token must end at the run has to
+// `mark_end` first, and no caller may fall through to an opener path after it.
+//
+// A carriage return needs no case of its own: `advance` eats one wherever it
+// finds it, so a CRLF document's run and its trailing whitespace both leave
+// the lookahead on the newline, whichever of the three spellings it is.
+static bool code_fence_closer_tail_is_blank(Scanner *s, TSLexer *lexer) {
+  while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+    advance(s, lexer);
+  }
+  return at_line_end(lexer) || lexer->eof(lexer);
+}
+
+// Validate the info string that follows a backtick code fence (the rest of the
+// opening line, after the ticks). The fence is opened only for an info string
+// the grammar can model: empty, or a single language word optionally followed
+// by a bracketed `[label]`. A `{` (attribute block) or a `key=value` pair makes
+// the line NOT a fence (e.g. ```js title="x"`), so we refuse and let the
+// backticks fall back to inline verbatim. The `=FORMAT` raw-block form is
+// allowed (it is handled by the `raw_block` rule in the grammar).
+//
+// THE SLOTS ARE SPELLED `space`, AND THE TWO ROLES DIFFER ONLY IN CARDINALITY.
+// grammar.ebnf: `fenced_code_block = code_fence_open, [space], [code_fence_info]`
+// and `code_fence_info = language_info, [space+, quoted_title], [space+, label]`.
+// The slot between the fence run and the info string is exactly ONE space
+// (carve#912) - ``` ```<SP><SP>php ``` is not a fence opener, because the second
+// space reaches `language_info`, whose class holds no space - while the two
+// slots INSIDE the info string take a run. Neither admits a tab: a tab is
+// syntax only in a line's leading indentation run (PART 7, MARKER SEPARATORS AND
+// PADDING SLOTS), and every one of these slots sits after the first
+// non-whitespace character of the line.
+//
+// TRAILING whitespace is a different thing at the same characters and keeps
+// taking both spellings: a run with nothing after it on the line is dropped
+// (PART 1), so ``` ```js<TAB> ``` is still a fence while ``` ```js<TAB>"T" ```
+// is prose. That is why each run below is measured once and classified by what
+// FOLLOWS it, rather than being consumed by a bare `while`.
+//
+// Must be called with the lexer positioned right after the ticks, before
+// `mark_end` is committed for the begin token.
+static bool code_fence_info_is_modeled_kind(Scanner *s, TSLexer *lexer,
+                                           uint8_t *delimited_kind) {
+  if (delimited_kind) *delimited_kind = 0;
+  // The `[space]` slot between the fence run and the info string.
+  bool lead_tabbed = false;
+  uint16_t lead_spaces = consume_ws_run(s, lexer, &lead_tabbed);
+  // Empty info string: just a newline / EOF. The run was trailing whitespace.
+  if (at_line_end(lexer) || lexer->eof(lexer)) {
+    return true;
+  }
+  if (lead_tabbed || lead_spaces > 1) {
+    return false;
+  }
+  // The raw-block `=FORMAT` form (`raw_block_info` in the grammar) needs a
+  // non-empty single-word format and nothing but trailing whitespace after it.
+  if (lexer->lookahead == '=') {
+    advance(s, lexer);
+    uint8_t fmt_len = 0;
+    while (!at_line_end(lexer) && !lexer->eof(lexer) &&
+           lexer->lookahead != ' ' && lexer->lookahead != '\t' &&
+           lexer->lookahead != '{' && lexer->lookahead != '}' &&
+           lexer->lookahead != '=' && lexer->lookahead != '[' &&
+           lexer->lookahead != '"') {
+      fmt_len++;
+      advance(s, lexer);
+    }
+    if (fmt_len == 0) {
+      return false;
+    }
+    while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+      advance(s, lexer);
+    }
+    return at_line_end(lexer) || lexer->eof(lexer);
+  }
+  // A `{` glued to the fence is never a code fence.
+  if (lexer->lookahead == '{') {
+    return false;
+  }
+  // Info string (PART 9 §2): an optional language word, then an optional quoted
+  // "header", then an optional bracketed [label] -- in that order. Each must be
+  // whitespace-separated from the preceding token, but the FIRST token may sit
+  // directly against the fence. `had_token` tracks whether a prior token needs
+  // a separating space; `saw_ws` whether one was seen.
+  bool had_token = false;
+  bool saw_ws = true;
+
+  // Optional language word (a run that does not start a header/label and stops
+  // at `"`/`[` so a glued header/label is not folded into the language).
+  if (lexer->lookahead != '"' && lexer->lookahead != '[') {
+    char word[4] = {0};
+    uint8_t word_len = 0;
+    while (!at_line_end(lexer) && !lexer->eof(lexer) &&
+           lexer->lookahead != ' ' && lexer->lookahead != '\t' &&
+           lexer->lookahead != '{' && lexer->lookahead != '}' &&
+           lexer->lookahead != '=' && lexer->lookahead != '[' &&
+           lexer->lookahead != '"') {
+      if (word_len < 3) {
+        word[word_len] = (char)lexer->lookahead;
+      }
+      word_len++;
+      advance(s, lexer);
+    }
+    if (word_len == 0) {
+      return false;
+    }
+    if (delimited_kind && word_len == 3) {
+      if (word[0] == 'c' && word[1] == 's' && word[2] == 'v')
+        *delimited_kind = ',';
+      if (word[0] == 't' && word[1] == 's' && word[2] == 'v')
+        *delimited_kind = '\t';
+    }
+    had_token = true;
+    bool is_raw =
+        word_len == 3 && word[0] == 'r' && word[1] == 'a' && word[2] == 'w';
+    bool after_word_tabbed = false;
+    uint16_t after_word_spaces = consume_ws_run(s, lexer, &after_word_tabbed);
+    if (at_line_end(lexer) || lexer->eof(lexer)) {
+      return true;
+    }
+    if (after_word_tabbed) {
+      return false;
+    }
+    saw_ws = after_word_spaces > 0;
+    // The carve raw-block form `raw FORMAT` (`raw_block_info` in the grammar):
+    // exactly one more single-word format follows the `raw` marker. (A `raw`
+    // language with a quoted header is not modeled as a code block here -- it
+    // falls back to inline verbatim rather than opening a fence.)
+    if (is_raw) {
+      uint8_t fmt_len = 0;
+      while (!at_line_end(lexer) && !lexer->eof(lexer) &&
+             lexer->lookahead != ' ' && lexer->lookahead != '\t' &&
+             lexer->lookahead != '{' && lexer->lookahead != '}' &&
+             lexer->lookahead != '=' && lexer->lookahead != '[' &&
+             lexer->lookahead != '"') {
+        fmt_len++;
+        advance(s, lexer);
+      }
+      if (fmt_len == 0) {
+        return false;
+      }
+      while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+        advance(s, lexer);
+      }
+      return at_line_end(lexer) || lexer->eof(lexer);
+    }
+  }
+
+  // Optional quoted "header".
+  if (lexer->lookahead == '"') {
+    if (had_token && !saw_ws) {
+      return false; // glued to the language token
+    }
+    advance(s, lexer);
+    while (lexer->lookahead != '"' && !at_line_end(lexer) &&
+           !lexer->eof(lexer)) {
+      advance(s, lexer);
+    }
+    if (lexer->lookahead != '"') {
+      return false; // unterminated header
+    }
+    advance(s, lexer);
+    had_token = true;
+    bool after_header_tabbed = false;
+    uint16_t after_header_spaces = consume_ws_run(s, lexer, &after_header_tabbed);
+    if (at_line_end(lexer) || lexer->eof(lexer)) {
+      return true;
+    }
+    if (after_header_tabbed) {
+      return false;
+    }
+    saw_ws = after_header_spaces > 0;
+  }
+
+  // Optional bracketed [label].
+  if (lexer->lookahead == '[') {
+    if (had_token && !saw_ws) {
+      return false; // glued to a preceding token
+    }
+    return label_slot_closes_the_line(s, lexer);
+  }
+
+  // Anything else (e.g. `key="x"`, a bare second word) is not a fence.
+  return false;
+}
+
+static bool fence_info_has_backtick(Scanner *s, TSLexer *lexer);
+
+static bool code_fence_info_is_modeled(Scanner *s, TSLexer *lexer) {
+  if (fence_info_has_backtick(s, lexer)) return false;
+  // In 0.2 invalid metadata is reported, but it does not refuse the fence.
+  code_fence_info_is_modeled_kind(s, lexer, NULL);
+  return true;
+}
+
+// Qualification probes may rewind an unclosed comment without rewinding the
+// host lexer. The buffer is local to one lookahead and never serialized.
+typedef struct {
+  int32_t character;
+  unsigned row_ticks;
+  bool escaped_pipe;
+  bool range_start;
+  uint32_t column;
+  bool column_absolute;
+  bool row_first_line;
+  bool bracket_known;
+  uint32_t bracket_close;
+  uint32_t bracket_close_base;
+  // Line feeds between the probe start and this character.
+  uint32_t newlines;
+} BracketProbeCharacter;
+
+typedef struct {
+  TSLexer lexer;
+  TSLexer *host;
+  Array(BracketProbeCharacter) characters;
+  uint32_t position;
+  uint32_t initial_column;
+  bool have_initial_column;
+  bool cell_tail;
+  // Inline lookahead sees the payload's closing `]` as its end of input:
+  // the first raw `]`, or the one at `cut_newlines` / `cut_column` when
+  // `cut_positioned` (carve#4513).
+  bool extension_cut;
+  bool cut_positioned;
+  uint32_t cut_newlines, cut_column;
+  bool row_boundary_known;
+  uint32_t row_boundary_col, continuation_ticks;
+  unsigned row_ticks;
+  unsigned pending_ticks;
+  // The next character is backslash-escaped, read as the cell splitter does.
+  bool escaping;
+  unsigned bracket_scans;
+  bool no_comment_close[2];
+  uint32_t no_comment_close_from[2];
+  int32_t *host_previous;
+  bool *host_crossed_line;
+  uint32_t *host_newlines;
+  Scanner *scanner;
+} BracketProbe;
+
+static uint32_t bracket_probe_column(TSLexer *lexer);
+static uint32_t bracket_probe_column_at(BracketProbe *probe, uint32_t position);
+
+static bool bracket_probe_cut_at(const BracketProbe *probe, uint32_t position) {
+  const BracketProbeCharacter *current = &probe->characters.contents[position];
+  if (!probe->extension_cut || current->character != ']') return false;
+  if (!probe->cut_positioned) return true;
+  return current->newlines == probe->cut_newlines &&
+         bracket_probe_column_at((BracketProbe *)probe, position) == probe->cut_column;
+}
+
+static bool bracket_probe_boundary(const BracketProbe *probe) {
+  const BracketProbeCharacter *current = &probe->characters.contents[probe->position];
+  if (current->escaped_pipe) return false;
+  if (probe->row_boundary_known && current->row_first_line)
+    return bracket_probe_column((TSLexer *)&probe->lexer) >= probe->row_boundary_col;
+  return !current->escaped_pipe && !current->row_ticks;
+}
+
+static bool bracket_probe_eof(const TSLexer *lexer) {
+  const BracketProbe *probe = (const BracketProbe *)lexer;
+  const BracketProbeCharacter *current = &probe->characters.contents[probe->position];
+  if (bracket_probe_cut_at(probe, probe->position)) return true;
+  if (probe->cell_tail &&
+      ((current->character == '|' && bracket_probe_boundary(probe)) ||
+       current->character == '\r' || current->character == '\n')) return true;
+  return probe->position + 1 == probe->characters.size && probe->host->eof(probe->host);
+}
+
+static void bracket_probe_advance(TSLexer *lexer, bool skip) {
+  BracketProbe *probe = (BracketProbe *)lexer;
+  if (bracket_probe_cut_at(probe, probe->position)) return;
+  if (probe->position + 1 == probe->characters.size) {
+    if (probe->host->eof(probe->host)) return;
+    int32_t previous = probe->host->lookahead;
+    const BracketProbeCharacter *before = &probe->characters.contents[probe->position];
+    if (previous == '\n' && probe->bracket_scans &&
+        !probe->have_initial_column && !before->column_absolute) {
+      probe->initial_column = probe->host->get_column(probe->host) - before->column;
+      probe->have_initial_column = true;
+    }
+    if ((previous == '\r' || previous == '\n') && probe->row_boundary_known) {
+      probe->row_ticks = probe->continuation_ticks;
+      probe->pending_ticks = 0;
+    }
+    bool escaped = probe->escaping;
+    probe->escaping = !escaped && previous == '\\' && !probe->row_ticks &&
+                      !probe->pending_ticks;
+    if (previous == '`' && !escaped) ++probe->pending_ticks;
+    *probe->host_previous = previous;
+    if (previous == '\n' || previous == '\r') *probe->host_crossed_line = true;
+    if (previous == '\n') ++*probe->host_newlines;
+    if (probe->host->advance != bracket_probe_advance) {
+      if (previous == '\n' || previous == '\r') resolve_deferred_column(probe->scanner, probe->host);
+      ++probe->scanner->host_advances;
+    }
+    probe->scanner->marker_probe = false;
+    probe->host->advance(probe->host, skip);
+    if (probe->host->advance != bracket_probe_advance &&
+        probe->host->is_at_included_range_start(probe->host)) {
+      probe->scanner->host_jumped = true;
+      resolve_deferred_column(probe->scanner, probe->host);
+    }
+    if (probe->host->lookahead != '`' && probe->pending_ticks) {
+      if (!probe->row_ticks) probe->row_ticks = probe->pending_ticks;
+      else if (probe->row_ticks == probe->pending_ticks) probe->row_ticks = 0;
+      probe->pending_ticks = 0;
+    }
+    bool range_start = probe->host->is_at_included_range_start(probe->host);
+    uint32_t column = previous == '\n' ? 0 : before->column + 1;
+    bool absolute = previous == '\n' || before->column_absolute;
+    if (range_start) { column = probe->host->get_column(probe->host); absolute = true; }
+    bool row_first_line = before->row_first_line && previous != '\r' && previous != '\n';
+    uint32_t newlines = before->newlines + (previous == '\n');
+    array_push(&probe->characters, ((BracketProbeCharacter){
+      .character = probe->host->lookahead, .row_ticks = probe->row_ticks,
+      .escaped_pipe = probe->escaping, .range_start = range_start,
+      .column = column, .column_absolute = absolute,
+      .row_first_line = row_first_line,
+      .newlines = newlines}));
+  }
+  ++probe->position;
+  int32_t character = probe->characters.contents[probe->position].character;
+  lexer->lookahead = bracket_probe_cut_at(probe, probe->position) ? 0 : character;
+}
+
+static void bracket_probe_mark_end(TSLexer *lexer) { (void)lexer; }
+
+static uint32_t bracket_probe_column(TSLexer *lexer) {
+  BracketProbe *probe = (BracketProbe *)lexer;
+  return bracket_probe_column_at(probe, probe->position);
+}
+
+static uint32_t bracket_probe_column_at(BracketProbe *probe, uint32_t position) {
+  const BracketProbeCharacter *current = &probe->characters.contents[position];
+  if (current->column_absolute) return current->column;
+  if (!probe->have_initial_column) {
+    const BracketProbeCharacter *last = &probe->characters.contents[probe->characters.size - 1];
+    probe->initial_column = probe->host->get_column(probe->host) - last->column;
+    probe->have_initial_column = true;
+  }
+  return probe->initial_column + current->column;
+}
+
+static bool bracket_probe_range_start(const TSLexer *lexer) {
+  const BracketProbe *probe = (const BracketProbe *)lexer;
+  return probe->characters.contents[probe->position].range_start;
+}
+
+static BracketProbe bracket_probe_new(Scanner *s, TSLexer *host) {
+  BracketProbe probe = {0};
+  probe.host = host;
+  probe.host_previous = &s->host_previous;
+  probe.host_crossed_line = &s->host_crossed_line;
+  probe.host_newlines = &s->host_newlines;
+  probe.scanner = s;
+  Inline *extension = find_inline(s, EXTENSION);
+  probe.extension_cut = extension != NULL;
+  if (extension && extension->literal_closes) {
+    probe.cut_positioned = true;
+    uint32_t newlines = extension_close_newlines(extension);
+    probe.cut_newlines = newlines > s->host_newlines ? newlines - s->host_newlines : 0;
+    probe.cut_column = extension_close_column(extension);
+  }
+  Block *row = find_block(s, TABLE_ROW);
+  if (row) {
+    probe.row_boundary_known = true;
+    probe.row_boundary_col = row->cell_boundary_col;
+    probe.continuation_ticks = row->cell_carry_ticks;
+  }
+  probe.lexer = (TSLexer){host->lookahead, host->result_symbol,
+    bracket_probe_advance, bracket_probe_mark_end, bracket_probe_column,
+    bracket_probe_range_start, bracket_probe_eof};
+  array_init(&probe.characters);
+  array_push(&probe.characters, ((BracketProbeCharacter){
+    .character = host->lookahead, .row_first_line = true, .range_start = host->is_at_included_range_start(host)}));
+  return probe;
+}
+
+static bool fence_info_has_backtick(Scanner *s, TSLexer *lexer) {
+  BracketProbe probe = bracket_probe_new(s, lexer);
+  bool found = false;
+  while (!probe.lexer.eof(&probe.lexer) && !at_line_end(&probe.lexer)) {
+    if (probe.lexer.lookahead == '`') { found = true; break; }
+    probe.lexer.advance(&probe.lexer, false);
+  }
+  array_delete(&probe.characters);
+  return found;
+}
+
+static void bracket_probe_rewind(BracketProbe *probe, uint32_t position) {
+  probe->position = position;
+  int32_t character = probe->characters.contents[position].character;
+  probe->lexer.lookahead = bracket_probe_cut_at(probe, position) ? 0 : character;
+}
+
+
+static bool delimited_body_valid(Scanner *s, TSLexer *lexer,
+                                 uint16_t width, char fence_char,
+                                 uint8_t separator, uint32_t column,
+                                 uint8_t quote_depth, uint32_t list_margin,
+                                 bool in_div) {
+  if (lexer->lookahead == '\r') {
+    advance(s, lexer);
+    if (lexer->lookahead == '\n') advance(s, lexer);
+  } else if (lexer->lookahead == '\n') {
+    advance(s, lexer);
+  } else {
+    return false;
+  }
+  enum { FIELD_START, UNQUOTED, QUOTED, AFTER_QUOTE } field = FIELD_START;
+  bool line_start = true;
+  while (!lexer->eof(lexer)) {
+    if (line_start) {
+      for (uint8_t quote = 0; quote < quote_depth; ++quote) {
+        while (lexer->lookahead == ' ' || lexer->lookahead == '\t')
+          advance(s, lexer);
+        if (lexer->lookahead != '>') return field != QUOTED;
+        advance(s, lexer);
+        if (lexer->lookahead == ' ' || lexer->lookahead == '\t')
+          advance(s, lexer);
+      }
+      while ((lexer->lookahead == ' ' || lexer->lookahead == '\t') &&
+             line_column(s, lexer) < column)
+        advance(s, lexer);
+      if (list_margin && line_column(s, lexer) < list_margin &&
+          !at_line_end(lexer)) return field != QUOTED;
+      if (in_div && lexer->lookahead == ':') {
+        BracketProbe *probe = (BracketProbe *)lexer;
+        uint32_t start = probe->position;
+        uint16_t colons = 0;
+        while (lexer->lookahead == ':') {
+          ++colons;
+          advance(s, lexer);
+        }
+        if (colons >= 3) {
+          while (lexer->lookahead == ' ' || lexer->lookahead == '\t')
+            advance(s, lexer);
+          if (at_line_end(lexer) || lexer->eof(lexer))
+            return field != QUOTED;
+        }
+        bracket_probe_rewind(probe, start);
+      }
+    }
+    if (line_start && lexer->lookahead == fence_char) {
+      uint16_t run = 0;
+      while (lexer->lookahead == fence_char) {
+        ++run;
+        advance(s, lexer);
+      }
+      if (run >= width) {
+        while (lexer->lookahead == ' ' || lexer->lookahead == '\t')
+          advance(s, lexer);
+        if (at_line_end(lexer) || lexer->eof(lexer))
+          return field != QUOTED;
+      }
+      if (field == AFTER_QUOTE) return false;
+      if (field == FIELD_START) field = UNQUOTED;
+      line_start = false;
+      continue;
+    }
+    int32_t c = lexer->lookahead;
+    if (at_line_end(lexer)) {
+      if (field != QUOTED) field = FIELD_START;
+      if (c == '\r') advance(s, lexer);
+      if (lexer->lookahead == '\n') advance(s, lexer);
+      line_start = true;
+      continue;
+    }
+    if (field == FIELD_START) {
+      if (c == '"') field = QUOTED;
+      else if (c != separator) field = UNQUOTED;
+    } else if (field == UNQUOTED) {
+      if (c == '"') return false;
+      if (c == separator) field = FIELD_START;
+    } else if (field == QUOTED) {
+      if (c == '"') field = AFTER_QUOTE;
+    } else {
+      if (c == '"') field = QUOTED;
+      else if (c == separator) field = FIELD_START;
+      else return false;
+    }
+    advance(s, lexer);
+    line_start = false;
+  }
+  return field != QUOTED;
+}
+
+static bool try_begin_code_block(Scanner *s, TSLexer *lexer, uint16_t width,
+                                 char fence_char, uint32_t column,
+                                 const bool *valid_symbols) {
+  Block *top = peek_block(s);
+  if (top && top->type == CODE_BLOCK) {
+    return false;
+  }
+  // Mark the begin token at the ticks before peeking ahead to validate the
+  // info string, so the lookahead is not folded into CODE_BLOCK_BEGIN.
+  mark_end(s, lexer);
+  uint8_t delimited_kind = 0;
+  if (fence_info_has_backtick(s, lexer)) {
+    return false;
+  }
+  code_fence_info_is_modeled_kind(s, lexer, &delimited_kind);
+  Block *host_list = find_list(s);
+  bool comment_restored = host_list &&
+      (host_list->flags & BLOCK_FLAG_COMMENT_RESTORES_LAZY);
+  uint32_t advances_before = s->advances;
+  // A description body keeps no line below its column (spec 548), so no
+  // fence owns the rest of a body any more.
+  bool owns_body = false;
+  bool description_has_closer = false;
+  bool description_probe =
+      comment_restored || (host_list && host_list->type == LIST_DEFINITION);
+  // A fence with no closer ahead is no opaque span in a colon container: the
+  // container's closer stays structural (PART 9 section 12).
+  bool in_div = top && (top->type == DIV || top->type == FIGURE_GROUP) &&
+                s->advances == advances_before;
+  bool unclosed_in_div = false;
+  bool table_candidate = s->table_attribute_pending && delimited_kind &&
+                         valid_symbols[DELIMITED_TABLE_BEGIN];
+  BracketProbe probe = bracket_probe_new(s, lexer);
+  if (description_probe || in_div) {
+    uint8_t indent = s->indent;
+    uint8_t level = s->block_quote_level;
+    uint16_t state = s->state;
+    uint32_t col_base = s->col_base;
+    bool has_closer =
+        code_fence_has_closer_ahead(s, &probe.lexer, fence_char, width, column, false, -1);
+    s->indent = indent;
+    s->block_quote_level = level;
+    s->state = state;
+    s->col_base = col_base;
+    if (description_probe) {
+      if (comment_restored) owns_body = !has_closer;
+      description_has_closer = host_list->type == LIST_DEFINITION && has_closer;
+    }
+    unclosed_in_div = in_div && !has_closer;
+  }
+  if (comment_restored) host_list->flags &= ~BLOCK_FLAG_COMMENT_RESTORES_LAZY;
+  bracket_probe_rewind(&probe, 0);
+  uint8_t table_quotes = 0;
+  for (int i = 0; i < s->open_blocks->size; ++i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (b->type == BLOCK_QUOTE && b->content_col <= column) ++table_quotes;
+  }
+  bool as_delimited_table =
+      table_candidate && delimited_body_valid(s, &probe.lexer, width,
+                                             fence_char, delimited_kind,
+                                             column, table_quotes,
+                                             host_list ? host_list->content_col : 0,
+                                             find_block(s, DIV) != NULL);
+  array_delete(&probe.characters);
+  s->table_attribute_pending = 0;
+  if (!as_delimited_table && !valid_symbols[CODE_BLOCK_BEGIN]) return false;
+  Block *quote = find_block(s, BLOCK_QUOTE);
+  Block *list = find_list(s);
+  bool marker_head = quote && list && !list_opened_in_quote(s, list) &&
+                     s->marker_end_col != 0 && column >= s->marker_end_col;
+  bool later = quote && (quote->flags & BLOCK_FLAG_OPAQUE_QUOTE_TAIL) && !marker_head;
+  if (marker_head) {
+    for (int i = s->open_blocks->size - 1; i >= 0; --i) {
+      Block *b = *array_get(s->open_blocks, i);
+      if (is_list(b->type)) break;
+      if (b->type == BLOCK_QUOTE) b->flags |= BLOCK_FLAG_OPAQUE_QUOTE_TAIL;
+    }
+  }
+  push_block(s, CODE_BLOCK,
+             width | (fence_char == '~' ? CODE_FENCE_TILDE : 0));
+  if (later) peek_block(s)->flags |= BLOCK_FLAG_LATER_OPAQUE_FENCE;
+  if (unclosed_in_div) peek_block(s)->flags |= BLOCK_FLAG_FENCE_UNCLOSED_IN_DIV;
+  if (description_has_closer) peek_block(s)->flags |= BLOCK_FLAG_DESCRIPTION_FENCE_HAS_CLOSER;
+  peek_block(s)->content_col = (uint8_t)column;
+  // A fence the description body holds DIRECTLY is the body's own block, and
+  // the body ends where it does. Recorded on the item: by the time the item
+  // boundary is reached this fence has been popped, and a body whose fence was
+  // its own block is then indistinguishable from one holding a nested item
+  // whose fence closed - which is the whole of #514.
+  if (list && list->type == LIST_DEFINITION) {
+    list->flags |= BLOCK_FLAG_BODY_OWNED_BY_FENCE;
+  }
+  if (owns_body) {
+    s->state |= STATE_FENCE_OWNS_BODY;
+  } else {
+    s->state &= ~STATE_FENCE_OWNS_BODY;
+  }
+  lexer->result_symbol = as_delimited_table ? DELIMITED_TABLE_BEGIN
+                                            : CODE_BLOCK_BEGIN;
+  return true;
+}
+
+/// A `%%%` comment fence, scanned line by line by the SCANNER rather than
+/// matched as one multi-line token by the grammar.
+///
+/// The construct used to be a single `token()` regex, which cannot survive a
+/// block quote: an internal token consumes its own text, so it would have to
+/// eat the `> ` prefixes, and then the scanner never sees those lines and its
+/// per-line block bookkeeping goes stale - the quote parsed as ERROR from the
+/// fence onward (tree-sitter-carve#45).
+///
+/// Nor can the body be `optional(block_quote_prefix) line` the way a code
+/// block's is: after the prefix token the parser is committed to a content
+/// line, so the closer is never offered and the fence runs to the end of the
+/// document. The scanner already knows the fence's width and the quote depth,
+/// so it decides where the body ends and the grammar is left with three plain
+/// tokens and no ambiguity to resolve.
+///
+/// Consume a run of block-quote markers and then a `%` run, and report the
+/// width. Used to ask, of the line the lexer is sitting on, "is this the
+/// closer?" - the answer is an EXACT width match, the rule the carve engines
+/// follow: a `%%%%` line does not close a `%%%` fence.
+static uint16_t scan_comment_fence_line_width(Scanner *s, TSLexer *lexer) {
+  consume_whitespace(s, lexer);
+  bool ending_newline = false;
+  uint8_t markers = scan_block_quote_markers(s, lexer, &ending_newline);
+  if (ending_newline) {
+    return 0;
+  }
+  // The line has to sit at the fence's OWN quote depth. A `> %%%` does not
+  // close a fence opened at the top level - there the `%%%` was never a fence
+  // at all, it was an unterminated opener, which degrades to a line comment -
+  // and a `> %%%` does not close one opened at `> > `. The open BLOCK_QUOTE
+  // blocks are that depth, so no extra bookkeeping is needed.
+  if (markers != count_blocks(s, BLOCK_QUOTE)) {
+    return 0;
+  }
+  while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+    advance(s, lexer);
+  }
+  return consume_percents(s, lexer);
+}
+
+/// Consume the rest of the line, leaving the lexer ON its newline.
+static void scan_to_line_end(Scanner *s, TSLexer *lexer) {
+  while (!lexer->eof(lexer) && !at_line_end(lexer)) {
+    advance(s, lexer);
+  }
+}
+
+static bool parse_comment_fence(Scanner *s, TSLexer *lexer,
+                                const bool *valid_symbols) {
+  // Nothing to say unless one of this construct's tokens is wanted here: the
+  // classification below CONSUMES the line, and a probe that consumes and then
+  // declines leaves every later probe in the same call reading from the middle
+  // of it.
+  if (!valid_symbols[BLOCK_CLOSE] && !valid_symbols[COMMENT_FENCE_CONTENT] &&
+      !valid_symbols[COMMENT_FENCE_END]) {
+    return false;
+  }
+  Block *top = peek_block(s);
+  if (!top || top->type != COMMENT_FENCE) {
+    return false;
+  }
+  uint16_t width = top->data;
+
+  // Is the line the lexer sits on this fence's closer? Asked once, because
+  // asking twice would leave the second question looking at the middle of the
+  // first answer.
+  uint16_t percents = scan_comment_fence_line_width(s, lexer);
+  bool closes = percents == width;
+
+  if (closes) {
+    // The end marker is asked for FIRST where both are valid, the order the
+    // code fence beside this one uses: `_block_close` is zero-width, so if it
+    // answered here too it would answer forever and the marker would never be
+    // reached.
+    if (valid_symbols[COMMENT_FENCE_END]) {
+      // Trailing text on a closer is allowed and discarded (`%%% end`), so the
+      // marker runs to the end of its line.
+      scan_to_line_end(s, lexer);
+      remove_block(s);
+      mark_end(s, lexer);
+      lexer->result_symbol = COMMENT_FENCE_END;
+      return true;
+    }
+    // `_block_close` comes before the end marker in the rule and is zero-width,
+    // so the closer line is still there for the marker token.
+    if (valid_symbols[BLOCK_CLOSE]) {
+      lexer->result_symbol = BLOCK_CLOSE;
+      return true;
+    }
+    return false;
+  }
+
+  if (!valid_symbols[COMMENT_FENCE_CONTENT]) {
+    return false;
+  }
+  // Body lines, up to but not including the closer. Whatever prefixes they
+  // carry are the comment's, which is the whole point of scanning them here.
+  bool consumed = false;
+  while (!lexer->eof(lexer)) {
+    scan_to_line_end(s, lexer);
+    if (lexer->eof(lexer)) {
+      break;
+    }
+    consume_line_end(s, lexer);
+    consumed = true;
+    mark_end(s, lexer);
+    if (lexer->eof(lexer)) {
+      break;
+    }
+    if (scan_comment_fence_line_width(s, lexer) == width) {
+      break;
+    }
+  }
+  if (!consumed) {
+    return false;
+  }
+  lexer->result_symbol = COMMENT_FENCE_CONTENT;
+  return true;
+}
+
+static bool parse_comment_fence_begin(Scanner *s, TSLexer *lexer,
+                                      const bool *valid_symbols) {
+  if (!valid_symbols[COMMENT_FENCE_BEGIN]) {
+    return false;
+  }
+  Block *top = peek_block(s);
+  if (top && top->type == COMMENT_FENCE) {
+    return false;
+  }
+  Block *host_list = find_list(s);
+  bool below_content = host_list && host_list->type != LIST_DEFINITION &&
+      s->indent >= host_list->data &&
+      s->indent < list_item_margin(s, host_list);
+  // A list item holding the fence directly keeps no body line below its
+  // content column: that line ends the item, and a closer past it closes
+  // nothing (spec 583). Measured only where no quote or container intervenes.
+  uint8_t item_margin = 0;
+  Block *innermost = peek_block(s);
+  if (host_list && innermost == host_list && !below_content &&
+      count_blocks(s, BLOCK_QUOTE) == 0) {
+    item_margin = list_item_margin(s, host_list);
+    // An opener short of the margin is the comment-retention case; it keeps
+    // its own reading.
+    if (line_column(s, lexer) < item_margin) item_margin = 0;
+  }
+  uint16_t percents = consume_percents(s, lexer);
+  if (percents < 3 || percents == COMMENT_FENCE_CAP) {
+    return false;
+  }
+  mark_end(s, lexer);
+
+  // An UNTERMINATED `%%%` is not a fence: the engines degrade it to a
+  // single-line comment rather than swallowing the rest of the document, and
+  // the regex this replaces required a closer too. Look for one before
+  // committing - the lookahead is scratch, since the token end is already
+  // pinned at the opener.
+  scan_to_line_end(s, lexer);
+  while (!lexer->eof(lexer)) {
+    consume_line_end(s, lexer);
+    if (lexer->eof(lexer)) {
+      return false;
+    }
+    bool leaves_item = false;
+    if (item_margin > 0) {
+      while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+        advance(s, lexer);
+      }
+      leaves_item = !at_line_end(lexer) && !lexer->eof(lexer) &&
+                    line_column(s, lexer) < item_margin;
+    }
+    uint16_t run = scan_comment_fence_line_width(s, lexer);
+    if (leaves_item && run != percents) {
+      return false;
+    }
+    if (run == percents) {
+      if (below_content) {
+        host_list->flags |= BLOCK_FLAG_COMMENT_RESTORES_LAZY;
+      }
+      push_block(s, COMMENT_FENCE, percents);
+      lexer->result_symbol = COMMENT_FENCE_BEGIN;
+      return true;
+    }
+    scan_to_line_end(s, lexer);
+  }
+  return false;
+}
+
+// A closed comment fence is opaque inside the inline run of a term.
+static bool parse_term_comment(Scanner *s, TSLexer *lexer) {
+  Block *list = find_list(s);
+  if (!list || list->type != LIST_DEFINITION ||
+      !(list->flags & BLOCK_FLAG_DEFINITION_TERM)) {
+    return false;
+  }
+  consume_whitespace(s, lexer);
+  if (lexer->lookahead != '%') return false;
+  uint16_t width = consume_percents(s, lexer);
+  if (width < 3 || width == COMMENT_FENCE_CAP) return false;
+  uint32_t margin = 0;
+  bool below_term = false;
+  for (int i = s->open_blocks->size - 1; i >= 0; --i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (b == list) { below_term = true; continue; }
+    if (!below_term) continue;
+    if (is_list(b->type) || b->type == DIV || b->type == FIGURE_GROUP ||
+        b->type == BLOCK_QUOTE) { margin = b->content_col; break; }
+    if (b->type == FOOTNOTE) {
+      margin = b->data;
+      for (int j = i - 1; j >= 0; --j) {
+        Block *parent = *array_get(s->open_blocks, j);
+        if (parent->type == BLOCK_QUOTE) { margin += parent->content_col; break; }
+      }
+      break;
+    }
+  }
+  uint8_t quote_depth = count_blocks(s, BLOCK_QUOTE);
+  scan_to_line_end(s, lexer);
+  while (!lexer->eof(lexer)) {
+    consume_line_end(s, lexer);
+    if (lexer->eof(lexer)) return false;
+    consume_whitespace(s, lexer);
+    uint8_t markers = 0;
+    while (lexer->lookahead == '>') {
+      advance(s, lexer);
+      if (lexer->lookahead == ' ') {
+        advance(s, lexer); ++markers;
+      } else if (at_line_end(lexer) || lexer->eof(lexer)) {
+        ++markers; break;
+      } else break;
+    }
+    if (markers < quote_depth) return false;
+    consume_whitespace(s, lexer);
+    if (!at_line_end(lexer) && !lexer->eof(lexer) &&
+        line_column(s, lexer) < margin) return false;
+    uint16_t run = consume_percents(s, lexer);
+    if (markers == quote_depth && run == width) {
+      scan_to_line_end(s, lexer);
+      mark_end(s, lexer);
+      lexer->result_symbol = TERM_COMMENT;
+      return true;
+    }
+    scan_to_line_end(s, lexer);
+  }
+  return false;
+}
+
+/// Where a verbatim run that has just opened comes to an end.
+typedef enum {
+  // A run of the same width closed it.
+  VerbatimRunCloses,
+  // It reached the `marker}` that ends the braced span it sits in.
+  VerbatimRunReachesSpanCloser,
+  // Neither: the block ended first.
+  VerbatimRunReachesBlockEnd,
+} VerbatimRunEnd;
+
+/// Read a run to its end, from the character after its opening ticks.
+///
+/// Two callers ask this, and THEY HAVE TO AGREE. `parse_verbatim_content`
+/// needs the answer before it starts scanning, because it marks as it goes and
+/// a mark only ever moves forward: by the time a span closer turns out to be
+/// the end of the content, the position is behind it. A matching run still
+/// wins wherever one comes first - `{*`a*}`b*}` is one strong over the code
+/// span `a*}` - which is what rules out deciding it while scanning.
+/// `substitution_arrow_ahead` needs the same reading of the same run, or a
+/// `{~` commits to a substitution whose arrow no token can produce.
+static bool paragraph_block_opener_ahead(Scanner *s, TSLexer *lexer, int markers_seen);
+static bool scan_continuation_marker_at_paragraph_end(Scanner *s,
+                                                      TSLexer *lexer,
+                                                      uint8_t markers);
+
+static bool in_caption(Scanner *s) {
+  return find_block(s, TABLE_CAPTION) || (s->state & STATE_SINGLE_LINE_CAPTION);
+}
+
+static bool caption_line_ends_block(Scanner *s, BracketProbe *probe, uint8_t indent) {
+  if (!in_caption(s)) return false;
+  uint32_t restart = probe->position;
+  uint32_t base = s->col_base;
+  // Block classification still reads the whole physical line.
+  bool extension_cut = probe->extension_cut;
+  probe->extension_cut = false;
+  TSLexer *lexer = &probe->lexer;
+  bool combined_probe = s->combined_probe;
+  s->combined_probe = false;
+  uint8_t quotes = count_blocks(s, BLOCK_QUOTE);
+  uint8_t seen = 0;
+  while (seen < quotes && lexer->lookahead == '>') {
+    uint32_t quote_start = probe->position;
+    uint32_t quote_base = s->col_base;
+    advance(s, lexer);
+    if (lexer->lookahead == ' ') advance(s, lexer);
+    else if (!at_line_end(lexer) && !lexer->eof(lexer)) {
+      bracket_probe_rewind(probe, quote_start);
+      s->col_base = quote_base;
+      break;
+    }
+    ++seen;
+  }
+  bool item_inside_quote = false;
+  for (int i = s->open_blocks->size - 1; i >= 0; --i) {
+    Block *block = *array_get(s->open_blocks, i);
+    if (block->type == BLOCK_QUOTE) break;
+    if (is_list(block->type) || block->type == FOOTNOTE) item_inside_quote = true;
+  }
+  bool extra_quote_indent = seen > 0 && !item_inside_quote &&
+      (lexer->lookahead == ' ' || lexer->lookahead == '\t');
+  consume_whitespace(s, lexer);
+  uint32_t content_column = line_column(s, lexer);
+  uint32_t content_position = probe->position;
+  bool at_margin = at_block_opener_margin(s, content_column);
+  bool content_blank = at_line_end(lexer) || lexer->eof(lexer);
+  bool comment_line = lexer->lookahead == '%';
+  bool caret_indented = false;
+  if (lexer->lookahead == '^') {
+    uint32_t caption_margin = 0;
+    for (int i = s->open_blocks->size - 1; i >= 0; --i) {
+      Block *block = *array_get(s->open_blocks, i);
+      if (is_list(block->type) || block->type == BLOCK_QUOTE ||
+          block->type == DIV || block->type == FIGURE_GROUP || block->type == FOOTNOTE) {
+        if (block->type == FOOTNOTE) {
+          caption_margin = block->data;
+          for (int j = i - 1; j >= 0; --j) {
+            Block *outer = *array_get(s->open_blocks, j);
+            if (outer->type == BLOCK_QUOTE) {
+              caption_margin += outer->content_col;
+              break;
+            }
+          }
+          break;
+        }
+        if (block->content_col != 0) {
+          caption_margin = block->content_col;
+          break;
+        }
+      }
+    }
+    caret_indented = content_column > caption_margin;
+  }
+  bool deeper_quote = false;
+  if (seen == quotes && lexer->lookahead == '>') {
+    advance(s, lexer);
+    deeper_quote = lexer->lookahead == ' ' || at_line_end(lexer) || lexer->eof(lexer);
+  }
+  uint32_t marker_end_col = s->marker_end_col;
+  uint8_t marker_attribute_width = s->marker_attribute_width;
+  uint8_t saved_indent = s->indent;
+  uint16_t saved_state = s->state;
+  uint8_t saved_level = s->block_quote_level;
+  bool ends = content_blank ||
+      (at_margin && !extra_quote_indent && !caret_indented && deeper_quote);
+  Block *note = find_block(s, FOOTNOTE);
+  uint32_t note_margin = note ? note->data : 0;
+  bool below_note = false;
+  for (int i = s->open_blocks->size - 1; note && i >= 0; --i) {
+    Block *block = *array_get(s->open_blocks, i);
+    if (block == note) below_note = true;
+    else if (below_note && block->type == BLOCK_QUOTE) {
+      note_margin += block->content_col;
+      break;
+    }
+  }
+  bool note_outdent = note && content_column < note_margin;
+  if (!ends && seen == 0 && lexer->lookahead == '+' &&
+      find_list(s) != NULL) {
+    ends = scan_continuation_marker_at_paragraph_end(s, lexer, 0);
+  }
+  if (!ends && ((at_margin && !extra_quote_indent && !caret_indented) ||
+                comment_line || note_outdent)) {
+    if (seen > 0 && !note_outdent) {
+      bracket_probe_rewind(probe, content_position);
+      s->indent = indent;
+      s->block_quote_level = seen;
+      ends = paragraph_block_opener_ahead(s, lexer, seen);
+    } else {
+      bracket_probe_rewind(probe, restart);
+      s->col_base = base;
+      ends = verbatim_line_ends_paragraph(s, lexer, indent);
+    }
+  }
+  s->indent = saved_indent;
+  s->state = saved_state;
+  s->block_quote_level = saved_level;
+  s->marker_end_col = marker_end_col;
+  s->marker_attribute_width = marker_attribute_width;
+  probe->extension_cut = extension_cut;
+  bracket_probe_rewind(probe, restart);
+  s->col_base = base;
+  s->combined_probe = combined_probe;
+  return ends;
+}
+
+static bool caption_verbatim_line_continues(Scanner *s, TSLexer *lexer) {
+  BracketProbe probe = bracket_probe_new(s, lexer);
+  consume_line_end(s, &probe.lexer);
+  uint8_t indent = consume_whitespace(s, &probe.lexer);
+  bool continues = !probe.lexer.eof(&probe.lexer) && !at_line_end(&probe.lexer) &&
+      !caption_line_ends_block(s, &probe, indent);
+  array_delete(&probe.characters);
+  return continues;
+}
+
+static VerbatimRunEnd probe_verbatim_run(Scanner *s, TSLexer *lexer,
+                                        uint8_t width, char marker,
+                                        bool in_table_row, BracketProbe *probe) {
+  // A matching run wins from ANYWHERE in the block, including from behind the
+  // closer: `{*`a*}`b*}` is one strong over the code span `a*}`, and
+  // `{= `h =} `i =}` one mark over `h =} `. So the first closer is remembered
+  // and the scan carries on rather than answering there.
+  bool saw_closer = false;
+  Inline *bracket = marker == 2 ? find_inline(s, SQUARE_BRACKET_SPAN) : NULL;
+  uint32_t literal_closes = bracket ? square_literal_closes(bracket) : 0;
+  int32_t previous = marker == 1 ? '`' : 0;
+  Inline *bare_parent = marker == 3 ? peek_inline(s) : NULL;
+  char bare_marker = bare_parent ? inline_marker(bare_parent->type) : 0;
+  uint32_t bare_closes = bare_parent && bare_parent->literal_closes ? bare_parent->literal_closes - 1 : 0;
+  Inline *outer = marker == 1 && s->combined_probe ? peek_inline(s) : NULL;
+  char outer_marker = outer ? inline_marker(outer->type) : 0;
+  bool row_closing_pipe_candidate = false;
+  while (!lexer->eof(lexer)) {
+    if (at_line_end(lexer)) {
+      Block *host = peek_block(s);
+      if (host && (host->type == HEADING || disallow_newline(host))) break;
+      // Buffered caption lookahead can reset lone-CR columns without moving
+      // the host lexer's marked end. Other callers retain raw lookahead.
+      if (in_table_row && row_closing_pipe_candidate) {
+        break;
+      }
+      if (probe) {
+        consume_line_end(s, lexer);
+      } else if (lexer->lookahead == '\r') {
+        advance(s, lexer);
+        if (lexer->lookahead == '\n') {
+          advance(s, lexer);
+        }
+      } else {
+        advance(s, lexer);
+      }
+      uint8_t indent = consume_whitespace(s, lexer);
+      // A blank line ends the block, and with it both the run and the span.
+      if (lexer->eof(lexer) || at_line_end(lexer)) {
+        break;
+      }
+      if (probe && caption_line_ends_block(s, probe, indent)) break;
+      previous = '\n';
+      row_closing_pipe_candidate = false;
+      continue;
+    }
+    if (bare_marker && bare_closes && lexer->lookahead == ']') {
+      --bare_closes;
+      advance(s, lexer);
+      continue;
+    }
+    if (bare_marker && lexer->lookahead == bare_marker) {
+      advance(s, lexer);
+      if (!bare_closes && previous && previous != ' ' && previous != '\t' && previous != '\r' && previous != '\n' &&
+          !carve_is_alnum_ascii(lexer->lookahead)) return VerbatimRunReachesSpanCloser;
+      previous = bare_marker;
+      continue;
+    }
+    if (marker == 2 && lexer->lookahead == ']') {
+      if (!literal_closes) return VerbatimRunReachesSpanCloser;
+      --literal_closes;
+      advance(s, lexer);
+      continue;
+    }
+    if (lexer->lookahead == '`') {
+      if (consume_chars(s, lexer, '`') == width) {
+        return VerbatimRunCloses;
+      }
+      previous = '`';
+      row_closing_pipe_candidate = false;
+      continue;
+    }
+    if (marker == 1 && outer_marker && lexer->lookahead == outer_marker) {
+      advance(s, lexer);
+      if (((outer->flags & INLINE_BRACED) && lexer->lookahead == '}') ||
+          (!(outer->flags & INLINE_BRACED) && previous != 0 && previous != ' ' &&
+           previous != '\t' && !carve_is_alnum_ascii(lexer->lookahead)))
+        return VerbatimRunReachesBlockEnd;
+      if (outer_marker == '*' && lexer->lookahead == '/' && previous != 0 &&
+          previous != ' ' && previous != '\t' && previous != '\n')
+        return VerbatimRunReachesSpanCloser;
+      previous = outer_marker;
+      continue;
+    }
+    if (marker != 0 && !saw_closer && lexer->lookahead == (marker == 1 ? '*' : marker)) {
+      advance(s, lexer);
+      if (lexer->lookahead == (marker == 1 ? '/' : '}') &&
+          (marker != 1 || (previous != 0 && previous != ' ' && previous != '\t' && previous != '\n'))) {
+        if (marker == 1) return VerbatimRunReachesSpanCloser;
+        saw_closer = true;
+      }
+      previous = marker == 1 ? '*' : marker;
+      row_closing_pipe_candidate = false;
+      continue;
+    }
+    if (in_table_row && lexer->lookahead == '|') {
+      row_closing_pipe_candidate = true;
+      advance(s, lexer);
+      continue;
+    }
+    if (lexer->lookahead != ' ' && lexer->lookahead != '\t') {
+      row_closing_pipe_candidate = false;
+    }
+    previous = lexer->lookahead;
+    advance(s, lexer);
+  }
+  return saw_closer ? VerbatimRunReachesSpanCloser : VerbatimRunReachesBlockEnd;
+}
+
+/// Consume `>` markers, indentation and a fence run from a line start inside a
+/// quote, and report whether that line closes the open code fence.
+static VerbatimRunEnd read_verbatim_run(Scanner *s, TSLexer *lexer, uint8_t width, char marker, bool in_table_row) {
+  if (!in_caption(s) && !find_inline(s, EXTENSION)) return probe_verbatim_run(s, lexer, width, marker, in_table_row, NULL);
+  if (lexer->advance == bracket_probe_advance)
+    return probe_verbatim_run(s, lexer, width, marker, in_table_row, (BracketProbe *)lexer);
+  BracketProbe probe = bracket_probe_new(s, lexer);
+  VerbatimRunEnd end = probe_verbatim_run(s, &probe.lexer, width, marker, in_table_row, &probe);
+  array_delete(&probe.characters);
+  return end;
+}
+
+static bool scan_quoted_code_fence_closer(Scanner *s, TSLexer *lexer) {
+  Block *top = peek_block(s);
+  uint8_t quotes = count_blocks(s, BLOCK_QUOTE);
+  // A div with no paragraph open ends at a short line too (#411); only the
+  // code fence has a closer to find.
+  bool div = top && (top->type == DIV || top->type == FIGURE_GROUP);
+  if (!top || (top->type != CODE_BLOCK && !div) || quotes == 0) {
+    return false;
+  }
+  consume_whitespace(s, lexer);
+  bool ending_newline = false;
+  uint8_t markers = scan_block_quote_markers(s, lexer, &ending_newline);
+  Block *list = find_list(s);
+  Block *quote = find_block(s, BLOCK_QUOTE);
+  bool attached_prefix = top->type == CODE_BLOCK && list && quote &&
+      (s->state & STATE_LIST_CONTINUATION) &&
+      (quote->flags & BLOCK_FLAG_QUOTE_ON_ITEM_MARKER_LINE) &&
+      list_opened_in_quote(s, list) && markers + 1 == quotes &&
+      list->content_col == s->continuation_col;
+  if ((markers != quotes && !attached_prefix) || ending_newline) {
+    if (markers != quotes && list && list_opened_in_quote(s, list)) {
+      s->state |= STATE_QUOTED_LINE_SHORT_OF_ITEM;
+    }
+    return false;
+  }
+  consume_whitespace(s, lexer);
+  if (attached_prefix && line_column(s, lexer) < top->content_col) {
+    s->state |= STATE_QUOTED_LINE_SHORT_OF_ITEM;
+    return false;
+  }
+  if (list && list_opened_in_quote(s, list) && !at_line_end(lexer) &&
+      !lexer->eof(lexer) && line_column(s, lexer) < list->content_col) {
+    s->state |= STATE_QUOTED_LINE_SHORT_OF_ITEM;
+    return false;
+  }
+  if (div || line_column(s, lexer) != top->content_col) {
+    return false;
+  }
+  char fence_char = (top->data & CODE_FENCE_TILDE) ? '~' : '`';
+  uint16_t width = consume_fence_run(s, lexer, fence_char);
+  return width >= (top->data & CODE_FENCE_WIDTH) &&
+         code_fence_closer_tail_is_blank(s, lexer);
+}
+
+/// The quoted closer the newline before it announced: `_block_close` first,
+/// zero width. The line's `>` markers and the end marker then follow through
+/// the ordinary quote continuation and fence paths.
+static bool parse_quoted_code_fence_closer(Scanner *s, TSLexer *lexer,
+                                           const bool *valid_symbols) {
+  if (!(s->state & STATE_QUOTED_FENCE_CLOSER)) {
+    return false;
+  }
+  Block *top = peek_block(s);
+  if (!top || top->type != CODE_BLOCK) {
+    s->state &= ~STATE_QUOTED_FENCE_CLOSER;
+    return false;
+  }
+  // A closer indented to a quoted list item's column: the markers are taken,
+  // and the end marker carries the indentation before its run.
+  if (line_column(s, lexer) != 0 && s->block_quote_level > 0) {
+    if (!valid_symbols[CODE_BLOCK_END] ||
+        (lexer->lookahead != ' ' && lexer->lookahead != '\t')) {
+      return false;
+    }
+    consume_whitespace(s, lexer);
+    return lexer->lookahead == '`' &&
+           parse_code_fence(s, lexer, valid_symbols, (char)lexer->lookahead);
+  }
+  // Once the fence's own close is taken the end marker is valid, and the
+  // markers go to the quote continuation.
+  if (valid_symbols[BLOCK_CLOSE] && !valid_symbols[CODE_BLOCK_END]) {
+    lexer->result_symbol = BLOCK_CLOSE;
+    return true;
+  }
+  return false;
+}
+
+static bool parse_code_fence(Scanner *s, TSLexer *lexer,
+                             const bool *valid_symbols, char fence_char) {
+  bool supports_verbatim = fence_char == '`';
+  // A closer needs an open code block. Right after one closed zero-width
+  // (`- a` / `  ```` / `  x` / ` ````), the optional end token is still on
+  // offer; consuming the run then would leave the token end past it.
+  Block *open_block = peek_block(s);
+  bool closer_possible =
+      (valid_symbols[CODE_BLOCK_END] || valid_symbols[BLOCK_CLOSE]) &&
+      open_block && open_block->type == CODE_BLOCK;
+  if (!valid_symbols[CODE_BLOCK_BEGIN] &&
+      !valid_symbols[DELIMITED_TABLE_BEGIN] && !closer_possible &&
+      !(supports_verbatim && (valid_symbols[VERBATIM_BEGIN] ||
+                              valid_symbols[VERBATIM_END]))) {
+    return false;
+  }
+
+  // A run on a line short of an open fence's quote markers is neither its
+  // closer nor its body: the line leaves the quote, which ends the fence
+  // unclosed. Declined before the run is consumed, so the quote can close.
+  Block *open_fence = peek_block(s);
+  if (open_fence && open_fence->type == CODE_BLOCK &&
+      count_blocks(s, BLOCK_QUOTE) > s->block_quote_level) {
+    Block *quote = find_block(s, BLOCK_QUOTE);
+    Block *list = find_list(s);
+    bool attached_prefix = quote && list &&
+        (s->state & STATE_LIST_CONTINUATION) &&
+        (quote->flags & BLOCK_FLAG_QUOTE_ON_ITEM_MARKER_LINE) &&
+        list_opened_in_quote(s, list) &&
+        count_blocks(s, BLOCK_QUOTE) == s->block_quote_level + 1 &&
+        list->content_col == s->continuation_col;
+    if (!attached_prefix) return false;
+  }
+  // A line short of an open quote's markers closes that quote before a fence
+  // opens (PART 0 S4).
+  if (valid_symbols[BLOCK_CLOSE] && !closer_possible &&
+      !(s->state & STATE_LIST_CONTINUATION) &&
+      count_blocks(s, BLOCK_QUOTE) > s->block_quote_level) {
+    return false;
+  }
+
+  // Where the run STARTS, read before it is consumed: the opener guard below
+  // asks whether the fence stands at a list item's content column, and by then
+  // the lexer sits past the ticks.
+  bool measure_fence_col = valid_symbols[CODE_BLOCK_BEGIN] ||
+                           valid_symbols[DELIMITED_TABLE_BEGIN] || closer_possible;
+  uint32_t fence_col = measure_fence_col ? line_column(s, lexer) : 0;
+  if (measure_fence_col && s->indent > fence_col && s->marker_end_col == 0) {
+    fence_col = s->indent;
+  }
+  uint16_t width = consume_fence_run(s, lexer, fence_char);
+  if (width == 0) {
+    return false;
+  }
+
+  if (width >= 3) {
+    // Does this line CLOSE the open fence? One question, asked once, for both
+    // tokens a closer line yields: the zero-width BLOCK_CLOSE the grammar takes
+    // first, then CODE_BLOCK_END. Asking it separately in each emitter left the
+    // second copy unreachable - BLOCK_CLOSE always runs first, so no input
+    // could reach a CODE_BLOCK_END whose tail was not already blank, and the
+    // duplicate check was a clause no mutation could break. This is the same
+    // collapse #104 made for the colon fence's opener and peek.
+    if ((valid_symbols[CODE_BLOCK_END] || valid_symbols[BLOCK_CLOSE]) &&
+        code_fence_run_matches_open_block(s, width, fence_char, fence_col)) {
+      // CODE_BLOCK_END spans the run, so pin it BEFORE the tail peek advances
+      // the lexer; BLOCK_CLOSE is zero width and keeps the scan-entry mark.
+      if (valid_symbols[CODE_BLOCK_END]) {
+        mark_end(s, lexer);
+      }
+      if (!code_fence_closer_tail_is_blank(s, lexer)) {
+        // Fence BODY (``` js inside an open fence). The peek moved the lexer,
+        // so this line must not fall through to the opener path below, whose
+        // `mark_end` would pin the begin token past the whitespace it ate.
+        return false;
+      }
+      if (valid_symbols[CODE_BLOCK_END]) {
+        note_fence_blank_quote_plus(s, lexer);
+        remove_block(s);
+        lexer->result_symbol = CODE_BLOCK_END;
+      } else {
+        lexer->result_symbol = BLOCK_CLOSE;
+      }
+      return true;
+    }
+    // Pin the token end at the ticks before `try_begin_code_block` peeks past
+    // them to validate the fence info string: that validation may advance the
+    // lexer before failing, and the verbatim fallback below must not swallow
+    // the lookahead (it intentionally does not re-mark).
+    mark_end(s, lexer);
+    // A fence short of its container's margin opens nothing; the ticks fall
+    // through to the verbatim handling below. Only the OPENER is guarded -- a
+    // closer is matched against its opener's block, above.
+    // A fence on a MARKER LINE stands at the item's content column, but the
+    // line indent still reads 0 there - the marker was consumed after it was
+    // measured - so `has_extra_indent` calls the fence under-indented and the
+    // ticks fall through to the inline verbatim below. `- ``` ` opens a code
+    // block in the item, exactly as the same fence one line down already does.
+    // Same question `scan_unordered_list_marker_token` asks for `- - A`.
+    bool at_marker_content_col =
+        s->marker_end_col != 0 && fence_col == s->marker_end_col;
+    // The indent there still counts the item indentation before the prefix.
+    Block *note_quote = find_block(s, BLOCK_QUOTE);
+    bool attached_in_quoted_note = (s->state & STATE_LIST_CONTINUATION) &&
+        note_quote && quoted_note_inside_item(s) &&
+        s->block_quote_level == count_blocks(s, BLOCK_QUOTE) &&
+        fence_col == note_quote->content_col + s->continuation_col;
+    if ((valid_symbols[CODE_BLOCK_BEGIN] ||
+         valid_symbols[DELIMITED_TABLE_BEGIN]) && !line_block_body(s) &&
+        (!has_extra_indent(s) || at_marker_content_col ||
+         attached_in_quoted_note ||
+         quoted_item_column_reached(s, fence_col)) &&
+        try_begin_code_block(s, lexer, width, fence_char, fence_col,
+                             valid_symbols)) {
+      return true;
+    }
+  }
+
+  if (!supports_verbatim) {
+    return false;
+  }
+
+  Inline *top = peek_inline(s);
+  if (valid_symbols[VERBATIM_END] && top && top->type == VERBATIM) {
+    remove_inline(s);
+    // For ticks >= 3 the end is already pinned above (fence validation may have
+    // advanced the lexer); only re-mark for the 1-2 tick inline case.
+    if (width < 3) {
+      mark_end(s, lexer);
+    }
+    lexer->result_symbol = VERBATIM_END;
+    return true;
+  }
+  if (valid_symbols[VERBATIM_BEGIN]) {
+    // For ticks >= 3 the end is already pinned above; re-mark here for the
+    // 1-2 tick inline-verbatim case where no fence validation ran.
+    uint8_t flags = 0;
+    bool after_extension_cut = top &&
+        ((top->type >= EMPHASIS && top->type <= BOLD_ITALIC && top->literal_closes) ||
+         (top->type == SQUARE_BRACKET_SPAN &&
+          (top->flags & (INLINE_BRACED | INLINE_EXTENSION_CUT)) ==
+              (INLINE_BRACED | INLINE_EXTENSION_CUT)));
+    if (width < 3 || (after_extension_cut && !valid_symbols[CODE_BLOCK_BEGIN])) {
+      mark_end(s, lexer);
+      // Only here is the lexer known to stand right after the ticks: the
+      // three-tick path let `try_begin_code_block` read the info string first.
+      char marker = span_verbatim_stop_marker(peek_inline(s));
+      bool in_table_row = valid_symbols[TABLE_CELL_END] ||
+                          find_block(s, TABLE_ROW) != NULL;
+      if (marker != 0 && read_verbatim_run(s, lexer, width, marker,
+                                           in_table_row) ==
+                             VerbatimRunReachesSpanCloser) {
+        flags = INLINE_STOPS_AT_SPAN_CLOSER;
+      }
+    }
+    lexer->result_symbol = VERBATIM_BEGIN;
+    push_inline_flagged(s, VERBATIM, width, flags);
+    return true;
+  }
+  return false;
+}
+
+// Scan a '- ' or similar.
+
+/// Consume an attribute block GLUED to a list marker, if one is there.
+///
+/// `1.{.x} item` and `-{.x} item` are lists in every engine: the marker takes an
+/// attribute block before its separator, and the block's own rules apply inside
+/// it - including quoting, so the `}` in `1.{title='a}b'} item` closes nothing
+/// (carve#215, corpus `a-marker-attribute-may-hold-a-quoted-brace`).
+///
+/// This grammar required a space directly after the marker, so every one of
+/// those lines stayed a paragraph: no list highlighting, no indentation
+/// behaviour, no item textobject, for a line every renderer treats as an item
+/// (#81). `scan_valid_inline_attribute` already validates the payload and is
+/// quote-aware, so the marker path reuses it rather than growing a second
+/// brace-matching loop that could disagree with the first.
+///
+/// Returns false only when a `{` is present and does NOT form a valid block -
+/// `1.{not!} item` stays a paragraph, which is what the attribute grammar says.
+static bool scan_marker_attribute(Scanner *s, TSLexer *lexer) {
+  s->marker_attribute_width = 0;
+  if (lexer->lookahead != '{') {
+    return true;
+  }
+  uint32_t start = line_column(s, lexer);
+  if (!scan_valid_inline_attribute(s, lexer)) {
+    return false;
+  }
+  s->marker_attribute_width = (uint8_t)(line_column(s, lexer) - start);
+  return true;
+}
+
+static bool scan_bullet_list_marker(Scanner *s, TSLexer *lexer, char marker) {
+  if (lexer->lookahead != marker) {
+    return false;
+  }
+  advance(s, lexer);
+  if (!scan_marker_attribute(s, lexer)) {
+    return false;
+  }
+  if (lexer->lookahead != ' ') {
+    return false;
+  }
+  advance(s, lexer);
+  return true;
+}
+
+/// Classify a COLON-led line in ONE pass: `:: ` opens a definition TERM, `:`
+/// plus one or more spaces a DESCRIPTION, anything else neither.
+///
+/// One pass, because the lexer cannot rewind and both markers begin with the
+/// same character: asking "is it a term?" and then "is it a description?"
+/// leaves the second question looking at the middle of the first answer, which
+/// is how a `:  d` line stopped being recognized after a term (#48).
+///
+/// The separator is a space and only a space - `::t` is a paragraph, and a tab
+/// in its place is one too, the rule every other marker follows. A description
+/// takes the complete run, with one space canonical; its width establishes the
+/// authored content column (carve#1757).
+static TokenType scan_definition_marker_token(Scanner *s, TSLexer *lexer) {
+  if (lexer->lookahead != ':') {
+    return IGNORED;
+  }
+  advance(s, lexer);
+  if (lexer->lookahead == ':') {
+    advance(s, lexer);
+    if (lexer->lookahead != ' ') {
+      return IGNORED;
+    }
+    advance(s, lexer);
+    return LIST_MARKER_DEFINITION;
+  }
+  if (lexer->lookahead != ' ') {
+    return IGNORED;
+  }
+  advance(s, lexer);
+  while (lexer->lookahead == ' ') {
+    advance(s, lexer);
+  }
+  return LIST_MARKER_DESCRIPTION;
+}
+
+// Scan a `> ` or `>\n`.
+static bool scan_block_quote_marker(Scanner *s, TSLexer *lexer,
+                                    bool *ending_newline) {
+  if (lexer->lookahead != '>') {
+    return false;
+  }
+  advance(s, lexer);
+
+  if (lexer->lookahead == ' ') {
+    advance(s, lexer);
+    // `blockquote_line = '>', (newline | (space, inline_content, newline))`
+    // (spec grammar.ebnf): the separator space with NO inline_content after it
+    // is not the second arm, it is the bare `'>' newline` line wearing a
+    // separator. carve-js renders `> ` and `>` identically, so the marker line
+    // ends HERE, and it reports that through the same `ending_newline` flag the
+    // bare arm below already sets - the fact has a carrier, it needed no second
+    // one.
+    //
+    // Left unreported, the marker token stopped at column 2 with the newline
+    // still unread, the scanner's next call ran mid-line, and the quote closed
+    // before the following line's marker was ever seen: `> ` / `> ` built two
+    // quotes where the engine builds one (#130).
+    //
+    // Only the newline directly after the separator is taken. A run of further
+    // spaces or a tab cannot be classified without consuming it, and consuming
+    // it would move the marker's end over the indentation that a nested list or
+    // quote inside the line still needs (`>   - b`).
+    //
+    // Every spelling of the terminator ends it, CRLF and a lone `\r` included:
+    // `at_line_end` is the single place that knows which bytes those are.
+    if (at_line_end(lexer)) {
+      consume_line_end(s, lexer);
+      *ending_newline = true;
+    }
+    return true;
+  } else if (at_line_end(lexer)) {
+    consume_line_end(s, lexer);
+    *ending_newline = true;
+    return true;
+  } else {
+    s->glued_quote_marker = true;
+    return false;
+  }
+}
+
+/// The `number`-th open quote counted from the outermost, or NULL.
+static Block *nth_quote(Scanner *s, uint8_t number) {
+  uint8_t seen = 0;
+  for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (b->type == BLOCK_QUOTE && ++seen == number) return b;
+  }
+  return NULL;
+}
+
+/// Does a list item stand between the `number`-th quote and the next one?
+static bool list_between_quotes(Scanner *s, uint8_t number) {
+  uint8_t seen = 0;
+  bool list = false;
+  for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (b->type == BLOCK_QUOTE) {
+      if (seen == number) return list;
+      ++seen;
+      continue;
+    }
+    if (seen == number && is_list(b->type)) list = true;
+  }
+  return false;
+}
+
+/// Does the `number`-th quote hold only quotes, and sit directly in the quote
+/// before it (or the document)? Only then may its `>` follow indentation: the
+/// shift would move every column a nested item measures.
+static bool quote_chain_from(Scanner *s, uint8_t number) {
+  // A `+` attachment keeps its own column rules (carve#4409).
+  if (s->state & STATE_LIST_CONTINUATION) return false;
+  uint8_t seen = 0;
+  bool frame_between = false;
+  for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (b->type != BLOCK_QUOTE) {
+      if (b->type == SECTION || b->type == HEADING) continue;
+      if (seen >= number) return false;
+      frame_between = true;
+      continue;
+    }
+    // An attached quote counts its depth from its host, not the stack.
+    if ((b->flags & BLOCK_FLAG_QUOTE_CONTINUATION_PENDING) ||
+        b->data != seen + 1) {
+      return false;
+    }
+    if (++seen == number && frame_between) return false;
+    if (seen < number) frame_between = false;
+  }
+  return seen >= number;
+}
+
+/// An open paragraph reads a `>` at a marker-line quote's content column as
+/// lazy text, not as the quote's marker (#600).
+static bool quote_marker_at_column_gap(Scanner *s, uint8_t number,
+                                       uint32_t column, bool in_paragraph,
+                                       bool gap_is_lazy) {
+  uint8_t seen = 0;
+  Block *enclosing_list = NULL;
+  bool outer_list_reached = false;
+  bool chain = quote_chain_from(s, number);
+  for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (is_list(b->type)) {
+      if (enclosing_list && enclosing_list->content_col != 0 &&
+          column >= enclosing_list->content_col) {
+        outer_list_reached = true;
+      }
+      enclosing_list = b;
+    }
+    if (b->type != BLOCK_QUOTE) continue;
+    if (++seen == number) {
+      // A quote nested directly in a quote or the document takes any
+      // indentation before its `>` (PART 0 L2).
+      if (chain) return true;
+      // In a paragraph, a `>` between the item's marker and content columns
+      // is lazy text unless an outer item reaches it.
+      bool lazy_gap = gap_is_lazy && in_paragraph && enclosing_list &&
+          !outer_list_reached && column > enclosing_list->data &&
+          column < enclosing_list->content_col;
+      // Marker-line quotes in an outer list retain their existing band rule.
+      return b->content_col == 0 ||
+          (seen == 1 && enclosing_list && !lazy_gap &&
+           (column <= enclosing_list->content_col ||
+            (!in_paragraph && column == b->content_col))) ||
+          (s->state & STATE_LIST_CONTINUATION) ||
+          column == b->content_col - 2 ||
+          (b->box_shift && column == b->content_col - 2 - b->box_shift);
+    }
+  }
+  return true;
+}
+
+static bool quote_marker_at_column(Scanner *s, uint8_t number,
+                                   uint32_t column, bool in_paragraph) {
+  return quote_marker_at_column_gap(s, number, column, in_paragraph, true);
+}
+
+/// `in_paragraph`: the run continues an open paragraph's line.
+/// Is a list item open inside the innermost quote? A list holding the quotes
+/// does not count: the line is past it.
+static bool list_inside_quotes(Scanner *s) {
+  for (int i = s->open_blocks->size - 1; i >= 0; --i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (b->type == BLOCK_QUOTE) return false;
+    if (is_list(b->type)) return true;
+  }
+  return false;
+}
+
+static uint8_t scan_quote_marker_run(Scanner *s, TSLexer *lexer,
+                                     bool *ending_newline,
+                                     bool *skipped_indent, bool in_paragraph) {
+  // `scan_block_quote_marker` only ever sets this to true; the loop reads it.
+  *ending_newline = false;
+  uint8_t marker_count = 0;
+  in_paragraph = in_paragraph && !s->band_prefix && !s->band_sticky;
+  while (lexer->lookahead == '>') {
+    uint32_t column = line_column(s, lexer);
+    if (!quote_marker_at_column(s, marker_count + 1, column, in_paragraph)) {
+      return marker_count;
+    }
+    if (!scan_block_quote_marker(s, lexer, ending_newline)) break;
+    ++marker_count;
+    if (*ending_newline) {
+      break;
+    }
+    // `> > a` / `>  > b`: a quote nested directly in this one takes any
+    // indentation before its `>`.
+    Block *next_quote = nth_quote(s, marker_count + 1);
+    if (lexer->lookahead == ' ' && next_quote &&
+        quote_chain_from(s, marker_count + 1)) {
+      while (lexer->lookahead == ' ') advance(s, lexer);
+      if (skipped_indent && lexer->lookahead != '>') *skipped_indent = true;
+      continue;
+    }
+    // Past every open quote a deeper `>` opens after any indentation (S3).
+    if (in_paragraph && lexer->lookahead == ' ' && !next_quote &&
+        marker_count >= count_blocks(s, BLOCK_QUOTE) &&
+        !(s->state & STATE_LIST_CONTINUATION) && !list_inside_quotes(s)) {
+      while (lexer->lookahead == ' ') advance(s, lexer);
+      if (skipped_indent && lexer->lookahead != '>') *skipped_indent = true;
+      continue;
+    }
+    // `> - > a` / `>   > b`: the next quote's marker sits past the item's
+    // indentation.
+    if (skipped_indent && lexer->lookahead == ' ' && next_quote &&
+        next_quote->content_col >= 2 && list_between_quotes(s, marker_count)) {
+      uint32_t target = next_quote->content_col - 2u;
+      while (lexer->lookahead == ' ' && line_column(s, lexer) < target) {
+        advance(s, lexer);
+      }
+      // Spaces read past that do not end at a marker stand for the run.
+      *skipped_indent = lexer->lookahead != '>';
+    }
+  }
+  return marker_count;
+}
+
+static uint8_t scan_block_quote_markers(Scanner *s, TSLexer *lexer,
+                                        bool *ending_newline) {
+  return scan_quote_marker_run(s, lexer, ending_newline, NULL, false);
+}
+
+static void output_block_quote_continuation(Scanner *s, TSLexer *lexer,
+                                            uint8_t marker_count,
+                                            bool ending_newline) {
+  for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (b->type == BLOCK_QUOTE) {
+      b->flags &= (uint8_t)~BLOCK_FLAG_QUOTE_OPENING_LINE;
+      if (ending_newline) b->flags &= (uint8_t)~BLOCK_FLAG_QUOTE_BLANK_PLUS;
+    }
+  }
+  // It's important to always clear the stored level on newlines.
+  if (ending_newline) {
+    s->block_quote_level = 0;
+  } else {
+    s->block_quote_level = marker_count;
+  }
+  lexer->result_symbol = BLOCK_QUOTE_CONTINUATION;
+}
+
+// Parse block quote related things.
+//
+// It's made complicated by the need to match nested quotes,
+// but we still want to keep block quotes separated,
+// so we can't match '> > ' in one go, but in multiple passes.
+//
+// We also need to close any contained paragraphs if there's a mismatch of
+// quote indentation, or if there's an "empty line" (only > on a line).
+//
+// And we also need to close open blocks when we go down a nesting level.
+/// A quote that opens on a list item's own MARKER line (`- > x`, `1. > x`,
+/// `- - > x`, `- [ ] > x`) moves the line's content margin to the quote's own
+/// content column, and extends the marker chain so a further marker on the same
+/// line chains off this one. The block-quote counterpart of the marker-line
+/// nested list `- - A` that `parse_list_marker_or_thematic_break` already
+/// models, in the same two fields.
+///
+/// WHY THE MARGIN HAS TO MOVE. `s->indent` is the current line's LEADING
+/// whitespace and is refreshed only when a scan starts at column 0, so on a
+/// marker line it keeps whatever the line began with - which is below the
+/// item's own margin by construction. Every margin question then answers for a
+/// position the scan left long ago. `close_list_nested_block_if_needed` read
+/// `0 < 1` and closed the quote before it could hold a single block, so `- > x`
+/// built an EMPTY quote and ejected `x` into a document-level paragraph; and
+/// `has_extra_indent` read the same 0 and disqualified every block opener after
+/// the marker, so `- > # H` degraded to paragraph text inside the quote.
+/// carve-js nests both, `<ul><li><blockquote><h1>H</h1></blockquote></li></ul>`
+/// for the second (tree-sitter-carve#218).
+///
+/// THREE CONDITIONS, and each one keeps a shape out that must not move.
+///
+///   - PAST THE LINE'S OWN MARGIN. A quote whose marker sits AT the margin is
+///     an ordinary quote line and its container prefix is the line's leading
+///     whitespace, which `s->indent` already describes: `- a` / `  > # H`
+///     builds the heading today and must keep the margin it has.
+///   - A LIST IS OPEN. At the document root `> > x` has no marker line to sit
+///     on, and raising the margin there would report the inner quote's own
+///     content as indented - `> > # H` is a heading in every engine, and
+///     `has_extra_indent` answers that from a margin of 0.
+///   - AT OR PAST THE ITEM'S CONTENT COLUMN. This is what tells a marker LINE
+///     from a marked line inside the item: in `> - a` / `> > x` the inner `>`
+///     also sits past the line's margin with a list open, but at column 2
+///     against the item's content column of 4, so it is the quote's own second
+///     marker rather than a quote opening on the item's marker.
+///
+/// A container whose content column was never recorded reads 0 and gets no
+/// opinion, exactly as in `has_surplus_indent`; the first two conditions still
+/// have to hold.
+///
+/// The quote's content column is the marker plus its single separator space - a
+/// marker separator is one literal space, never a tab and never a run, which is
+/// what `scan_block_quote_marker` already enforces.
+/// The task box a quote opening on its item's marker line sits behind. The box
+/// is content (CARVE-P9-083), so a later line's marker reads left by it. A
+/// quote right after another marker-line quote inherits that quote's box.
+static uint8_t task_box_before_quote(Scanner *s, uint32_t marker_start_col) {
+  Block *top = peek_block(s);
+  if (!top) return 0;
+  if (top->type == BLOCK_QUOTE && (top->flags & BLOCK_FLAG_QUOTE_OPENING_LINE) &&
+      marker_start_col == top->content_col)
+    return top->box_shift;
+  if (s->marker_end_col == 0 || marker_start_col != s->marker_end_col) return 0;
+  if (top->type == LIST_TASK && top->content_col != 0 && s->marker_end_col > top->content_col)
+    return (uint8_t)(s->marker_end_col - top->content_col);
+  return 0;
+}
+
+static void open_marker_line_quote(Scanner *s, uint32_t marker_start_col) {
+  if (marker_start_col <= s->indent) {
+    return;
+  }
+  Block *list = find_list(s);
+  if (list == NULL || marker_start_col < list->content_col) {
+    return;
+  }
+  uint32_t content_col = marker_start_col + 2;
+  if (content_col > UINT8_MAX) {
+    return;
+  }
+  s->indent = (uint8_t)content_col;
+  s->marker_end_col = (uint8_t)content_col;
+}
+
+static bool parse_block_quote(Scanner *s, TSLexer *lexer,
+                              const bool *valid_symbols) {
+  // A table selected by `+` can take a row without quote prefixes.
+  if ((s->state & STATE_LIST_CONTINUATION) && lexer->lookahead == '|' &&
+      s->indent == s->continuation_col && s->attached_row_prefix == 0) {
+    return false;
+  }
+  // A line block's body is its own text, except for the markers of the
+  // quotes that hold it: those still continue the quote.
+  if (line_block_body(s) &&
+      s->block_quote_level >= count_blocks(s, BLOCK_QUOTE)) {
+    return false;
+  }
+  if (!valid_symbols[BLOCK_QUOTE_BEGIN] &&
+      !valid_symbols[BLOCK_QUOTE_CONTINUATION] && !valid_symbols[BLOCK_CLOSE] &&
+      !valid_symbols[CLOSE_PARAGRAPH]) {
+    return false;
+  }
+
+  // Consumed here rather than read in place: this is the only reader, and every
+  // branch below that emits has ended whatever the blank line was supposed to
+  // end. Leaving it set would make a LATER marker line close a quote that no
+  // blank line separates.
+  bool after_blank_line = (s->state & STATE_AFTER_BLANK_LINE) != 0;
+
+  // `> > a` / `>  > b`: spaces before a directly nested quote's `>`.
+  if (lexer->lookahead == ' ' && s->block_quote_level > 0 &&
+      s->block_quote_level < count_blocks(s, BLOCK_QUOTE) &&
+      quote_chain_from(s, s->block_quote_level + 1)) {
+    while (lexer->lookahead == ' ') advance(s, lexer);
+    if (lexer->lookahead != '>') return false;
+  }
+
+  // Where this call's `>` sits, read BEFORE anything is consumed. A quote whose
+  // marker begins exactly where the previous marker on this line ended is a
+  // MARKER-LINE quote (`- > x`), the block-quote counterpart of the marker-line
+  // nested list `- - A` that `parse_list_marker_or_thematic_break` already
+  // models with the same two fields - see `open_marker_line_quote` below.
+  uint32_t marker_start_col = line_column(s, lexer);
+  // A paragraph's continuation line offers the marker and inline tokens, but
+  // no block opener or close.
+  bool inside_paragraph = valid_symbols[BLOCK_QUOTE_CONTINUATION] &&
+      valid_symbols[NEWLINE_INLINE] && !valid_symbols[BLOCK_QUOTE_BEGIN] &&
+      !valid_symbols[BLOCK_CLOSE];
+  if (inside_paragraph && s->band_prefix) s->band_sticky = true;
+  if (!inside_paragraph && s->block_quote_level == 0 &&
+      lexer->lookahead == '>') {
+    // An item's marker gap is lazy text, not a band.
+    s->band_prefix = quote_marker_at_column(s, 1, marker_start_col, false) &&
+        !quote_marker_at_column_gap(s, 1, marker_start_col, true, false);
+  }
+  inside_paragraph = inside_paragraph && !s->band_prefix && !s->band_sticky;
+
+  bool ending_newline = false;
+  // A valid marker is a '> ' or '>\n'.
+  bool marker_at_owner = quote_marker_at_column(
+      s, s->block_quote_level + 1, marker_start_col, inside_paragraph);
+  bool has_marker = marker_at_owner &&
+      scan_block_quote_marker(s, lexer, &ending_newline);
+  Block *quote_list_owner = find_list(s);
+  Block *holding_quote = find_block(s, BLOCK_QUOTE);
+  bool prefixed_plus = false;
+  for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (b->type == BLOCK_QUOTE &&
+        (b->flags & BLOCK_FLAG_QUOTE_CONTINUATION_PENDING)) prefixed_plus = true;
+  }
+  // Only a quote-prefixed `+` lets the follower's first `>` re-enter its
+  // quote; after an unprefixed one every `>` opens the attached quote.
+  if (has_marker && lexer->lookahead == '>' && holding_quote &&
+      quote_list_owner && (s->state & STATE_LIST_CONTINUATION) &&
+      (prefixed_plus || quote_list_owner->type == LIST_DEFINITION) &&
+      !list_opened_in_quote(s, quote_list_owner) &&
+      marker_start_col == quote_list_owner->content_col &&
+      valid_symbols[BLOCK_QUOTE_BEGIN] && !at_nesting_cap(s)) {
+    bool nested_line_end = false;
+    if (scan_block_quote_marker(s, lexer, &nested_line_end)) {
+      uint8_t depth = holding_quote->data + 1;
+      push_block(s, BLOCK_QUOTE, depth);
+      peek_block(s)->flags |= BLOCK_FLAG_QUOTE_OPENING_LINE;
+      if (s->marker_end_col != 0 &&
+          marker_start_col == s->marker_end_col) {
+        peek_block(s)->flags |= BLOCK_FLAG_QUOTE_ON_ITEM_MARKER_LINE;
+      }
+      uint32_t content_col = line_column(s, lexer);
+      if (content_col <= UINT8_MAX) {
+        record_container_content_column(s, (uint8_t)content_col);
+      }
+      mark_end(s, lexer);
+      s->block_quote_level = nested_line_end ? 0 : depth;
+      lexer->result_symbol = BLOCK_QUOTE_BEGIN;
+      return true;
+    }
+  }
+  if (CARVE2_PLUS_ATTACHMENT && has_marker && lexer->lookahead == '+' &&
+      valid_symbols[CLOSE_PARAGRAPH] &&
+      (find_list(s) != NULL || find_block(s, FOOTNOTE) != NULL) &&
+      scan_continuation_marker_at_paragraph_end(
+          s, lexer, s->block_quote_level + 1)) {
+    lexer->result_symbol = CLOSE_PARAGRAPH;
+    return true;
+  }
+
+  // The marker run is not over: another `>` follows this marker on the same
+  // line, so `marker_count` below is this line's depth SO FAR, not its depth.
+  // The dedent test has to see the whole line, and this scan sees one marker
+  // per call - `scan_block_quote_marker` takes exactly one and the count is
+  // carried between calls in `block_quote_level`. The lexer cannot rewind, so
+  // the fact is read where the probe stopped: one character of lookahead, no
+  // advance, which leaves the token end pinned where every branch below still
+  // expects it.
+  //
+  // Left unread, the FIRST marker of `> >` decided the line at depth 1 against
+  // an open depth of 2 and closed the inner quote before its own marker was
+  // seen, so every nested quote line that is not absorbed by an open paragraph
+  // opened a fresh inner quote: `> >` / `> >` built two empty inner quotes with
+  // a stray marker between them, and `> > # h` / `> > # i` two quotes holding
+  // one heading each, where carve-js builds one inner quote in both (#136).
+  // `> > a` / `> > b` was already right, and for a different reason - a lazily
+  // continued paragraph is absorbed by the paragraph path, which scans the
+  // whole marker run before it decides.
+  //
+  // Read HERE, before the whitespace probe below, because that probe advances.
+  // A marker run is spelled with exactly one separator space per marker, so the
+  // `>` this looks for is the one directly after the separator; `>   >` is not a
+  // run, and nothing the probe walks over can be this character.
+  bool run_continues = has_marker && !ending_newline && lexer->lookahead == '>';
+  if (run_continues) run_continues = quote_marker_at_column(
+      s, s->block_quote_level + 2, line_column(s, lexer),
+      inside_paragraph);
+
+  // A marker followed by only whitespace is content-less whatever that
+  // whitespace is: carve-js renders `>`, `> `, `>  ` and `> <TAB>` as the same
+  // empty `<blockquote>`. #130 could only report the newline DIRECTLY after the
+  // separator, because a longer run cannot be classified without reading past
+  // it and the lexer has no rewind - so `>  ` kept its run as a paragraph (#135).
+  //
+  // `mark_end` IS the rewind. It pins the token where the lexer stands now, and
+  // tree-sitter resumes the next token from that pin however far this call
+  // reads afterwards, which is the same technique `code_fence_closer_tail_is_blank`
+  // already uses for a fence closer's trailing run. The pin has to be taken HERE
+  // rather than inside `scan_block_quote_marker`: that function is called in a
+  // loop by `scan_block_quote_markers`, and a pin taken mid-loop is a pin every
+  // caller that marks its own end afterwards silently overrides.
+  //
+  // Only the two outcomes are committed. Whitespace then a newline: take the
+  // newline and re-pin past it, so the token is exactly what `> ` already
+  // produces. Whitespace then anything else: leave the pin at the separator and
+  // set `marker_end_pinned`, which suppresses the two `mark_end` calls further
+  // down - without that the token would stretch over the run and swallow the
+  // indentation `>   - b` still needs.
+  //
+  // A tab is read here as trailing whitespace on a line whose separator was
+  // already satisfied by a literal space, which is neither indentation nor a
+  // separator. `>` followed directly by a tab never reaches this probe:
+  // `scan_block_quote_marker` refuses it, so `>\t` stays a paragraph, matching
+  // carve-js and the rule that a marker separator is a literal space.
+  bool marker_end_pinned = false;
+  // With only BLOCK_CLOSE valid, look past the spaces without pinning a token.
+  // A later marker may still continue a quote below a closed heading.
+  if (has_marker && !ending_newline && valid_symbols[BLOCK_CLOSE] &&
+      !valid_symbols[BLOCK_QUOTE_CONTINUATION] &&
+      !valid_symbols[BLOCK_QUOTE_BEGIN] &&
+      !valid_symbols[CLOSE_PARAGRAPH]) {
+    while (lexer->lookahead == ' ' || lexer->lookahead == '\t') advance(s, lexer);
+    Block *next_quote = nth_quote(s, s->block_quote_level + 2);
+    run_continues = lexer->lookahead == '>' && next_quote &&
+        ((next_quote->content_col >= 2 &&
+          line_column(s, lexer) == next_quote->content_col - 2u &&
+          list_between_quotes(s, s->block_quote_level + 1)) ||
+         quote_chain_from(s, s->block_quote_level + 2));
+  }
+  // Only where a token this pin belongs to can follow: a pin taken on a line
+  // whose only valid close is another block's (a heading ending at its
+  // newline) widened that zero-width close over the `> ` and lost the quote.
+  // Nor before the close a blank line forces below: that close is
+  // zero-width and the marker opens the next quote.
+  bool closes_after_blank = after_blank_line && find_block(s, BLOCK_QUOTE) &&
+      !has_open_span(s) &&
+      (valid_symbols[CLOSE_PARAGRAPH] || valid_symbols[BLOCK_CLOSE]);
+  if (has_marker && !ending_newline && !closes_after_blank &&
+      (valid_symbols[BLOCK_QUOTE_CONTINUATION] ||
+       valid_symbols[BLOCK_QUOTE_BEGIN] || valid_symbols[CLOSE_PARAGRAPH]) &&
+      (lexer->lookahead == ' ' || lexer->lookahead == '\t')) {
+    mark_end(s, lexer);
+    uint32_t div_col = quoted_div_column(s, s->block_quote_level + 1);
+    // A sibling marker of a list nested in a quoted item sits past the quote's
+    // content column, so the prefix takes the run up to it.
+    uint32_t list_col = 0;
+    uint32_t abs_list_col = 0;
+    Block *pin_list = peek_block(s);
+    Block *pin_quote = find_block(s, BLOCK_QUOTE);
+    if (div_col == 0 && valid_symbols[BLOCK_QUOTE_CONTINUATION] &&
+        pin_list && is_list(pin_list->type) && pin_list->data > 1 &&
+        pin_quote && pin_quote->content_col != 0 &&
+        list_opened_in_quote(s, pin_list) &&
+        s->block_quote_level + 1 == count_blocks(s, BLOCK_QUOTE)) {
+      list_col = pin_quote->content_col + pin_list->data - 1;
+      // A list opened on a quoted marker line records its absolute column.
+      if (pin_list->data - 1u > pin_quote->content_col) {
+        abs_list_col = pin_list->data - 1u;
+      }
+    }
+    uint8_t run = 0;
+    while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+      run = lexer->lookahead == ' ' ? run + 1 : 0;
+      advance(s, lexer);
+      if (div_col != 0 && lexer->lookahead != '\t') {
+        // The pin follows the run up to the quoted div's column and past it:
+        // an opener past the column opens there (spec 566, 581).
+        mark_end(s, lexer);
+        s->indent = (uint8_t)line_column(s, lexer);
+      }
+      // So does a sibling short of the item's content column (PART 0 S4).
+      if (list_col != 0 && run > 0 && lexer->lookahead != ' ' &&
+          lexer->lookahead != '\t' &&
+          (line_column(s, lexer) == list_col ||
+           line_column(s, lexer) == abs_list_col ||
+           (abs_list_col == 0 && line_column(s, lexer) > list_col &&
+            line_column(s, lexer) < pin_list->content_col))) {
+        mark_end(s, lexer);
+        s->indent = run;
+      }
+    }
+    if (lexer->lookahead == '\n') {
+      advance(s, lexer);
+      mark_end(s, lexer);
+      ending_newline = true;
+    } else {
+      // Includes end of input: `> ` at end of input reports no ending newline
+      // either, and `>  ` there is the same line without one.
+      marker_end_pinned = true;
+      // A quote inside a quoted item continues past the item's indentation:
+      // `> - > a` / `>   > b`.
+      if (lexer->lookahead == '>') {
+        Block *next_quote = nth_quote(s, s->block_quote_level + 2);
+        run_continues = (next_quote && next_quote->content_col >= 2 &&
+            line_column(s, lexer) == next_quote->content_col - 2u &&
+            list_between_quotes(s, s->block_quote_level + 1)) ||
+            quote_chain_from(s, s->block_quote_level + 2);
+        if (run_continues) mark_end(s, lexer);
+      }
+    }
+  }
+
+  // No open inline at block boundary.
+  bool any_open_inline = has_open_span(s);
+
+  // If we have a marker but with an empty line,
+  // we need to close the paragraph.
+  if (has_marker && ending_newline && !any_open_inline &&
+      valid_symbols[CLOSE_PARAGRAPH]) {
+    clear_literal_brackets(s);
+    lexer->result_symbol = CLOSE_PARAGRAPH;
+    return true;
+  }
+
+  // Store nesting level on the scanner, to keep it between runs
+  // in the case of multiple `>`, like `> > > txt`.
+  Block *continuation_quote = find_block(s, BLOCK_QUOTE);
+  if (has_marker && continuation_quote &&
+      !(continuation_quote->flags & BLOCK_FLAG_QUOTE_CONTINUATION_PENDING)) {
+    for (int i = s->open_blocks->size - 1; i >= 0; --i) {
+      Block *candidate = *array_get(s->open_blocks, i);
+      if (candidate->type == BLOCK_QUOTE &&
+          (candidate->flags & BLOCK_FLAG_QUOTE_CONTINUATION_PENDING)) {
+        continuation_quote = candidate;
+        break;
+      }
+    }
+  }
+  bool attached_quote = has_marker && continuation_quote &&
+      (continuation_quote->flags & BLOCK_FLAG_QUOTE_CONTINUATION_PENDING);
+  uint8_t marker_count = s->block_quote_level + has_marker +
+      (attached_quote ? continuation_quote->data : 0);
+  size_t matching_block_pos =
+      number_of_blocks_from_top(s, BLOCK_QUOTE, marker_count);
+  Block *highest_block_quote = find_block(s, BLOCK_QUOTE);
+  Block *quote_list = find_list(s);
+  if (has_marker && valid_symbols[BLOCK_CLOSE] && highest_block_quote &&
+      quote_list && marker_start_col < quote_list->content_col &&
+      marker_start_col >= quote_list->data) {
+    for (int i = (int)s->open_blocks->size - 1; i >= 0; --i) {
+      if (*array_get(s->open_blocks, i) != quote_list) continue;
+      for (int j = i - 1; j >= 0; --j) {
+        Block *parent = *array_get(s->open_blocks, j);
+        if (!is_list(parent->type)) continue;
+        if (marker_start_col >= parent->content_col) {
+          close_blocks(s, lexer, s->open_blocks->size - (size_t)i);
+          return true;
+        }
+        break;
+      }
+      break;
+    }
+  }
+  if (has_marker && highest_block_quote && quote_list &&
+      !list_opened_in_quote(s, quote_list) &&
+      (s->state & STATE_LIST_CONTINUATION) &&
+      marker_start_col == s->continuation_col &&
+      marker_count <= highest_block_quote->data) {
+    marker_count = highest_block_quote->data + 1;
+    matching_block_pos = 0;
+  }
+  if (has_marker && highest_block_quote && quote_list &&
+      list_opened_in_quote(s, quote_list) &&
+      highest_block_quote->data > 1 &&
+      (highest_block_quote->flags & BLOCK_FLAG_QUOTE_ON_ITEM_MARKER_LINE) &&
+      (s->state & STATE_LIST_CONTINUATION) &&
+      marker_start_col == s->continuation_col &&
+      quote_list->content_col == s->continuation_col &&
+      marker_count <= highest_block_quote->data) {
+    marker_count = highest_block_quote->data + 1;
+    matching_block_pos = 0;
+  }
+
+  // A blank line ENDS the quote, so a marker after one begins a NEW quote
+  // instead of continuing the open one (#129). Decided before the dedent branch
+  // below, because EVERY open quote goes, not just the ones the marker count
+  // dedents out of: `> > a` / blank / `> b` is a nested pair and then a sibling
+  // depth-1 quote in carve-js, never one quote holding both. Left to the dedent
+  // branch, the depth-2 quote would close and the depth-1 one would carry on.
+  //
+  // The BLOCK_CLOSE returned here is re-entered as a `block_quote_begin` for the
+  // same marker, which is how the already-correct `> a` / blank / blank / `> b`
+  // shape reaches two quotes.
+  if (after_blank_line && has_marker && highest_block_quote &&
+      !any_open_inline) {
+    if (valid_symbols[CLOSE_PARAGRAPH]) {
+      clear_literal_brackets(s);
+      lexer->result_symbol = CLOSE_PARAGRAPH;
+      return true;
+    }
+    if (valid_symbols[BLOCK_CLOSE]) {
+      // Down to the OUTERMOST quote (`data == 1`), whatever this line's own
+      // marker count is. Today the two coincide - `scan_block_quote_marker`
+      // takes one marker per call and `block_quote_level` is zeroed at every
+      // line start, so `marker_count` is 1 wherever this branch is reachable -
+      // but the literal is what the rule means, and it stays correct if either
+      // of those ever changes.
+      size_t close_pos = number_of_blocks_from_top(s, BLOCK_QUOTE, 1);
+      s->state &= ~STATE_AFTER_BLANK_LINE;
+      close_blocks(s, lexer, close_pos);
+      return true;
+    }
+  }
+
+  // The deferral above is taken on that one `>` alone, and `> >x` looks exactly
+  // like `> >` one character in. Telling them apart needs the character AFTER
+  // the `>`, and only an advance reaches it - an advance that would stretch the
+  // marker token over it, because the token end is pinned wherever the lexer
+  // stands when a branch below commits. So a run that turns out to stop at a
+  // character that is not a marker is caught HERE instead, on the next call:
+  // `block_quote_level` is non-zero only once an earlier call on this line took
+  // a marker, so this call is mid-line, past a marker, on something that is not
+  // one.
+  //
+  // The line then stays in the quote the deferral put it in. Dedenting from
+  // here cannot work: the deferred marker has already been consumed as that
+  // quote's own prefix, and the container it would dedent into needs a prefix
+  // of its own before it can hold a block - so `> > a` / `> >x` went to ERROR
+  // recovery with the tail line dropped. Under an open paragraph the line is
+  // lazy (`a\n>x`, BLOCK_FLAG_QUOTE_LAZY_DROP).
+  bool run_stopped_short = !has_marker && marker_at_owner &&
+      s->block_quote_level > 0;
+  bool attached_table_prefix = has_marker &&
+      (s->state & STATE_LIST_CONTINUATION) &&
+      valid_symbols[TABLE_QUOTE_CONTINUATION] && lexer->lookahead == '|' &&
+      s->attached_row_prefix == marker_count &&
+      highest_block_quote && marker_count + 1 == highest_block_quote->data;
+  Block *code = peek_block(s);
+  bool attached_code_prefix = highest_block_quote && code &&
+      code->type == CODE_BLOCK &&
+      (s->state & STATE_LIST_CONTINUATION) &&
+      !(s->state & STATE_QUOTED_LINE_SHORT_OF_ITEM) &&
+      (highest_block_quote->flags & BLOCK_FLAG_QUOTE_ON_ITEM_MARKER_LINE) &&
+      marker_count + 1 == highest_block_quote->data;
+
+  Block *attached_body = peek_block(s);
+  if (!has_marker && highest_block_quote && attached_body &&
+      attached_body->type == CODE_BLOCK &&
+      (s->state & STATE_LIST_CONTINUATION) &&
+      marker_start_col == s->continuation_col) {
+    return false;
+  }
+
+  // There's an open block quote with a higher nesting level.
+  Block *plus_list = lexer->lookahead == '+' ? find_list(s) : NULL;
+  bool lazy_drop = has_marker && highest_block_quote &&
+      (highest_block_quote->flags & BLOCK_FLAG_QUOTE_LAZY_DROP) &&
+      valid_symbols[BLOCK_QUOTE_CONTINUATION];
+  if (lazy_drop && !run_continues) {
+    highest_block_quote->flags &= (uint8_t)~BLOCK_FLAG_QUOTE_LAZY_DROP;
+  }
+  // A `+` one marker short of the quote holding the paragraph attaches in
+  // that quote (corpus 648); deeper quotes closed when it was probed, and a
+  // `+` read as text set BLOCK_FLAG_QUOTE_LAZY_DROP instead.
+  bool plus_one_deeper = lexer->lookahead == '+' && has_marker &&
+      !run_continues && marker_count > 0 &&
+      !(s->state & STATE_AFTER_BLANK_LINE) && highest_block_quote &&
+      marker_count + 1 == highest_block_quote->data &&
+      (!list_between_quotes(s, marker_count) ||
+       (plus_list && (plus_list->flags & BLOCK_FLAG_PLUS_AHEAD) &&
+        highest_block_quote->content_col >= 2 &&
+        line_column(s, lexer) == highest_block_quote->content_col - 2 &&
+        plus_list->content_col == line_column(s, lexer)));
+  if (plus_one_deeper) {
+    Block *own = nth_quote(s, marker_count);
+    plus_one_deeper = own && (own->content_col == 0 ||
+                              own->content_col == marker_start_col + 2);
+  }
+  if (plus_one_deeper && list_between_quotes(s, marker_count)) {
+    // Include the item's indentation so the next scan starts on the `+`.
+    mark_end(s, lexer);
+  }
+  // Under a list, only a `+` the paragraph-end probe saw attach.
+  if (plus_one_deeper && plus_list &&
+      (plus_list->type == LIST_DEFINITION ||
+       !(plus_list->flags & BLOCK_FLAG_LIST_SHORT_PLUS))) {
+    plus_one_deeper = false;
+  }
+  if (plus_list && plus_list->type != LIST_DEFINITION && has_marker &&
+      !run_continues) {
+    plus_list->flags &= (uint8_t)~BLOCK_FLAG_LIST_SHORT_PLUS;
+  }
+  int32_t lead = lexer->lookahead;
+  if (highest_block_quote && marker_count < highest_block_quote->data &&
+      !run_continues && !run_stopped_short && !attached_table_prefix &&
+      !attached_code_prefix && !lazy_drop &&
+      !any_open_inline &&
+      !plus_one_deeper &&
+      (lead != '+' || plus_list != NULL || marker_count == 0 ||
+       (s->state & STATE_AFTER_BLANK_LINE))) {
+    // Close the paragraph, but allow lazy continuation (without any `>`).
+    if (valid_symbols[CLOSE_PARAGRAPH] && has_marker) {
+      clear_literal_brackets(s);
+      lexer->result_symbol = CLOSE_PARAGRAPH;
+      return true;
+    }
+    if (valid_symbols[BLOCK_CLOSE]) {
+      // We may need to close more than one block (nested block quotes, lists,
+      // divs, etc).
+      size_t close_pos =
+          number_of_blocks_from_top(s, BLOCK_QUOTE, marker_count + 1);
+      if (lead == '+' && marker_count > 0) {
+        for (int i = s->open_blocks->size - 1; i >= 0; --i) {
+          Block *b = *array_get(s->open_blocks, i);
+          if (b->type == BLOCK_QUOTE && b->data == marker_count) {
+            b->flags |= BLOCK_FLAG_QUOTE_DEDENT_PLUS;
+            break;
+          }
+        }
+      }
+      s->state &= ~STATE_AFTER_BLANK_LINE;
+      close_blocks(s, lexer, close_pos);
+      return true;
+    }
+  }
+
+  // If we should continue an open block quote.
+  if ((valid_symbols[BLOCK_QUOTE_CONTINUATION] ||
+       valid_symbols[UNHOSTED_BLOCK_QUOTE_CONTINUATION]) && has_marker &&
+      !attached_quote && matching_block_pos != 0) {
+    s->state &= ~STATE_AFTER_BLANK_LINE;
+    // Not when the whitespace probe pinned the end at the separator: re-marking
+    // here would stretch the token over the run it deliberately read past.
+    if (!marker_end_pinned) {
+      mark_end(s, lexer);
+    }
+    // A blank quoted line's token already ends at the next line, which is the
+    // only place a short line after an open div can still be announced.
+    if (ending_newline && line_column(s, lexer) == 0) {
+      s->state &= ~STATE_QUOTED_LINE_SHORT_OF_ITEM;
+      scan_quoted_code_fence_closer(s, lexer);
+    }
+    output_block_quote_continuation(s, lexer, marker_count, ending_newline);
+    Block *inner_quote = find_block(s, BLOCK_QUOTE);
+    Block *first_block = s->open_blocks->size > 0
+        ? *array_get(s->open_blocks, 0) : NULL;
+    bool outer_quote_owner = first_block && first_block->type == BLOCK_QUOTE &&
+        ((s->state & STATE_LIST_CONTINUATION) ||
+         (peek_block(s) && peek_block(s)->type == FOOTNOTE));
+    bool blank_nested_owner = first_block && is_list(first_block->type) &&
+        inner_quote && (inner_quote->flags & BLOCK_FLAG_QUOTE_BLANK_PLUS);
+    if (valid_symbols[UNHOSTED_BLOCK_QUOTE_CONTINUATION] &&
+        lexer->lookahead == '>' && inner_quote &&
+        inner_quote == find_block_from_bottom(s, BLOCK_QUOTE) &&
+        (outer_quote_owner || blank_nested_owner))
+      lexer->result_symbol = UNHOSTED_BLOCK_QUOTE_CONTINUATION;
+    open_marker_line_quote(s, marker_start_col);
+    // Commit this flag with the quote marker; a failed paragraph probe loses it.
+    if (marker_count < count_blocks(s, BLOCK_QUOTE)) {
+      uint8_t indent = s->indent;
+      uint8_t level = s->block_quote_level;
+      uint32_t col_base = s->col_base;
+      consume_whitespace(s, lexer);
+      if (lexer->lookahead == '+') {
+        uint32_t plus_column = line_column(s, lexer);
+        Block *owner_list = NULL;
+        Block *owner_quote = NULL;
+        uint32_t reach = 0;
+        plus_owner(s, plus_column, marker_count, &owner_list, &owner_quote,
+                   &reach);
+        advance(s, lexer);
+        consume_whitespace(s, lexer);
+        if (!owner_list && (at_line_end(lexer) || lexer->eof(lexer))) {
+          s->folded_plus_paragraph = true;
+        }
+      }
+      s->indent = indent;
+      s->block_quote_level = level;
+      s->col_base = col_base;
+    }
+    return true;
+  }
+
+  // Finally, start a new block quote if there's any marker.
+  if (valid_symbols[BLOCK_QUOTE_BEGIN] && has_marker && !at_nesting_cap(s)) {
+    // A quote opens at its container's margin, like every block opener: an
+    // indented `>` at the document margin is paragraph text. The line's first
+    // marker is measured by `indent`, which expands tabs; the lexer column
+    // counts a tab as one.
+    uint32_t margin_col = marker_start_col;
+    if (s->block_quote_level == 0 && s->marker_end_col == 0 &&
+        s->indent > margin_col) {
+      margin_col = s->indent;
+    }
+    bool attached_quote_at_owner =
+        (s->state & STATE_LIST_CONTINUATION) && quote_list &&
+        highest_block_quote &&
+        marker_start_col == highest_block_quote->content_col;
+    bool attached_list_quote =
+        (s->state & STATE_LIST_CONTINUATION) && quote_list &&
+        !highest_block_quote && marker_start_col == s->continuation_col;
+    // A quoted list's attachment column counts from after the quote prefix.
+    bool attached_quoted_list_quote =
+        (s->state & STATE_LIST_CONTINUATION) && quote_list &&
+        highest_block_quote && list_opened_in_quote(s, quote_list) &&
+        marker_start_col ==
+            highest_block_quote->content_col + s->continuation_col;
+    if (!at_block_opener_margin(s, margin_col) &&
+        !attached_quote_at_owner && !attached_list_quote &&
+        !attached_quoted_list_quote) {
+      return false;
+    }
+    s->state &= ~STATE_AFTER_BLANK_LINE;
+    if (attached_quote) {
+      continuation_quote->flags &= ~BLOCK_FLAG_QUOTE_CONTINUATION_PENDING;
+    }
+    uint8_t box = task_box_before_quote(s, marker_start_col);
+    push_block(s, BLOCK_QUOTE, marker_count);
+    peek_block(s)->box_shift = box;
+    if (count_blocks(s, BLOCK_QUOTE) == 1) s->band_sticky = false;
+    peek_block(s)->flags |= BLOCK_FLAG_QUOTE_OPENING_LINE;
+    if (s->marker_end_col != 0 &&
+        marker_start_col == s->marker_end_col) {
+      peek_block(s)->flags |= BLOCK_FLAG_QUOTE_ON_ITEM_MARKER_LINE;
+    }
+    if (marker_start_col + 2 <= UINT8_MAX) {
+      record_container_content_column(s, (uint8_t)(marker_start_col + 2));
+    }
+    // Same as the continuation branch: the probe's pin is authoritative.
+    if (!marker_end_pinned) {
+      mark_end(s, lexer);
+    }
+    // It's important to always clear the stored level on newlines.
+    if (ending_newline) {
+      s->block_quote_level = 0;
+    } else {
+      s->block_quote_level = marker_count;
+    }
+    open_marker_line_quote(s, marker_start_col);
+    lexer->result_symbol = BLOCK_QUOTE_BEGIN;
+    return true;
+  }
+
+  return false;
+}
+
+static bool scan_table_row(Scanner *s, TSLexer *lexer, TokenType *row_type,
+                           bool *one_cell_continues);
+static bool scan_continuation_row(Scanner *s, TSLexer *lexer);
+
+static bool parse_table_quote_continuation(Scanner *s, TSLexer *lexer,
+                                            const bool *valid_symbols) {
+  bool quote_symbols[ATTACHED_QUOTE_PREFIX + 1];
+  memcpy(quote_symbols, valid_symbols, sizeof(quote_symbols));
+  quote_symbols[BLOCK_QUOTE_CONTINUATION] = true;
+  if (!parse_block_quote(s, lexer, quote_symbols)) return false;
+  if (lexer->result_symbol != BLOCK_QUOTE_CONTINUATION) {
+    return valid_symbols[lexer->result_symbol];
+  }
+  bool ending = false;
+  uint8_t rest = scan_block_quote_markers(s, lexer, &ending);
+  consume_whitespace(s, lexer);
+  Block *table_row = peek_block(s);
+  bool attached_row = table_row && table_row->type == TABLE_ROW &&
+      (table_row->flags & BLOCK_FLAG_TABLE_ROW_ATTACHED) &&
+      s->attached_row_prefix != UINT8_MAX;
+  bool row = !ending && (attached_row
+      ? s->block_quote_level + rest == s->attached_row_prefix
+      : s->block_quote_level + rest == count_blocks(s, BLOCK_QUOTE));
+  uint16_t state = s->state;
+  if (row && lexer->lookahead == '|') {
+    advance(s, lexer);
+    TokenType row_type;
+    bool continues = false;
+    row = scan_table_row(s, lexer, &row_type, &continues);
+  } else if (row && lexer->lookahead == '+') {
+    row = scan_continuation_row(s, lexer);
+  } else {
+    row = false;
+  }
+  s->state = state;
+  if (row) lexer->result_symbol = TABLE_QUOTE_CONTINUATION;
+  return row || valid_symbols[BLOCK_QUOTE_CONTINUATION];
+}
+
+static bool is_decimal(char c) { return '0' <= c && c <= '9'; }
+static bool is_lower_alpha(char c) { return 'a' <= c && c <= 'z'; }
+static bool is_upper_alpha(char c) { return 'A' <= c && c <= 'Z'; }
+static bool is_lower_roman(char c) {
+  switch (c) {
+  case 'i':
+  case 'v':
+  case 'x':
+  case 'l':
+  case 'c':
+  case 'd':
+  case 'm':
+    return true;
+  default:
+    return false;
+  }
+}
+static bool is_upper_roman(char c) {
+  switch (c) {
+  case 'I':
+  case 'V':
+  case 'X':
+  case 'L':
+  case 'C':
+  case 'D':
+  case 'M':
+    return true;
+  default:
+    return false;
+  }
+}
+
+static bool matches_ordered_list(OrderedListType type, char c) {
+  switch (type) {
+  case DECIMAL:
+    return is_decimal(c);
+  case LOWER_ALPHA:
+    return is_lower_alpha(c);
+  case UPPER_ALPHA:
+    return is_upper_alpha(c);
+  case LOWER_ROMAN:
+    return is_lower_roman(c);
+  case UPPER_ROMAN:
+    return is_upper_roman(c);
+  default:
+    return false;
+  }
+}
+
+static bool scan_ordered_list_type(Scanner *s, TSLexer *lexer,
+                                   OrderedListType *res) {
+  bool can_be_decimal = true;
+  uint8_t scanned_decimal = 0;
+  bool can_be_lower_roman = true;
+  uint8_t scanned_lower_roman = 0;
+  bool can_be_upper_roman = true;
+  uint8_t scanned_upper_roman = 0;
+  bool can_be_lower_alpha = true;
+  uint8_t scanned_lower_alpha = 0;
+  bool can_be_upper_alpha = true;
+  uint8_t scanned_upper_alpha = 0;
+
+  while (!lexer->eof(lexer)) {
+    char c = lexer->lookahead;
+
+    if (can_be_decimal) {
+      if (matches_ordered_list(DECIMAL, c)) {
+        ++scanned_decimal;
+      } else {
+        can_be_decimal = false;
+      }
+    }
+    if (can_be_lower_roman) {
+      if (matches_ordered_list(LOWER_ROMAN, c)) {
+        ++scanned_lower_roman;
+      } else {
+        can_be_lower_roman = false;
+      }
+    }
+    if (can_be_upper_roman) {
+      if (matches_ordered_list(UPPER_ROMAN, c)) {
+        ++scanned_upper_roman;
+      } else {
+        can_be_upper_roman = false;
+      }
+    }
+    if (can_be_lower_alpha) {
+      if (matches_ordered_list(LOWER_ALPHA, c)) {
+        ++scanned_lower_alpha;
+      } else {
+        can_be_lower_alpha = false;
+      }
+    }
+    if (can_be_upper_alpha) {
+      if (matches_ordered_list(UPPER_ALPHA, c)) {
+        ++scanned_upper_alpha;
+      } else {
+        can_be_upper_alpha = false;
+      }
+    }
+    if (!can_be_decimal && !can_be_lower_roman && !can_be_upper_roman &&
+        !can_be_lower_alpha && !can_be_upper_alpha) {
+      break;
+    }
+
+    advance(s, lexer);
+  }
+
+  // A ten-digit value is prose in 0.2 (C2-B-036).
+  if (scanned_decimal > 0 && scanned_decimal <= 9) {
+    *res = DECIMAL;
+    return true;
+  }
+
+  // If we're already inside an alpha list then we should
+  // prioritize to continue the alpha list, otherwise we should
+  // prioritize roman lists.
+  Block *top = peek_block(s);
+  bool inside_alpha_list = top && is_alpha_list(top->type);
+
+  if (inside_alpha_list) {
+    // Alpha lists are only a single letter wide.
+    if (scanned_lower_alpha == 1) {
+      *res = LOWER_ALPHA;
+      return true;
+    }
+    if (scanned_upper_alpha == 1) {
+      *res = UPPER_ALPHA;
+      return true;
+    }
+  }
+
+  // Note that we don't check if marker is a valid roman numeral.
+  if (scanned_lower_roman > 0) {
+    *res = LOWER_ROMAN;
+    return true;
+  }
+  if (scanned_upper_roman > 0) {
+    *res = UPPER_ROMAN;
+    return true;
+  }
+
+  if (scanned_lower_alpha == 1) {
+    *res = LOWER_ALPHA;
+    return true;
+  }
+  if (scanned_upper_alpha == 1) {
+    *res = UPPER_ALPHA;
+    return true;
+  }
+  return false;
+}
+
+static TokenType scan_ordered_list_marker_token_type(Scanner *s,
+                                                     TSLexer *lexer) {
+  // A marker is `a)` or `a.` - the delimiter TRAILS the value. A wrapped
+  // `(a)` is not one: `(1) First` and `(a) x` are paragraphs in every engine
+  // (corpus 156-parenthesized-ordered-marker). Accepting the wrapped form
+  // coloured ordinary parenthesised prose as a list.
+
+  // A value-less marker is one that starts ON the delimiter, so this has to be
+  // read BEFORE the type scan: that scan CONSUMES the run it examined even when
+  // it rejects it, and the bare-dot fallback below cannot tell an omitted value
+  // from a rejected one by lookahead alone. `abc. item` therefore scanned
+  // `abc`, correctly refused it (an alpha marker is a single letter, EBNF
+  // `ordered_marker`), and then handed the leftover `.` to the fallback, which
+  // read it as a value-less decimal marker and built a list over `abc. ` - for
+  // a line the spec makes a paragraph
+  // (308-a-multi-letter-ordered-marker-opens-no-list). `ABC) item` escaped it
+  // only because the fallback is `.`-only.
+  bool value_omitted = lexer->lookahead == '.';
+
+  OrderedListType list_type;
+  s->ordered_word_end = false;
+  if (!scan_ordered_list_type(s, lexer, &list_type)) {
+    // BARE DOT (carve#472). The value may be omitted when the delimiter is
+    // `.`: a bare `. ` is a decimal ordered marker counting from 1. It shares
+    // the decimal-dot flavour, so it opens and continues the same list as `1.`
+    // and needs no token of its own.
+    //
+    // Only `.` may drop its value. A lone `)` stays paragraph text, which is
+    // why this is guarded on the delimiter and on not having consumed a `(` -
+    // `() x` is not a marker either. The caller requires the trailing space,
+    // so `.x` and a bare `.` on its own line are unaffected.
+    if (value_omitted) {
+      advance(s, lexer);
+      return LIST_MARKER_DECIMAL_PERIOD;
+    }
+    s->ordered_word_end = true;
+    return IGNORED;
+  }
+
+  switch (lexer->lookahead) {
+  case ')':
+    advance(s, lexer);
+    {
+      switch (list_type) {
+      case DECIMAL:
+        return LIST_MARKER_DECIMAL_PAREN;
+      case LOWER_ALPHA:
+        return LIST_MARKER_LOWER_ALPHA_PAREN;
+      case UPPER_ALPHA:
+        return LIST_MARKER_UPPER_ALPHA_PAREN;
+      case LOWER_ROMAN:
+        return LIST_MARKER_LOWER_ROMAN_PAREN;
+      case UPPER_ROMAN:
+        return LIST_MARKER_UPPER_ROMAN_PAREN;
+      default:
+        return IGNORED;
+      }
+    }
+  case '.':
+    // a.
+    advance(s, lexer);
+    switch (list_type) {
+    case DECIMAL:
+      return LIST_MARKER_DECIMAL_PERIOD;
+    case LOWER_ALPHA:
+      return LIST_MARKER_LOWER_ALPHA_PERIOD;
+    case UPPER_ALPHA:
+      return LIST_MARKER_UPPER_ALPHA_PERIOD;
+    case LOWER_ROMAN:
+      return LIST_MARKER_LOWER_ROMAN_PERIOD;
+    case UPPER_ROMAN:
+      return LIST_MARKER_UPPER_ROMAN_PERIOD;
+    default:
+      return IGNORED;
+    }
+  default:
+    s->ordered_word_end = true;
+    return IGNORED;
+  }
+}
+
+static TokenType scan_ordered_list_marker_token(Scanner *s, TSLexer *lexer) {
+  TokenType res = scan_ordered_list_marker_token_type(s, lexer);
+  if (res == IGNORED) {
+    return res;
+  }
+
+  if (!scan_marker_attribute(s, lexer)) {
+    return IGNORED;
+  }
+
+  if (lexer->lookahead != ' ') {
+    return IGNORED;
+  }
+  advance(s, lexer);
+  // Only uppercase dot markers need two spaces in 0.2 (C2-B-040).
+  bool letter_dot = res == LIST_MARKER_UPPER_ALPHA_PERIOD ||
+                    res == LIST_MARKER_UPPER_ROMAN_PERIOD;
+  if (letter_dot && lexer->lookahead != ' ') {
+    return IGNORED;
+  }
+  return res;
+}
+
+// Scans a task marker box. `x`/`X` are the checked states; ` `, `_`, `-`,
+// `/`, `!`, `>`, `?` are the unchecked states (spec grammar.ebnf task_state;
+// every non-x state renders as an unchecked checkbox).
+static bool scan_task_list_marker(Scanner *s, TSLexer *lexer) {
+  // The caller has consumed `<bullet> `, one space. A RUN of spaces before the
+  // checkbox is still a task marker - `-   [ ] a` renders a checkbox in every
+  // engine, the same way `#   H` is a heading - and requiring exactly one put
+  // an ERROR inside the marker node (corpus 75-list-nesting-and-looseness-9).
+  // Tabs are not accepted: the separator is a space.
+  while (lexer->lookahead == ' ') {
+    advance(s, lexer);
+  }
+  if (lexer->lookahead != '[') {
+    return false;
+  }
+  advance(s, lexer);
+  if (lexer->lookahead != 'x' && lexer->lookahead != 'X' &&
+      lexer->lookahead != ' ' && lexer->lookahead != '_' &&
+      lexer->lookahead != '-' && lexer->lookahead != '/' &&
+      lexer->lookahead != '!' && lexer->lookahead != '>' &&
+      lexer->lookahead != '?') {
+    return false;
+  }
+  advance(s, lexer);
+  if (lexer->lookahead != ']') {
+    return false;
+  }
+  advance(s, lexer);
+  return lexer->lookahead == ' ';
+}
+
+static TokenType scan_unordered_list_marker_token(Scanner *s, TSLexer *lexer) {
+  // A task marker token can be started with either `-` or `*` and still be of
+  // the same type. `+` is never a bullet in Carve, so it cannot open a task
+  // list.
+  if (scan_bullet_list_marker(s, lexer, '-')) {
+    if (scan_task_list_marker(s, lexer)) {
+      return LIST_MARKER_TASK_BEGIN;
+    } else {
+      return LIST_MARKER_DASH;
+    }
+  }
+  if (scan_bullet_list_marker(s, lexer, '*')) {
+    if (scan_task_list_marker(s, lexer)) {
+      return LIST_MARKER_TASK_BEGIN;
+    } else {
+      return LIST_MARKER_STAR;
+    }
+  }
+  return scan_definition_marker_token(s, lexer);
+}
+
+static TokenType scan_list_marker_token(Scanner *s, TSLexer *lexer) {
+  TokenType unordered = scan_unordered_list_marker_token(s, lexer);
+  if (unordered != IGNORED) {
+    return unordered;
+  }
+  return scan_ordered_list_marker_token(s, lexer);
+}
+
+static bool scan_list_marker(Scanner *s, TSLexer *lexer) {
+  TokenType marker = scan_list_marker_token(s, lexer);
+  return marker != IGNORED;
+}
+
+// NORMATIVE -- "MARKER REQUIRES CONTENT" (grammar, unordered_item/ordered_item
+// and PART 9 §11): a bullet or ordered marker opens a list item ONLY when it is
+// followed by NON-EMPTY content on the same line. Trailing whitespace is
+// ignored, so a content-less marker line -- bare (`-`) or whitespace-only
+// (`- `, `-   `) -- is paragraph text, not a list; `-` and `- ` behave
+// identically. Call with the lexer positioned at (or just past) the marker's
+// separating space, AFTER the token end has been marked: the scratch advances
+// here consume only trailing blanks and do not extend the committed token.
+static bool marker_line_has_content(Scanner *s, TSLexer *lexer) {
+  while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+    advance(s, lexer);
+  }
+  return !lexer->eof(lexer) && !at_line_end(lexer);
+}
+
+// An over-indented description fence with a closer keeps plain text below the
+// body column. A block opener there ends the body before it reaches the fence.
+static bool description_fence_claims_plain_line(Scanner *s, Block *fence,
+                                                Block *body, TSLexer *lexer,
+                                                uint32_t column) {
+  if (!fence || fence->type != CODE_BLOCK || !body ||
+      body->type != LIST_DEFINITION ||
+      !(fence->flags & BLOCK_FLAG_DESCRIPTION_FENCE_HAS_CLOSER) ||
+      fence->content_col <= body->content_col ||
+      column >= body->content_col || at_line_end(lexer) || lexer->eof(lexer)) {
+    return false;
+  }
+  int32_t c = lexer->lookahead;
+  if (c == '#' || c == '>' || c == ':' || c == '%' || c == '`' || c == '~') {
+    int32_t host_previous = s->host_previous;
+    bool host_crossed_line = s->host_crossed_line;
+    BracketProbe probe = bracket_probe_new(s, lexer);
+    uint8_t run = consume_chars(s, &probe.lexer, (char)c);
+    // A heading opener needs a space and then content.
+    bool heading_space = c == '#' && probe.lexer.lookahead == ' ';
+    while (heading_space &&
+           (probe.lexer.lookahead == ' ' || probe.lexer.lookahead == '\t'))
+      advance(s, &probe.lexer);
+    bool opens = c == '#' ? heading_space && !at_line_end(&probe.lexer) &&
+                            !probe.lexer.eof(&probe.lexer) :
+                 c == '>' ? probe.lexer.lookahead == ' ' ||
+                            probe.lexer.lookahead == '+' ||
+                            at_line_end(&probe.lexer) :
+                 c == ':' ? run >= 3 || probe.lexer.lookahead == ' ' :
+                 c == '%' ? run >= 2 : run >= 3;
+    array_delete(&probe.characters);
+    s->host_previous = host_previous;
+    s->host_crossed_line = host_crossed_line;
+    return !opens;
+  }
+  if (c == '+' || c == '[' || c == '|' || c == '{') {
+    return false;
+  }
+  if (c == '-' || c == '*' || c == '_' || c == '(' ||
+      carve_is_alnum_ascii(c)) {
+    bool ordered_word_end = s->ordered_word_end;
+    int32_t host_previous = s->host_previous;
+    bool host_crossed_line = s->host_crossed_line;
+    BracketProbe probe = bracket_probe_new(s, lexer);
+    bool opens = false;
+    if (c == '-' || c == '*' || c == '_') {
+      uint32_t run = 0;
+      while (probe.lexer.lookahead == c || probe.lexer.lookahead == ' ' ||
+             probe.lexer.lookahead == '\t') {
+        if (probe.lexer.lookahead == c) ++run;
+        advance(s, &probe.lexer);
+      }
+      opens = run >= 3 && at_line_end(&probe.lexer);
+      bracket_probe_rewind(&probe, 0);
+    }
+    if (!opens && c != '_') {
+      TokenType marker = scan_list_marker_token(s, &probe.lexer);
+      opens = marker != IGNORED && marker_line_has_content(s, &probe.lexer);
+    }
+    array_delete(&probe.characters);
+    s->ordered_word_end = ordered_word_end;
+    s->host_previous = host_previous;
+    s->host_crossed_line = host_crossed_line;
+    if (opens) return false;
+  }
+  return true;
+}
+
+static bool scan_eof_or_blankline(Scanner *s, TSLexer *lexer) {
+  if (lexer->eof(lexer)) {
+    return true;
+    // We've already parsed any leading whitespace in the beginning of the
+    // scan function.
+  } else if (at_line_end(lexer)) {
+    consume_line_end(s, lexer);
+    return true;
+  } else {
+    return false;
+  }
+}
+
+/// A marker strictly between an item's own marker column and its content
+/// column folds into the item's paragraph as text (`-   lead` / `  - x`). The
+/// item asked is the innermost one whose marker column the line reaches, so
+/// `- - a` / ` - b` folds into the outer item. Not asked inside a quote, where
+/// `data` counts from the quote's prefix and `content_col` from the line start.
+static bool marker_folds_into_item(Scanner *s, uint32_t column) {
+  if (count_blocks(s, BLOCK_QUOTE) > 0) {
+    return false;
+  }
+  for (int i = s->open_blocks->size - 1; i >= 0; --i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (!is_list(b->type) || column + 1 < b->data) {
+      continue;
+    }
+    // A description reached only through its parent item cannot claim a
+    // marker short of its own body column. The parent can open a new block.
+    if (b->type == LIST_DEFINITION && column < b->content_col) {
+      for (int j = i - 1; j >= 0; --j) {
+        Block *parent = *array_get(s->open_blocks, j);
+        if (is_list(parent->type) && parent->type != LIST_DEFINITION &&
+            column >= parent->content_col) {
+          return false;
+        }
+      }
+    }
+    if (b->type == LIST_DEFINITION &&
+        (b->flags & BLOCK_FLAG_DEFINITION_TERM)) {
+      return false;
+    }
+    // A bullet or ordered marker short of the item is a sibling or a new
+    // list, never text (PART 0 S4, carve#4545).
+    if (b->type != LIST_DEFINITION) {
+      return false;
+    }
+    return b->content_col != 0 && column >= b->data && column < b->content_col;
+  }
+  return false;
+}
+
+// Variant for closing an open PARAGRAPH. A LIST MARKER does NOT interrupt a
+// standalone paragraph: with no open list, a bullet or ordered marker folds
+// into the open paragraph as plain text (§10 -- no list interrupts a
+// paragraph; a blank line is required before a list). This holds at the top
+// level and, by lazy continuation, inside a block quote: "> quoted \n - item"
+// is ONE quote whose paragraph is "quoted\n- item", not a quote plus a sibling
+// list. Only a HEADING, a bounded title, is ended by a list marker (handled via
+// the full helper in parse_heading). The `+` continuation marker (corpus 100)
+// is the way to attach a REAL list to a quote.
+//
+// The DEFINITION TERM marker is the single exception, and it is the engines'
+// exception, not this grammar's: `x` / `:: t` is a paragraph plus a `<dl>` in
+// carve-js, carve-php and carve-rs (tree-sitter-carve#108). It is scoped to
+// the term marker alone -- a DESCRIPTION marker attaches to a term, so with no
+// definition list open `x` / `:  d` stays one paragraph in all three.
+//
+// When a list IS already open, a marker WITH CONTENT is a list operation, not
+// a fold: it continues the list with a sibling item (or, for a different
+// type/indent, closes it and opens a new one), so it still ends the item's
+// paragraph -- e.g. consecutive "- a \n - b" stay separate items. Pinned by
+// carve corpus 76-paragraph-interruption, 77/81 lazy-continuation, and
+// 05-lists.
+//
+// MARKER REQUIRES CONTENT applies here too, same as the definition-marker
+// branch below already does: a content-less bullet/ordered marker line does
+// not open a sibling item, so it must not close the current item's paragraph
+// either. Without the check, "- a" / "- " / "x" closed the paragraph here,
+// then the item-end lookahead (which independently applies the same rule,
+// tree-sitter-carve#94) ended the item too -- landing the marker line and the
+// text after it OUTSIDE the item as a new top-level paragraph, where every
+// engine keeps both lines INSIDE the item as lazy text (tree-sitter-carve#75).
+static bool marker_folds_into_nested_paragraph(Scanner *s, uint32_t column);
+static bool line_misses_note(Scanner *s, uint32_t column);
+
+/// Does a line at `column` stand short of the innermost open footnote's body
+/// margin? The margin counts from the prefix of the quote holding the note.
+static bool line_misses_note(Scanner *s, uint32_t column) {
+  Block *note = find_block(s, FOOTNOTE);
+  if (!note) return false;
+  uint32_t margin = note->data;
+  bool below_note = false;
+  for (int i = s->open_blocks->size - 1; i >= 0; --i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (b == note) {
+      below_note = true;
+    } else if (below_note && b->type == BLOCK_QUOTE) {
+      margin += b->content_col;
+      break;
+    }
+  }
+  return column < margin;
+}
+
+static bool scan_paragraph_closing_marker(Scanner *s, TSLexer *lexer) {
+  // A COLON-led line is classified in one pass, because every candidate starts
+  // with the same run of colons and the lexer cannot rewind: `:::`+ is a
+  // container marker, `:: ` a definition TERM, `:` plus two spaces a
+  // DESCRIPTION. Asking the container probe first consumed the colons the
+  // marker probe needed, so a sibling `:: term` was swallowed by the term above
+  // it (tree-sitter-carve#48).
+  if (lexer->lookahead == ':') {
+    // Read before the colons are consumed: the margin test below needs where
+    // the LINE starts, not where the fence's tail ended up.
+    uint32_t marker_column = line_column(s, lexer);
+    uint16_t colons = consume_colons(s, lexer);
+    // An indented fence opens nothing and closes nothing open, so it is
+    // paragraph text (corpus 160).
+    if (colons >= 3 && !at_block_opener_margin(s, marker_column) &&
+        number_of_colon_fence_blocks_from_top(s, colons) == 0) {
+      return false;
+    }
+    if (colons >= 3) {
+      // A COLON FENCE ENDS THE PARAGRAPH ONLY WHEN IT IS REALLY A MARKER.
+      // Counting the colons and stopping here is what closed the paragraph one
+      // line early: `::: {.x}` is not an opener, so the line is paragraph text,
+      // yet the peek ended the paragraph on it and the trailing `:::` three
+      // lines down was then read as a fresh opener (#103). The tail test is
+      // the opener's own, shared rather than restated.
+      bool spaced = false;
+      bool tabbed = false;
+      while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+        tabbed = tabbed || lexer->lookahead == '\t';
+        advance(s, lexer);
+        spaced = true;
+      }
+      int32_t c = lexer->lookahead;
+      bool bare = c == '\n' || c == '\r' || lexer->eof(lexer);
+      if (!colon_fence_tail_opens_block(s, lexer, bare, spaced, tabbed, c)) {
+        // Paragraph text - and from here the paragraph is "expecting a
+        // closer": a later BARE fence is text too (PART 9 §12).
+        s->state |= STATE_FENCE_ABSORBS;
+        return false;
+      }
+      if (!bare) {
+        // A valid opener carrying something interrupts even after a malformed
+        // sibling: `::: {.x}` / `x` / `::: note` is a paragraph plus an
+        // admonition in every engine.
+        return true;
+      }
+      // Bare. A closer for a div that is actually open is still that closer,
+      // absorption or not - the flag only suppresses opening a NEW div.
+      if (number_of_colon_fence_blocks_from_top(s, colons) > 0) {
+        return true;
+      }
+      // ...and the absorption is the PARAGRAPH's, so it reaches only as far as
+      // the container that paragraph lives in. A fence BELOW the container's
+      // content margin is a lazy-continuation line: the outer context is
+      // offered it first, and out there no paragraph is expecting a closer, so
+      // it ends the item and opens its div. `- item` / `:::note` / `body` /
+      // `:::` / `tail` is a one-item list plus a div holding `tail` in
+      // carve-js, carve-php and carve-rs alike, at any fence width
+      // (tree-sitter-carve#106).
+      //
+      // Only this consumption side needs the margin; the SETTING side is
+      // already right. A malformed fence absorbed lazily still governs a later
+      // fence at the item's own column - `- item` / `:::note` / `  body` /
+      // `  :::` / `  tail` is one item in all three engines, where the same
+      // `  :::` without the `:::note` above it opens a div inside the item.
+      //
+      // A block quote reaches only as far too, and because it continues by its
+      // `>` markers rather than by indentation its boundary is asked
+      // separately: an unmarked fence at the margin of the context HOLDING the
+      // quote is offered to that context first, and out there nothing is
+      // expecting a closer. `> para` / `:::note` / `body` / `:::` / `tail` is a
+      // quote holding one paragraph plus a document-level div in carve-js,
+      // carve-php and carve-rs alike, while the same document with every line
+      // marked is a single quoted paragraph (tree-sitter-carve#114).
+      if (s->state & STATE_FENCE_ABSORBS) {
+        return escapes_open_block_quote(s, marker_column) ||
+               below_container_margin(s, marker_column);
+      }
+      return true;
+    }
+    Block *open_list = find_list(s);
+    // Inside a DEFINITION list, a marker-shaped colon line ends the item above
+    // it on its SHAPE alone - deliberately unlike every other list, where the
+    // marker must carry content. MARKER REQUIRES CONTENT still applies to the
+    // marker itself: the line is paragraph text, it just is not part of the
+    // term or description above it. `:: t` / `:: ` / `x` is a one-term `<dl>`
+    // followed by a paragraph holding both remaining lines in carve-rs and
+    // carve-php (markup-carve/carve#788; carve-js folds it into the term and is
+    // the outlier, filed as markup-carve/carve-js#731).
+    //
+    // The separator space is the whole of the shape test. A BARE `::` carries
+    // no separator, so it is not marker-shaped at all and continues the term
+    // lazily - which is what all three engines do with it, and why this is not
+    // simply "a colon run ends the term".
+    //
+    // The shape-only rule is scoped to a definition list because a colon line
+    // has no marker meaning anywhere else: inside a bullet item, `- a` / `:: `
+    // / `x` keeps both lines in the item as lazy text in every engine, exactly
+    // like the content-less bullet line #98 fixed. Only a colon marker WITH
+    // content ends a bullet item (`- a` / `:: b` is a `<ul>` plus a `<dl>`),
+    // which is what the content test below still answers.
+    bool in_definition_list =
+        open_list != NULL && open_list->type == LIST_DEFINITION;
+    if (colons == 2) {
+      // A definition TERM marker is the ONE list marker that interrupts a
+      // standalone paragraph, which is why no open list is required here: it
+      // OPENS the list rather than continuing one, exactly as the opener in
+      // `parse_colon` already models it. `x` / `:: t` is a paragraph plus a
+      // one-term `<dl>` in carve-js, carve-php and carve-rs alike
+      // (tree-sitter-carve#108). MARKER REQUIRES CONTENT is what keeps `x` /
+      // `:: ` a single paragraph, and the separator test keeps `x` / `::` one
+      // too - both measured against all three engines.
+      //
+      // No indent test here on purpose: the opener has none either, and this
+      // peek must answer exactly the question the opener answers. An INDENTED
+      // term marker opens a `<dl>` in this grammar where every engine keeps
+      // paragraph text (` :: t` on its own already does, with no paragraph
+      // above it), and a peek that refused an indented marker the opener still
+      // accepts produced an ERROR tree. That laxity is the opener's, it is
+      // pre-existing, and it is tracked separately.
+      if (lexer->lookahead != ' ') {
+        return false;
+      }
+      advance(s, lexer);
+      // In a description body an empty term marker is text (corpus 483).
+      bool in_term = in_definition_list &&
+                     (open_list->flags & BLOCK_FLAG_DEFINITION_TERM);
+      return in_term || marker_line_has_content(s, lexer);
+    }
+    // One colon: a DESCRIPTION attaches to a TERM, so with no definition list
+    // open it is not a marker and cannot interrupt anything - `x` / `:  d` and
+    // `- q` / `: d` are one paragraph in every engine.
+    if (find_block(s, LIST_DEFINITION) == NULL) {
+      return false;
+    }
+    // At or past a description body's column the line is that body's
+    // content, where no definition list is open (PART 0 S2/S4).
+    Block *dl = find_block(s, LIST_DEFINITION);
+    if (!(dl->flags & BLOCK_FLAG_DEFINITION_TERM) && dl->content_col != 0 &&
+        marker_column >= dl->content_col) {
+      return false;
+    }
+    // In the folding zone of the item holding the definition list the line
+    // misses that list and folds (PART 0 S4).
+    if (count_blocks(s, BLOCK_QUOTE) == 0 && marker_column + 1u < dl->data &&
+        count_blocks(s, LIST_DEFINITION) == 1) {
+      Block *item = NULL;
+      for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
+        Block *b = *array_get(s->open_blocks, i);
+        if (b == dl) break;
+        if (is_list(b->type)) item = b;
+      }
+      if (item && marker_column >= item->data) return false;
+    }
+    // A description takes one or more spaces. The separator width sets the
+    // body's authored content column; one space is canonical (carve#1757).
+    if (lexer->lookahead != ' ') {
+      return false;
+    }
+    advance(s, lexer);
+    // A colon followed by only whitespace is not a description (corpus 439).
+    return marker_line_has_content(s, lexer);
+  }
+  // A note or description body opens a child list at its content column
+  // (PART 9 section 10 I2); below it the marker reads in the body's owner.
+  Block *body = peek_block(s);
+  if (body && (body->type == FOOTNOTE ||
+               (body->type == LIST_DEFINITION &&
+                !(body->flags & BLOCK_FLAG_DEFINITION_TERM)))) {
+    return scan_list_marker(s, lexer) && marker_line_has_content(s, lexer);
+  }
+  Block *list = find_list(s);
+  bool in_list_item = false;
+  for (int i = 0; i < s->open_blocks->size; ++i) {
+    Block *host = *array_get(s->open_blocks, i);
+    if (host == list) {
+      break;
+    }
+    if (is_list(host->type) && host->type != LIST_DEFINITION) {
+      in_list_item = true;
+    }
+  }
+  // A marker short of an open note's margin is read in the note's owner,
+  // where it opens a list (PART 0 S4).
+  if (!list && line_misses_note(s, line_column(s, lexer))) {
+    return scan_list_marker(s, lexer) && marker_line_has_content(s, lexer);
+  }
+  if (!list || (!in_list_item && list == peek_block(s) &&
+                list->type == LIST_DEFINITION &&
+                !(list->flags & BLOCK_FLAG_DEFINITION_TERM))) {
+    return false;
+  }
+  if (marker_folds_into_item(s, line_column(s, lexer)) ||
+      marker_folds_into_nested_paragraph(s, line_column(s, lexer))) {
+    return false;
+  }
+  if (!scan_list_marker(s, lexer)) {
+    return false;
+  }
+  return marker_line_has_content(s, lexer);
+}
+
+/// Record where the innermost container's content starts.
+static void record_container_content_column(Scanner *s, uint8_t col) {
+  Block *top = peek_block(s);
+  if (top && top->content_col == 0) {
+    top->content_col = col;
+  }
+}
+
+/// Record a list marker's content margin for every later indent probe.
+///
+/// `content_col` belongs to the list, while `marker_end_col` belongs to the
+/// current source line. They describe the same position after a successful
+/// list marker, but the first survives into following lines and the second is
+/// cleared on the next line. Keeping both writes here prevents a list spelling
+/// from fixing block openers below its content but still refusing a footnote or
+/// fence on its own marker line.
+///
+/// A continued bullet, task, or ordered list keeps the content column it
+/// opened with. Definition-list items are markers rather than lazy
+/// continuations, so their width replaces the preceding item's column.
+static void record_list_marker_margin(Scanner *s, uint8_t col,
+                                      bool replace_content_col) {
+  Block *top = peek_block(s);
+  if (top && (replace_content_col || top->content_col == 0)) {
+    top->content_col = col;
+  }
+  if (s->chain_col == UINT8_MAX) s->chain_col = s->indent;
+  s->marker_end_col = col;
+}
+
+/// The content column of the item, quote or note holding `list`, or 0 at the
+/// root.
+static uint8_t enclosing_item_content_col(Scanner *s, Block *list) {
+  bool below = false;
+  for (int i = s->open_blocks->size - 1; i >= 0; --i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (b == list) {
+      below = true;
+    } else if (below && (is_list(b->type) || b->type == BLOCK_QUOTE)) {
+      return b->content_col;
+    } else if (below && b->type == FOOTNOTE) {
+      // The note's margin counts from the prefix of the quote holding it.
+      uint8_t margin = b->data;
+      for (int j = i - 1; j >= 0; --j) {
+        Block *q = *array_get(s->open_blocks, j);
+        if (q->type == BLOCK_QUOTE) {
+          margin = (uint8_t)(margin + q->content_col);
+          break;
+        }
+      }
+      return margin;
+    }
+  }
+  return 0;
+}
+
+/// False when a new list would pass the nesting cap; the marker is then text.
+static bool ensure_list_open(Scanner *s, BlockType type, uint8_t indent,
+                             uint32_t marker_column) {
+  Block *top = peek_block(s);
+  // Found a list with the same type and indent, we should continue it.
+  if (top && top->type == type && top->data == indent) {
+    return true;
+    // There might be other cases, like if the top list is a list of different
+    // types, but that's handled by BLOCK_CLOSE in `close_list_if_needed` and
+    // we shouldn't see that state here.
+  }
+  // A sibling short of the last item's content column moves the list to its
+  // own columns (PART 0 S4).
+  if (top && top->type == type && type != LIST_DEFINITION &&
+      top->content_col != 0 && indent > 0) {
+    uint32_t content = top->content_col;
+    Block *quote = find_block(s, BLOCK_QUOTE);
+    if (quote && list_opened_in_quote(s, top)) {
+      content = content > quote->content_col ? content - quote->content_col : 0;
+    }
+    // The marker must stand inside the quote the list was opened in (an
+    // unknown column is not checked).
+    bool absolute = quote && marker_column != UINT32_MAX &&
+                    marker_column < quote->content_col;
+    uint32_t at = indent - 1u +
+        (quote && list_opened_in_quote(s, top) ? quote->content_col : 0);
+    if (indent - 1u < content && !absolute &&
+        at >= enclosing_item_content_col(s, top) &&
+        (!quote || list_opened_in_quote(s, top))) {
+      top->data = indent;
+      top->content_col = 0;
+      return true;
+    }
+  }
+  if (at_nesting_cap(s)) return false;
+  push_block(s, type, indent);
+  return true;
+}
+
+static bool handle_ordered_list_marker(Scanner *s, TSLexer *lexer,
+                                       const bool *valid_symbols, TokenType marker,
+                                       bool after_marker, uint32_t start_at) {
+  uint32_t column = marker != IGNORED && valid_symbols[marker] ? line_column(s, lexer) : UINT32_MAX;
+  // `start_at` is in host advances, all on this line: the marker is on it.
+  uint32_t moved = s->host_advances - start_at;
+  uint32_t start_col = after_marker && column != UINT32_MAX && column >= moved ? column - moved : 0;
+  if (column <= MAX_LIST_MARKER_COLUMN) {
+    // Mark the token end (after the marker's space) before the content probe,
+    // so the scratch advances in `marker_line_has_content` cannot extend it.
+    mark_end(s, lexer);
+    // The whole space run is separator (`1.   a` has its content at 5), as for
+    // a bullet; the token takes it and the column is read after it.
+    while (lexer->lookahead == ' ') {
+      advance(s, lexer);
+    }
+    if (!at_line_end(lexer) && !lexer->eof(lexer)) {
+      mark_end(s, lexer);
+    }
+    // The attribute block counts zero, as on a bullet (`1.{#k} a`, corpus 413).
+    uint8_t content_col =
+        (uint8_t)(line_column(s, lexer) - s->marker_attribute_width);
+    // A content-less marker line is paragraph text, not a list.
+    if (!marker_line_has_content(s, lexer)) {
+      return false;
+    }
+    // A marker where the previous marker on this line ended nests at its own
+    // column (`1. 1. x`), as a bullet does.
+    uint8_t list_indent = s->indent;
+    if (start_col > s->indent && s->marker_end_col != 0 &&
+        start_col == s->marker_end_col && start_col < UINT8_MAX) {
+      list_indent = (uint8_t)start_col;
+    }
+    if (!ensure_list_open(s, list_marker_to_block(marker), list_indent + 1,
+                          start_col != 0 ? start_col : UINT32_MAX)) return false;
+    record_list_marker_margin(s, content_col, false);
+    lexer->result_symbol = marker;
+    return true;
+  } else {
+    return false;
+  }
+}
+
+// Consumes until newline or eof, only allowing 'c' or whitespace.
+// Returns the number of 'c' encountered (0 if any other character is
+// encountered).
+static uint8_t consume_line_with_char_or_whitespace(Scanner *s, TSLexer *lexer,
+                                                    char c) {
+  uint8_t seen = consume_chars(s, lexer, c);
+  consume_whitespace(s, lexer);
+  return at_line_end(lexer) || lexer->eof(lexer) ? seen : 0;
+}
+
+static bool frontmatter_has_closer(TSLexer *lexer) {
+  while (!lexer->eof(lexer) && !at_line_end(lexer)) {
+    lexer->advance(lexer, false);
+  }
+  while (!lexer->eof(lexer)) {
+    if (lexer->lookahead == '\r') lexer->advance(lexer, false);
+    if (lexer->lookahead == '\n') lexer->advance(lexer, false);
+    uint32_t dashes = 0;
+    while (lexer->lookahead == '-') {
+      ++dashes;
+      lexer->advance(lexer, false);
+    }
+    if (dashes >= 3) {
+      while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+        lexer->advance(lexer, false);
+      }
+      if (lexer->eof(lexer) || at_line_end(lexer)) return true;
+    }
+    while (!lexer->eof(lexer) && !at_line_end(lexer)) {
+      lexer->advance(lexer, false);
+    }
+  }
+  return false;
+}
+
+/// Is the rest of the OPENER line a frontmatter opener at all?
+///
+/// `frontmatter` in `grammar.js` is `frontmatter_marker`, a `[space]` slot and
+/// an optional `language` token - the same one-space slot the code fence takes
+/// (grammar.ebnf PART 7; carve-js #800 narrowed the code fence, the frontmatter
+/// opener and the raw block together). `---<SP><SP>yaml` is NOT an opener: the
+/// second space reaches `language`, whose class holds no space.
+///
+/// The caller must not reach for a thematic break when this says no. The line
+/// carries a word, so it is not a run of markers either - it is ordinary prose,
+/// and the `---` further down is what becomes the break (corpus 264).
+///
+/// Call with the lexer sitting right after the opening run of `-`, and only
+/// where a frontmatter OPENER is what is being decided; the closing marker
+/// inside `frontmatter_content` has no tail to model.
+static bool frontmatter_opener_tail_is_modeled(Scanner *s, TSLexer *lexer) {
+  bool tabbed = false;
+  uint16_t spaces = consume_ws_run(s, lexer, &tabbed);
+  if (at_line_end(lexer) || lexer->eof(lexer)) {
+    return true; // a bare `---`, or one with trailing whitespace
+  }
+  if (tabbed || spaces > 1) {
+    return false;
+  }
+  // `language: /[^\r\n\t \{\}=\["]+/` in grammar.js - one token, then nothing
+  // but trailing whitespace.
+  while (!at_line_end(lexer) && !lexer->eof(lexer) && lexer->lookahead != ' ' &&
+         lexer->lookahead != '\t' && lexer->lookahead != '{' &&
+         lexer->lookahead != '}' && lexer->lookahead != '=' &&
+         lexer->lookahead != '[' && lexer->lookahead != '"' &&
+         lexer->lookahead != '\f' && lexer->lookahead != 0xa0) {
+    advance(s, lexer);
+  }
+  bool trailing_tabbed = false;
+  consume_ws_run(s, lexer, &trailing_tabbed);
+  return at_line_end(lexer) || lexer->eof(lexer);
+}
+
+// Either parse a list item marker (like '- ') or a thematic break
+// (like '- - -').
+/// THE HANDBACK CONTRACT, for a probe that declines after consuming.
+///
+/// The lexer cannot rewind, so a probe that reads a delimiter run and then
+/// declines leaves every later reader in this call standing past characters it
+/// never saw. The left-boundary reader needs exactly those characters: it
+/// decides a delimiter by the one behind it, and at a line start the block
+/// probes get the first look.
+///
+/// So the probe reports what it ate. `*declined_run` is set to the number of
+/// MARKER characters consumed, and only where everything consumed was the
+/// marker - a probe that also took an attribute block, a space or a word
+/// reports nothing, because a replay of marker characters would then be a lie.
+///
+/// The promise, for the reader: on a false return with a non-zero count, the
+/// lexer sits exactly that many marker characters past where the call began,
+/// and nothing else was consumed. On a false return with zero, the reader may
+/// assume nothing about the position and must not act.
+///
+/// A probe that declines WITHOUT consuming leaves the count at zero, which is
+/// the same thing it said before this contract existed.
+static bool opener_reaches_item_margin(Scanner *s, uint32_t column);
+
+static bool list_text_line(Scanner *s) {
+  Block *top = peek_block(s);
+  return top && is_list(top->type) && top->type != LIST_DEFINITION &&
+         (top->flags & BLOCK_FLAG_LIST_TEXT_LINE);
+}
+
+static uint8_t list_column_u8(uint32_t column) {
+  return column > UINT8_MAX ? UINT8_MAX : (uint8_t)column;
+}
+
+static bool parse_list_marker_or_thematic_break(
+    Scanner *s, TSLexer *lexer, const bool *valid_symbols, char marker,
+    TokenType marker_type, BlockType list_type, TokenType thematic_break_type,
+    uint8_t *declined_run) {
+  if (declined_run != NULL) {
+    *declined_run = 0;
+  }
+  // This is a bit ugly to do here, but eh, refactoring will look very ugly.
+  bool check_frontmatter = (valid_symbols[FRONTMATTER_MARKER] ||
+      valid_symbols[FRONTMATTER_UNCLOSED_MARKER]) && marker == '-';
+  if (list_text_line(s) || line_block_body(s)) {
+    return false;
+  }
+
+  if (!check_frontmatter && !valid_symbols[marker_type] &&
+      !valid_symbols[thematic_break_type] &&
+      !valid_symbols[LIST_MARKER_TASK_BEGIN]) {
+    return false;
+  }
+
+#ifdef DEBUG
+  assert(lexer->lookahead == marker);
+#endif
+  // A bullet marker that begins exactly where the previous list marker on
+  // this line ended is a marker-line nested list (`- - A`, corpus
+  // 103-marker-line-nested-lists): its list nests at the marker's own column
+  // instead of continuing the outer list at the line indent.
+  uint32_t start_col = line_column(s, lexer);
+  uint32_t raw_start_col = start_col;
+  if (s->indent > start_col && s->marker_end_col == 0) {
+    start_col = s->indent;
+  }
+  uint32_t column_offset = start_col - raw_start_col;
+  if (start_col > MAX_LIST_MARKER_COLUMN) {
+    return false;
+  }
+  uint8_t list_indent = s->indent;
+  if (start_col > s->indent && s->marker_end_col != 0 &&
+      start_col == s->marker_end_col) {
+    list_indent = (uint8_t)start_col;
+  }
+  // A sibling of a list opened on a quoted marker line, whose indent is that
+  // list's absolute column.
+  Block *quoted_list = peek_block(s);
+  if (quoted_list && is_list(quoted_list->type) && start_col < UINT8_MAX &&
+      quoted_list->data == start_col + 1 && quoted_list->data != list_indent + 1 &&
+      list_opened_in_quote(s, quoted_list)) {
+    list_indent = (uint8_t)start_col;
+  }
+  advance(s, lexer);
+
+  // A GLUED ATTRIBUTE BLOCK. `-{.x} item` and `*{.x} item` are lists in every
+  // engine: the marker takes an attribute block before its separator, and the
+  // block's own rules apply inside it, so the `}` in `-{title='a}b'} item`
+  // closes nothing. The ordered markers gained this in #81; bullets come
+  // through here instead, where the character right after the marker decides
+  // everything below (tree-sitter-carve#89).
+  //
+  // Consumed BEFORE the two probes below, both of which are inert on a `{`
+  // anyway - a frontmatter run needs marker characters and a thematic break
+  // needs a second marker or a space - and forced off explicitly once a block
+  // is taken, because after it the lookahead IS a space and the break test
+  // would otherwise say yes.
+  bool marker_attribute = false;
+  uint32_t attribute_width = 0;
+  if (lexer->lookahead == '{' &&
+      (valid_symbols[marker_type] || valid_symbols[LIST_MARKER_TASK_BEGIN])) {
+    // No rewind on failure, which is the same contract the ordered path uses:
+    // an invalid payload (`-{not!} item`) refuses the token and the line parses
+    // as a paragraph, which is what the attribute grammar says it is.
+    uint32_t attribute_start = line_column(s, lexer);
+    if (!scan_valid_inline_attribute(s, lexer)) {
+      return false;
+    }
+    attribute_width = line_column(s, lexer) - attribute_start;
+    marker_attribute = true;
+  }
+
+  // We should prioritize a thematic break over lists.
+  // We need to remember if a '- ' is found, which means we can open a list.
+  bool can_be_list_marker =
+      (valid_symbols[marker_type] || valid_symbols[LIST_MARKER_TASK_BEGIN]) &&
+      lexer->lookahead == ' ';
+
+  // We have now checked the two first characters.
+  if (marker_attribute && !can_be_list_marker) return false;
+  uint32_t marker_count = lexer->lookahead == marker ? 2 : 1;
+
+  // Leading space does not stop a break from opening (PART 0 S3).
+  bool can_be_thematic_break = valid_symbols[thematic_break_type] &&
+                               !marker_attribute &&
+                               (opener_reaches_item_margin(s, start_col) ||
+                                (s->marker_end_col != 0 &&
+                                 start_col == s->marker_end_col)) &&
+                               marker_count == 2;
+
+  // We might have scanned a '- ', we need to mark the end here
+  // so we can go back to simply returning a list marker that
+  // only consumes these two characters.
+  advance(s, lexer);
+  // Both consumed characters are the marker, so a replay of two is exact. Any
+  // later probe that eats more of the run adds to it; anything else consumed
+  // clears it, because the contract above promises marker characters only.
+  if (declined_run != NULL && marker_count == 2) {
+    *declined_run = 2;
+  }
+  mark_end(s, lexer);
+  // The column just past the COMMITTED token, captured here because the content
+  // probe below advances the lexer as scratch - reading the column after it
+  // returns wherever that probe stopped, which broke `- - A` (corpus
+  // 103-marker-line-nested-lists) while this was being written.
+  uint8_t marker_content_col = list_column_u8(line_column(s, lexer) + column_offset);
+  // The item's content starts after the WHOLE space run: `-   lead` puts it at
+  // column 4. Counted before the thematic-break probe, which can eat an inner
+  // marker too (`* * u`) and would then report a column past it.
+  uint32_t extra_spaces = 0;
+  if (can_be_list_marker) {
+    while (lexer->lookahead == ' ') {
+      advance(s, lexer);
+      ++extra_spaces;
+    }
+    if (!at_line_end(lexer) && !lexer->eof(lexer)) {
+      marker_content_col = list_column_u8(line_column(s, lexer) + column_offset);
+      // The token takes the run too, so the content (`-   # H`) starts at a
+      // block start rather than behind padding no opener accepts.
+      mark_end(s, lexer);
+    }
+  }
+  // A marker's attribute block counts zero toward the content column
+  // (`-{.outer} parent` / `  - child` nests, corpus 413).
+  marker_content_col = (uint8_t)(marker_content_col - attribute_width);
+
+  // Whether the probes below have consumed marker characters from the rest of
+  // the line. The lexer cannot rewind, so what they eat decides the CONTENT
+  // question further down: a line of markers reaches the newline, and the
+  // content check would then see nothing and call the line content-less. It is
+  // not - the marker characters ARE the content. `- -` and `- - ` are a list
+  // whose item holds a literal `-`, because MARKER REQUIRES CONTENT applies to
+  // the INNER marker and leaves it as text; carve-rs, carve-js and carve-php
+  // all publish `<ul><li>-</li></ul>` where this grammar flattened the pair to
+  // a paragraph (tree-sitter-carve#48).
+  bool consumed_line_of_markers = false;
+
+  // A SPACED BREAK, `- - -` or `* * *`: single spaces between three or more
+  // markers (PART 2 `thematic_break`, carve#4814). Probed after the list token
+  // end is marked, so a refusal still leaves `- ` as the marker. A refused probe
+  // has consumed an inner marker, so the item has content and is no task.
+  bool spaced_probe_refused = false;
+  if (marker_count == 1 && can_be_list_marker && (marker == '-' || marker == '*') &&
+      valid_symbols[thematic_break_type] && !marker_attribute &&
+      (opener_reaches_item_margin(s, start_col) ||
+       (s->marker_end_col != 0 && start_col == s->marker_end_col)) &&
+      extra_spaces == 0 && lexer->lookahead == marker) {
+    uint32_t spaced = 1;
+    bool spaced_ok = false;
+    while (lexer->lookahead == marker) {
+      advance(s, lexer);
+      ++spaced;
+      if (lexer->lookahead != ' ') {
+        while (lexer->lookahead == '\t' || lexer->lookahead == ' ') advance(s, lexer);
+        spaced_ok = at_line_end(lexer) || lexer->eof(lexer);
+        break;
+      }
+      advance(s, lexer);
+      if (lexer->lookahead != marker) {
+        while (lexer->lookahead == ' ' || lexer->lookahead == '\t') advance(s, lexer);
+        spaced_ok = at_line_end(lexer) || lexer->eof(lexer);
+        break;
+      }
+    }
+    if (spaced_ok && spaced >= 3) {
+      lexer->result_symbol = thematic_break_type;
+      mark_end(s, lexer);
+      return true;
+    }
+    spaced_probe_refused = true;
+    consumed_line_of_markers = true;
+  }
+
+  // Check frontmatter, if needed. The run must be contiguous from the first
+  // marker: `-` / `---` is a paragraph and then a break.
+  if (check_frontmatter && !can_be_list_marker && marker_count == 2) {
+    uint8_t frontmatter_run = consume_chars(s, lexer, marker);
+    marker_count += frontmatter_run;
+    if (marker_count == 3) {
+      // The boundary for FRONTMATTER_MARKER either way: just the marker
+      // characters themselves, matching what a closed frontmatter opener has
+      // always produced here.
+      mark_end(s, lexer);
+      // `can_be_thematic_break` is only true when a thematic break is ALSO
+      // grammatically valid at this exact position - which is the document
+      // start (frontmatter is optional there), never the closing-marker
+      // position inside `frontmatter_content` (raw lines, no thematic break
+      // reachable). So this gate is what tells the OPENING commitment apart
+      // from the CLOSING one without needing any extra state: the closer
+      // keeps committing unconditionally below, exactly as before.
+      if (valid_symbols[FRONTMATTER_UNCLOSED_MARKER]) {
+        // The opener's own slot, read before the closer search below moves the
+        // lexer off this line. A tail this grammar cannot model leaves the line
+        // as PROSE, so neither symbol is produced here - returning the thematic
+        // break instead would be wrong for the same reason the frontmatter is:
+        // the line carries a word, and a break is a run of markers.
+        if (!frontmatter_opener_tail_is_modeled(s, lexer)) {
+          return false;
+        }
+        // An opener with no closer claims the rest of the document
+        // (carve#5016, #5085); `_frontmatter_rest` then takes it whole.
+        s->host_previous = -1;
+        lexer->result_symbol = frontmatter_has_closer(lexer)
+                                   ? FRONTMATTER_MARKER
+                                   : FRONTMATTER_UNCLOSED_MARKER;
+        return true;
+      }
+      lexer->result_symbol = FRONTMATTER_MARKER;
+      return true;
+    }
+    consumed_line_of_markers = frontmatter_run > 0;
+  }
+
+  // Check a thematic break that can span the entire line.
+  if (can_be_thematic_break) {
+    uint8_t trailing = consume_line_with_char_or_whitespace(s, lexer, marker);
+    marker_count += trailing;
+    if (marker_count >= 3) {
+      lexer->result_symbol = thematic_break_type;
+      mark_end(s, lexer);
+      return true;
+    }
+    consumed_line_of_markers = consumed_line_of_markers || trailing > 0;
+  }
+
+  if (can_be_list_marker) {
+    if (valid_symbols[LIST_MARKER_TASK_BEGIN] && !spaced_probe_refused) {
+      if (scan_task_list_marker(s, lexer)) {
+        if (!ensure_list_open(s, LIST_TASK, list_indent + 1, start_col)) return false;
+        record_list_marker_margin(s, marker_content_col, false);
+        while (lexer->lookahead == ' ') advance(s, lexer);
+        s->marker_end_col = list_column_u8(line_column(s, lexer) + column_offset);
+        lexer->result_symbol = LIST_MARKER_TASK_BEGIN;
+        return true;
+      }
+    }
+
+    if (valid_symbols[marker_type]) {
+      // A content-less marker line is paragraph text, not a list (the token end
+      // is already marked above, so this lookahead is scratch).
+      if (!consumed_line_of_markers && !marker_line_has_content(s, lexer)) {
+        return false;
+      }
+      if (!ensure_list_open(s, list_type, list_indent + 1, start_col)) return false;
+      record_list_marker_margin(s, marker_content_col, false);
+      lexer->result_symbol = marker_type;
+      return true;
+    }
+  }
+
+  return false;
+}
+
+static bool scan_verbatim_to_end_no_newline(Scanner *s, TSLexer *lexer) {
+  uint8_t tick_count = consume_chars(s, lexer, '`');
+  if (tick_count == 0) {
+    return false;
+  }
+  while (!lexer->eof(lexer)) {
+    switch (lexer->lookahead) {
+    case '\\':
+      advance(s, lexer);
+      advance(s, lexer);
+      break;
+    case '`':
+      if (consume_chars(s, lexer, '`') == tick_count) {
+        return true;
+      }
+      break;
+    case '\r':
+    case '\n':
+      return false;
+    default:
+      advance(s, lexer);
+    }
+  }
+  return false;
+}
+
+/// `scan_verbatim_to_end_no_newline`, plus the one question a TABLE ROW has to
+/// ask when the run does NOT close on its line.
+///
+/// An unclosed verbatim-family run inside a row is closed by the ROW's closing
+/// pipe: `| a `b | c d |` is one cell holding `b | c d`, not a paragraph, and
+/// the `!`-prefixed spelling `| a !`b | c d |` (carve#1466) reaches the same
+/// rule. So a run reaching end of line is only fatal to the row when the row
+/// has no closing pipe left for it to end at - which is true exactly when the
+/// LAST `|` on the line is followed by something other than whitespace.
+///
+/// Returns true when the run closes on its own ticks, as before. Otherwise
+/// returns false and sets `*row_closer_seen` to whether such a closing pipe
+/// exists.
+static bool scan_verbatim_run_in_cell(Scanner *s, TSLexer *lexer,
+                                      bool *row_closer_seen) {
+  *row_closer_seen = false;
+  uint8_t tick_count = consume_chars(s, lexer, '`');
+  if (tick_count == 0) {
+    return false;
+  }
+  // "The mark stands at a pipe": set by a `|`, kept across the whitespace that
+  // may trail it, cleared by any other content.
+  bool after_pipe = false;
+  while (!lexer->eof(lexer)) {
+    switch (lexer->lookahead) {
+    case '\\':
+      after_pipe = false;
+      advance(s, lexer);
+      // The escaped character, but NEVER the line terminator. A trailing
+      // backslash would otherwise escape the newline, and the scan would read
+      // on into the line below and answer THIS line's question with the next
+      // line's pipe: a row ending in a backslash came back as a one-row table
+      // where the line has no closing pipe at all and the document is a
+      // paragraph. This function is line-bounded by contract, like the
+      // no_newline scan it is derived from.
+      if (!at_line_end(lexer) && !lexer->eof(lexer)) {
+        advance(s, lexer);
+      }
+      break;
+    case '`':
+      if (consume_chars(s, lexer, '`') == tick_count) {
+        return true;
+      }
+      after_pipe = false;
+      break;
+    case '|':
+      after_pipe = true;
+      advance(s, lexer);
+      break;
+    case ' ':
+    case '\t':
+      advance(s, lexer);
+      break;
+    case '\r':
+    case '\n':
+      *row_closer_seen = after_pipe;
+      return false;
+    default:
+      after_pipe = false;
+      advance(s, lexer);
+    }
+  }
+  *row_closer_seen = after_pipe;
+  return false;
+}
+
+/// The rest of a reference-definition line, AFTER the space that follows `]:`.
+///
+/// `reference_definition = '[', reference_label, ']', ':', space,
+/// link_destination, [link_title], [space, attributes], newline` (grammar.ebnf).
+/// ANCHORED AT END OF LINE, normatively: what follows the destination and the
+/// optional title is not ignored, it makes the production FAIL, and the line is
+/// then an ordinary paragraph (carve#911). Both metadata slots take exactly one
+/// space (carve#912).
+///
+/// Refusing HERE rather than in `grammar.js` is what puts the line back on the
+/// paragraph path - the same note the separator check below already carries.
+/// The rule failing in the grammar leaves an ERROR instead, which is what an
+/// `ignored_text` slot was there to avoid; that slot is what made PART 7's
+/// promised fallback unreachable at this line, so the tail is modeled here and
+/// the slot is gone.
+static bool ref_def_tail_is_modeled(Scanner *s, TSLexer *lexer, bool tabbed) {
+  // The separator run after the colon has already been consumed.
+  // The separator is spaces only, and the destination does not start with
+  // Unicode whitespace (spec 21879d7): `[a]: <TAB>/u` is paragraph text.
+  int32_t lead = lexer->lookahead;
+  if (tabbed || lead == 0xA0 || lead == 0x1680 || (lead >= 0x2000 && lead <= 0x200A) ||
+      lead == 0x2028 || lead == 0x2029 || lead == 0x202F || lead == 0x205F ||
+      lead == 0x3000 || lead == 0xFEFF) {
+    return false;
+  }
+  // `link_destination = /\S+/`, so a glued `{...}` is part of it: `[a]: /u{.c}`
+  // gives the href `/u{.c}` and carries no attributes.
+  while (!at_line_end(lexer) && !lexer->eof(lexer) && lexer->lookahead != ' ' &&
+         lexer->lookahead != '\t') {
+    advance(s, lexer);
+  }
+  uint16_t spaces = consume_ws_run(s, lexer, &tabbed);
+  if (at_line_end(lexer) || lexer->eof(lexer)) {
+    return true; // trailing whitespace, both spellings (PART 1; carve#890)
+  }
+  if (tabbed || spaces != 1) {
+    return false;
+  }
+  // The optional title, which `grammar.js` spells with either quote.
+  if (lexer->lookahead == '"' || lexer->lookahead == '\'') {
+    int32_t quote = lexer->lookahead;
+    advance(s, lexer);
+    while (!at_line_end(lexer) && !lexer->eof(lexer) &&
+           lexer->lookahead != quote) {
+      if (lexer->lookahead == '\\') {
+        advance(s, lexer);
+        if (at_line_end(lexer) || lexer->eof(lexer)) {
+          return false;
+        }
+      }
+      advance(s, lexer);
+    }
+    if (lexer->lookahead != quote) {
+      return false;
+    }
+    advance(s, lexer);
+    spaces = consume_ws_run(s, lexer, &tabbed);
+    if (at_line_end(lexer) || lexer->eof(lexer)) {
+      return true;
+    }
+    if (tabbed || spaces != 1) {
+      return false;
+    }
+  }
+  // The optional trailing attribute block, and nothing after it.
+  if (lexer->lookahead != '{') {
+    return false;
+  }
+  while (!at_line_end(lexer) && !lexer->eof(lexer) && lexer->lookahead != '}') {
+    advance(s, lexer);
+  }
+  if (lexer->lookahead != '}') {
+    return false;
+  }
+  advance(s, lexer);
+  consume_ws_run(s, lexer, &tabbed);
+  return at_line_end(lexer) || lexer->eof(lexer);
+}
+
+static bool scan_ref_def(Scanner *s, TSLexer *lexer) {
+  // A CITATION definition (`[@key]: entry text`, PART 9 section 22) shares this
+  // opener and is NOT anchored: its entry runs free-form to end of line, so a
+  // multi-word entry is kept whole. Recorded before the label is consumed.
+  bool citation = lexer->lookahead == '@';
+  bool footnote = lexer->lookahead == '^';
+  // THE LABEL IS A CHARACTER RUN AND IT ENDS AT THE FIRST `]`.
+  // `reference_label = (character - ']' - '@'), {character - ']'}`
+  // (resources/grammar.ebnf): no escape, no verbatim exception. `[a `]` c]: /u`
+  // is therefore not a definition at all, and the line is a paragraph - which
+  // is what carve-js renders.
+  while (!lexer->eof(lexer) && lexer->lookahead != ']') {
+    if (at_line_end(lexer)) {
+      return false;
+    }
+    advance(s, lexer);
+  }
+
+  if (lexer->lookahead != ']') {
+    return false;
+  }
+  advance(s, lexer);
+  if (lexer->lookahead != ':') {
+    return false;
+  }
+  advance(s, lexer);
+
+  // THE SEPARATOR IS A SPACE (U+0020), NOT WHITESPACE. The spec states it for
+  // all three definition markers - "A tab does NOT satisfy `space`, so
+  // `[^a]:<TAB>x`, `[a]:<TAB>/url` and `*[HTML]:<TAB>x` are ordinary
+  // paragraphs, not definitions" - and names carve-rs as the reference.
+  //
+  // Measured against carve-rs, it is the FIRST character after the colon that
+  // has to be a space; whitespace after that is free:
+  //
+  //   [a]: /url      definition        [a]:<TAB>/url   paragraph
+  //   [a]:   /url    definition        [a]:<TAB> /url  paragraph
+  //   [a]: <TAB>/url definition        [a]:/url        paragraph
+  //
+  // Refusing here rather than in grammar.js is what puts the line back on the
+  // paragraph path. Tightening the separator token instead leaves the rule
+  // matching a truncated `[a]:` and the rest of the line parsing as something
+  // else, because the destination group is optional and the rule's tail accepts
+  // trailing whitespace (tree-sitter-carve#83).
+  if (citation) {
+    return lexer->lookahead == ' ';
+  }
+  if (footnote) {
+    return false;
+  }
+  if (at_line_end(lexer) || lexer->eof(lexer)) {
+    return true;
+  }
+  int32_t first_separator = lexer->lookahead;
+  if (first_separator != ' ' && first_separator != '\t') {
+    return false;
+  }
+  bool tabbed = false;
+  consume_ws_run(s, lexer, &tabbed);
+  if (at_line_end(lexer) || lexer->eof(lexer)) {
+    return true;
+  }
+  if (first_separator != ' ') {
+    return false;
+  }
+  return ref_def_tail_is_modeled(s, lexer, tabbed);
+}
+
+static bool parse_ref_def_begin(Scanner *s, TSLexer *lexer,
+                                const bool *valid_symbols) {
+  if (!valid_symbols[LINK_REF_DEF_MARK_BEGIN]) {
+    return false;
+  }
+  if (!scan_ref_def(s, lexer)) {
+    return false;
+  }
+
+  push_block(s, LINK_REF_DEF, 0);
+  lexer->result_symbol = LINK_REF_DEF_MARK_BEGIN;
+  return true;
+}
+
+static bool parse_link_ref_def_label_end(Scanner *s, TSLexer *lexer) {
+  if (lexer->lookahead != ']') {
+    return false;
+  }
+  Block *top = peek_block(s);
+  if (!top || top->type != LINK_REF_DEF) {
+    return false;
+  }
+
+  // Prevent inline from reaching outside of the link label.
+  if (has_open_span(s)) {
+    return false;
+  }
+
+  remove_block(s);
+  lexer->result_symbol = LINK_REF_DEF_LABEL_END;
+  return true;
+}
+
+/// The footnote scan from just AFTER the caret, so the caller can look one
+/// character past it before choosing between a footnote and a reference
+/// definition (see `parse_open_bracket`).
+static bool scan_footnote_after_caret(Scanner *s, TSLexer *lexer) {
+  // Identifier can have surrounding whitespace
+  consume_whitespace(s, lexer);
+  if (!scan_identifier(s, lexer)) {
+    return false;
+  }
+  consume_whitespace(s, lexer);
+
+  // Scan `]:`
+  if (lexer->lookahead != ']') {
+    return false;
+  }
+  advance(s, lexer);
+  if (lexer->lookahead != ':') {
+    return false;
+  }
+  advance(s, lexer);
+
+  // A footnote definition's body STARTS on the marker line: the grammar reads
+  // `"]:", space, inline_content, newline`, so `[^a]:` alone is not one - the
+  // line and what follows it are paragraph text (corpus
+  // 132-footnote-definition-requires-an-inline-body). The separator is a
+  // literal SPACE; a tab in its place leaves a paragraph too. This is where a
+  // footnote definition parts company with a LINK reference definition, which
+  // is allowed to carry nothing after the colon (corpus 34-reference-link-9).
+  if (lexer->lookahead != ' ') {
+    return false;
+  }
+  consume_whitespace(s, lexer);
+  if (lexer->eof(lexer) || at_line_end(lexer)) {
+    return false;
+  }
+
+  return true;
+}
+
+static bool parse_footnote_after_caret(Scanner *s, TSLexer *lexer,
+                                       const bool *valid_symbols,
+                                       uint32_t marker_col) {
+  if (!valid_symbols[FOOTNOTE_MARK_BEGIN]) {
+    return false;
+  }
+  if (!scan_footnote_after_caret(s, lexer)) {
+    return false;
+  }
+
+  if (!valid_symbols[IN_FALLBACK]) {
+    Block *quote = find_block(s, BLOCK_QUOTE);
+    uint32_t quote_prefix = quote ? quote->content_col : 0;
+    uint32_t margin = marker_col >= quote_prefix
+                          ? marker_col - quote_prefix + 2
+                          : s->indent + 2;
+    push_block(s, FOOTNOTE, (uint8_t)margin);
+    // The body can begin with a fence on the definition's marker line.
+    s->marker_end_col = (uint8_t)line_column(s, lexer);
+  }
+
+  lexer->result_symbol = FOOTNOTE_MARK_BEGIN;
+
+  return true;
+}
+
+static bool parse_open_bracket(Scanner *s, TSLexer *lexer,
+                               const bool *valid_symbols) {
+  // Needs to differentiate between:
+  //
+  //   [^x]: footnote
+  //   [yy]: link definition
+  //
+  // Both markers are zero-width tokens that scans the entire line for
+  // validity.
+
+  if (!valid_symbols[FOOTNOTE_MARK_BEGIN] &&
+      !valid_symbols[LINK_REF_DEF_MARK_BEGIN]) {
+    return false;
+  }
+
+  // A definition opens at or past its owner's content column (PART 0 S3); a
+  // line short of the margin (`has_extra_indent`) is paragraph text.
+  // A definition on a MARKER LINE stands at the item's content column, but the
+  // line indent still reads 0 there - the marker was consumed after it was
+  // measured - so `has_extra_indent` calls it under-indented. `- [^f]: x` and
+  // `:  [^f]: x` collect their footnote and leave the item empty, exactly as
+  // the same definition one line down already does. Same question
+  // `parse_code_fence` asks for a fence on a marker line.
+  // Only a marker that began at its OWN container's margin licenses this. A
+  // marker indented into the folding zone - strictly between an item's base
+  // and its content column - is text rather than a marker, and `- lead` over
+  // ` - [t]: /t` keeps the whole second line inside the first item. The line's
+  // indent is where its marker began, so a zero indent is the document root's
+  // margin and anything else is left to the refusal below.
+  uint32_t column = line_column(s, lexer);
+  bool on_marker_line = s->marker_end_col != 0 && column == s->marker_end_col;
+  // A nested marker licenses it too when it began at its parent item's
+  // content column (`- lead` / `  - [t]: /t`), where it opened a real list.
+  Block *parent = s->open_blocks->size >= 2
+                      ? *array_get(s->open_blocks, s->open_blocks->size - 2)
+                      : NULL;
+  Block *top = peek_block(s);
+  bool at_marker_content_col =
+      on_marker_line &&
+      (s->indent == 0 || (parent && is_list(parent->type) &&
+                          parent->content_col == s->indent) ||
+       (top && top->type == BLOCK_QUOTE &&
+        (top->flags & BLOCK_FLAG_QUOTE_ON_ITEM_MARKER_LINE) &&
+        top->content_col == column));
+  // On a marker line only a marker at its container's margin licenses one.
+  if (on_marker_line && !at_marker_content_col) {
+    return false;
+  }
+  // With an item open, same question as `scan_definition_at_paragraph_end`,
+  // so the probe never ends a paragraph this then refuses.
+  if (!at_marker_content_col) {
+    if (list_item_open(s) ? !opener_reaches_item_margin(s, column)
+                          : (has_extra_indent(s) &&
+                             !div_line_collected_by_host(s, column))) {
+      return false;
+    }
+  }
+
+  // Scan initial `[^`
+  if (lexer->lookahead != '[') {
+    return false;
+  }
+  // The opener owns the line's indentation, as a heading marker does: no
+  // continuation token takes it inside a div, and the grammar has no slot for it.
+  mark_end(s, lexer);
+  advance(s, lexer);
+
+  if (lexer->lookahead == '^') {
+    advance(s, lexer);
+    // An EMPTY footnote label is not a footnote label: `footnote_label` is
+    // one-or-more characters, so `[^]: /u` is a LINK reference definition whose
+    // label is `^` (carve#632, corpus
+    // 184-a-caret-is-a-reference-label-not-an-empty-footnote). The caret is
+    // already consumed here, which is exactly where the ref-def scan expects to
+    // pick up: it reads to `]` and then requires `]:`. Committing to the
+    // footnote path on the caret alone left this line a paragraph, and with it
+    // every reference to the label (carve-rs style oracle: the reference side
+    // `[text][^]` already parsed here, so the two halves disagreed).
+    if (lexer->lookahead == ']') {
+      return parse_ref_def_begin(s, lexer, valid_symbols);
+    }
+    return parse_footnote_after_caret(s, lexer, valid_symbols, column);
+  }
+  return parse_ref_def_begin(s, lexer, valid_symbols);
+}
+
+static bool parse_dash(Scanner *s, TSLexer *lexer, const bool *valid_symbols,
+                       uint8_t *declined_run) {
+  return parse_list_marker_or_thematic_break(s, lexer, valid_symbols, '-',
+                                             LIST_MARKER_DASH, LIST_DASH,
+                                             THEMATIC_BREAK_DASH, declined_run);
+}
+
+static bool parse_star(Scanner *s, TSLexer *lexer, const bool *valid_symbols,
+                       uint8_t *declined_run) {
+  return parse_list_marker_or_thematic_break(s, lexer, valid_symbols, '*',
+                                             LIST_MARKER_STAR, LIST_STAR,
+                                             THEMATIC_BREAK_STAR, declined_run);
+}
+
+/// Does a term or description marker at `column` continue `list`? It stands short of
+/// the open term's or body's content column and not left of the list.
+static bool description_reaches_list(Scanner *s, Block *list,
+                                     uint32_t column) {
+  if (list->content_col == 0 || column >= list->content_col) return false;
+  // Under a quote the line's indent is relative to the prefix, so only the
+  // absolute column is compared.
+  if (count_blocks(s, BLOCK_QUOTE) > 0) {
+    return list_opened_in_quote(s, list) && column + 1u >= list->data;
+  }
+  return s->indent + 1u >= list->data || column + 1u >= list->data;
+}
+
+static bool parse_list_item_end(Scanner *s, TSLexer *lexer,
+                                const bool *valid_symbols, bool at_eof) {
+  // Captured before the block-quote / list-marker scans below advance the
+  // lexer: the first non-whitespace character of the line, used to tell whether
+  // a `+`-attached TABLE is still continuing (a `|` row).
+  int32_t line_lead = lexer->lookahead;
+  uint8_t line_indent = s->indent;
+
+  // We only look at the top, list item end is only valid if we're
+  // about to close the list. Otherwise we need to close the open blocks
+  // first.
+  Block *list = peek_block(s);
+  if (!list || !is_list(list->type)) {
+    return false;
+  }
+
+  bool refused_plus = lexer->lookahead == '+' && s->plus_decision >= 2;
+  bool refused_sibling = s->plus_decision == 3;
+  uint32_t refused_col = refused_plus ? line_column(s, lexer) : 0;
+
+  // No open inline at block boundary.
+  if (has_open_span(s)) {
+    return false;
+  }
+
+  // At the end of input the item ends whatever column its last line reached.
+  // The indent test below reads the line this scan already consumed, so an item
+  // whose last line stands at its own content column reads as continuing and
+  // the item never closes (#458). The SNAPSHOT, never a live `lexer->eof`: see
+  // the note where it is taken.
+  if (at_eof) {
+    lexer->result_symbol = LIST_ITEM_END;
+    s->blocks_to_close = 1;
+    return true;
+  }
+  Block *quote = find_block(s, BLOCK_QUOTE);
+  Block *outer_quote = find_block_from_bottom(s, BLOCK_QUOTE);
+  // A blank quote line must emit its marker before the attached `+`.
+  bool full_quote_plus = false;
+  if (quote && !(quote->flags & BLOCK_FLAG_QUOTE_BLANK_PLUS) &&
+      lexer->lookahead == '>' && s->block_quote_level == 0 &&
+      (list->flags & BLOCK_FLAG_PLUS_AHEAD) &&
+      list_opened_in_quote(s, list)) {
+    BracketProbe probe = bracket_probe_new(s, lexer);
+    TSLexer *peek = &probe.lexer;
+    uint8_t prefixes = 0;
+    while (peek->lookahead == '>') {
+      peek->advance(peek, false);
+      if (peek->lookahead == ' ') peek->advance(peek, false);
+      ++prefixes;
+      while (peek->lookahead == ' ') peek->advance(peek, false);
+    }
+    full_quote_plus = prefixes == count_blocks(s, BLOCK_QUOTE) &&
+        peek->lookahead == '+';
+    array_delete(&probe.characters);
+  }
+  if (full_quote_plus &&
+      (valid_symbols[LIST_ITEM_CONTINUATION] ||
+       valid_symbols[QUOTED_LIST_ITEM_CONTINUATION])) {
+    bool visible_prefix = valid_symbols[QUOTED_LIST_ITEM_CONTINUATION];
+    while (lexer->lookahead == ' ' ||
+           (visible_prefix && lexer->lookahead == '>')) advance(s, lexer);
+    mark_end(s, lexer);
+    lexer->result_symbol = visible_prefix
+        ? QUOTED_LIST_ITEM_CONTINUATION : LIST_ITEM_CONTINUATION;
+    return true;
+  }
+  if (full_quote_plus) return false;
+  // An item holding the quote repeats its indentation before the `>`.
+  if (quote && (quote->flags & BLOCK_FLAG_QUOTE_BLANK_PLUS) &&
+      (list->flags & BLOCK_FLAG_PLUS_AHEAD) && outer_quote->content_col >= 2) {
+    while (lexer->lookahead == ' ' &&
+           line_column(s, lexer) < outer_quote->content_col - 2) {
+      advance(s, lexer);
+    }
+  }
+  // An accepted marker can leave a nested item open after its quote closes.
+  if (lexer->lookahead == '>' && quote &&
+      (list->flags & BLOCK_FLAG_PLUS_AHEAD) &&
+      (quote->flags & BLOCK_FLAG_QUOTE_BLANK_PLUS ||
+       (list->flags & BLOCK_FLAG_LIST_FULL_QUOTE_PLUS) ||
+       ((list->flags & BLOCK_FLAG_LIST_SHORT_PLUS) &&
+        list_opened_in_quote(s, list) &&
+        list->data > quote->content_col + 1))) return false;
+
+  // We're still inside the list, don't end it yet. An unmarked line under a
+  // list opened in a quote is measured by column, as the continuation is. So
+  // is a `>` the outermost quote does not take as its marker.
+  bool quoted_list = list_opened_in_quote(s, list);
+  // The prefix token stopped before the padding. Keep a `+` at the nested
+  // item's content column inside that item.
+  if (quoted_list && lexer->lookahead == ' ' && s->block_quote_level > 0) {
+    BracketProbe probe = bracket_probe_new(s, lexer);
+    TSLexer *peek = &probe.lexer;
+    while (peek->lookahead == ' ') peek->advance(peek, false);
+    bool plus_at_margin = peek->lookahead == '+' &&
+        line_column(s, peek) >= list->content_col;
+    array_delete(&probe.characters);
+    if (plus_at_margin && valid_symbols[LIST_ITEM_CONTINUATION]) {
+      while (lexer->lookahead == ' ') advance(s, lexer);
+      mark_end(s, lexer);
+      lexer->result_symbol = LIST_ITEM_CONTINUATION;
+      return true;
+    }
+  }
+  bool stray_marker = lexer->lookahead == '>' && quoted_list &&
+      !quote_marker_at_column(s, 1, line_column(s, lexer), false);
+  if ((lexer->lookahead != '>' || stray_marker) && quoted_list) {
+    if (quoted_line_reaches_list(s, lexer, list)) return false;
+  } else if (s->indent >= list_item_margin(s, list)) {
+    return false;
+  }
+  if (refused_plus) {
+    s->refused_plus_column = refused_sibling && refused_col < UINT8_MAX
+                                 ? refused_col + 1 : 0;
+    s->plus_decision = 0;
+  }
+
+  // The line after a `+`-attached attribute line is the attached block.
+  if ((list->flags & BLOCK_FLAG_LIST_ATTACHED_ATTRIBUTE) &&
+      (s->state & STATE_LIST_CONTINUATION)) {
+    list->flags &= (uint8_t)~BLOCK_FLAG_LIST_ATTACHED_ATTRIBUTE;
+    if (!at_line_end(lexer) && !lexer->eof(lexer)) {
+      return false;
+    }
+  }
+
+  // The line after a below-column comment the item kept (PART 9 section 24
+  // C3) stays in the item, at its base column too unless it opens a block.
+  uint8_t comment_flags = list->flags & LIST_COMMENT_FLAGS;
+  list->flags &= (uint8_t)~LIST_COMMENT_FLAGS;
+  if ((comment_flags & BLOCK_FLAG_LIST_COMMENT_RETAINS) &&
+      count_blocks(s, BLOCK_QUOTE) == 0 &&
+      valid_symbols[LIST_ITEM_CONTINUATION] && !at_line_end(lexer) &&
+      !lexer->eof(lexer)) {
+    bool at_base = s->indent < list->data;
+    bool keep = !at_base;
+    bool probed = false;
+    if (at_base && (comment_flags & BLOCK_FLAG_LIST_COMMENT_RETAINS)) {
+      int32_t c = lexer->lookahead;
+      keep = c != '-' && c != '*' && c != '+' && !(c >= '0' && c <= '9');
+      if (s->indent == 0) {
+        keep = keep && c != '#' && c != '>' && c != '`' && c != '~' &&
+               c != ':' && c != '|' && c != '_' && c != '=';
+      }
+      if (keep && s->indent == 0 && carve_is_alnum_ascii(c)) {
+        // Only a zero-width token may follow a probe that moves the lexer.
+        probed = true;
+        keep = !(scan_list_marker_token(s, lexer) != IGNORED &&
+                 marker_line_has_content(s, lexer));
+      }
+    }
+    if (keep) {
+      if (!probed) mark_end(s, lexer);
+      list->flags |= BLOCK_FLAG_LIST_TEXT_LINE;
+      lexer->result_symbol = LIST_ITEM_CONTINUATION;
+      return true;
+    }
+  }
+
+
+  // Scanning the block prefix markers are necessary so we can
+  // tell if we should end a list item or not.
+  // For example in a list like this:
+  //
+  //   > - a
+  //   > - b
+  //
+  // If we should end the `a` list item we need to be able to scan `- b`
+  // later in this function.
+  // But first we need to skip the `> ` tokens.
+  bool ending_newline;
+  // An existing quote after a quoted item may have spaces before its marker.
+  bool skipped_quote_indent = false;
+  uint8_t block_quote_markers = scan_quote_marker_run(
+      s, lexer, &ending_newline, &skipped_quote_indent, false);
+
+
+  // Delayed output of BLOCK_QUOTE_CONTINUATION, if necessary.
+  uint8_t has_block_quote_continuation = false;
+
+  if (block_quote_markers > 0) {
+    uint8_t block_quotes = count_blocks(s, BLOCK_QUOTE);
+
+    if (block_quotes != block_quote_markers) {
+      lexer->result_symbol = LIST_ITEM_END;
+      s->blocks_to_close = 1;
+      return true;
+    }
+
+    // With a sparse list we need to scan past one newline:
+    //
+    //   > - a
+    //   >
+    //   > - b
+    //
+    // By scanning once again we allow `next_marker` below to find `- b`.
+    if (ending_newline) {
+      // If we're not ending the list, for example with an indented paragraph:
+      //
+      //   > - a
+      //   >
+      //   >   text
+      //
+      // Then we should output a block quote prefix.
+      if (valid_symbols[BLOCK_QUOTE_CONTINUATION]) {
+        has_block_quote_continuation = true;
+      }
+
+      bool second_newline;
+      uint8_t second_block_quote_markers =
+          scan_block_quote_markers(s, lexer, &second_newline);
+
+      if (block_quotes != second_block_quote_markers) {
+        lexer->result_symbol = LIST_ITEM_END;
+        s->blocks_to_close = 1;
+        return true;
+      }
+    }
+
+    // Check indent again after we've parsed the block quote markers.
+    // This to allow indented paragraphs inside lists:
+    //
+    //   > - a
+    //   >
+    //   >   text
+    //
+    // A marked line with no blank before it is asked the same: an opener that
+    // ended the item's paragraph (`> - a` / `>   # H`) stays in the item.
+    if (!ending_newline && valid_symbols[BLOCK_QUOTE_CONTINUATION]) {
+      has_block_quote_continuation = true;
+    }
+    if (has_block_quote_continuation) {
+      s->indent = consume_whitespace(s, lexer);
+      uint8_t level = s->block_quote_level;
+      s->block_quote_level = block_quote_markers;
+      bool reaches = quoted_line_reaches_list(s, lexer, list);
+      s->block_quote_level = level;
+      if (reaches) {
+        mark_end(s, lexer);
+        output_block_quote_continuation(s, lexer, block_quote_markers,
+                                        ending_newline);
+        // After a blank quoted line the token ends past the next line's own
+        // markers, which the item's continuation is measured by.
+        s->block_quote_level = block_quote_markers;
+        return true;
+      }
+    }
+  }
+
+  // Handle the special case of a list item following this,
+  // which may close the entire list if it's of a different type
+  // or a mismatching indent. For instance:
+  //
+  //      - a
+  //
+  //    - b     <- different indent should close the `a` list.
+  uint32_t marker_col = list_opened_in_quote(s, list) ? line_column(s, lexer) : 0;
+  uint32_t marker_start = line_column(s, lexer);
+  TokenType next_marker = scan_list_marker_token(s, lexer);
+
+  // While a `+`-attached flush-left block is being parsed, an indent-0 line
+  // that is NOT a sibling list marker (e.g. a table's second row) belongs to
+  // the attached block, so the item must not end. A real sibling marker ends
+  // the attached block and clears the continuation.
+  if (s->state & STATE_LIST_CONTINUATION) {
+    // A `+`-attached TABLE has no terminator and pushes/pops a block per row,
+    // so only a `|` row keeps the item open; anything else (a sibling marker, a
+    // plain flush-left paragraph, EOF) ends the attached block and clears the
+    // continuation so the item -- and list -- can close normally.
+    if (line_lead == '|' && s->attached_row_prefix == 0 &&
+        next_marker == IGNORED && !lexer->eof(lexer)) {
+      return false;
+    }
+    s->state &= ~STATE_LIST_CONTINUATION;
+  }
+
+  // MARKER REQUIRES CONTENT applies to this LOOKAHEAD too. `scan_list_marker_token`
+  // answers "does a marker start here", and the real scan in
+  // `parse_list_marker_or_thematic_break` additionally requires content on the
+  // line. When the two disagree the parser is told the item ends, then nothing
+  // can open the next one, and a valid document lands in ERROR:
+  //
+  //     - a
+  //     -            <- `- ` with nothing after it
+  //     x
+  //
+  // parsed as three ERROR nodes, while every engine keeps the line and the one
+  // after it inside the item as lazy text (tree-sitter-carve#75). The bare `-`
+  // form never reached here, because it has no separator and so is not a marker
+  // at all - only the spaced form could produce the mismatch.
+  if (next_marker != IGNORED && !marker_line_has_content(s, lexer)) {
+    // Treated as "no sibling marker here", which ends the item the ordinary way
+    // instead of promising one that cannot open.
+    //
+    // NOT `return false`: refusing the token entirely puts the parse back in
+    // ERROR and loses the list_item as well - measured. The line therefore ends
+    // up OUTSIDE the item, as a top-level paragraph, where the engines keep it
+    // inside as lazy text. That remaining difference is recorded in #75; this
+    // takes a valid document out of ERROR, which is the half that breaks
+    // highlighting today.
+    next_marker = IGNORED;
+  }
+
+  // A spaced break of the list's own marker (`- - -`) is no sibling: it is
+  // tested before a list marker (PART 9 section 10, carve#4814).
+  if ((next_marker == LIST_MARKER_DASH || next_marker == LIST_MARKER_STAR) &&
+      line_column(s, lexer) == marker_start + 2) {
+    int32_t c = next_marker == LIST_MARKER_DASH ? '-' : '*';
+    uint32_t spaced = 1;
+    bool spaced_ok = false;
+    while (lexer->lookahead == c) {
+      advance(s, lexer);
+      ++spaced;
+      if (lexer->lookahead != ' ') {
+        while (lexer->lookahead == '\t' || lexer->lookahead == ' ') advance(s, lexer);
+        spaced_ok = at_line_end(lexer) || lexer->eof(lexer);
+        break;
+      }
+      advance(s, lexer);
+      if (lexer->lookahead != c) {
+        while (lexer->lookahead == ' ' || lexer->lookahead == '\t') advance(s, lexer);
+        spaced_ok = at_line_end(lexer) || lexer->eof(lexer);
+        break;
+      }
+    }
+    if (spaced_ok && spaced >= 3) next_marker = IGNORED;
+  }
+
+  bool hard_boundary = (list->flags & BLOCK_FLAG_LIST_HARD_BOUNDARY) != 0;
+  list->flags &= (uint8_t)~BLOCK_FLAG_LIST_HARD_BOUNDARY;
+  if (next_marker != IGNORED) {
+    bool different_type = list_marker_to_block(next_marker) != list->type;
+    // A list opened on a quoted marker line records its absolute column.
+    // A list opened inside a quote records either its absolute column or the
+    // indent its line had before the quote marker.
+    bool different_indent =
+        list->data != s->indent + 1 &&
+        (marker_col == 0 || (list->data != marker_col + 1 &&
+                             list->data != line_indent + 1));
+    // Past a missed item a marker is a sibling wherever it stands short of the
+    // item, as long as it reaches the item's owner (PART 0 S4, carve#4545).
+    bool bullet_or_ordered = list->type != LIST_DEFINITION;
+    if (different_indent && bullet_or_ordered &&
+        count_blocks(s, BLOCK_QUOTE) == 0 &&
+        list->content_col != 0 && s->indent < list->content_col &&
+        s->indent >= enclosing_item_content_col(s, list)) {
+      different_indent = false;
+    }
+    if (different_indent && bullet_or_ordered && marker_col != 0 &&
+        list->content_col != 0 &&
+        marker_col < list->content_col &&
+        marker_col >= enclosing_item_content_col(s, list)) {
+      different_indent = false;
+    }
+
+    // A term or description short of the body's column is a sibling
+    // wherever it stands from the list's own column (PART 0 S2).
+    if (different_indent && (next_marker == LIST_MARKER_DESCRIPTION ||
+                             next_marker == LIST_MARKER_DEFINITION) &&
+        list->type == LIST_DEFINITION &&
+        description_reaches_list(s, list, marker_start)) {
+      different_indent = false;
+    }
+
+    // If we're continuing the list we shouldn't emit a BLOCK_CLOSE.
+    if (different_type || different_indent || hard_boundary) {
+      s->blocks_to_close = 1;
+    }
+    lexer->result_symbol = LIST_ITEM_END;
+    return true;
+  }
+
+  lexer->result_symbol = LIST_ITEM_END;
+  s->blocks_to_close = 1;
+  return true;
+}
+
+static bool parse_colon(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
+  // Nothing block-level opens inside a code fence - the body is data. The
+  // heading scanner has carried this guard since it was written; the colon
+  // scanner did not, so a `::: tip` line in a fence body was taken as a real
+  // container opener and the ENCLOSING container's closer then had nothing to
+  // match (corpus 69-opaque-spans-inside-a-container-3, which was skipped for
+  // parsing as ERROR). The fence's own closer is CODE_BLOCK_END and is
+  // unaffected.
+  {
+    Block *in_code = peek_block(s);
+    if (in_code && in_code->type == CODE_BLOCK) {
+      // The bare closer of the div an unclosed fence sits in ends the fence.
+      if (!(in_code->flags & BLOCK_FLAG_FENCE_UNCLOSED_IN_DIV) ||
+          !valid_symbols[BLOCK_CLOSE]) {
+        return false;
+      }
+      uint16_t colons = consume_colons(s, lexer);
+      while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+        advance(s, lexer);
+      }
+      if (colons < 3 || !(at_line_end(lexer) || lexer->eof(lexer)) ||
+          number_of_colon_fence_blocks_from_top(s, colons) != 2) {
+        return false;
+      }
+      remove_block(s);
+      lexer->result_symbol = BLOCK_CLOSE;
+      return true;
+    }
+  }
+  bool can_be_div = valid_symbols[DIV_BEGIN] || valid_symbols[DIV_END] ||
+                    valid_symbols[BLOCK_CLOSE];
+  bool can_be_definition = valid_symbols[LIST_MARKER_DEFINITION] ||
+                           valid_symbols[LIST_MARKER_DESCRIPTION];
+  if (!can_be_definition && !can_be_div) {
+    return false;
+  }
+#ifdef DEBUG
+  assert(lexer->lookahead == ':');
+#endif
+  // A marker starting where this line's previous marker ended nests at its own
+  // column, as bullets do (`:  :: u`, #368).
+  uint32_t start_col = line_column(s, lexer);
+  bool marker_line_nested = start_col > s->indent && s->marker_end_col != 0 &&
+                            start_col == s->marker_end_col;
+  if (start_col > MAX_LIST_MARKER_COLUMN) {
+    return false;
+  }
+  uint8_t list_indent = marker_line_nested ? (uint8_t)start_col : s->indent;
+  // A sibling of a definition list opened on a quoted marker line.
+  Block *quoted_dl = peek_block(s);
+  if (quoted_dl && quoted_dl->type == LIST_DEFINITION && start_col < UINT8_MAX &&
+      quoted_dl->data == start_col + 1 && quoted_dl->data != list_indent + 1 &&
+      list_opened_in_quote(s, quoted_dl)) {
+    list_indent = (uint8_t)start_col;
+  }
+  advance(s, lexer);
+
+  // A definition TERM: `::` plus a literal space. Checked before the div
+  // branch, which needs THREE colons, so `:::` and deeper still open a
+  // container. A `::` with no space is neither - `::t` is a paragraph.
+  uint8_t colons_consumed = 1;
+  if (lexer->lookahead == ':') {
+    advance(s, lexer);
+    if (lexer->lookahead == ' ') {
+      if (!valid_symbols[LIST_MARKER_DEFINITION]) {
+        return false;
+      }
+      advance(s, lexer);
+      // A term short of its owner's margin is paragraph text (PART 0 S3).
+      //
+      // A term that CONTINUES an open definition list is measured against that
+      // list's own marker column instead. `has_extra_indent` reads the open
+      // list as an indenting container whose threshold is `data`
+      // (= marker column + 1), so every sibling term at the list's own column
+      // looked indented and the second `:: ` of a two-term entry was refused.
+      Block *open_definition_list = find_list(s);
+      if (open_definition_list &&
+          open_definition_list->type == LIST_DEFINITION) {
+        // Past the body's column a term opens in the body as if written at
+        // the body's column (PART 0 S3).
+        // Under a quote the indent is relative to the prefix and the body's
+        // column absolute, so the line's own column is compared there.
+        bool quoted = count_blocks(s, BLOCK_QUOTE) > 0;
+        bool nested_in_description =
+            !(open_definition_list->flags & BLOCK_FLAG_DEFINITION_TERM) &&
+            open_definition_list->content_col != 0 &&
+            (quoted ? start_col : list_indent) >=
+                open_definition_list->content_col &&
+            (!quoted || list_opened_in_quote(s, open_definition_list));
+        if (nested_in_description) {
+          list_indent = open_definition_list->content_col;
+        } else if (open_definition_list->data != list_indent + 1u &&
+                   description_reaches_list(s, open_definition_list,
+                                            start_col)) {
+          list_indent = (uint8_t)(open_definition_list->data - 1u);
+        }
+        if (!marker_line_nested && !nested_in_description &&
+            list_indent + 1 != open_definition_list->data) {
+          return false;
+        }
+      } else if (!marker_line_nested && has_extra_indent(s) &&
+                 !quoted_item_column_reached(s, start_col)) {
+        return false;
+      }
+      // Mark the token end before the content probe (scratch advances must not
+      // extend it), then require non-empty content: a content-less `:: ` line
+      // is paragraph text, not a term.
+      mark_end(s, lexer);
+      if (!marker_line_has_content(s, lexer)) {
+        return false;
+      }
+      if (!ensure_list_open(s, LIST_DEFINITION, list_indent + 1, UINT32_MAX)) return false;
+      peek_block(s)->flags |= BLOCK_FLAG_DEFINITION_TERM;
+      // Record where the term's content starts, as the bullet and ordered
+      // markers do. Without it the block reads column 0, and
+      // `at_block_opener_margin` - which only answers for a list whose
+      // `content_col` is set - has no opinion about a block opener in the body.
+      record_list_marker_margin(s, (uint8_t)line_column(s, lexer), true);
+      lexer->result_symbol = LIST_MARKER_DEFINITION;
+      return true;
+    }
+    // Not a term: fall through to the div branch with TWO colons already
+    // consumed, so `:::` and deeper still open a container.
+    colons_consumed = 2;
+  } else if (lexer->lookahead == ' ') {
+
+    // A definition DESCRIPTION: `:` plus one or more spaces. The full run is
+    // marker padding and sets the body's authored content column; writers use
+    // one canonical space (carve#1757).
+    advance(s, lexer);
+    if (!valid_symbols[LIST_MARKER_DESCRIPTION]) {
+      return false;
+    }
+    // A description attaches to a TERM: with no definition list open above it,
+    // `:  d` is an ordinary paragraph, which is what all three engines render.
+    // The term marker has no such requirement - it opens the list itself.
+    Block *open_list = find_list(s);
+    if (!open_list || open_list->type != LIST_DEFINITION) {
+      return false;
+    }
+    // At or past a description body's column the line is that body's
+    // content, where no definition list is open (PART 0 S2).
+    if (!(open_list->flags & BLOCK_FLAG_DEFINITION_TERM) &&
+        open_list->content_col != 0 && start_col >= open_list->content_col) {
+      return false;
+    }
+    if (open_list->data != list_indent + 1u &&
+        description_reaches_list(s, open_list, start_col)) {
+      list_indent = (uint8_t)(open_list->data - 1u);
+    }
+    while (lexer->lookahead == ' ') {
+      advance(s, lexer);
+    }
+    mark_end(s, lexer);
+    if (!marker_line_has_content(s, lexer)) {
+      return false;
+    }
+    if (!ensure_list_open(s, LIST_DEFINITION, list_indent + 1, UINT32_MAX)) return false;
+    peek_block(s)->flags &= (uint8_t)~BLOCK_FLAG_DEFINITION_TERM;
+    // The full space run above is marker padding, so the lexer sits at the
+    // body's authored content column. See the term branch.
+    record_list_marker_margin(s, (uint8_t)line_column(s, lexer), true);
+    lexer->result_symbol = LIST_MARKER_DESCRIPTION;
+    return true;
+  }
+
+  if (!can_be_div) {
+    return false;
+  }
+
+  // We consumed one or two colons in the start of the function.
+  uint32_t run = (uint32_t)consume_colons(s, lexer) + colons_consumed;
+  uint16_t colons = run > UINT16_MAX ? UINT16_MAX : (uint16_t)run;
+  if (colons < 3) {
+    return false;
+  }
+
+  // A fence line that CARRIES something - a class, a line-block `|`, a
+  // `[label]` - is an OPENER, even when a div of the same width is already
+  // open: `:::: note` nests inside `:::: note`, and so does `::: tip` inside
+  // `::: note` (corpus 181-openers-past-the-nesting-cap-are-one-paragraph and
+  // nested-containers-2, both of which render nested `<aside>` elements). Only
+  // a BARE fence closes.
+  //
+  // Deciding by WIDTH alone made every equal-width opener a closer, and a
+  // closer with a class name after it is not a line the grammar has - so the
+  // whole document came apart from the second opener on (#59). The separator
+  // whitespace is consumed here rather than inside the opener branch, because
+  // the answer is needed before the branch is chosen.
+  bool spaced = false;
+  bool tabbed = false;
+  while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+    tabbed = tabbed || lexer->lookahead == '\t';
+    advance(s, lexer);
+    spaced = true;
+  }
+  int32_t c = lexer->lookahead;
+  bool bare = c == '\n' || c == '\r' || lexer->eof(lexer);
+
+  size_t from_top = bare ? number_of_colon_fence_blocks_from_top(s, colons) : 0;
+
+  if (from_top == 0) {
+    if (!valid_symbols[DIV_BEGIN]) {
+      return false;
+    }
+    // An opener short of its owner's margin is paragraph text (PART 0 S3). A
+    // CLOSER is left alone here -- it is handled below.
+    if (has_extra_indent(s) && !marker_line_nested &&
+        !quoted_item_column_reached(s, start_col)) {
+      return false;
+    }
+    // Validate what follows the `:::` fence. A bare fence (newline/EOF), a
+    // line-block bar (`|`), a hard-break backslash (`\`), a class name (letter
+    // or `_`), or a bare grouping label (`[...]`, a typeless tab member; PART 9
+    // §12) is fine. Numeric kinds are admitted too. A `{` attribute block
+    // (`::: {.x}`) or any other lead char makes the line a literal paragraph
+    // per the spec, so refuse the div opener there.
+    //
+    // A CLASS, a line-block bar or a hard-break backslash needs the separator
+    // space: `:::note`, `:::|` and `:::\` are paragraphs in every engine, the
+    // same rule every other marker follows. A bare fence and a glued `[label]`
+    // do not - `:::` alone opens a div and `:::[First]` opens a labelled one,
+    // both checked against the engine. And the separator has to be a LITERAL
+    // space in all four: a tab there opens nothing (carve#886), which is why
+    // `tabbed` is tracked alongside `spaced`. The test lives in
+    // `colon_fence_tail_opens_block` so the paragraph-closing peek applies the
+    // SAME one.
+    //
+    // THE TOKEN END IS PINNED HERE, BEFORE THE TAIL TEST READS PAST IT. The
+    // test now reads the WHOLE line for the named, bar and label forms - the
+    // opener's `"title"` and `[label]` slots are part of what decides whether
+    // this is an opener at all - and the lexer cannot rewind, so a mark taken
+    // afterwards would swallow `line_block_marker` and `class_name` into
+    // `div_marker_begin`. It also has to be taken on the path where the answer
+    // is NO: the handoff below emits a token at the end as it stands, and
+    // without this it would cover the rest of the line instead of the fence.
+    //
+    // The backslash form used to be the exception - `grammar.js` had no branch
+    // for it, so `div_marker_begin` covered the whole `::: \` opener and the
+    // marker was unnameable. It has a branch now
+    // (`local_hard_break_marker`), so it marks here with the other three and
+    // the tail test reads past the mark exactly as it does for `|`.
+    mark_end(s, lexer);
+    bool ok = colon_fence_tail_opens_block(s, lexer, bare, spaced, tabbed, c);
+    // ...and a bare fence is not an opener at all while the open paragraph is
+    // absorbing: after a malformed `::: {.x}` the trailing `:::` is text, at
+    // any width (PART 9 §12). The peek above normally keeps the parser inside
+    // the paragraph so this branch is not reached, but the two must agree.
+    if (ok && bare && (s->state & STATE_FENCE_ABSORBS)) {
+      ok = false;
+    }
+    if (!ok) {
+      // EMIT rather than refuse. Refusing leaves the lexer past the colons -
+      // `mark_end` above already committed the token to them - and the `{`
+      // then read as the start of a line, so `::: {.c}` built a block
+      // attribute where every engine renders a paragraph.
+      //
+      // Emitting a zero-width token is the handoff `parse_backtick` uses when
+      // it answers BLOCK_CLOSE for its ticks: `return true` with the end still
+      // at the scan start, so the run is offered again and the line falls
+      // through to a paragraph. `BLOCK_CLOSE` cannot be borrowed here because there is no
+      // block to close, hence a token of its own that produces no node.
+      if (valid_symbols[NOT_A_CONTAINER_OPENER]) {
+        // The line starts a paragraph that is now expecting a closer, so a
+        // later bare fence inside it is text rather than a new div - the
+        // half of §12 that the peek alone cannot see, because the malformed
+        // line is BEHIND the position it looks from.
+        s->state |= STATE_FENCE_ABSORBS;
+        lexer->result_symbol = NOT_A_CONTAINER_OPENER;
+        return true;
+      }
+      return false;
+    }
+    // Committed. The token ends here rather than at the colons, so the
+    // separator whitespace is inside DIV_BEGIN for the spaced forms.
+    //
+    // That is a deliberate trade, and the alternative was measured: marking at
+    // the colons keeps `div_marker_begin` exactly three characters, but then
+    // the zero-width handoff below is three characters wide too, and the
+    // paragraph for `::: {.c}` starts at column 3 - the tree stops covering
+    // the `:::` the engine renders as text. A marker node one space wider on
+    // VALID openers is the smaller loss than three characters of source
+    // uncovered on invalid ones.
+    //
+    push_block(s, DIV, colons);
+    if (c == '|') {
+      peek_block(s)->flags |= BLOCK_FLAG_LINE_BLOCK;
+    } else if (c == '>') {
+      peek_block(s)->flags |= BLOCK_FLAG_QUOTE_FENCE;
+    }
+    // A div's content is FLUSH with its marker, so the marker column - the
+    // leading whitespace this line opened with - IS the content column. A
+    // top-level div opens at column 0, which stays 0 ("no opinion"), so the
+    // document-root fallback keeps answering for it. A div nested in a list or
+    // footnote records its real column, which is what lets a definition opener
+    // one space past it fall back to a paragraph rather than opening a
+    // definition the line does not spell (tree-sitter-carve#282).
+    record_container_content_column(
+        s, quoted_item_column_reached(s, start_col) ? (uint8_t)start_col
+                                                    : s->indent);
+    lexer->result_symbol = DIV_BEGIN;
+    return true;
+  }
+
+  // Don't let inline escape block boundary.
+  if (has_open_span(s)) {
+    return false;
+  }
+
+  if (valid_symbols[DIV_END]) {
+    Block *closing = peek_block(s);
+    if (closing && closing->type == DIV &&
+        !(closing->flags & BLOCK_FLAG_QUOTE_FENCE)) {
+      s->caption_gap = CAPTION_GAP_FENCE;
+    }
+    remove_block(s);
+    mark_end(s, lexer);
+    lexer->result_symbol = DIV_END;
+    return true;
+  }
+  if (valid_symbols[BLOCK_CLOSE]) {
+    s->blocks_to_close = from_top - 1;
+    lexer->result_symbol = BLOCK_CLOSE;
+    return true;
+  }
+  return false;
+}
+
+static bool parse_heading(Scanner *s, TSLexer *lexer,
+                          const bool *valid_symbols) {
+  // Note that headings don't contain other blocks, only inline.
+  Block *top = peek_block(s);
+
+  // Avoids consuming `#` inside code/verbatim contexts.
+  if ((top && top->type == CODE_BLOCK) || line_block_body(s)) {
+    return false;
+  }
+
+  // NOTHING THIS PROBE CAN EMIT IS VALID HERE, so it must not run: it consumes
+  // its `#` run before it can decide anything, and a probe that advances and
+  // then declines leaves every later reader in the same call reading from
+  // where it stopped. `check_non_whitespace` is one of them, which is how
+  // `a *# x* b` lost the strong the language builds - the check read the space
+  // BEHIND the consumed `#` and refused the opener (#334).
+  if (!valid_symbols[HEADING_BEGIN] && !valid_symbols[BLOCK_CLOSE]) {
+    return false;
+  }
+
+  bool top_heading = top && top->type == HEADING;
+
+  uint32_t marker_column = line_column(s, lexer);
+  int32_t heading_mark = lexer->lookahead;
+  uint8_t hash_count = heading_mark == '#' || heading_mark == '='
+                           ? consume_chars(s, lexer, (char)heading_mark) : 0;
+
+  // A `#` short of its owner's margin is no heading MARKER (PART 0 S3).
+  if (hash_count > 0 && has_extra_indent(s) && s->block_quote_level == 0 &&
+      !at_block_opener_margin(s, marker_column)) {
+    // An indented `#` line is NOT a marker: outside a heading it is a
+    // paragraph, and an open heading ended at its own newline, so it closes
+    // here and the line starts its own block. We leave the `#`s unconsumed (no
+    // mark_end) so that block keeps them as text.
+    if (top_heading && valid_symbols[BLOCK_CLOSE]) {
+      lexer->result_symbol = BLOCK_CLOSE;
+      remove_block(s);
+      return true;
+    }
+    return false;
+  }
+
+  // We found a `# ` that can start or continue a heading.
+  if (hash_count > 0 && hash_count <= 6 && lexer->lookahead == ' ') {
+    if (!valid_symbols[HEADING_BEGIN] && !valid_symbols[BLOCK_CLOSE]) {
+      return false;
+    }
+
+    // A HEADING'S MARKER SEPARATOR IS A RUN, AND NONE OF IT IS CONTENT
+    // (carve#1587). `heading_first_line = heading_marker, space+,
+    // inline_content, newline`: every ASCII space after the hashes is
+    // separator and the first character that is not one BEGINS the heading, so
+    // `##<SP><SP>h` is the heading `h`, not `<SP>h`. `space = ' '`, so a TAB is
+    // content - `#<SP><TAB>x` keeps the tab, and `#<TAB>x` is no heading at
+    // all. Nothing has marked the token end yet, so the extra advances are free
+    // here and the zero-width BLOCK_CLOSE branches below stay zero-width.
+    while (lexer->lookahead == ' ') {
+      advance(s, lexer);
+    }
+
+    if (valid_symbols[BLOCK_CLOSE] && top_heading &&
+        !has_open_span(s)) {
+      // An open heading ended at its own newline, whatever this marker's count
+      // is -- a same-count marker used to CONTINUE it (djot) and now simply
+      // opens the next heading. Close the previous one before opening it.
+      lexer->result_symbol = BLOCK_CLOSE;
+      remove_block(s);
+      return true;
+    }
+
+    // Open a new heading.
+    if (valid_symbols[HEADING_BEGIN]) {
+      // Sections are created on the root level (or nested inside other
+      // sections). A heading with the same or FEWER `#` closes the open
+      // section(s) first; this returns a ZERO-WIDTH close, so the marker is
+      // re-scanned afterwards -- which is why nothing may mark the token end
+      // above this point.
+      if (top && top->type == SECTION && top->data >= hash_count) {
+        // NOTE closing multiple nested sections requires us to re-scan the
+        // heading when we return without saving our work.
+        lexer->result_symbol = BLOCK_CLOSE;
+        remove_block(s);
+        return true;
+      }
+
+      // A CONTENT-LESS marker line is paragraph text, not a heading, the same
+      // rule the list markers follow: a `#` with nothing after it but spaces
+      // renders as `<p>#</p>` in every engine (corpus
+      // 82-single-line-headings). The end is pinned at the `# ` first so the
+      // probe's scratch advances over the trailing whitespace cannot extend
+      // the token, and the probe runs before either push so a refusal leaves
+      // no block behind.
+      mark_end(s, lexer);
+      if (!marker_line_has_content(s, lexer)) {
+        return false;
+      }
+
+      // A heading with MORE `#` than the open section nests a new one.
+      if (!top || (top->type == SECTION && top->data < hash_count)) {
+        push_block(s, SECTION, hash_count);
+      }
+
+      push_block(s, HEADING, hash_count);
+      peek_block(s)->content_col = marker_column;
+      lexer->result_symbol = HEADING_BEGIN;
+      return true;
+    }
+  } else if (hash_count == 0 && top_heading) {
+    // No `#`, and a heading is open. It ended at its own newline, so it closes
+    // here no matter what this line is -- blank, a container closer, or the
+    // plain text that used to fold in.
+    if (valid_symbols[BLOCK_CLOSE]) {
+      remove_block(s);
+      lexer->result_symbol = BLOCK_CLOSE;
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/// A CAPTION'S MARKER SEPARATOR IS A RUN, AND NONE OF IT IS CONTENT
+/// (carve#1583, corpus
+/// `404-a-caption-s-marker-separator-is-a-run-and-none-of-it-is-content`).
+///
+/// `caption = '^', space+, inline_content, newline`, so every ASCII space after
+/// the caret is separator and the first character that is not one begins the
+/// caption. `space = ' '`, so a TAB is content: `^<SP><TAB>cap` captions
+/// `<TAB>cap`, and `^<TAB>cap` opens no caption at all.
+///
+/// MARKER REQUIRES CONTENT (PART 2) applies after the run as well: a caret, its
+/// separator and nothing but whitespace opens NO caption, and the line is
+/// ordinary paragraph text. That is why the marker is external. An internal
+/// token is chosen by longest match, so once `^` and the run are taken there is
+/// no lexing left that reads the caret as text - measured on
+/// tree-sitter-carve#257, requiring a non-blank first content character turned
+/// the one ERROR into two rather than into a paragraph. Refusing here happens
+/// before anything is committed, so the line falls back cleanly.
+static bool parse_inline_note_after_caret(Scanner *s, TSLexer *lexer);
+
+static bool parse_caption_begin(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
+  if (lexer->lookahead != '^') {
+    return false;
+  }
+  // THE MARKER COLUMN, the same rule the heading marker follows: a `^` is only
+  // a caption marker where it sits at its block's content column with no extra
+  // leading whitespace. Corpus `158-indented-image-and-caption-stay-literal`
+  // pins both halves - ` ![a](a.jpg)` + ` ^ Figure 1: moon` is ONE paragraph
+  // ending in the literal text `^ Figure 1: moon`, while the flush-left
+  // spelling of the same two lines is a figure with a caption.
+  uint32_t marker_column = line_column(s, lexer);
+  if (has_extra_indent(s) && s->block_quote_level == 0 &&
+      !at_block_opener_margin(s, marker_column)) {
+    return false;
+  }
+  advance(s, lexer);
+  if (lexer->lookahead == '[' && valid_symbols[INLINE_NOTE_BEGIN]) {
+    return parse_inline_note_after_caret(s, lexer);
+  }
+  if (lexer->lookahead != ' ' || s->caption_gap >= CAPTION_GAP_DETACHED) {
+    return false;
+  }
+  // ALL of the run, and only U+0020: a tab ends it and belongs to the content.
+  while (lexer->lookahead == ' ') {
+    advance(s, lexer);
+  }
+  // Pin the token at the end of the run BEFORE the content probe, so the
+  // scratch advances it makes over trailing blanks cannot extend the marker.
+  mark_end(s, lexer);
+  if (!marker_line_has_content(s, lexer)) {
+    return false;
+  }
+  s->state |= STATE_SINGLE_LINE_CAPTION;
+  lexer->result_symbol = CAPTION_BEGIN;
+  return true;
+}
+
+static bool emit_plus_line(Scanner *s, TSLexer *lexer,
+                            const bool *valid_symbols,
+                            uint32_t marker_column);
+
+static bool parse_footnote_end(Scanner *s, TSLexer *lexer,
+                               const bool *valid_symbols, bool at_eof) {
+  Block *top = peek_block(s);
+  if (!top || top->type != FOOTNOTE) {
+    return false;
+  }
+
+  // Don't let inline escape boundary.
+  if (has_open_span(s)) {
+    return false;
+  }
+  if ((top->flags & BLOCK_FLAG_FOOTNOTE_ATTACHED_TABLE) &&
+      !((lexer->lookahead == '|' && s->attached_row_prefix == 0) ||
+        (lexer->lookahead == '>' &&
+         s->attached_row_prefix != UINT8_MAX))) {
+    top->flags &= (uint8_t)~(BLOCK_FLAG_FOOTNOTE_ATTACHED |
+                             BLOCK_FLAG_FOOTNOTE_ATTACHED_TABLE);
+    s->state &= ~STATE_LIST_CONTINUATION;
+  }
+  if (!at_eof && (s->state & STATE_LIST_CONTINUATION) &&
+      (top->flags & BLOCK_FLAG_FOOTNOTE_ATTACHED) &&
+      s->indent == s->continuation_col && !at_line_end(lexer)) {
+    return false;
+  }
+
+  // Inspect indentation after the quote prefix before ending the note.
+  // A quoted blank line can precede another block in the same note.
+  if (!at_eof && lexer->lookahead == '>' &&
+      valid_symbols[BLOCK_QUOTE_CONTINUATION]) {
+    bool ending_newline = false;
+    uint8_t markers = scan_block_quote_markers(s, lexer, &ending_newline);
+    uint8_t quotes = count_blocks(s, BLOCK_QUOTE);
+    // An unmarked blank line has ended the quote.
+    bool continuation = markers == quotes &&
+        !(s->state & STATE_AFTER_BLANK_LINE);
+    if (continuation && ending_newline) {
+      bool second_newline = false;
+      continuation = scan_block_quote_markers(s, lexer, &second_newline) == quotes;
+    }
+    s->indent = consume_whitespace(s, lexer);
+    if (continuation && s->indent >= top->data) {
+      mark_end(s, lexer);
+      output_block_quote_continuation(s, lexer, markers, ending_newline);
+      s->block_quote_level = markers;
+      return true;
+    }
+    remove_block(s);
+    lexer->result_symbol = FOOTNOTE_END;
+    return true;
+  }
+
+  // At the end of input the body ends whatever column its last line reached,
+  // for the reason given above `parse_list_item_end`'s own end-of-input branch.
+  if (!at_eof && s->indent >= top->data &&
+      (at_line_end(lexer) || s->block_quote_level >= quotes_below(s, top))) {
+    return false;
+  }
+  // A lone `+` at column 0 continues the body (PART 9 section 17).
+  if (!at_eof && !(top->flags & BLOCK_FLAG_FOOTNOTE_BLANK_BEFORE_PLUS) &&
+      s->indent == 0 && lexer->lookahead == '+' &&
+      (valid_symbols[LIST_CONTINUATION_MARKER] ||
+       valid_symbols[EMPTY_LIST_CONTINUATION_MARKER])) {
+    if (top->flags & BLOCK_FLAG_FOOTNOTE_DANGLING_PLUS) {
+      remove_block(s);
+      lexer->result_symbol = FOOTNOTE_END;
+      return true;
+    }
+    advance(s, lexer);
+    while (lexer->lookahead == ' ' || lexer->lookahead == '\t') advance(s, lexer);
+    if (at_line_end(lexer) || lexer->eof(lexer)) {
+      if (emit_plus_line(s, lexer, valid_symbols, 0)) return true;
+      remove_block(s);
+      lexer->result_symbol = FOOTNOTE_END;
+      return true;
+    }
+  }
+
+  remove_block(s);
+  lexer->result_symbol = FOOTNOTE_END;
+  return true;
+}
+
+/// A quote held by a list item repeats the item's indentation before its `>`,
+/// so a line starting there is at the quote's own prefix, not past column 0.
+static bool at_item_held_quote_prefix(Scanner *s, TSLexer *lexer) {
+  Block *outer = find_block_from_bottom(s, BLOCK_QUOTE);
+  if (lexer->lookahead != '>' || !outer || outer->content_col < 2 ||
+      line_column(s, lexer) == 0 ||
+      line_column(s, lexer) != outer->content_col - 2u) return false;
+  for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (b == outer) return false;
+    if (is_list(b->type)) return true;
+  }
+  return false;
+}
+
+static bool parse_footnote_continuation(Scanner *s, TSLexer *lexer,
+                                        bool at_eof) {
+  Block *footnote = peek_block(s);
+  if (!footnote || footnote->type != FOOTNOTE) {
+    return false;
+  }
+  // A quoted note's margin counts from after the prefix, not the indentation.
+  if (at_item_held_quote_prefix(s, lexer)) return false;
+
+  // A continuation stands before a block here too, so there is nothing to
+  // continue into at the end of input. See `parse_list_item_continuation`.
+  if (at_eof) {
+    return false;
+  }
+
+  if (s->indent < footnote->data ||
+      (!at_line_end(lexer) && !lexer->eof(lexer) &&
+       s->block_quote_level < quotes_below(s, footnote))) {
+    return false;
+  }
+
+  mark_end(s, lexer);
+  lexer->result_symbol = FOOTNOTE_CONTINUATION;
+  return true;
+}
+
+// Scan from a `|` to the next `|`, respecting verbatim and escapes.
+// May not contain any newline.
+// `empty` is set when the cell closes with NO characters at all between the
+// pipes (not even whitespace: a whitespace-only gap like `| |` IS a cell per
+// the reference engines). A row whose pipe gaps are ALL zero-width is not a
+// table row (spec corpus 111-a-pipe-pair-with-no-cell-is-not-a-table: `||`
+// alone stays a paragraph).
+// `unterminated` reports the one failure the caller has to tell apart: the cell
+// reached a newline or EOF after consuming content, so the row never closed on
+// a pipe. Hitting the newline with nothing but whitespace consumed is the normal
+// way a properly closed row ends, and leaves it false.
+/// One table cell's worth of lookahead.
+///
+/// `closed_by_open_run` (optional, pass NULL where an unclosed run cannot
+/// matter) reports the one case where a FALSE return still leaves a valid row:
+/// the cell holds a verbatim-family run that does not close on its line, and
+/// the row's own closing pipe is what ends it. The cell is then the row's last,
+/// so there is no next cell to scan and the caller has to count this one
+/// itself. See `scan_verbatim_run_in_cell`.
+static bool scan_table_cell(Scanner *s, TSLexer *lexer, bool *separator,
+                            bool *empty, bool *meaningful, bool *unterminated,
+                            bool *closed_by_open_run) {
+  uint8_t leading_ws = consume_whitespace(s, lexer);
+
+  *separator = true;
+  *empty = false;
+  *meaningful = false;
+  *unterminated = false;
+
+  bool first_char = true;
+  while (!lexer->eof(lexer)) {
+    switch (lexer->lookahead) {
+    case '\\':
+      *separator = false;
+      *meaningful = true;
+      advance(s, lexer);
+      if (lexer->lookahead == '|') {
+        advance(s, lexer);
+        consume_whitespace(s, lexer);
+        if (at_line_end(lexer) || lexer->eof(lexer)) {
+          if (closed_by_open_run) {
+            *closed_by_open_run = true;
+          }
+          return false;
+        }
+      } else if (!at_line_end(lexer) && !lexer->eof(lexer)) {
+        advance(s, lexer);
+      }
+      break;
+    case '\r':
+    case '\n':
+      *unterminated = !first_char;
+      return false;
+    case '`': {
+      *separator = false;
+      *meaningful = true;
+      // Ending ticks make this an ordinary cell. Without them the row is still
+      // a row, as long as it has a closing pipe for the open run to end at.
+      bool row_closer_seen = false;
+      if (!scan_verbatim_run_in_cell(s, lexer, &row_closer_seen)) {
+        *unterminated = !row_closer_seen;
+        if (row_closer_seen && closed_by_open_run) {
+          *closed_by_open_run = true;
+        }
+        return false;
+      }
+      break;
+    }
+
+    case '|':
+      *empty = first_char && leading_ws == 0;
+      // A whitespace-only gap is an empty DATA cell, not a separator cell
+      // (`| A |` + `| |` is header-less body rows in the reference engines,
+      // never a header + separator promotion).
+      if (first_char && leading_ws > 0) {
+        *separator = false;
+      }
+      return true;
+    case ':':
+      *meaningful = true;
+      advance(s, lexer);
+
+      consume_whitespace(s, lexer);
+      // A `:` can begin or end a separator cell.
+      if (lexer->lookahead == '|') {
+        return true;
+      } else if (!first_char) {
+        *separator = false;
+      }
+      break;
+    case '-':
+      *meaningful = true;
+      advance(s, lexer);
+      // Padding may follow the dashes of a separator cell (`| - |`).
+      if (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+        consume_whitespace(s, lexer);
+        if (lexer->lookahead == '|') {
+          return true;
+        }
+        *separator = false;
+      }
+      break;
+    default:
+      *separator = false;
+      // `=` in the first slot is the header marker, not cell content. A row
+      // containing only that marker and whitespace is therefore just as blank
+      // as `| |`; alignment markers and attributes remain meaningful metadata
+      // and keep their rows structural (carve#1950).
+      if (first_char && lexer->lookahead == '=') {
+        advance(s, lexer);
+        consume_whitespace(s, lexer);
+      } else {
+        *meaningful = true;
+        advance(s, lexer);
+      }
+      break;
+    }
+
+    first_char = false;
+  }
+  *unterminated = !first_char;
+  return false;
+}
+
+/// Is the line at the lexer a `+` CONTINUATION ROW?
+///
+/// The same shape `parse_plus_line` accepts for `_table_continuation_row`: a
+/// `+`, a space or tab, and a pipe as the line's last non-space
+/// character. Both readings have to agree, or a run would read on into a line
+/// that builds no continuation row.
+static bool scan_continuation_row(Scanner *s, TSLexer *lexer) {
+  if (lexer->lookahead != '+') {
+    return false;
+  }
+  advance(s, lexer);
+  if (lexer->lookahead != ' ' && lexer->lookahead != '\t') {
+    return false;
+  }
+  bool saw_pipe = false;
+  bool last_nonspace_was_pipe = false;
+  while (!lexer->eof(lexer) && !at_line_end(lexer)) {
+    if (lexer->lookahead == '|') {
+      saw_pipe = true;
+      last_nonspace_was_pipe = true;
+    } else if (lexer->lookahead != ' ') {
+      last_nonspace_was_pipe = false;
+    }
+    advance(s, lexer);
+  }
+  return saw_pipe && last_nonspace_was_pipe;
+}
+
+static bool scan_separator_row(Scanner *s, TSLexer *lexer) {
+  // A row starts with its pipe: `- |` is a list item, not a separator cell.
+  consume_whitespace(s, lexer);
+  if (lexer->lookahead != '|') {
+    return false;
+  }
+  uint32_t cell_count = 0;
+  bool any_content = false;
+  bool curr_separator;
+  bool curr_empty;
+  bool curr_meaningful;
+  bool unterminated = false;
+  bool attr_after_pipe = false;
+  while (true) {
+    attr_after_pipe = lexer->lookahead == '{';
+    // A cell holding a verbatim run is not a separator cell, so an unclosed
+    // one cannot save a separator row: NULL.
+    if (!scan_table_cell(s, lexer, &curr_separator, &curr_empty,
+                         &curr_meaningful, &unterminated, NULL)) {
+      break;
+    }
+    if (!curr_separator) {
+      return false;
+    }
+    if (!curr_empty) {
+      any_content = true;
+    }
+    ++cell_count;
+    if (lexer->lookahead == '|') {
+      advance(s, lexer);
+    }
+  }
+  if (attr_after_pipe) {
+    unterminated = false;
+  }
+
+  if (cell_count == 0 || !any_content || unterminated) {
+    return false;
+  }
+
+  // A completed row may end after trailing whitespace at a newline or EOF.
+  consume_whitespace(s, lexer);
+  return at_line_end(lexer) || lexer->eof(lexer);
+}
+
+static bool scan_table_row(Scanner *s, TSLexer *lexer, TokenType *row_type,
+                           bool *one_cell_continues) {
+  if (s->state & STATE_TABLE_SEPARATOR_NEXT) {
+    s->state &= ~STATE_TABLE_SEPARATOR_NEXT;
+    *row_type = TABLE_SEPARATOR_BEGIN;
+    return true;
+  }
+
+  uint32_t cell_count = 0;
+  bool all_separators = true;
+  bool all_header_cells = true;
+  bool any_content = false;
+  bool unterminated = false;
+  bool curr_separator;
+  bool curr_empty;
+  bool curr_meaningful;
+  // A row attribute block glued to the closing pipe (`| a |{.head}`) sits where
+  // a next cell would start. It is not an unterminated final cell; the row-end
+  // token validates and consumes it (parse_table_end_newline).
+  bool attr_after_pipe = false;
+  // A final cell whose verbatim-family run runs open to the row's own closing
+  // pipe. The cell scan returns FALSE there - there is no next cell after it -
+  // so the row has to count it here.
+  bool closed_by_open_run = false;
+  while (true) {
+    attr_after_pipe = lexer->lookahead == '{';
+    // A BRACE RUN HERE IS ONE OF TWO THINGS, and only the row attribute ends
+    // the row: `| a |{.head}` closes it, `|{.head} a |` opens a cell that
+    // carries its own. Validating here rather than leaving it to
+    // `parse_table_end_newline` is what keeps an invalid row attribute from
+    // opening a row that then cannot close - that came back as an ERROR where
+    // the language reads an ordinary paragraph (corpus
+    // 248-an-attribute-name-admits-no-colon-3).
+    // A malformed block is cell content (`|{???} a |` is a cell in carve-js);
+    // a malformed ROW attribute leaves an unterminated cell, so the row fails.
+    if (attr_after_pipe && !scan_valid_inline_attribute(s, lexer)) {
+      attr_after_pipe = false;
+    } else if (attr_after_pipe) {
+      while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+        advance(s, lexer);
+      }
+      if (at_line_end(lexer) || lexer->eof(lexer)) {
+        break;
+      }
+      // A cell's own attribute: the rest of the cell follows it, and the block
+      // is what makes the cell meaningful - `|{.x} |` is a one-cell table with
+      // a classed empty cell, not a blank row (corpus
+      // 453-a-row-whose-every-cell-is-blank-is-not-a-table-6).
+      attr_after_pipe = false;
+      any_content = true;
+      // A cell that carries a block, or a brace run read as its text when no
+      // space follows (`|{#x}|`), is never a separator cell.
+      all_separators = false;
+    }
+    bool header_cell = lexer->lookahead == '=';
+    if (!scan_table_cell(s, lexer, &curr_separator, &curr_empty,
+                         &curr_meaningful, &unterminated,
+                         &closed_by_open_run)) {
+      break;
+    }
+    if (!header_cell) all_header_cells = false;
+    if (!curr_separator) {
+      all_separators = false;
+    }
+    if (curr_meaningful) {
+      any_content = true;
+    }
+    ++cell_count;
+    if (lexer->lookahead == '|') {
+      advance(s, lexer);
+    }
+  }
+  if (attr_after_pipe) {
+    unterminated = false;
+  }
+  if (closed_by_open_run) {
+    // The run swallowed the rest of the line, closing pipe included, so the
+    // scan is already past end of line and the checks below cannot re-read it.
+    // Everything they ask has been answered on the way: the cell has content,
+    // it is not a separator, and its closing pipe is there.
+    all_separators = false;
+    any_content = true;
+    unterminated = false;
+    ++cell_count;
+  }
+
+  // An explicitly delimited row of blank cells is a table row, `||`
+  // included; it is never a separator row.
+  if (cell_count == 0) {
+    return false;
+  }
+  if (!any_content) {
+    all_separators = false;
+  }
+
+  // A row without its CLOSING pipe is prose, not a row: `| a | b` is a
+  // paragraph, and a second row missing the pipe ends the table it followed
+  // (corpus 140-table-row-closing-pipe).
+  if (unterminated) {
+    return false;
+  }
+
+  // A completed row may end after trailing whitespace at a newline or EOF.
+  consume_whitespace(s, lexer);
+  if (!at_line_end(lexer) && !lexer->eof(lexer)) {
+    return false;
+  }
+
+  // Consume newline.
+  consume_line_end(s, lexer);
+  if (false && all_separators) {
+    *row_type = TABLE_SEPARATOR_BEGIN;
+  } else {
+    // We need to check the next row and if that is full of separators then
+    // this is a header, otherwise it's a regular row.
+    // We also need to check for any block quote markers on that row.
+    bool newline = false;
+    uint8_t next_line_quotes = scan_block_quote_markers(s, lexer, &newline);
+    // A continuation line at the WRONG quote depth belongs to nothing here -
+    // `> | a |` under `+ b |` with no `>` is the row ending normally, then an
+    // ordinary paragraph, not a continuation (tree-sitter-carve#437).
+    bool quote_depth_matches = next_line_quotes == count_blocks(s, BLOCK_QUOTE);
+
+    // A `+` line is never a separator row, and both readings start here and
+    // consume, so the cheaper question is asked first.
+    if (!newline && quote_depth_matches && lexer->lookahead == '+') {
+      *row_type = all_header_cells ? TABLE_HEADER_BEGIN : TABLE_ROW_BEGIN;
+      if (scan_continuation_row(s, lexer)) {
+        s->state |= STATE_TABLE_CONTINUATION_NEXT;
+        *one_cell_continues = cell_count == 1 && !attr_after_pipe;
+      }
+    } else if (false && !newline && scan_separator_row(s, lexer)) {
+      s->state |= STATE_TABLE_SEPARATOR_NEXT;
+      *row_type = TABLE_HEADER_BEGIN;
+    } else {
+      *row_type = all_header_cells ? TABLE_HEADER_BEGIN : TABLE_ROW_BEGIN;
+    }
+  }
+  return true;
+}
+
+// Defined below; validates a `{...}` attribute payload. Forward-declared so a
+// glued row attribute can reuse the same validation.
+static bool scan_valid_inline_attribute(Scanner *s, TSLexer *lexer);
+
+static bool marker_alpha(char c) {
+  return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+}
+static bool marker_word(char c) {
+  return marker_alpha(c) || (c >= '0' && c <= '9') || c == '_';
+}
+
+// One attribute item of a cell marker run; 0 when none starts at `i`.
+static uint32_t cell_marker_item(const char *b, uint32_t n, uint32_t i) {
+  char c = b[i];
+  if (c == '.' || c == '#') {
+    if (++i >= n || !marker_word(b[i])) return 0;
+    while (i < n && (marker_word(b[i]) || b[i] == '-')) ++i;
+    return i;
+  }
+  if (c == ':') {
+    if (++i >= n || !marker_alpha(b[i])) return 0;
+    while (i < n && ((marker_word(b[i]) && b[i] != '_') || b[i] == '-')) ++i;
+    return i;
+  }
+  if (!marker_alpha(c) && c != '_') return 0;
+  while (i < n && (marker_word(b[i]) || b[i] == '-')) ++i;
+  if (i >= n || b[i] != '=') return i;
+  if (++i >= n) return 0;
+  if (b[i] == '"' || b[i] == '\'') {
+    char quote = b[i++];
+    while (i < n && b[i] != quote && b[i] != '\r' && b[i] != '\n' && b[i] != 1) ++i;
+    return i < n && b[i] == quote ? i + 1 : 0;
+  }
+  uint32_t start = i;
+  while (i < n && b[i] > ' ' && b[i] != '"' && b[i] != '\'' && b[i] != '{' &&
+         b[i] != '}') ++i;
+  return i == start ? 0 : i;
+}
+
+static uint32_t cell_marker_alignment(const char *b, uint32_t n, uint32_t i) {
+  if (i >= n) return 0;
+  bool vertical = i + 1 < n && (b[i + 1] == '^' || b[i + 1] == '~' || b[i + 1] == 'v');
+  if (b[i] == '<' || b[i] == '>' || b[i] == '~') return vertical ? 2 : 1;
+  return b[i] == '?' && vertical ? 2 : 0;
+}
+
+/// Does the cell head start with a marker run, `CELL_MARKER_RUN` in grammar.js?
+///
+/// Never wider than that pattern: a head this accepts is one the grammar's
+/// `table_cell_attributes` parts can read. A head it declines keeps the
+/// one-token reading.
+static bool cell_marker_run(const char *b, uint32_t n) {
+  uint32_t i = 0;
+  if (i < n && b[i] == '=') ++i;
+  uint32_t inner = i + 1 < n && b[i] == '{' ? cell_marker_alignment(b, n, i + 1) : 0;
+  bool list_needs_space = inner > 0;
+  if (inner) {
+    i += 1 + inner;
+  } else {
+    i += cell_marker_alignment(b, n, i);
+    if (i >= n || b[i] != '{') return false;
+    ++i;
+  }
+  uint32_t spaces = 0;
+  while (i < n && b[i] == ' ') { ++i; ++spaces; }
+  if (i < n && b[i] != '}') {
+    if (list_needs_space && !spaces) return false;
+    while (true) {
+      uint32_t next = cell_marker_item(b, n, i);
+      if (!next) return false;
+      i = next;
+      uint32_t gap = i;
+      while (gap < n && b[gap] == ' ') ++gap;
+      if (gap == i || gap >= n || b[gap] == '}') { i = gap; break; }
+      i = gap;
+    }
+  }
+  return i + 1 < n && b[i] == '}' && b[i + 1] == ' ';
+}
+
+static void begin_row_capture(Scanner *s, TSLexer *lexer, uint32_t carried,
+                              uint32_t column) {
+  s->row_capture = true;
+  s->row_boundary_safe = true;
+  s->row_capture_braces = 0;
+  s->row_capture_quote = 0;
+  s->row_bracket_cell_col = UINT32_MAX;
+  s->row_cell_start_col = column;
+  s->row_capture_col = column;
+  s->row_boundary_col = UINT32_MAX;
+  s->row_raw_ticks = s->row_carry_ticks = carried;
+  s->row_raw_pending = s->row_carry_pending = 0;
+  s->row_previous = 0;
+  s->row_carry_escape = false;
+}
+
+static void capture_remaining_cell(Scanner *s, TSLexer *lexer, Block *row,
+                                   uint32_t carried, uint32_t column) {
+  if (at_line_end(lexer) || lexer->eof(lexer)) {
+    row->cell_boundary_col = UINT32_MAX;
+    row->cell_carry_ticks = carried;
+    row->bracket_cell_col = UINT32_MAX;
+    return;
+  }
+  if (column == UINT32_MAX) column = lexer->get_column(lexer);
+  begin_row_capture(s, lexer, carried, column);
+  while (!at_line_end(lexer) && !lexer->eof(lexer) &&
+         (s->row_boundary_col == UINT32_MAX ||
+          s->row_bracket_cell_col == UINT32_MAX)) advance(s, lexer);
+  s->row_capture = false;
+  row->cell_boundary_col = s->row_boundary_col;
+  row->cell_carry_ticks = s->row_carry_ticks;
+  row->bracket_cell_col = s->row_bracket_cell_col;
+  if (s->row_boundary_safe) row->flags |= BLOCK_FLAG_TABLE_ROW_BOUNDARY_SAFE;
+  else row->flags &= (uint8_t)~BLOCK_FLAG_TABLE_ROW_BOUNDARY_SAFE;
+}
+
+static bool parse_table_begin(Scanner *s, TSLexer *lexer,
+                              const bool *valid_symbols) {
+  if (line_block_body(s)) {
+    return false;
+  }
+  if (lexer->lookahead != '|') {
+    return false;
+  }
+  if (!valid_symbols[TABLE_ROW_BEGIN] &&
+      !valid_symbols[TABLE_SEPARATOR_BEGIN] &&
+      !valid_symbols[TABLE_HEADER_BEGIN]) {
+    return false;
+  }
+
+  // The tokens should consume the pipe.
+  advance(s, lexer);
+  mark_end(s, lexer);
+
+  TokenType row_type;
+  bool one_cell_continues = false;
+  begin_row_capture(s, lexer, 0, lexer->get_column(lexer));
+  s->marker_probe = true;
+  s->marker_len = 0;
+  bool valid_row = scan_table_row(s, lexer, &row_type, &one_cell_continues);
+  s->row_capture = false;
+  bool cell_marker = s->marker_probe &&
+      cell_marker_run(s->marker_head, s->marker_len);
+  s->marker_probe = false;
+  if (!valid_row) return false;
+
+  Block *note = peek_block(s);
+  if (note && note->type == FOOTNOTE &&
+      (note->flags & BLOCK_FLAG_FOOTNOTE_ATTACHED)) {
+    note->flags |= BLOCK_FLAG_FOOTNOTE_ATTACHED_TABLE;
+  }
+  uint8_t row_prefix = s->block_quote_level;
+  bool attached_row = (s->state & STATE_LIST_CONTINUATION) &&
+      s->attached_row_prefix != UINT8_MAX;
+  s->attached_row_prefix = UINT8_MAX;
+  push_block(s, TABLE_ROW, 0);
+  if (attached_row) {
+    peek_block(s)->content_col = row_prefix;
+    peek_block(s)->flags |= BLOCK_FLAG_TABLE_ROW_ATTACHED;
+  }
+  peek_block(s)->cell_boundary_col = s->row_boundary_col;
+  peek_block(s)->cell_carry_ticks = s->row_carry_ticks;
+  peek_block(s)->bracket_cell_col = s->row_bracket_cell_col;
+  if (s->row_boundary_safe) peek_block(s)->flags |= BLOCK_FLAG_TABLE_ROW_BOUNDARY_SAFE;
+  if (one_cell_continues) {
+    peek_block(s)->flags |= BLOCK_FLAG_TABLE_ROW_CONTINUES;
+  }
+  if (cell_marker && row_type != TABLE_SEPARATOR_BEGIN) {
+    peek_block(s)->flags |= BLOCK_FLAG_TABLE_ROW_CELL_MARKER;
+  }
+  s->after_separator_row = row_type == TABLE_SEPARATOR_BEGIN;
+  lexer->result_symbol = row_type;
+  return true;
+}
+
+/// A separate-line `+` belongs to an open item's marker column or to the
+/// column reached after a quote prefix. The after-opener form uses
+/// `marker_end_col`.
+static bool continuation_marker_column(Scanner *s, uint32_t column) {
+  if (column == 0 || (s->marker_end_col != 0 && column == s->marker_end_col)) {
+    return true;
+  }
+  for (int i = s->open_blocks->size - 1; i >= 0; --i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (is_list(b->type) &&
+        (b->data == column + 1 ||
+         (s->indent > column && b->data == s->indent + 1) ||
+         (find_block(s, BLOCK_QUOTE) && b->content_col == column))) {
+      return true;
+    }
+    if (b->type == BLOCK_QUOTE && b->content_col != 0 &&
+        column == b->content_col) {
+      return true;
+    }
+  }
+  return false;
+}
+
+typedef enum { PLUS_ATTACHES, PLUS_REFUSED, PLUS_EMPTY } PlusFollow;
+
+static bool unprefixed_plus_short_of_nested_quote(Scanner *s,
+                                                  uint32_t column,
+                                                  uint8_t markers) {
+  Block *list = find_list(s);
+  Block *inner = find_block(s, BLOCK_QUOTE);
+  Block *outer = find_block_from_bottom(s, BLOCK_QUOTE);
+  return markers == 0 && column > 0 &&
+      count_blocks(s, BLOCK_QUOTE) > 1 &&
+      (!outer || outer->content_col < 2 ||
+       column != outer->content_col - 2) &&
+      (!list || (list_opened_in_quote(s, list) && inner &&
+                 column < inner->content_col &&
+                 !list_between_quotes(s, 1)));
+}
+
+/// A footnote opened inside a quote inside an item owns its `+`, not the item.
+static Block *quoted_note_inside_item(Scanner *s) {
+  Block *note = find_block(s, FOOTNOTE);
+  Block *list = find_list(s);
+  if (!note || !list) return NULL;
+  bool quote_between = false;
+  for (int i = s->open_blocks->size - 1; i >= 0; --i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (b == list) return quote_between ? note : NULL;
+    if (b == note) quote_between = false;
+    else if (b->type == BLOCK_QUOTE) quote_between = true;
+  }
+  return NULL;
+}
+
+/// The open container a separate-line `+` at `column` belongs to: a list item
+/// at its marker column, or the quote whose prefix the `+` directly follows.
+/// `reach` is the stack depth whose quotes a following prefix can re-enter.
+static void plus_owner_at(Scanner *s, uint32_t column, uint8_t markers,
+                          Block **list_owner_out, Block **quote_owner_out,
+                          uint32_t *reach_out, bool item_column) {
+  Block *list_owner = NULL;
+  Block *quote_owner = NULL;
+  uint8_t level = count_blocks(s, BLOCK_QUOTE);
+  // Only the quotes around the owner (and a quote owner itself) can be
+  // re-entered by the next line's prefix; the `+` closes the ones inside it.
+  uint32_t reach = s->open_blocks->size;
+  // A quoted list counts its marker column from after the quote's prefix.
+  uint32_t prefix_end = 0;
+  for (uint32_t i = 0, seen = 0; i < s->open_blocks->size && seen < markers; ++i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (b->type == BLOCK_QUOTE && ++seen == markers) prefix_end = b->content_col;
+  }
+  uint32_t relative = column >= prefix_end ? column - prefix_end : column;
+  bool marker_line_quote = false;
+  for (int i = s->open_blocks->size - 1; i >= 0; --i) {
+    Block *b = *array_get(s->open_blocks, i);
+    bool hosted_item_column = false;
+    if (is_list(b->type) && item_column && markers > 0 &&
+        level == markers && column == prefix_end && s->indent < column) {
+      bool quote_between = false;
+      for (int j = i - 1; j >= 0; --j) {
+        Block *host = *array_get(s->open_blocks, j);
+        if (host->type == BLOCK_QUOTE) quote_between = true;
+        if (is_list(host->type)) {
+          hosted_item_column = quote_between && b->content_col > column;
+          break;
+        }
+      }
+    }
+    if (is_list(b->type) && b->type != LIST_DEFINITION && level == markers &&
+        ((list_opened_in_quote(s, b)
+             ? (b->data == relative + 1 ||
+                // A marker-line nested list can keep its absolute column.
+                (item_column && b->data == column + 1 &&
+                 column > prefix_end) ||
+                (item_column && marker_line_quote &&
+                 b->content_col == column))
+             : b->data == column + 1) || hosted_item_column)) {
+      list_owner = b;
+      reach = (uint32_t)i;
+      break;
+    }
+    if (b->type == BLOCK_QUOTE) {
+      marker_line_quote |=
+          (b->flags & BLOCK_FLAG_QUOTE_ON_ITEM_MARKER_LINE) != 0;
+      if (markers > 0 && level == markers && b->content_col != 0 &&
+          column == b->content_col) {
+        quote_owner = b;
+        reach = (uint32_t)i + 1;
+        break;
+      }
+      --level;
+    }
+  }
+  *list_owner_out = list_owner;
+  *quote_owner_out = quote_owner;
+  *reach_out = reach;
+}
+
+static void plus_owner(Scanner *s, uint32_t column, uint8_t markers,
+                       Block **list_owner_out, Block **quote_owner_out,
+                       uint32_t *reach_out) {
+  plus_owner_at(s, column, markers, list_owner_out, quote_owner_out,
+                reach_out, true);
+}
+
+/// What the line after a lone `+` does with it (PART 9 §17 L3/L4). The lexer
+/// stands at the start of that line and is moved, so callers only peek.
+/// `column` is the `+` column and `markers` the quote prefixes before it.
+/// PLUS_EMPTY is a blank line or the end of input; PLUS_REFUSED leaves the `+`
+/// as text. A list item owns its marker column: a follower at another column
+/// or a sibling item refuses it. A quote prefix owns the column after it: a
+/// follower that re-enters that quote through its own prefix refuses it.
+static PlusFollow plus_follower(Scanner *s, TSLexer *lexer, uint32_t column,
+                                uint8_t markers, Block **quote_owned,
+                                bool *item_follows, uint32_t *attach_col,
+                                int32_t *attach_char,
+                                uint8_t *attach_prefixes) {
+  Block *list_owner = NULL;
+  Block *quote_owner = NULL;
+  uint32_t reach = 0;
+  plus_owner(s, column, markers, &list_owner, &quote_owner, &reach);
+  // A quote opened after a list marker on this line is a stacked first-block
+  // `+`: its follower may not re-enter the quotes of that chain, and it
+  // attaches only at column 0, the line's own column or the quote's column.
+  int32_t chain_start = -1;
+  if (quote_owner && s->chain_col != UINT8_MAX) {
+    for (int32_t i = (int32_t)reach - 2; i >= 0; --i) {
+      Block *b = *array_get(s->open_blocks, i);
+      if (is_list(b->type)) {
+        if (b->data < s->chain_col + 1) break;
+        if (b->data == s->chain_col + 1) chain_start = i;
+      } else if (b->type == BLOCK_QUOTE && chain_start >= 0) {
+        break;
+      }
+    }
+  }
+  uint32_t reenter_limit = chain_start >= 0 ? (uint32_t)chain_start : reach;
+  // Re-enter the open quotes the follower's prefix reaches, outermost first.
+  uint8_t reentered = 0;
+  uint32_t prefix_end = 0;
+  for (uint32_t i = 0; i < reenter_limit; ++i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (b->type != BLOCK_QUOTE) continue;
+    while (lexer->lookahead == ' ') advance(s, lexer);
+    uint32_t at = line_column(s, lexer);
+    if (lexer->lookahead != '>' || b->content_col < 2 ||
+        (at != b->content_col - 2 && at != b->content_col - 1) ||
+        (list_owner == NULL && quote_owner == NULL && reentered == markers)) {
+      break;
+    }
+    advance(s, lexer);
+    if (lexer->lookahead == ' ') advance(s, lexer);
+    ++reentered;
+    prefix_end = b->content_col;
+  }
+  consume_whitespace(s, lexer);
+  if (quote_owned) *quote_owned = quote_owner;
+  if (attach_prefixes) *attach_prefixes = reentered;
+  if (lexer->eof(lexer) || at_line_end(lexer)) {
+    // A quote's `+` with nothing to attach is text (L4).
+    return quote_owner ? PLUS_REFUSED : PLUS_EMPTY;
+  }
+  uint32_t next_col = line_column(s, lexer);
+  if (quote_owner) {
+    // An item between the owning quote and a deeper quote keeps the `+` as
+    // that deeper paragraph's text (carve-js 0.1.13).
+    bool item_inside_quote_owner = false;
+    for (uint32_t i = reach; i < s->open_blocks->size; ++i) {
+      Block *b = *array_get(s->open_blocks, i);
+      if (b->type == BLOCK_QUOTE) break;
+      if (is_list(b->type) && b->type != LIST_DEFINITION) {
+        item_inside_quote_owner = i + 1 < s->open_blocks->size;
+        break;
+      }
+    }
+    // Recorded before the list-marker scan moves the lexer.
+    if (attach_col) *attach_col = next_col >= prefix_end ? next_col - prefix_end : 0;
+    int32_t follower_char = lexer->lookahead;
+    if (attach_char) *attach_char = follower_char;
+    TokenType marker = scan_list_marker_token(s, lexer);
+    bool item = marker != IGNORED && marker_line_has_content(s, lexer);
+    if (item_follows && next_col == column) *item_follows = item;
+    // A quote can attach a list just like any other block.
+    // A follower at column 0 is outside a list item holding the quote.
+    uint32_t owner_margin = 0;
+    for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
+      Block *b = *array_get(s->open_blocks, i);
+      if (b == quote_owner) break;
+      if (is_list(b->type) && b->type != LIST_DEFINITION) owner_margin = b->content_col;
+    }
+    bool attaches =
+        (((quote_owner->flags & BLOCK_FLAG_QUOTE_DEDENT_PLUS) == 0 &&
+          count_blocks(s, BLOCK_QUOTE) == markers &&
+          reentered < markers &&
+          ((next_col == 0 && owner_margin == 0) ||
+           (reentered + 1 == markers &&
+            next_col + 2 == quote_owner->content_col &&
+            (owner_margin == 0 ||
+             ((quote_owner->flags & BLOCK_FLAG_QUOTE_OPENING_LINE) &&
+              !s->paragraph_plus_probe))))) ||
+         ((count_blocks(s, BLOCK_QUOTE) > markers ||
+           (quote_owner->flags & BLOCK_FLAG_QUOTE_DEDENT_PLUS)) &&
+          !item_inside_quote_owner && reentered == markers &&
+          next_col == column) ||
+         (reentered == markers && next_col == column &&
+          (find_block(s, FOOTNOTE) ||
+           (find_list(s) && find_list(s)->type == LIST_DEFINITION))) ||
+         (reentered == markers && follower_char == '>' &&
+          (find_block(s, FOOTNOTE) != NULL ||
+           (find_list(s) && find_list(s)->type == LIST_DEFINITION))));
+    if (chain_start >= 0 && reentered == 0) {
+      uint32_t rel = next_col >= prefix_end ? next_col - prefix_end : 0;
+      attaches = !item && (rel == 0 || rel == s->chain_col ||
+                           next_col + 2 == quote_owner->content_col);
+    }
+    // A note in an item-held quote refuses a quote follower (spec model).
+    if (follower_char == '>' && quoted_note_inside_item(s)) attaches = false;
+    // A quote's first-block `+` refuses a list follower (corpus 652).
+    if (item && reentered <= markers && quote_owner == peek_block(s) &&
+        (quote_owner->flags & BLOCK_FLAG_QUOTE_OPENING_LINE)) {
+      attaches = false;
+    }
+    return attaches ? PLUS_ATTACHES : PLUS_REFUSED;
+  }
+  if (!list_owner) {
+    if (unprefixed_plus_short_of_nested_quote(s, column, markers)) {
+      return PLUS_REFUSED;
+    }
+    Block *description = find_list(s);
+    Block *quote = find_block(s, BLOCK_QUOTE);
+    if (markers > 0 && description && description->type == LIST_DEFINITION &&
+        quote && column != quote->content_col) return PLUS_REFUSED;
+    if (next_col != column) return PLUS_REFUSED;
+    if (description && description->type != LIST_DEFINITION && column != 0) {
+      TokenType marker = scan_list_marker_token(s, lexer);
+      if (marker != IGNORED && marker != LIST_MARKER_DESCRIPTION &&
+          marker_line_has_content(s, lexer)) {
+        return PLUS_REFUSED;
+      }
+    }
+    return PLUS_ATTACHES;
+  }
+  if (next_col != column || reentered < markers) return PLUS_REFUSED;
+  TokenType marker = scan_list_marker_token(s, lexer);
+  if (marker != IGNORED && marker != LIST_MARKER_DESCRIPTION &&
+      marker_line_has_content(s, lexer)) {
+    return PLUS_REFUSED;
+  }
+  return PLUS_ATTACHES;
+}
+
+static void note_fence_blank_quote_plus(Scanner *s, TSLexer *lexer) {
+  Block *quote = find_block(s, BLOCK_QUOTE);
+  if (!quote || !find_list(s) || !at_line_end(lexer)) return;
+  uint8_t indent = s->indent;
+  uint8_t level = s->block_quote_level;
+  uint32_t col_base = s->col_base;
+  consume_line_end(s, lexer);
+  bool blank = false;
+  uint8_t quotes = count_blocks(s, BLOCK_QUOTE);
+  uint8_t first = scan_block_quote_markers(s, lexer, &blank);
+  if (first == quotes) {
+    uint8_t candidate = first;
+    bool candidate_blank = blank;
+    if (blank) {
+      candidate = scan_block_quote_markers(s, lexer, &candidate_blank);
+    }
+    consume_whitespace(s, lexer);
+    if (candidate == quotes && !candidate_blank && lexer->lookahead == '+') {
+      uint32_t column = line_column(s, lexer);
+      Block *owner_list = NULL;
+      Block *owner_quote = NULL;
+      uint32_t reach = 0;
+      plus_owner(s, column, quotes, &owner_list, &owner_quote, &reach);
+      advance(s, lexer);
+      while (lexer->lookahead == ' ' || lexer->lookahead == '\t') advance(s, lexer);
+      if (owner_list && owner_list->type != LIST_DEFINITION && at_line_end(lexer)) {
+        consume_line_end(s, lexer);
+        if (plus_follower(s, lexer, column, quotes,
+                          NULL, NULL, NULL, NULL, NULL) == PLUS_ATTACHES) {
+          owner_list->flags |= BLOCK_FLAG_PLUS_AHEAD;
+          quote->flags |= BLOCK_FLAG_QUOTE_BLANK_PLUS;
+        }
+      }
+    }
+  }
+  s->indent = indent;
+  s->block_quote_level = level;
+  s->col_base = col_base;
+}
+
+// Decide the list's `+` before taking its bytes. The zero-width check lets a
+// refused marker close the list while leaving the whole `+` line as text.
+static bool scan_plus_owner_check(Scanner *s, TSLexer *lexer) {
+  if (lexer->lookahead != '+' || s->plus_decision != 0) return false;
+  Block *list = find_list(s);
+  if (!list) return false;
+  uint32_t column = line_column(s, lexer);
+  // Full quote prefixes may have been consumed with the recorded level at zero.
+  if (s->block_quote_level == 0 && count_blocks(s, BLOCK_QUOTE) > 0 &&
+      (list->flags & BLOCK_FLAG_PLUS_AHEAD) &&
+      list_opened_in_quote(s, list) && list->content_col > column) {
+    s->block_quote_level = count_blocks(s, BLOCK_QUOTE);
+  }
+  bool first_block = s->marker_end_col != 0 &&
+      column == s->marker_end_col;
+  if (!first_block) {
+    Block *owner_list = NULL;
+    Block *owner_quote = NULL;
+    uint32_t reach = 0;
+    plus_owner(s, column, s->block_quote_level, &owner_list,
+               &owner_quote, &reach);
+    if (owner_list) list = owner_list;
+    else if (s->indent <= column || list->data != s->indent + 1)
+      return false;
+  }
+  Block *quote = find_block(s, BLOCK_QUOTE);
+  uint32_t owner_col = first_block ? list->data - 1 : column;
+  if (!first_block && s->block_quote_level > 0 &&
+      list_opened_in_quote(s, list) && quote && quote->content_col >= 2) {
+    Block *outer = find_block_from_bottom(s, BLOCK_QUOTE);
+    owner_col = outer && outer->content_col >= 2
+        ? outer->content_col - 2 : quote->content_col - 2;
+  }
+  mark_end(s, lexer);
+  advance(s, lexer);
+  while (lexer->lookahead == ' ' || lexer->lookahead == '\t') advance(s, lexer);
+  if (!at_line_end(lexer) && !lexer->eof(lexer)) return false;
+  bool refused = false;
+  bool sibling = false;
+  if (!first_block) {
+    if (lexer->eof(lexer)) {
+      refused = true;
+    } else {
+      consume_line_end(s, lexer);
+      consume_whitespace(s, lexer);
+      uint32_t next_col = line_column(s, lexer);
+      refused = at_line_end(lexer) || lexer->eof(lexer) ||
+          next_col != owner_col;
+      if (!refused) {
+        for (uint8_t i = 0; i < s->block_quote_level; ++i) {
+          if (i > 0) {
+            while (lexer->lookahead == ' ') advance(s, lexer);
+          }
+          if (lexer->lookahead != '>') {
+            refused = true;
+            break;
+          }
+          advance(s, lexer);
+          if (lexer->lookahead == ' ') advance(s, lexer);
+        }
+      }
+      if (!refused) {
+        TokenType marker = scan_list_marker_token(s, lexer);
+        bool item = marker != IGNORED &&
+            marker != LIST_MARKER_DESCRIPTION &&
+            marker_line_has_content(s, lexer);
+        sibling = item && list_marker_to_block(marker) == list->type;
+        refused = item;
+      }
+    }
+  }
+  s->plus_decision = sibling ? 3 : (refused ? 2 : 1);
+  lexer->result_symbol = PLUS_OWNER_CHECK;
+  return true;
+}
+
+static bool parse_refused_plus_line(Scanner *s, TSLexer *lexer) {
+  if (lexer->lookahead != '+' || s->refused_plus_column == 0 ||
+      line_column(s, lexer) + 1 != s->refused_plus_column) return false;
+  advance(s, lexer);
+  while (lexer->lookahead == ' ' || lexer->lookahead == '\t') advance(s, lexer);
+  if (!at_line_end(lexer) && !lexer->eof(lexer)) return false;
+  consume_line_end(s, lexer);
+  mark_end(s, lexer);
+  s->refused_plus_column = 0;
+  lexer->result_symbol = REFUSED_PLUS_LINE;
+  return true;
+}
+
+// An empty continuation consumes its marker without promising a following
+// block. Only a marker of the current list type can be a sibling item.
+static bool emit_plus_line(Scanner *s, TSLexer *lexer,
+                            const bool *valid_symbols,
+                            uint32_t marker_column) {
+  uint32_t col_base = s->col_base;
+  consume_line_end(s, lexer);
+  mark_end(s, lexer);
+  uint8_t indent = s->indent;
+  uint8_t level = s->block_quote_level;
+  uint16_t state = s->state;
+  Block *owner_list = NULL;
+  Block *owner_quote = NULL;
+  uint32_t owner_reach = 0;
+  if (level > 0) {
+    plus_owner(s, marker_column, level, &owner_list, &owner_quote, &owner_reach);
+  }
+  if (owner_quote) {
+    // A `+` after a quote prefix whose next line re-enters that quote is text.
+    Block *quote_owned = NULL;
+    bool item_follows = false;
+    uint32_t attach_col = 0;
+    int32_t attach_char = 0;
+    uint8_t attach_prefixes = 0;
+    PlusFollow follow = plus_follower(s, lexer, marker_column, level,
+                                      &quote_owned, &item_follows,
+                                      &attach_col, &attach_char,
+                                      &attach_prefixes);
+    owner_quote->flags &= (uint8_t)~BLOCK_FLAG_QUOTE_DEDENT_PLUS;
+    if (follow == PLUS_ATTACHES) {
+      // The follower was read here; the generic path below would re-read a
+      // lexer the list-marker probe has moved.
+      s->indent = indent;
+      if (!valid_symbols[LIST_CONTINUATION_MARKER]) {
+        s->col_base = col_base;
+        s->plus_scan_spent = true;
+        return false;
+      }
+      s->state &= ~STATE_LIST_CONTINUATION;
+      if (find_list(s) || attach_char != '>') {
+        s->state |= STATE_LIST_CONTINUATION;
+        s->continuation_col = attach_col <= UINT8_MAX ? (uint8_t)attach_col : 0;
+      }
+      if (attach_char == '>' && count_blocks(s, BLOCK_QUOTE) > level) {
+        owner_quote->flags |= BLOCK_FLAG_QUOTE_CONTINUATION_PENDING;
+      }
+      Block *attached_note = find_block(s, FOOTNOTE);
+      if (attached_note) attached_note->flags |= BLOCK_FLAG_FOOTNOTE_ATTACHED;
+      s->attached_row_prefix = attach_char == '|' ? attach_prefixes : UINT8_MAX;
+      lexer->result_symbol = LIST_CONTINUATION_MARKER;
+      return true;
+    }
+    if (quote_owned && follow == PLUS_REFUSED) {
+      s->indent = indent;
+      s->col_base = col_base;
+      // On a continuation line the refused `+` is a paragraph of its own that
+      // a following list item may interrupt (L3); on the quote's opening line
+      // it is ordinary text.
+      if (item_follows && valid_symbols[REFUSED_PLUS_LINE] &&
+          !(quote_owned->flags & BLOCK_FLAG_QUOTE_OPENING_LINE)) {
+        lexer->result_symbol = REFUSED_PLUS_LINE;
+        return true;
+      }
+      s->plus_scan_spent = true;
+      return false;
+    }
+  }
+  Block *list = find_list(s);
+  if (owner_list) list = owner_list;
+  uint32_t attachment_col = marker_column;
+  bool first_block = s->marker_end_col != 0 &&
+      marker_column == s->marker_end_col;
+  Block *note = peek_block(s);
+  bool footnote_first = first_block && note && note->type == FOOTNOTE;
+  if (footnote_first) list = NULL;
+  // Inside a quote both lines' columns count from after the prefixes they
+  // share, as a quoted list's marker column does.
+  uint32_t line_prefix_end = 0;
+  for (uint32_t i = 0, seen = 0; i < s->open_blocks->size && seen < level; ++i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (b->type == BLOCK_QUOTE && ++seen == level) line_prefix_end = b->content_col;
+  }
+  if (attachment_col >= line_prefix_end) attachment_col -= line_prefix_end;
+  if (first_block && list) {
+    attachment_col = s->chain_col != UINT8_MAX ? s->chain_col : list->data - 1;
+  }
+  uint32_t prefix_end = 0;
+  uint8_t follower_prefixes = 0;
+  if (!owner_quote && level > 0) {
+    for (uint32_t i = 0, seen = 0; i < s->open_blocks->size && seen < level; ++i) {
+      Block *b = *array_get(s->open_blocks, i);
+      if (b->type != BLOCK_QUOTE) continue;
+      ++seen;
+      while (lexer->lookahead == ' ') advance(s, lexer);
+      uint32_t at = line_column(s, lexer);
+      if (lexer->lookahead != '>' || b->content_col < 2 ||
+          (at != b->content_col - 2 && at != b->content_col - 1)) {
+        break;
+      }
+      advance(s, lexer);
+      if (lexer->lookahead == ' ') advance(s, lexer);
+      ++follower_prefixes;
+      prefix_end = line_column(s, lexer);
+    }
+  }
+  consume_whitespace(s, lexer);
+  uint32_t next_column = line_column(s, lexer) - prefix_end;
+  bool next_eof = lexer->eof(lexer);
+  bool next_line_end = at_line_end(lexer);
+  int32_t next_char = lexer->lookahead;
+  uint32_t footnote_follower_col = footnote_first && note->data >= 2
+      ? note->data - 2 : 0;
+  if (note && note->type == FOOTNOTE && (next_eof || next_line_end)) {
+    return false;
+  }
+  if (footnote_first &&
+      (next_eof || next_line_end || follower_prefixes != level ||
+       next_column != footnote_follower_col)) {
+    s->plus_scan_spent = true;
+    return false;
+  }
+  if (footnote_first && next_column == footnote_follower_col &&
+      !next_line_end && !next_eof) {
+    bool ordered_word_end = s->ordered_word_end;
+    uint8_t attribute_width = s->marker_attribute_width;
+    BracketProbe probe = bracket_probe_new(s, lexer);
+    TokenType marker = scan_list_marker_token(s, &probe.lexer);
+    bool item = marker != IGNORED && marker_line_has_content(s, &probe.lexer);
+    array_delete(&probe.characters);
+    s->ordered_word_end = ordered_word_end;
+    s->marker_attribute_width = attribute_width;
+    if (item) {
+      s->plus_scan_spent = true;
+      return false;
+    }
+  }
+  if (list && find_block(s, BLOCK_QUOTE) && level == 0 &&
+      next_char == '>' && next_column < marker_column) {
+    advance(s, lexer);
+    if (lexer->lookahead == ' ') advance(s, lexer);
+    TokenType marker = scan_list_marker_token(s, lexer);
+    if (marker != IGNORED && marker != LIST_MARKER_DESCRIPTION &&
+        marker_line_has_content(s, lexer)) {
+      s->plus_scan_spent = true;
+      return false;
+    }
+  }
+  bool empty = next_eof || (!list && next_line_end) ||
+               (next_column != attachment_col &&
+                !(first_block && next_column == 0) &&
+                !(footnote_first && next_column == footnote_follower_col) &&
+                !next_line_end &&
+                (list || (note && note->type == FOOTNOTE)));
+  bool sibling_item = false;
+  // A follower `>` past the `+` line's own prefix (or, unprefixed, off the
+  // outer quote's marker column) opens the attached quote, so no marker inside
+  // it is a sibling item.
+  Block *outer_quote = find_block_from_bottom(s, BLOCK_QUOTE);
+  bool new_quote_follower = next_char == '>' &&
+      (level > 0 ? follower_prefixes == level
+                 : outer_quote && outer_quote->content_col >= 2 &&
+                   next_column != outer_quote->content_col - 2u);
+  if (!empty && list && !at_line_end(lexer) && !new_quote_follower) {
+    bool ending_newline = false;
+    scan_block_quote_markers(s, lexer, &ending_newline);
+    s->indent = consume_whitespace(s, lexer);
+    uint32_t marker_column = line_column(s, lexer) - prefix_end;
+    TokenType marker = scan_list_marker_token(s, lexer);
+    sibling_item = marker != IGNORED && marker != LIST_MARKER_DESCRIPTION &&
+                   marker_line_has_content(s, lexer) &&
+                   (marker_column + 1 == list->data ||
+                    (level == 0 && find_block(s, BLOCK_QUOTE) &&
+                     next_column == attachment_col && next_char != '>'));
+    empty = sibling_item;
+  }
+  if (sibling_item && find_block(s, BLOCK_QUOTE)) {
+    s->plus_scan_spent = true;
+    return false;
+  }
+  s->indent = indent;
+  s->block_quote_level = level;
+  s->state = state;
+  TokenType token = empty ? EMPTY_LIST_CONTINUATION_MARKER
+                         : LIST_CONTINUATION_MARKER;
+  if (!valid_symbols[token]) {
+    s->col_base = col_base;
+    if (note && note->type == FOOTNOTE) s->plus_scan_spent = true;
+    return false;
+  }
+  s->state &= ~STATE_LIST_CONTINUATION;
+  if (!empty && list) {
+    s->state |= STATE_LIST_CONTINUATION;
+    uint32_t selected_col = first_block && next_column == 0
+                                ? 0 : attachment_col;
+    Block *inner_quote = find_block(s, BLOCK_QUOTE);
+    if (owner_list && inner_quote &&
+        (inner_quote->flags & BLOCK_FLAG_QUOTE_ON_ITEM_MARKER_LINE) &&
+        owner_list->content_col == marker_column) {
+      selected_col = marker_column;
+    }
+    s->continuation_col = selected_col <= UINT8_MAX ? selected_col : 0;
+  }
+  Block *quote = find_block(s, BLOCK_QUOTE);
+  if (!empty && !list && quote && next_char != '>') {
+    s->state |= STATE_LIST_CONTINUATION;
+    s->continuation_col = next_column <= UINT8_MAX ? next_column : 0;
+  }
+  if (!empty && !list && note && note->type == FOOTNOTE) {
+    note->flags |= BLOCK_FLAG_FOOTNOTE_ATTACHED;
+    s->state |= STATE_LIST_CONTINUATION;
+    s->continuation_col = next_column <= UINT8_MAX ? (uint8_t)next_column : 0;
+  }
+  s->attached_row_prefix = !empty && next_char == '|'
+      ? follower_prefixes : UINT8_MAX;
+  if (!empty && !list && quote && marker_column == 0 &&
+      lexer->lookahead == '>' &&
+      line_column(s, lexer) == 0) {
+    advance(s, lexer);
+    if (lexer->lookahead == ' ' || at_line_end(lexer) || lexer->eof(lexer)) {
+      quote->flags |= BLOCK_FLAG_QUOTE_CONTINUATION_PENDING;
+    }
+  }
+  lexer->result_symbol = token;
+  return true;
+}
+
+// Only the marker-line quote's attached block may use its outer prefix here.
+static bool parse_attached_quote_prefix(Scanner *s, TSLexer *lexer,
+                                        const bool *valid_symbols) {
+  if (!valid_symbols[ATTACHED_QUOTE_PREFIX] || lexer->lookahead != '>' ||
+      !(s->state & STATE_LIST_CONTINUATION) || s->block_quote_level != 0 ||
+      count_blocks(s, BLOCK_QUOTE) != 2) return false;
+  Block *inner = find_block(s, BLOCK_QUOTE);
+  Block *list = find_list(s);
+  if (!inner || !list ||
+      !(inner->flags & BLOCK_FLAG_QUOTE_ON_ITEM_MARKER_LINE) ||
+      !list_opened_in_quote(s, list) ||
+      list->content_col != s->continuation_col) return false;
+  Block *outer = NULL;
+  for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (b->type == BLOCK_QUOTE) { outer = b; break; }
+  }
+  if (!outer || outer->content_col < 2 ||
+      line_column(s, lexer) != outer->content_col - 2) return false;
+  bool ending_newline = false;
+  if (!scan_block_quote_marker(s, lexer, &ending_newline) || ending_newline)
+    return false;
+  mark_end(s, lexer);
+  output_block_quote_continuation(s, lexer, 1, false);
+  lexer->result_symbol = ATTACHED_QUOTE_PREFIX;
+  return true;
+}
+
+// Scan a quoted marker while its list or footnote owner is still open.
+static bool scan_quoted_plus_owner(Scanner *s, TSLexer *lexer,
+                                   const bool *valid_symbols) {
+  bool nested_description_prefix = false;
+  bool nested_item_prefix = false;
+  if (line_column(s, lexer) != 0) {
+    bool has_description = false;
+    bool has_host_item = false;
+    unsigned item_count = 0;
+    for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
+      Block *b = *array_get(s->open_blocks, i);
+      has_description |= b->type == LIST_DEFINITION;
+      has_host_item |= is_list(b->type) && b->type != LIST_DEFINITION;
+      item_count += is_list(b->type) && b->type != LIST_DEFINITION;
+    }
+    nested_description_prefix = has_description && has_host_item;
+    Block *inner_quote = find_block(s, BLOCK_QUOTE);
+    nested_item_prefix = item_count > 1 && inner_quote &&
+        (count_blocks(s, BLOCK_QUOTE) == 1 ||
+         (inner_quote->flags & BLOCK_FLAG_QUOTE_ON_ITEM_MARKER_LINE));
+  }
+  if (lexer->lookahead != '>' ||
+      s->marker_end_col != 0 ||
+      (line_column(s, lexer) != 0 &&
+       !nested_description_prefix && !nested_item_prefix &&
+       !(quoted_note_inside_item(s) && at_item_held_quote_prefix(s, lexer))) ||
+      (!valid_symbols[PLUS_OWNER_CHECK] &&
+       !valid_symbols[LIST_CONTINUATION_MARKER])) {
+    return false;
+  }
+  Block *list = find_list(s);
+  Block *note = find_block(s, FOOTNOTE);
+  Block *owner = list ? list : note;
+  if (quoted_note_inside_item(s)) owner = note;
+  if (!owner || !(owner->flags & BLOCK_FLAG_PLUS_AHEAD)) return false;
+  // Anchor here so a `+` owned further out can still end the inner item.
+  mark_end(s, lexer);
+  bool ending_newline = false;
+  uint8_t markers = scan_block_quote_markers(s, lexer, &ending_newline);
+  // PLUS_AHEAD records a lone plus after this prefix and its spacing.
+  if (!ending_newline) consume_whitespace(s, lexer);
+  if (lexer->lookahead == '>' && markers > 0 &&
+      valid_symbols[BLOCK_QUOTE_CONTINUATION] &&
+      markers < count_blocks(s, BLOCK_QUOTE) &&
+      list_between_quotes(s, markers)) {
+    // Keep the outer quote prefix through the item's indentation.
+    mark_end(s, lexer);
+    output_block_quote_continuation(s, lexer, markers, false);
+    return true;
+  }
+  if (markers == 0 && lexer->lookahead == '>') return false;
+  if (markers == 0 || ending_newline || lexer->lookahead != '+') return false;
+  uint32_t column = line_column(s, lexer);
+  Block *quote = find_block(s, BLOCK_QUOTE);
+  Block *column_list = NULL;
+  Block *column_quote = NULL;
+  uint32_t column_reach = 0;
+  plus_owner(s, column, markers, &column_list, &column_quote,
+             &column_reach);
+  bool nested_description = false;
+  if (list && list->type == LIST_DEFINITION) {
+    for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
+      Block *b = *array_get(s->open_blocks, i);
+      if (b != list && is_list(b->type) && b->type != LIST_DEFINITION) {
+        nested_description = true;
+        break;
+      }
+    }
+  }
+  if (list && owner == list && list->data + 2 * markers != column + 1 &&
+      column_list != list &&
+      !(nested_description && quote && column == quote->content_col &&
+        list->data == column + 1)) {
+    if (valid_symbols[LIST_ITEM_END] && column_list != list &&
+        list->type != LIST_DEFINITION) {
+      lexer->result_symbol = LIST_ITEM_END;
+      s->blocks_to_close = 1;
+      return true;
+    }
+    s->plus_scan_spent = true;
+    return false;
+  }
+  uint8_t old_level = s->block_quote_level;
+  s->block_quote_level = markers;
+  if (valid_symbols[PLUS_OWNER_CHECK] ||
+      valid_symbols[QUOTED_PLUS_OWNER_CHECK]) {
+    bool checked = scan_plus_owner_check(s, lexer);
+    if (!checked || s->plus_decision >= 2) {
+      s->block_quote_level = old_level;
+      s->plus_decision = 0;
+      return false;
+    }
+    owner->flags &= (uint8_t)~(BLOCK_FLAG_PLUS_AHEAD |
+                                BLOCK_FLAG_LIST_FULL_QUOTE_PLUS);
+    if (valid_symbols[QUOTED_PLUS_OWNER_CHECK] && list &&
+        (column < list->data ||
+         find_block(s, BLOCK_QUOTE) !=
+             find_block_from_bottom(s, BLOCK_QUOTE)) &&
+        s->open_blocks->size > 0 &&
+        is_list((*array_get(s->open_blocks, 0))->type))
+      lexer->result_symbol = QUOTED_PLUS_OWNER_CHECK;
+    return true;
+  }
+  advance(s, lexer);
+  while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+    advance(s, lexer);
+  }
+  if (!at_line_end(lexer) && !lexer->eof(lexer)) {
+    s->block_quote_level = old_level;
+    s->plus_scan_spent = true;
+    return false;
+  }
+  bool attached = emit_plus_line(s, lexer, valid_symbols, column);
+  if (!attached) {
+    s->block_quote_level = old_level;
+    s->plus_scan_spent = true;
+  } else {
+    owner->flags &= (uint8_t)~(BLOCK_FLAG_PLUS_AHEAD |
+                                BLOCK_FLAG_LIST_FULL_QUOTE_PLUS);
+  }
+  return attached;
+}
+
+static bool parse_plus_line(Scanner *s, TSLexer *lexer,
+                            const bool *valid_symbols) {
+  if (lexer->lookahead != '+') {
+    return false;
+  }
+  if ((s->state & STATE_AFTER_BLANK_LINE) &&
+      find_block(s, BLOCK_QUOTE) && s->block_quote_level == 0) {
+    return false;
+  }
+  Block *description = peek_block(s);
+  if ((s->state & STATE_AFTER_BLANK_LINE) && description &&
+      description->type == LIST_DEFINITION && s->block_quote_level == 0) {
+    return false;
+  }
+  if (s->block_quote_level == 0 && count_blocks(s, BLOCK_QUOTE) > 1 &&
+      !find_list(s) && line_column(s, lexer) > 0) {
+    return false;
+  }
+  if (s->plus_decision >= 2) return false;
+  s->plus_decision = 0;
+  // Read before anything moves: `get_column` rewinds to the line start, which
+  // resets the marked token end. A continuation row is not gated on the column -
+  // it is a table row, and the table's own rule places it.
+  uint32_t plus_column = line_column(s, lexer);
+  bool marker_column = continuation_marker_column(s, plus_column);
+  advance(s, lexer);
+  // A continuation row's token is the `+` alone; `emit_plus_line` marks its own end.
+  mark_end(s, lexer);
+  if ((at_line_end(lexer) || lexer->eof(lexer)) && marker_column &&
+      (valid_symbols[LIST_CONTINUATION_MARKER] ||
+       valid_symbols[EMPTY_LIST_CONTINUATION_MARKER])) {
+    return emit_plus_line(s, lexer, valid_symbols, plus_column);
+  }
+  // A continuation row joins its cells to the row above, so a tab is cell
+  // content there rather than a padding error (corpus 256).
+  bool tab_after_plus = lexer->lookahead == '\t';
+  if (lexer->lookahead != ' ' && !tab_after_plus) {
+    return false;
+  }
+  advance(s, lexer);
+  while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+    advance(s, lexer);
+  }
+  if (!tab_after_plus && (at_line_end(lexer) || lexer->eof(lexer)) && marker_column &&
+      (valid_symbols[LIST_CONTINUATION_MARKER] ||
+       valid_symbols[EMPTY_LIST_CONTINUATION_MARKER])) {
+    return emit_plus_line(s, lexer, valid_symbols, plus_column);
+  }
+  // A line short of the table's quote markers leaves the quote first.
+  if (!valid_symbols[TABLE_CONTINUATION_ROW] || s->after_separator_row ||
+      count_blocks(s, BLOCK_QUOTE) > s->block_quote_level) {
+    return false;
+  }
+  bool saw_pipe = false;
+  bool last_nonspace_was_pipe = false;
+  // The cells are read as a row's cells are, so the row opens the same way
+  // `parse_table_begin` opens one.
+  begin_row_capture(s, lexer, 0, lexer->get_column(lexer));
+  while (!lexer->eof(lexer) && lexer->lookahead != '\r' &&
+         lexer->lookahead != '\n') {
+    if (lexer->lookahead == '|') {
+      saw_pipe = true;
+      last_nonspace_was_pipe = true;
+    } else if (lexer->lookahead != ' ') {
+      last_nonspace_was_pipe = false;
+    }
+    advance(s, lexer);
+  }
+  s->row_capture = false;
+  if (!saw_pipe || !last_nonspace_was_pipe) {
+    return false;
+  }
+  uint8_t row_prefix = s->block_quote_level;
+  bool attached_row = (s->state & STATE_LIST_CONTINUATION) &&
+      s->attached_row_prefix != UINT8_MAX;
+  s->attached_row_prefix = UINT8_MAX;
+  push_block(s, TABLE_ROW, 0);
+  if (attached_row) {
+    peek_block(s)->content_col = row_prefix;
+    peek_block(s)->flags |= BLOCK_FLAG_TABLE_ROW_ATTACHED;
+  }
+  peek_block(s)->cell_boundary_col = s->row_boundary_col;
+  peek_block(s)->cell_carry_ticks = s->row_carry_ticks;
+  peek_block(s)->bracket_cell_col = s->row_bracket_cell_col;
+  if (s->row_boundary_safe) peek_block(s)->flags |= BLOCK_FLAG_TABLE_ROW_BOUNDARY_SAFE;
+  lexer->result_symbol = TABLE_CONTINUATION_ROW;
+  return true;
+}
+
+static uint8_t next_attached_row_prefix(Scanner *s, TSLexer *lexer,
+                                         uint8_t expected_prefix) {
+  if (!(s->state & STATE_LIST_CONTINUATION) || lexer->eof(lexer) ||
+      at_line_end(lexer)) return UINT8_MAX;
+  int32_t host_previous = s->host_previous;
+  bool host_crossed_line = s->host_crossed_line;
+  BracketProbe probe = bracket_probe_new(s, lexer);
+  TSLexer *peek = &probe.lexer;
+  uint8_t prefixes = 0;
+  while (peek->lookahead == '>' && prefixes < UINT8_MAX - 1) {
+    peek->advance(peek, false);
+    ++prefixes;
+    if (peek->lookahead == ' ') peek->advance(peek, false);
+    else if (peek->lookahead != '>') break;
+  }
+  unsigned pipes = 0;
+  int32_t last = 0;
+  if (prefixes == expected_prefix && peek->lookahead == '|') {
+    while (!peek->eof(peek) && !at_line_end(peek)) {
+      if (peek->lookahead == '|') ++pipes;
+      if (peek->lookahead != ' ' && peek->lookahead != '\t')
+        last = peek->lookahead;
+      peek->advance(peek, false);
+    }
+  }
+  array_delete(&probe.characters);
+  s->host_previous = host_previous;
+  s->host_crossed_line = host_crossed_line;
+  return pipes >= 2 && (last == '|' || last == '}')
+      ? prefixes : UINT8_MAX;
+}
+
+static bool parse_table_end_newline(Scanner *s, TSLexer *lexer) {
+  Block *top = peek_block(s);
+  if (!top || top->type != TABLE_ROW) {
+    return false;
+  }
+
+  // A row attribute block may be glued to the row's closing pipe:
+  // `| a | b |{.head}`. Validate the attribute with the same payload grammar
+  // as inline/block attributes, then fold it into the row-end token (its
+  // payload is part of the token span). An invalid attribute (`|{not!}`) is
+  // refused so it is not silently swallowed.
+  if (lexer->lookahead == '{') {
+    if (!scan_valid_inline_attribute(s, lexer)) {
+      return false;
+    }
+    // Only trailing whitespace may follow the attribute block.
+    while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+      advance(s, lexer);
+    }
+  }
+
+  consume_whitespace(s, lexer);
+
+  // The end of input ends the row too: a row's last cell closes on its pipe and
+  // the document may simply stop there. `consume_line_end` takes nothing, so the
+  // token is zero-width, which is safe here because a row is never empty (#458).
+  if (!at_line_end(lexer) && !lexer->eof(lexer)) {
+    return false;
+  }
+
+  uint8_t row_prefix = top->content_col;
+  bool attached_row = (top->flags & BLOCK_FLAG_TABLE_ROW_ATTACHED) != 0;
+  remove_block(s);
+  consume_line_end(s, lexer);
+  lexer->result_symbol = TABLE_ROW_END_NEWLINE;
+  mark_end(s, lexer);
+  int32_t next_char = lexer->lookahead;
+  if (attached_row) {
+    s->attached_row_prefix = next_attached_row_prefix(s, lexer, row_prefix);
+    if (s->attached_row_prefix == UINT8_MAX && next_char != '^' &&
+        next_char != '{') {
+      s->state &= ~STATE_LIST_CONTINUATION;
+    }
+  }
+  return true;
+}
+
+static bool parse_table_cell_end(Scanner *s, TSLexer *lexer) {
+  bool escaped = lexer->lookahead == '\\';
+  if (escaped) {
+    advance(s, lexer);
+  }
+  if (lexer->lookahead != '|') {
+    return false;
+  }
+  // Can only close a cell (or row) if all inline spans have been closed.
+  if (has_open_span(s)) {
+    return false;
+  }
+
+  Block *top = peek_block(s);
+  if (!top || top->type != TABLE_ROW) {
+    return false;
+  }
+
+  advance(s, lexer);
+  mark_end(s, lexer);
+  if (escaped) {
+    consume_whitespace(s, lexer);
+    if (!at_line_end(lexer) && !lexer->eof(lexer)) {
+      return false;
+    }
+  }
+  --top->data;
+  top->flags &= (uint8_t)~BLOCK_FLAG_TABLE_ROW_CELL_MARKER;
+  int32_t head = lexer->lookahead;
+  s->marker_len = 0;
+  s->marker_probe = !escaped && (head == '=' || head == '{' || head == '<' ||
+                                 head == '>' || head == '~' || head == '?');
+  if (top->bracket_cell_col == UINT32_MAX) {
+    top->cell_boundary_col = 0;
+    top->cell_carry_ticks = 0;
+  } else {
+    uint32_t column = top->cell_boundary_col &&
+                      top->cell_boundary_col != UINT32_MAX &&
+                      (top->flags & BLOCK_FLAG_TABLE_ROW_BOUNDARY_SAFE)
+        ? top->cell_boundary_col + 1 : lexer->get_column(lexer);
+    // A parser cell end can precede the raw splitter's boundary after an
+    // escaped backslash or tick. Keep the raw context until its own boundary.
+    if (column && (top->cell_boundary_col == 0 ||
+                   column - 1 >= top->cell_boundary_col)) {
+      if (column < top->bracket_cell_col) {
+        top->cell_boundary_col = 0;
+        top->cell_carry_ticks = 0;
+      } else {
+        capture_remaining_cell(s, lexer, top, 0, column);
+      }
+    }
+  }
+  // Read the rest of the cell head; the token's end is already marked.
+  while (s->marker_probe && s->marker_len < sizeof(s->marker_head) &&
+         lexer->lookahead != '|' && !at_line_end(lexer) && !lexer->eof(lexer)) {
+    advance(s, lexer);
+  }
+  if (s->marker_probe && cell_marker_run(s->marker_head, s->marker_len)) {
+    top->flags |= BLOCK_FLAG_TABLE_ROW_CELL_MARKER;
+  }
+  s->marker_probe = false;
+  lexer->result_symbol = escaped ? TABLE_ESCAPED_CELL_END : TABLE_CELL_END;
+  return true;
+}
+
+/// Does a ONE-CELL row's inline content continue past this closing `|` into a
+/// `+` continuation row?
+///
+/// The reference always joins a one-cell row with its continuation before
+/// reading inline markup (spec corpus 354), so this is UNCONDITIONAL: it does
+/// not ask whether a span happens to be open.
+///
+/// The decision is READ, never re-derived here: `BLOCK_FLAG_TABLE_ROW_
+/// CONTINUES` was set, safely, while `scan_table_row` looked at this exact
+/// line and the one below it at the row's OPENING token - the only place a
+/// multi-line lookahead can fail without consequence, because that caller
+/// commits to a token from an EARLIER mark regardless of what the lookahead
+/// finds. This function cannot do the same lookahead itself: once it calls
+/// `advance`, tree-sitter's lexer does not rewind on a later `return false`,
+/// so any reader that might still decline must not have consumed anything
+/// yet. Once the flag and the cell count confirm the row's shape, this
+/// function is fully committed and every path below returns true.
+///
+/// `row->data == 0` doubles as "nothing closed yet" (so this is the
+/// flagged row's only cell) and, combined with the flag, as the guard
+/// against a multi-cell row whose LATER cell happens to reach a line-ending
+/// `|` too - the flag is set only when `scan_table_row` counted exactly one
+/// cell, so a second cell closing here never carries the flag.
+///
+/// The token ends right after the marker's mandatory space and any padding
+/// after it, mirroring what `parse_plus_line` treats as pure indentation
+/// ahead of a `table_continuation_row`'s own content. Everything past that is
+/// left for ordinary `_cell_inline` tokens to read as this SAME cell's
+/// content, closing eventually at that line's own `|` (tree-sitter-carve#437).
+static bool parse_table_row_continuation_seam(Scanner *s, TSLexer *lexer,
+                                              const bool *valid_symbols) {
+  if (!valid_symbols[TABLE_ROW_CONTINUATION_SEAM] ||
+      lexer->lookahead != '|') {
+    return false;
+  }
+  Block *row = find_block(s, TABLE_ROW);
+  if (!row || row->data != 0 ||
+      (row->flags & BLOCK_FLAG_TABLE_ROW_CONTINUES) == 0) {
+    return false;
+  }
+
+  // Committed: the row's shape (one cell, a continuation row follows) was
+  // already confirmed at the row's opening token. The flag stays set until
+  // `parse_table_row_continuation_plus` has read the `+`.
+  advance(s, lexer); // The row's own closing `|`.
+  mark_end(s, lexer);
+  lexer->result_symbol = TABLE_ROW_CONTINUATION_SEAM;
+  return true;
+}
+
+/// The line end between the seam's `|` and the continuation line's `+`, with
+/// the quote prefix that line repeats. Hidden, so neither marker's node
+/// reaches across it.
+static bool parse_table_row_continuation_line(Scanner *s, TSLexer *lexer,
+                                              const bool *valid_symbols) {
+  if (!valid_symbols[TABLE_ROW_CONTINUATION_LINE] || valid_symbols[ERROR] ||
+      (lexer->lookahead != ' ' && lexer->lookahead != '\t' &&
+       !at_line_end(lexer))) {
+    return false;
+  }
+  Block *row = find_block(s, TABLE_ROW);
+  if (!row || row->data != 0 ||
+      (row->flags & BLOCK_FLAG_TABLE_ROW_CONTINUES) == 0) {
+    return false;
+  }
+  consume_whitespace(s, lexer);
+  if (!at_line_end(lexer)) {
+    return false;
+  }
+  consume_line_end(s, lexer);
+  bool ignored_newline = false;
+  scan_block_quote_markers(s, lexer, &ignored_newline);
+  consume_whitespace(s, lexer);
+  if (lexer->lookahead != '+') {
+    return false;
+  }
+  mark_end(s, lexer);
+  lexer->result_symbol = TABLE_ROW_CONTINUATION_LINE;
+  return true;
+}
+
+/// The `+` behind the seam's `|`.
+static bool parse_table_row_continuation_plus(Scanner *s, TSLexer *lexer,
+                                              const bool *valid_symbols) {
+  if (!valid_symbols[TABLE_ROW_CONTINUATION_PLUS] || valid_symbols[ERROR] ||
+      lexer->lookahead != '+') {
+    return false;
+  }
+  Block *row = find_block(s, TABLE_ROW);
+  if (!row || row->data != 0 ||
+      (row->flags & BLOCK_FLAG_TABLE_ROW_CONTINUES) == 0) {
+    return false;
+  }
+  advance(s, lexer); // The continuation row's `+`.
+  mark_end(s, lexer);
+  advance(s, lexer); // Its one mandatory space.
+  while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+    advance(s, lexer);
+  }
+  // The flag does not carry forward past this ONE continuation line - a
+  // second stacked `+` line, if there even is one, gets its own answer from
+  // whatever row-open-time check covers it (none does today, so a run
+  // spanning two continuation rows stops at the first one's pipe, matching
+  // `parse_verbatim_content`'s same limit for a code run - #437, #320).
+  row->flags &= (uint8_t)~BLOCK_FLAG_TABLE_ROW_CONTINUES;
+  capture_remaining_cell(s, lexer, row, row->cell_carry_ticks, UINT32_MAX);
+  lexer->result_symbol = TABLE_ROW_CONTINUATION_PLUS;
+  return true;
+}
+
+static bool parse_table_caption_begin(Scanner *s, TSLexer *lexer) {
+  if (lexer->lookahead != '^') {
+    return false;
+  }
+
+  advance(s, lexer);
+  if (lexer->lookahead != ' ') {
+    return false;
+  }
+  advance(s, lexer);
+  push_block(s, TABLE_CAPTION, s->indent + 2);
+  mark_end(s, lexer);
+  lexer->result_symbol = TABLE_CAPTION_BEGIN;
+  return true;
+}
+
+static bool parse_table_caption_end(Scanner *s, TSLexer *lexer) {
+  Block *caption = peek_block(s);
+  if (!caption || caption->type != TABLE_CAPTION) {
+    return false;
+  }
+  // Don't let inline escape caption.
+  if (has_open_span(s)) {
+    return false;
+  }
+
+  // End is only checked at the beginning of a line, and should stop if we're
+  // not indented enough.
+  if (s->indent >= caption->data) {
+    return false;
+  }
+
+  remove_block(s);
+  lexer->result_symbol = TABLE_CAPTION_END;
+  return true;
+}
+
+// Scan until the end of a comment, either consuming the next `%`
+// or before the ending `}`.
+static bool scan_comment(Scanner *s, TSLexer *lexer, uint8_t indent,
+                         bool *must_be_braced_comment) {
+  if (lexer->lookahead != '%') {
+    return false;
+  }
+  advance(s, lexer);
+
+  while (!lexer->eof(lexer)) {
+    switch (lexer->lookahead) {
+    case '%':
+      advance(s, lexer);
+      return true;
+    case '}':
+      return true;
+    case '\\':
+      advance(s, lexer);
+      break;
+    case '\r':
+    case '\n':
+      consume_line_end(s, lexer);
+      // Need to match indent for comments inside attributes
+      // but not for braced comments.
+      if (indent != consume_whitespace(s, lexer)) {
+        *must_be_braced_comment = true;
+      }
+      // Can only have one newline in a row for a valid attribute.
+      if (at_line_end(lexer)) {
+        return false;
+      }
+      break;
+    }
+    advance(s, lexer);
+  }
+  return false;
+}
+
+/// An UNQUOTED attribute value.
+///
+/// PART 8 spells this as an EXCLUSION class, not a whitelist:
+/// `unquoted_value = ( character - '}' - '|' - '"' - "'" - backslash - ' '
+/// - tab - newline )+`. The exclusions are what would end or restructure the
+/// block; everything else needs no quoting.
+///
+/// This used `scan_identifier`, which admits only alphanumerics, `-` and `_`.
+/// Every bare value the production's own comment cites was refused - `v1.2`,
+/// `xml:lang`, `w-1/2` and `widths=33.3,66.7` - and a refusal here does not
+/// raise an ERROR: the brace line fails to qualify and falls back to a
+/// paragraph with a clean tree, so no shape or no-ERROR gate could see it.
+///
+/// The grammar's `value` token must hold the same class, or this qualifies a
+/// line the parser cannot tokenize and the attribute becomes an ERROR instead
+/// of a paragraph. The two are changed together for that reason.
+static bool scan_unquoted_value(Scanner *s, TSLexer *lexer) {
+  bool any_scanned = false;
+  while (!lexer->eof(lexer) && !at_line_end(lexer)) {
+    int32_t c = lexer->lookahead;
+    if (c == '}' || c == '|' || c == '"' || c == '\'' || c == '\\' ||
+        c == ' ' || c == '\t') {
+      break;
+    }
+    any_scanned = true;
+    advance(s, lexer);
+  }
+  return any_scanned;
+}
+
+static bool scan_value(Scanner *s, TSLexer *lexer, bool *empty) {
+  if (empty) *empty = false;
+  if (lexer->lookahead == '"' || lexer->lookahead == '\'') {
+    char quote = (char)lexer->lookahead;
+    // Opening quote.
+    advance(s, lexer);
+    if (empty && lexer->lookahead == quote) *empty = true;
+    // A quoted value stops at the newline, as the grammar's `value` does: no
+    // line end inside it, escaped or not.
+    while (!lexer->eof(lexer) && !at_line_end(lexer)) {
+      if (lexer->lookahead == quote) {
+        advance(s, lexer);
+        return true;
+      }
+      if (lexer->lookahead == '\\') {
+        advance(s, lexer);
+        if (lexer->eof(lexer) || at_line_end(lexer)) {
+          return false;
+        }
+      }
+      advance(s, lexer);
+    }
+    return false;
+  } else {
+    return scan_unquoted_value(s, lexer);
+  }
+}
+
+/// Does a `{%` opener reach the `%}` that closes it?
+///
+/// `braced_comment = "{%", {character - "%}"}, "%}"` (grammar.ebnf): the body
+/// runs to the FIRST `%}` and holds any other character, a lone `%` and a lone
+/// `}` included. The classifier below used `scan_comment` for this, which is
+/// the ATTRIBUTE comment's scan and stops at either character - so `{% 50% off
+/// %}` and `{% a } b %}` were classified as attribute text and never opened a
+/// comment at all.
+///
+/// Call with the lexer on the `%` of `{%`. Scans ahead only; the caller has
+/// already pinned its token end at the `{`, and a false answer leaves the line
+/// to the attribute path's own reading, which is what `{%c% .x}` still needs.
+///
+/// A BLANK LINE ENDS IT. The comment may span the soft line breaks inside one
+/// paragraph (grammar.ebnf) and no more, which is what carve-js does: `a {%
+/// x` / blank / `y %} z` renders as two paragraphs with the braces literal.
+static bool probe_scan_braced_comment_to_close(Scanner *s, TSLexer *lexer, BracketProbe *probe) {
+  advance(s, lexer);
+  if (carve_is_grapheme_extender(lexer->lookahead)) return false;
+  while (!lexer->eof(lexer)) {
+    if (lexer->lookahead == '%') {
+      advance(s, lexer);
+      if (lexer->lookahead == '}') {
+        return true;
+      }
+      continue;
+    }
+    if (at_line_end(lexer)) {
+      Block *host = peek_block(s);
+      if (host && (host->type == HEADING || disallow_newline(host)))
+        return false;
+      consume_line_end(s, lexer);
+      uint8_t indent = consume_whitespace(s, lexer);
+      if (probe && caption_line_ends_block(s, probe, indent)) return false;
+      if (at_line_end(lexer) || lexer->eof(lexer)) {
+        return false;
+      }
+      continue;
+    }
+    advance(s, lexer);
+  }
+  return false;
+}
+
+/// Does the `{#` already consumed reach the `#}` that closes it?
+///
+/// `editorial_comment = "{#", comment_content, "#}"`, and `comment_content` is
+/// "any text until the matching `#}`, preserved literally" (grammar.ebnf): a
+/// lone `#`, a lone `}` and a SOFT LINE BREAK are all body text. Call with the
+/// lexer anywhere inside that body. Scans ahead only - the caller has already
+/// pinned its token end at the `{`, so a false answer leaves the braces to
+/// whatever reading the internal lexer gives the line.
+///
+/// `last_was_hash` says the character just consumed was a `#`. The attribute
+/// loop has to consume one before it can find out its identifier fails, so by
+/// the time this runs on `{#myid#}` half the closer is already behind us.
+///
+/// A BLANK LINE ENDS IT, exactly as for the braced comment: the body may span
+/// the soft line breaks inside ONE paragraph and no further, which is what
+/// carve-js does - `a {# x` / blank / `y #} z` renders as two paragraphs with
+/// the braces literal.
+static bool scan_braced_comment_to_close(Scanner *s, TSLexer *lexer) {
+  if (!in_caption(s) && !find_inline(s, EXTENSION)) return probe_scan_braced_comment_to_close(s, lexer, NULL);
+  if (lexer->advance == bracket_probe_advance)
+    return probe_scan_braced_comment_to_close(s, lexer, (BracketProbe *)lexer);
+  BracketProbe probe = bracket_probe_new(s, lexer);
+  bool closed = probe_scan_braced_comment_to_close(s, &probe.lexer, &probe);
+  array_delete(&probe.characters);
+  return closed;
+}
+
+static bool probe_finish_editorial_comment(Scanner *s, TSLexer *lexer,
+                                     bool last_was_hash, BracketProbe *probe) {
+  if (last_was_hash && lexer->lookahead == '}') {
+    lexer->result_symbol = EDITORIAL_COMMENT_BEGIN;
+    return true;
+  }
+  while (!lexer->eof(lexer)) {
+    if (lexer->lookahead == '#') {
+      advance(s, lexer);
+      if (lexer->lookahead == '}') {
+        lexer->result_symbol = EDITORIAL_COMMENT_BEGIN;
+        return true;
+      }
+      continue;
+    }
+    if (at_line_end(lexer)) {
+      Block *host = peek_block(s);
+      if (host && (host->type == HEADING || disallow_newline(host)))
+        return false;
+      consume_line_end(s, lexer);
+      uint8_t indent = consume_whitespace(s, lexer);
+      if (probe && caption_line_ends_block(s, probe, indent)) return false;
+      if (at_line_end(lexer) || lexer->eof(lexer)) {
+        return false;
+      }
+      continue;
+    }
+    advance(s, lexer);
+  }
+  return false;
+}
+
+static bool finish_editorial_comment(Scanner *s, TSLexer *lexer, bool last_was_hash) {
+  if (!in_caption(s) && !find_inline(s, EXTENSION)) return probe_finish_editorial_comment(s, lexer, last_was_hash, NULL);
+  if (lexer->advance == bracket_probe_advance)
+    return probe_finish_editorial_comment(s, lexer, last_was_hash, (BracketProbe *)lexer);
+  BracketProbe probe = bracket_probe_new(s, lexer);
+  bool closed = probe_finish_editorial_comment(s, &probe.lexer, last_was_hash, &probe);
+  array_delete(&probe.characters);
+  if (closed) lexer->result_symbol = EDITORIAL_COMMENT_BEGIN;
+  return closed;
+}
+
+static bool parse_open_curly_bracket(Scanner *s, TSLexer *lexer,
+                                     const bool *valid_symbols, bool *literal_curly) {
+
+  if (!valid_symbols[BLOCK_ATTRIBUTE_BEGIN] &&
+      !valid_symbols[BRACED_COMMENT_BEGIN] &&
+      !valid_symbols[EDITORIAL_COMMENT_BEGIN]) {
+    return false;
+  }
+  if (lexer->lookahead != '{') {
+    return false;
+  }
+  // On a list marker line the item's content starts where the marker ended,
+  // though the line's indent still reads what the line began with. A marker
+  // attribute (`-{#k} {#h}`) counts zero toward that column, so the block can
+  // sit past it; nothing else on a marker line reaches here in block position.
+  bool in_item = list_item_open(s);
+  uint32_t brace_column = in_item ? line_column(s, lexer) : 0;
+  bool on_marker_line =
+      s->marker_end_col != 0 && line_column(s, lexer) >= s->marker_end_col;
+  uint8_t quote_markers = s->block_quote_level;
+  // Only consume the `{`, if successful.
+  advance(s, lexer);
+  mark_end(s, lexer);
+  *literal_curly = false;
+  if (lexer->lookahead == '{') {
+    advance(s, lexer);
+    if (find_inline(s, EXTENSION) && valid_symbols[LITERAL_RUN]) {
+      while (!lexer->eof(lexer) && !extension_closes_here(s, lexer)) {
+        if (lexer->lookahead == '}') {
+          advance(s, lexer);
+          if (lexer->lookahead == '}') return false;
+        } else advance(s, lexer);
+      }
+      lexer->result_symbol = LITERAL_RUN;
+      return true;
+    }
+    if (lexer->lookahead != ' ' && lexer->lookahead != '\t' && valid_symbols[LITERAL_RUN]) {
+      lexer->result_symbol = LITERAL_RUN;
+      return true;
+    }
+    return false;
+  }
+  if (lexer->lookahead == '=' && !kind_open_in_scope(s, HIGHLIGHTED)) {
+    *literal_curly = false;
+    return false;
+  }
+
+  InlineType brace_kind;
+  bool brace_marker = is_bare_delim_kind(lexer->lookahead, &brace_kind);
+  if (lexer->lookahead == '^') { brace_kind = SUPERSCRIPT; brace_marker = true; }
+  if (lexer->lookahead == ',') { brace_kind = SUBSCRIPT; brace_marker = true; }
+  if (lexer->lookahead == '+') { brace_kind = INSERT; brace_marker = true; }
+  if (lexer->lookahead == '-') { brace_kind = DELETE; brace_marker = true; }
+  if (valid_symbols[LITERAL_RUN] && brace_marker) {
+    char marker = (char)lexer->lookahead;
+    bool root_scope = !peek_inline(s) && !find_block(s, TABLE_ROW);
+    uint16_t bit = (uint16_t)(1 << (brace_kind - EMPHASIS));
+    // The note rules out `{XX}` too, so the token ends here without reading
+    // past it, which keeps the host's column valid for the next token.
+    if (root_scope && (s->missing_closers & bit) && !braced_same_kind_blocked(s, brace_kind)) {
+      lexer->result_symbol = LITERAL_RUN;
+      return true;
+    }
+    advance(s, lexer);
+    // The empty `{XX}` of an emphasis kind is text as a whole; its `X}`
+    // closes nothing. Insert and delete do not nest (`{--}` is an en dash).
+    if (lexer->lookahead == marker && marker != '-' && marker != '+') {
+      advance(s, lexer);
+      if (lexer->lookahead == '}') {
+        advance(s, lexer);
+        mark_end(s, lexer);
+        lexer->result_symbol = LITERAL_RUN;
+        return true;
+      }
+    }
+    bool opens = false;
+    // A braced opener may nest inside its own kind (CARVE-P9-043). Without a
+    // raw `X}` in the text the probe read, no later opener of the kind closes.
+    if (!braced_same_kind_blocked(s, brace_kind) &&
+        !(root_scope && (s->missing_closers & bit))) {
+      s->braced_probe_marker = marker;
+      s->braced_probe_raw_closer = false;
+      s->braced_probe_capped = false;
+      opens = braced_closer_ahead(s, lexer, marker);
+      s->braced_probe_marker = 0;
+      if (!opens && root_scope && !s->braced_probe_raw_closer &&
+          !s->braced_probe_capped) {
+        s->missing_closers |= bit;
+      }
+    }
+    if (opens) {
+      *literal_curly = false;
+      return false;
+    }
+    lexer->result_symbol = LITERAL_RUN;
+    return true;
+  }
+
+  // Match indent to one past the `{`
+  uint8_t indent = s->indent + 1;
+
+  // A `#` GLUED TO THE `{` IS EITHER READING, and which one is decided by what
+  // CLOSES the braces: `{#myid}` is an id attribute, `{#myid#}` is an editorial
+  // comment, and carve-js renders them that way in block position and inline
+  // alike. That is one forward scan, not two - the lexer cannot rewind - so the
+  // attribute machine below runs first and the comment reading picks up from
+  // wherever it fails, which is always still BEFORE the `#}`.
+  bool hash_glued =
+      lexer->lookahead == '#' && valid_symbols[EDITORIAL_COMMENT_BEGIN];
+  // The attribute loop consumes a `#` before it can know its identifier fails.
+  // Set where that happens, so `{#myid#}` is not read as an unclosed comment.
+  bool last_was_hash = false;
+
+  // Inline, neither attribute symbol is on the table and only the comment
+  // brought us here; without this the loop would run for every `{` in a
+  // paragraph.
+  if (!hash_glued && !valid_symbols[BLOCK_ATTRIBUTE_BEGIN] &&
+      !valid_symbols[BRACED_COMMENT_BEGIN]) {
+    return false;
+  }
+
+  if (hash_glued) {
+    // The `#` that opens the body.
+    advance(s, lexer);
+    if (carve_is_grapheme_extender(lexer->lookahead)) return false;
+    if (lexer->lookahead == '#') {
+      advance(s, lexer);
+      // `{##}` is the EMPTY braced pair (carve#1447) and so literal text. The
+      // grammar has no empty-content alternative to fall back TO, so the token
+      // is refused here and the four characters are left to `_empty_braced_pair`.
+      if (lexer->lookahead == '}') {
+        return false;
+      }
+      // A `#` this early is body text no id attribute can read, so only the
+      // comment reading is left.
+      return finish_editorial_comment(s, lexer, false);
+    }
+    if (!scan_explicit_identifier(s, lexer)) {
+      // Not an identifier either, so `{#id}` is off the table as well.
+      return finish_editorial_comment(s, lexer, false);
+    }
+    // The boundary every other item gets in the loop below: `{#a:b}` and
+    // `{#a.c}` are not an id followed by a second item.
+    if (!at_attribute_boundary(lexer)) {
+      return finish_editorial_comment(s, lexer, false);
+    }
+    // Both readings are still alive. Fall through to the attribute loop, which
+    // takes `{#myid}` and `{#myid .c}`; everything it refuses lands in the
+    // comment scan at `no_attribute` below.
+  }
+
+  // A braced comment must follow the `{% ... %}` format.
+  bool can_be_braced_comment = lexer->lookahead == '%';
+  // `{}` and `{ }` on their own line are text (corpus 125).
+  bool has_item = hash_glued;
+  bool has_table_flag = false;
+  bool must_be_braced_comment = false;
+
+  // A `%` GLUED TO THE `{` IS A BRACED COMMENT, decided here and not by the
+  // attribute loop below. The loop reads `{...}` as attribute syntax with
+  // comments embedded in it, and that reading ends a comment at a bare `%` or
+  // at the attribute's own `}` - the two characters a braced comment's body is
+  // allowed to hold. So a body carrying either was classified as attribute
+  // text, the `{` token was refused, and the whole span parsed as live inline
+  // markup: `{% 50% off %}` coloured nothing as a comment and `{% a *b* } c %}`
+  // emphasized `b`.
+  //
+  // Scanning ahead here costs the attribute path nothing it can use: on a
+  // FALSE answer the lexer has moved, so the loop cannot run, and the token is
+  // refused - which leaves the line as ordinary text. That is what carve-js
+  // renders for the shapes this reaches: `a {%c% .x} z` has no `%}` and comes
+  // back with its braces literal, on this grammar as on the engine.
+  if (can_be_braced_comment && valid_symbols[BRACED_COMMENT_BEGIN]) {
+    if (!scan_braced_comment_to_close(s, lexer)) {
+      return false;
+    }
+    lexer->result_symbol = BRACED_COMMENT_BEGIN;
+    return true;
+  }
+
+  while (!lexer->eof(lexer)) {
+    // A tab inside the braces is content (spec 21879d7).
+    uint8_t space = 0;
+    while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+      if (lexer->lookahead == '\t') {
+        goto no_attribute;
+      }
+      advance(s, lexer);
+      ++space;
+    }
+    if (space > 0) {
+      can_be_braced_comment = false;
+    }
+
+    switch (lexer->lookahead) {
+    case '\\':
+      can_be_braced_comment = false;
+      advance(s, lexer);
+      advance(s, lexer);
+      break;
+    case '}':
+      *literal_curly = false;
+      if (can_be_braced_comment && valid_symbols[BRACED_COMMENT_BEGIN]) {
+        lexer->result_symbol = BRACED_COMMENT_BEGIN;
+        return true;
+      } else if (!must_be_braced_comment && has_item &&
+                 valid_symbols[BLOCK_ATTRIBUTE_BEGIN] &&
+                 // Short of the owner's margin `{.x}` is literal text; at or
+                 // past it the line is an attribute (PART 0 S3).
+                 (on_marker_line ||
+                  !has_extra_indent(s) ||
+                  (in_item && at_block_opener_margin(s, brace_column)))) {
+        // A block attribute must stand alone on its line: after the closing
+        // `}` only trailing whitespace and a newline (or EOF) may follow.
+        // Otherwise (e.g. `{.c} text`, `para {.c} more`) the braces are
+        // ordinary inline text, so refuse the block-attribute token and let
+        // the line parse as a paragraph.
+        advance(s, lexer);
+        // ADJACENT BLOCKS ON ONE LINE MERGE (corpus
+        // 114-adjacent-attribute-blocks-on-one-line-merge), so a `{` behind
+        // the closing brace opens another block rather than ending the run.
+        s->attribute_block_line = true;
+        s->attribute_saw_table = false;
+        while (lexer->lookahead == '{') {
+          if (!scan_valid_inline_attribute(s, lexer)) {
+            s->attribute_block_line = false;
+            goto no_attribute;
+          }
+        }
+        if (s->attribute_saw_table) has_table_flag = true;
+        s->attribute_block_line = false;
+        while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+          advance(s, lexer);
+        }
+        if (at_line_end(lexer) || lexer->eof(lexer)) {
+          Block *attached = peek_block(s);
+          if ((s->state & STATE_LIST_CONTINUATION) && attached &&
+              is_list(attached->type)) {
+            attached->flags |= BLOCK_FLAG_LIST_ATTACHED_ATTRIBUTE;
+          }
+          lexer->result_symbol = BLOCK_ATTRIBUTE_BEGIN;
+          if (has_table_flag) s->table_attribute_pending = 1;
+          return true;
+        }
+        goto no_attribute;
+      } else {
+        goto no_attribute;
+      }
+    case '.':
+      can_be_braced_comment = false;
+      advance(s, lexer);
+      if (!scan_explicit_identifier(s, lexer)) {
+        goto no_attribute;
+      }
+      // Same boundary the inline payload applies; see
+      // `scan_valid_inline_attribute`.
+      if (!at_attribute_boundary(lexer)) {
+        goto no_attribute;
+      }
+      has_item = true;
+      break;
+    case '#':
+      can_be_braced_comment = false;
+      advance(s, lexer);
+      if (!scan_explicit_identifier(s, lexer) || !at_attribute_boundary(lexer)) {
+        // The `#` is consumed; on `{#myid#}` it is the first half of the
+        // closer, so say so rather than letting the comment scan look past it.
+        last_was_hash = true;
+        goto no_attribute;
+      }
+      has_item = true;
+      break;
+    case '%':
+      // Carve has no `%comment%` attribute item; only `{%` opens a comment.
+      if (!can_be_braced_comment ||
+          !scan_comment(s, lexer, indent, &must_be_braced_comment)) {
+        goto no_attribute;
+      }
+      break;
+    case ':': {
+      can_be_braced_comment = false;
+      advance(s, lexer);
+      if (!scan_language_tag(s, lexer) || !at_attribute_boundary(lexer)) {
+        goto no_attribute;
+      }
+      has_item = true;
+      break;
+    }
+    case '\r':
+    case '\n':
+      can_be_braced_comment = false;
+      consume_line_end(s, lexer);
+      if (quote_markers > 0) {
+        bool ending_newline = false;
+        if (scan_block_quote_markers(s, lexer, &ending_newline) !=
+                quote_markers ||
+            ending_newline) {
+          goto no_attribute;
+        }
+      }
+      // A5: a continuation is a line break optionally followed by
+      // indentation, of any width.
+      consume_whitespace(s, lexer);
+      // Can only have one newline in a row for a valid attribute.
+      if (at_line_end(lexer)) {
+        goto no_attribute;
+      }
+      break;
+    default: {
+      can_be_braced_comment = false;
+      // An attribute key may not start with a digit (`12=v` is not a key).
+      int32_t first = lexer->lookahead;
+      if (!((first >= 'A' && first <= 'Z') ||
+            (first >= 'a' && first <= 'z') || first == '_')) {
+        goto no_attribute;
+      }
+      const char *table_key = "table";
+      size_t key_length = 0;
+      bool is_table_key = true;
+      while (carve_is_alnum_ascii(lexer->lookahead) ||
+             lexer->lookahead == '-' || lexer->lookahead == '_') {
+        if (key_length >= 5 || lexer->lookahead != table_key[key_length])
+          is_table_key = false;
+        ++key_length;
+        advance(s, lexer);
+      }
+      is_table_key = is_table_key && key_length == 5;
+      has_item = true;
+      // carve-php Boolean Attribute Shorthand: a bare `key` (no `=value`)
+      // is accepted as long as it is followed by a valid attribute boundary
+      // — `}`, whitespace, or newline, and as long as it does not start with
+      // `_` (carve#1450). The `_` half is what keeps a curly-emphasis form
+      // like `{_text_}` from being read as a bare key; the comment here used
+      // to claim `scan_name_no_digit_start` already did that, and it does not
+      // - a leading `_` is a valid name character, so `{_x_}` and `{_foo}`
+      // were both taken as attribute lines.
+      if (lexer->lookahead != '=') {
+        if (!valid_bare_boolean_first_char(first)) {
+          goto no_attribute;
+        }
+        if (lexer->lookahead == '}' || lexer->lookahead == ' ' ||
+            lexer->lookahead == '\t' || at_line_end(lexer)) {
+          if (is_table_key) has_table_flag = true;
+          break;
+        }
+        goto no_attribute;
+      }
+      advance(s, lexer);
+      // Then scan the value
+      bool empty_value = false;
+      if (!scan_value(s, lexer, &empty_value) || !at_attribute_boundary(lexer)) {
+        goto no_attribute;
+      }
+      if (is_table_key && empty_value) has_table_flag = true;
+    }
+    }
+  }
+
+no_attribute:
+  // NO ATTRIBUTE READING SURVIVED. When the `{` was glued to a `#` the comment
+  // reading still is - the attribute machine gives up strictly before the
+  // `#}` - so ask whether one closes, and leave the braces literal if none
+  // does. Nothing else reaches here, so every other `{` keeps its old answer.
+  if (hash_glued) {
+    return finish_editorial_comment(s, lexer, last_was_hash);
+  }
+  return false;
+}
+
+static bool parse_hard_line_break(Scanner *s, TSLexer *lexer) {
+  // A reader that declined earlier in this scan may have read the word in
+  // front of the backslash; the token would start at that word.
+  if (lexer->lookahead != '\\' || s->host_advances) {
+    return false;
+  }
+  advance(s, lexer);
+  mark_end(s, lexer);
+  if (!at_line_end(lexer)) {
+    return false;
+  }
+  lexer->result_symbol = HARD_LINE_BREAK;
+  return true;
+}
+
+/// Does `list` sit above `block` on the open-block stack, i.e. inside it?
+static bool list_above_block(Scanner *s, Block *list, Block *block) {
+  for (int i = s->open_blocks->size - 1; i >= 0; --i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (b == list) {
+      return true;
+    }
+    if (b == block) {
+      return false;
+    }
+  }
+  return false;
+}
+
+/// A lone `+` short of the paragraph's quote that attaches marks the list that
+/// stays open, so `parse_block_quote` keeps the quote one level past its
+/// prefix. FALSE when the `+` line is paragraph text.
+static bool note_short_plus(Scanner *s, TSLexer *lexer, uint8_t markers) {
+  // The list that stays open once the blocks inside the next quote close.
+  Block *next = nth_quote(s, markers + 1);
+  Block *list = NULL;
+  for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (b == next) break;
+    if (is_list(b->type)) list = b;
+  }
+  if (!list) return false;
+  uint32_t column = line_column(s, lexer);
+  advance(s, lexer);
+  while (lexer->lookahead == ' ' || lexer->lookahead == '\t') advance(s, lexer);
+  // `+ x`, or a `+` with nothing after it, is paragraph text.
+  if (!at_line_end(lexer)) return false;
+  consume_line_end(s, lexer);
+  if (lexer->eof(lexer)) return false;
+  // A blank line after it leaves nothing to attach: the `+` is text (L3).
+  while (lexer->lookahead == ' ' || lexer->lookahead == '\t') advance(s, lexer);
+  if (at_line_end(lexer)) return false;
+  if (list->type == LIST_DEFINITION) return true;
+  Block *owner_list = NULL;
+  Block *owner_quote = NULL;
+  uint32_t reach = 0;
+  plus_owner(s, column, markers, &owner_list, &owner_quote, &reach);
+  PlusFollow follow = owner_list || owner_quote
+      ? plus_follower(s, lexer, column, markers, NULL, NULL, NULL, NULL, NULL)
+      : PLUS_REFUSED;
+  if (follow == PLUS_ATTACHES) {
+    list->flags |= BLOCK_FLAG_LIST_SHORT_PLUS;
+    for (uint8_t depth = markers + 1;
+         depth < count_blocks(s, BLOCK_QUOTE); ++depth) {
+      Block *q = nth_quote(s, depth);
+      if (q && q->content_col >= 2 && column == q->content_col - 2) {
+        s->drop_close_markers = depth;
+        break;
+      }
+    }
+  }
+  return follow == PLUS_ATTACHES;
+}
+
+static bool scan_row_or_break_at_paragraph_end(Scanner *s, TSLexer *lexer);
+
+static bool end_paragraph_in_block_quote(Scanner *s, TSLexer *lexer,
+                                         int *markers_seen) {
+  Block *block = find_block(s, BLOCK_QUOTE);
+  if (!block) {
+    return false;
+  }
+  if (s->band_prefix) s->band_sticky = true;
+
+  // Scan all `> ` markers we can find.
+  bool ending_newline;
+  uint32_t first_marker_col = lexer->lookahead == '>' ? line_column(s, lexer) : 0;
+  s->probe_first_marker_col = first_marker_col;
+  bool skipped_indent = false;
+  uint8_t marker_count = scan_quote_marker_run(s, lexer, &ending_newline,
+                                               &skipped_indent, true);
+  int32_t after_markers = skipped_indent ? ' ' : lexer->lookahead;
+  // Handed to the caller rather than stored: `block_quote_level` is written
+  // only by `output_block_quote_continuation`, which this route never reaches,
+  // so a stored count would describe a different line (the #114 trap).
+  *markers_seen = marker_count;
+  // A quote inside an item repeats the item's indentation before its `>`.
+  bool indented_prefix = ending_newline && find_list(s) && first_marker_col > 0;
+  if (indented_prefix) {
+    while (lexer->lookahead == ' ' && line_column(s, lexer) < first_marker_col) {
+      advance(s, lexer);
+    }
+  }
+  if (ending_newline && lexer->lookahead == '>' && find_list(s)) {
+    uint8_t indent = s->indent;
+    uint8_t level = s->block_quote_level;
+    uint32_t col_base = s->col_base;
+    bool next_blank = false;
+    uint8_t next = scan_block_quote_markers(s, lexer, &next_blank);
+    consume_whitespace(s, lexer);
+    if (next == marker_count && !next_blank && lexer->lookahead == '+') {
+      uint32_t column = line_column(s, lexer);
+      Block *owner_list = NULL;
+      Block *owner_quote = NULL;
+      uint32_t reach = 0;
+      // From a blank quote line the stack still holds the quotes it closes,
+      // so the content-column owner of a marker-line quote does not apply.
+      plus_owner_at(s, column, next, &owner_list, &owner_quote, &reach, false);
+      advance(s, lexer);
+      while (lexer->lookahead == ' ' || lexer->lookahead == '\t') advance(s, lexer);
+      // A marker-line list keeps an absolute marker column, so the relative
+      // match above can land on its content instead.
+      if (owner_list && indented_prefix && column >= owner_list->content_col) {
+        owner_list = NULL;
+      }
+      if (owner_list && owner_list->type != LIST_DEFINITION &&
+          at_line_end(lexer)) {
+        consume_line_end(s, lexer);
+        if (plus_follower(s, lexer, column, next,
+                          NULL, NULL, NULL, NULL, NULL) == PLUS_ATTACHES) {
+          owner_list->flags |= BLOCK_FLAG_PLUS_AHEAD;
+          block->flags |= BLOCK_FLAG_QUOTE_BLANK_PLUS;
+        }
+      }
+    }
+    s->indent = indent;
+    s->block_quote_level = level;
+    s->col_base = col_base;
+  }
+
+  // No blockquote marker.
+  if (marker_count == 0) {
+    return false;
+  }
+  // A first `>` left of the content column of the item holding the outermost
+  // quote opens a new quote outside the item: `- > q` / `> r`.
+  Block *outer = find_block_from_bottom(s, BLOCK_QUOTE);
+  Block *holder = NULL;
+  for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (b == outer) break;
+    if (is_list(b->type) && b->content_col != 0) holder = b;
+  }
+  if (holder && first_marker_col < holder->content_col &&
+      !(s->state & STATE_LIST_CONTINUATION)) {
+    return true;
+  }
+
+  if (marker_count < block->data && !ending_newline && find_list(s) &&
+      (block->flags & BLOCK_FLAG_QUOTE_ON_ITEM_MARKER_LINE) &&
+      !(s->state & STATE_AFTER_BLANK_LINE)) {
+    uint8_t indent = s->indent;
+    uint8_t level = s->block_quote_level;
+    uint32_t col_base = s->col_base;
+    consume_whitespace(s, lexer);
+    after_markers = lexer->lookahead;
+    if (lexer->lookahead == '+') {
+      uint32_t column = line_column(s, lexer);
+      Block *owner_list = NULL;
+      Block *owner_quote = NULL;
+      uint32_t reach = 0;
+      plus_owner(s, column, marker_count, &owner_list, &owner_quote, &reach);
+      // Only a `+` at the item's content column under a marker-line quote ends
+      // the quoted paragraph here; any other `+` keeps the reading below.
+      if (owner_list && owner_list->content_col == column) {
+        bool attaches = false;
+        advance(s, lexer);
+        while (lexer->lookahead == ' ' || lexer->lookahead == '\t') advance(s, lexer);
+        if (at_line_end(lexer)) {
+          consume_line_end(s, lexer);
+          attaches = plus_follower(s, lexer, column, marker_count,
+                                   NULL, NULL, NULL, NULL, NULL) == PLUS_ATTACHES;
+          if (attaches) {
+            owner_list->flags |= BLOCK_FLAG_PLUS_AHEAD;
+            if (marker_count < count_blocks(s, BLOCK_QUOTE) &&
+                list_between_quotes(s, marker_count)) {
+              // The marker belongs to the item before the missing quote.
+              owner_list->flags |= BLOCK_FLAG_LIST_SHORT_PLUS;
+            }
+            if (marker_count + 1 < count_blocks(s, BLOCK_QUOTE)) {
+              s->drop_close_markers = marker_count + 1;
+            }
+          }
+        }
+        s->indent = indent;
+        s->block_quote_level = level;
+        s->col_base = col_base;
+        return attaches;
+      }
+      // A `+` only the quote the line is short of would reach is text.
+      Block *missing = nth_quote(s, marker_count + 1);
+      if (missing && missing->content_col != 0 &&
+          column >= missing->content_col) {
+        s->indent = indent;
+        s->block_quote_level = level;
+        s->col_base = col_base;
+        s->plus_probe_refused_line = true;
+        return false;
+      }
+      // A `+` owned by a list at its marker column, or by a quote whose own
+      // child is a list item, keeps the reading below.
+      bool item_between = false;
+      if (!owner_list && owner_quote) {
+        for (uint32_t i = 0; i + 1 < s->open_blocks->size; ++i) {
+          if (*array_get(s->open_blocks, i) != owner_quote) continue;
+          Block *child = *array_get(s->open_blocks, i + 1);
+          item_between = child != block && is_list(child->type) &&
+              child->type != LIST_DEFINITION;
+          break;
+        }
+      }
+      if (owner_list || item_between) {
+        s->indent = indent;
+        s->block_quote_level = level;
+        s->col_base = col_base;
+        goto keep_reading;
+      }
+    }
+    s->indent = indent;
+    s->block_quote_level = level;
+    s->col_base = col_base;
+    if (lexer->lookahead == '+') {
+      Block *next_quote = nth_quote(s, marker_count + 1);
+      uint32_t plus_column = line_column(s, lexer);
+      Block *first_quote = nth_quote(s, 1);
+      bool list_outside_quote = false;
+      for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
+        Block *candidate = *array_get(s->open_blocks, i);
+        if (candidate == first_quote) break;
+        if (is_list(candidate->type)) list_outside_quote = true;
+      }
+      if (next_quote && next_quote->content_col >= 2 &&
+          plus_column == next_quote->content_col - 2 &&
+          !list_outside_quote &&
+          list_between_quotes(s, marker_count + 1)) {
+        if (scan_continuation_marker_at_paragraph_end(
+                s, lexer, marker_count)) return true;
+        s->plus_probe_refused_line = true;
+        return false;
+      }
+      if (note_short_plus(s, lexer, marker_count)) return true;
+      s->plus_probe_refused_line = true;
+      return false;
+    }
+  }
+keep_reading:
+
+  // Markers with nothing after them at the end of input are a blank quote line.
+  if (ending_newline || lexer->eof(lexer)) {
+    return true;
+  }
+  // Down a quote level: the line continues the paragraph lazily unless it
+  // opens a block, which `close_paragraph` asks at the shallower depth.
+  if (marker_count < block->data && after_markers != '+') {
+    // A `>` right at the shallower quote's content column opens a quote there.
+    // So does one at the content column of an item the line still reaches.
+    if (after_markers == '>') {
+      Block *reached = nth_quote(s, marker_count);
+      uint32_t at = line_column(s, lexer);
+      if (!reached || reached->content_col == 0 || at == reached->content_col) {
+        return true;
+      }
+      Block *missing = nth_quote(s, marker_count + 1);
+      bool past_reached = false;
+      for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
+        Block *b = *array_get(s->open_blocks, i);
+        if (b == missing) break;
+        if (b == reached) past_reached = true;
+        else if (past_reached && is_list(b->type) && b->content_col == at) {
+          s->drop_close_markers = marker_count;
+          return true;
+        }
+      }
+    }
+    consume_whitespace(s, lexer);
+    if (lexer->lookahead == '+') {
+      uint32_t plus_column = line_column(s, lexer);
+      Block *first_quote = nth_quote(s, 1);
+      bool list_outside_quote = false;
+      for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
+        Block *candidate = *array_get(s->open_blocks, i);
+        if (candidate == first_quote) break;
+        if (is_list(candidate->type)) list_outside_quote = true;
+      }
+      uint8_t plus_quote_depth = 0;
+      Block *next_quote = nth_quote(s, marker_count + 1);
+      if (marker_count + 1 < count_blocks(s, BLOCK_QUOTE) &&
+          next_quote && next_quote->content_col >= 2 &&
+          plus_column == next_quote->content_col - 2) {
+        plus_quote_depth = marker_count + 1;
+      }
+      if (marker_count > 0 && !list_outside_quote &&
+          list_between_quotes(s, marker_count) &&
+          plus_quote_depth > 0) {
+        if (scan_continuation_marker_at_paragraph_end(
+                s, lexer, marker_count)) {
+          s->drop_close_markers = plus_quote_depth;
+          return true;
+        }
+        s->plus_probe_refused_line = true;
+        return false;
+      }
+      // An indented `+` on the shallower line is the paragraph's text.
+      s->plus_probe_refused_line = true;
+      return false;
+    }
+    return at_line_end(lexer) || lexer->lookahead == '+';
+  }
+
+  // And UP a level: a deeper quote is a new block, so it interrupts the
+  // paragraph rather than continuing it - `> a` / `> > b` is a quote holding a
+  // paragraph and a nested quote in every engine (#70). Checked here rather
+  // than beside the depth-0 case below, because this function has already
+  // consumed the markers the check needs.
+  //
+  if (marker_count > count_blocks(s, BLOCK_QUOTE) && !at_nesting_cap(s)) {
+    return true;
+  }
+
+  if (marker_count == count_blocks(s, BLOCK_QUOTE) &&
+      find_list(s) != NULL) {
+    consume_whitespace(s, lexer);
+    if (lexer->lookahead == '>') {
+      uint32_t column = line_column(s, lexer);
+      for (int i = s->open_blocks->size - 1; i >= 0; --i) {
+        Block *item = *array_get(s->open_blocks, i);
+        if (is_list(item->type) && item->content_col == column) return true;
+      }
+      // Short of a quoted item, a `>` opens a quote in the item's owner
+      // (PART 0 S3/S4).
+      Block *quoted = find_list(s);
+      if (quoted && list_inside_quotes(s) && list_opened_in_quote(s, quoted) &&
+          column < quoted->content_col && !at_nesting_cap(s)) {
+        return true;
+      }
+    }
+  }
+
+  // Blank first: the marker probe below consumes before it declines, and a
+  // one-character line (`> y`) then read as blank (#411).
+  consume_whitespace(s, lexer);
+  if (at_line_end(lexer)) {
+    return true;
+  }
+  if (CARVE2_PLUS_ATTACHMENT && lexer->lookahead == '+' &&
+      (find_list(s) != NULL || find_block(s, FOOTNOTE) != NULL) &&
+      scan_continuation_marker_at_paragraph_end(s, lexer, marker_count)) {
+    return true;
+  }
+  if (block == peek_block(s)) {
+    return false;
+  }
+  // A list attached flush left by `+` inside the quote is not continued by a
+  // marked line: `> quoted` / `+` / `- item` / `> more` ends the item.
+  Block *list = find_list(s);
+  if (list && list_above_block(s, list, block) &&
+      !list_opened_in_quote(s, list)) {
+    if (lexer->lookahead == '+' && marker_count < block->data) {
+      note_short_plus(s, lexer, marker_count);
+    }
+    return true;
+  }
+  // A dash or star line can be a thematic break, which only the break probe
+  // reads; it reads a bullet too (PART 0 S3).
+  if (lexer->lookahead == '-' || lexer->lookahead == '*') {
+    return scan_row_or_break_at_paragraph_end(s, lexer);
+  }
+  return scan_paragraph_closing_marker(s, lexer);
+}
+
+static bool scan_block_math_marker(Scanner *s, TSLexer *lexer) {
+  if (lexer->lookahead != '$') {
+    return false;
+  }
+  advance(s, lexer);
+  if (lexer->lookahead != '$') {
+    return false;
+  }
+  advance(s, lexer);
+  if (lexer->lookahead != '`') {
+    return false;
+  }
+  advance(s, lexer);
+  return true;
+}
+
+// carve-php standalone caption: a line starting with `^ ` (caret + SPACE) at
+// block position must terminate any paragraph that was continuing,
+// so the caption rule can fire as a sibling block. The advance() calls here
+// are scratch — they don't commit (only mark_end commits), so the caption
+// rule itself will still see `^` at the new block-line start.
+static bool scan_caption_at_paragraph_end(Scanner *s, TSLexer *lexer) {
+  if (s->state & STATE_MULTILINE_IDENTIFIER) {
+    return false;
+  }
+  if (lexer->lookahead != '^') {
+    return false;
+  }
+  advance(s, lexer);
+  // A TAB does not separate the marker from its content - `^\tcap` is a
+  // paragraph in every engine (corpus 176-a-marker-separator-is-a-space-
+  // never-a-tab). Accepting one here ended the paragraph above for a line
+  // that is not a caption at all.
+  if (lexer->lookahead != ' ') {
+    return false;
+  }
+  return true;
+}
+
+// A comment opener at line start, `%%` or the fenced `%%%`. Matching here
+// lets either terminate the previous paragraph so the comment_line or
+// fenced_comment_block token can match it as a sibling block
+// (tree-sitter-carve#441 for the bare `%%` spelling; the fenced one already
+// worked). Both spellings decide from here rather than each having its own
+// probe: this is the one place already consuming the run, and a SEPARATE
+// probe run afterward in this chain would see a lexer position this one has
+// already moved past, with no way to rewind it.
+/// After a line's leading `%%`: is it a comment S1 erases? Not a `%%%`
+/// fence, and not a region marker, which keeps its boundary (CARVE-P11-073).
+static bool comment_line_is_erased(Scanner *s, TSLexer *lexer) {
+  if (lexer->lookahead == '%') return false;
+  while (lexer->lookahead == ' ' || lexer->lookahead == '\t') advance(s, lexer);
+  if (lexer->lookahead != '#') return true;
+  advance(s, lexer);
+  bool ending = lexer->lookahead == 'e';
+  const char *word = ending ? "endregion" : "region";
+  for (const char *c = word; *c; ++c) {
+    if (lexer->lookahead != *c) return true;
+    advance(s, lexer);
+  }
+  if (lexer->lookahead != ' ' && lexer->lookahead != '\t' &&
+      !(ending && (at_line_end(lexer) || lexer->eof(lexer)))) return true;
+  uint32_t spaces = consume_whitespace(s, lexer);
+  if (ending && (at_line_end(lexer) || lexer->eof(lexer))) return false;
+  if (!spaces || !(((lexer->lookahead >= 'A' && lexer->lookahead <= 'Z') ||
+                  (lexer->lookahead >= 'a' && lexer->lookahead <= 'z')) || lexer->lookahead == '_')) return true;
+  do {
+    advance(s, lexer);
+  } while (carve_is_alnum_ascii(lexer->lookahead) || lexer->lookahead == '_' ||
+           lexer->lookahead == '-');
+  consume_whitespace(s, lexer);
+  return !(at_line_end(lexer) || lexer->eof(lexer));
+}
+
+static bool scan_fenced_comment_at_paragraph_end(Scanner *s, TSLexer *lexer) {
+  if (lexer->lookahead != '%' || line_block_body(s)) {
+    return false;
+  }
+  advance(s, lexer);
+  if (lexer->lookahead != '%') {
+    return false;
+  }
+  advance(s, lexer);
+  if (lexer->lookahead != '%') {
+    if (!comment_line_is_erased(s, lexer)) return true;
+    s->erasable_line = true;
+    return false;
+  }
+  Block *top = peek_block(s);
+  if (top && is_list(top->type) &&
+      !(top->type == LIST_DEFINITION && (top->flags & BLOCK_FLAG_DEFINITION_TERM))) {
+    top->flags |= BLOCK_FLAG_LIST_COMMENT_CLAIM;
+  }
+  return true;
+}
+
+// A lone `+` continuation marker (PART 9 §17) on the next line must terminate
+// the in-progress paragraph so the marker can fire as a sibling continuation
+// inside the enclosing list item or block quote (corpus 83 / 100). Only
+// meaningful when a list or block quote is open -- a bare top-level `+` stays a
+// paragraph. The advance() calls are scratch (only mark_end commits), so the
+// `+` is still seen at the new block-line start by `parse_continuation_marker`.
+static bool scan_continuation_marker_at_paragraph_end(Scanner *s,
+                                                      TSLexer *lexer,
+                                                      uint8_t markers) {
+  if (lexer->lookahead != '+') {
+    return false;
+  }
+  if (find_list(s) == NULL && find_block(s, BLOCK_QUOTE) == NULL &&
+      find_block(s, FOOTNOTE) == NULL) {
+    return false;
+  }
+  // The same column question the marker itself asks. If the two disagree, this
+  // probe ends a paragraph the marker then refuses to open, and the `+` becomes
+  // a block of its own where the language keeps it as lazy text.
+  uint32_t column = line_column(s, lexer);
+  Block *quoted_item = find_list(s);
+  Block *item_quote = find_block(s, BLOCK_QUOTE);
+  Block *first_quote = find_block_from_bottom(s, BLOCK_QUOTE);
+  if (markers == 0 && column > 0 && quoted_item && item_quote &&
+      list_opened_in_quote(s, quoted_item) &&
+      !list_above_block(s, quoted_item, item_quote) &&
+      (item_quote->flags & BLOCK_FLAG_QUOTE_ON_ITEM_MARKER_LINE) &&
+      (!first_quote || first_quote->content_col < 2 ||
+       column != first_quote->content_col - 2) &&
+      column <= quoted_item->content_col) {
+    return false;
+  }
+  if (!continuation_marker_column(s, column)) {
+    return false;
+  }
+  if (unprefixed_plus_short_of_nested_quote(s, column, markers)) {
+    return false;
+  }
+  // At the content column of the item holding the paragraph, a `+` is lazy
+  // text of that paragraph (corpus 88, 246).
+  Block *item = peek_block(s);
+  if (column != 0 && item && is_list(item->type) &&
+      item->content_col == column) {
+    return false;
+  }
+  advance(s, lexer);
+  while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+    advance(s, lexer);
+  }
+  if (!lexer->eof(lexer) && !at_line_end(lexer)) return false;
+  if (lexer->eof(lexer)) return false;
+  // A `+` the next line refuses folds into this paragraph as text (L3).
+  if (at_line_end(lexer)) {
+    consume_line_end(s, lexer);
+    // A paragraph is open, so the quote's opening line is behind this `+`.
+    s->paragraph_plus_probe = true;
+    PlusFollow follow = plus_follower(s, lexer, column, markers,
+                                      NULL, NULL, NULL, NULL, NULL);
+    s->paragraph_plus_probe = false;
+    if (follow != PLUS_ATTACHES) {
+      Block *note = find_block(s, FOOTNOTE);
+      if (note && !find_list(s) && !find_block(s, BLOCK_QUOTE)) {
+        note->flags |= BLOCK_FLAG_FOOTNOTE_DANGLING_PLUS;
+      }
+      s->plus_probe_refused_line = true;
+      return false;
+    }
+    // An unprefixed `+` after a lazy paragraph in stacked quotes attaches
+    // its follower in the outer quote. Close the inner quotes at the paragraph
+    // boundary, before the marker is read as a new block.
+    if (markers == 0 && count_blocks(s, BLOCK_QUOTE) > 1 &&
+        (!list_between_quotes(s, 1) ||
+         (first_quote && first_quote->content_col >= 2 &&
+          column == first_quote->content_col - 2))) {
+      s->drop_close_markers = 1;
+    }
+    if (markers > 0) {
+      if (markers < count_blocks(s, BLOCK_QUOTE) &&
+          list_between_quotes(s, markers)) {
+        s->drop_close_markers = markers;
+      }
+      Block *owner_list = NULL;
+      Block *owner_quote = NULL;
+      uint32_t reach = 0;
+      plus_owner(s, column, markers, &owner_list, &owner_quote, &reach);
+      Block *owner = owner_list ? owner_list : find_list(s);
+      if (!owner_list && quoted_note_inside_item(s)) owner = find_block(s, FOOTNOTE);
+      if (!owner) owner = find_block(s, FOOTNOTE);
+      if (owner) owner->flags |= BLOCK_FLAG_PLUS_AHEAD;
+      if (owner_list && markers > 1 &&
+          markers == count_blocks(s, BLOCK_QUOTE) &&
+          list_opened_in_quote(s, owner_list)) {
+        owner_list->flags |= BLOCK_FLAG_LIST_FULL_QUOTE_PLUS;
+      }
+      Block *next = nth_quote(s, markers + 1);
+      Block *short_list = NULL;
+      for (uint32_t i = 0; next && i < s->open_blocks->size; ++i) {
+        Block *b = *array_get(s->open_blocks, i);
+        if (b == next) break;
+        if (is_list(b->type)) short_list = b;
+      }
+      if (short_list && short_list->type != LIST_DEFINITION) {
+        short_list->flags |= BLOCK_FLAG_LIST_SHORT_PLUS;
+      }
+      // Two or more quotes short: those past the next one close first.
+      Block *own = nth_quote(s, markers);
+      if (markers + 1 < count_blocks(s, BLOCK_QUOTE) && own &&
+          !list_between_quotes(s, markers) &&
+          (own->content_col == 0 ||
+           own->content_col == s->probe_first_marker_col + 2 * markers)) {
+        s->drop_close_markers = markers + 1;
+      }
+      for (uint8_t depth = markers + 1;
+           depth < count_blocks(s, BLOCK_QUOTE); ++depth) {
+        Block *q = nth_quote(s, depth);
+        if (q && q->content_col >= 2 &&
+            column == q->content_col - 2) {
+          s->drop_close_markers = depth;
+          break;
+        }
+      }
+    }
+  }
+  return true;
+}
+
+/// TRUE when a block opener at `column` opens where the paragraph-closing peek
+/// currently stands: at or past the owner's content column (PART 0 S3).
+///
+/// TAKES THE COLUMN, never `s->indent`. The peek runs from the newline at the
+/// END of the previous line, so `s->indent` still holds whatever that line left
+/// behind - the same trap `below_container_margin` documents, and the reason
+/// this is not simply `!has_extra_indent`. The lexer's column is correct at
+/// that moment because the container prefix has already been consumed.
+///
+/// WITH A LIST ITEM OPEN the answer is `opener_reaches_item_margin`: at or past
+/// the content column of the innermost item the line reaches (the authored-base
+/// rule, PART 9 §17 and §24 C3), so `- a` over `    # h` is a heading in the
+/// item. The list branch below answers only for an item that is not open.
+///
+/// A FOOTNOTE'S IS A THRESHOLD, and the asymmetry is the engines', not this
+/// grammar's. A footnote keeps no `content_col`; it pushes `s->indent + 2` as
+/// `data`, and everything at or past that column is its content - which is
+/// exactly what `has_extra_indent` already tells the OPENERS, and what carve-js
+/// does: `[^a]: note` over `   ``` ` at column 3 is a `<pre>` inside the note,
+/// where `- item` over `   ``` ` at column 3 is paragraph text. Measured both
+/// ways over 1188 generated shapes; the threshold form agrees with carve-js on
+/// 20 more of them than the exact one and on none fewer.
+///
+/// A BLOCK QUOTE AND A TABLE CAPTION GET NO CASE OF THEIR OWN, and the walk
+/// passes straight over them. One was written - both refusing outright, on the
+/// argument that this grammar builds no heading inside a quote even with a
+/// blank line before it (recorded as
+/// `headings-inside-containers-are-not-wrapped`) - and it turned out to cost
+/// conformance rather than buy safety. The MARKED shapes it was meant to guard
+/// are refused by the column test alone: the quote probes above have consumed
+/// the `> ` prefix by then, so `> a` / `> # H` asks about column 2 against a
+/// root margin of zero and is declined either way, and `^ cap` / `  # H` asks
+/// about column 2 the same way. What the clause DID reach was the LAZY line -
+/// `> intro` / `# H`, which carve-js renders as a quote followed by an `<h1>`
+/// and the clause kept as one quoted paragraph. Removing it moved 3 of 63
+/// lazy-shape documents onto carve-js and none off it, with no document newly
+/// erroring.
+/// The topmost open block a shallower quoted line reaches: below the first
+/// quote its markers stop short of. The stack top otherwise.
+static int drop_reach_top(Scanner *s) {
+  int top = (int)s->open_blocks->size - 1;
+  if (s->lazy_drop_markers == 0) return top;
+  uint8_t seen = 0;
+  for (int i = 0; i <= top; ++i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (b->type == BLOCK_QUOTE && ++seen > s->lazy_drop_markers) return i - 1;
+  }
+  return top;
+}
+
+static bool at_block_opener_margin(Scanner *s, uint32_t column) {
+  // The attachment column takes precedence over the item's content column.
+  if (s->state & STATE_LIST_CONTINUATION) {
+    return column == s->continuation_col;
+  }
+  if (list_item_open(s)) {
+    return opener_reaches_item_margin(s, column);
+  }
+  int top = drop_reach_top(s);
+  for (int i = top; i >= 0; --i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (b->type == BLOCK_QUOTE && b->content_col != 0 &&
+        (column == b->content_col ||
+         (column > b->content_col && s->block_quote_level > 0))) {
+      return true;
+    }
+    if (is_list(b->type)) {
+      if (b->content_col != 0 && column == b->content_col) {
+        return true;
+      }
+      continue;
+    }
+    if (b->type == FOOTNOTE) {
+      if (column >= b->data) {
+        return true;
+      }
+      continue;
+    }
+  }
+  // The document root or a `:::` div owns the line at any indentation.
+  return true;
+}
+
+/// [CARVE-P0-020] relaxes the definition test to "at or past" only while a list
+/// item is open; with none open the exact checks stand.
+static bool list_item_open(Scanner *s) {
+  for (int i = s->open_blocks->size - 1; i >= 0; --i) {
+    if (is_list((*array_get(s->open_blocks, i))->type)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/// Where a block opener may open with an item open ([CARVE-P0-020], I5, and the
+/// authored-base rule): at or past the content column of the innermost item the
+/// line reaches.
+///
+/// A paragraph-end probe and its opener must both ask this: if they disagree,
+/// the probe ends a paragraph the opener refuses.
+static bool opener_reaches_item_margin(Scanner *s, uint32_t column) {
+  if (s->state & STATE_LIST_CONTINUATION) {
+    return column == s->continuation_col;
+  }
+  int top = drop_reach_top(s);
+  for (int i = top; i >= 0; --i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (b->type == BLOCK_QUOTE && b->content_col != 0 &&
+        (column == b->content_col ||
+         (column > b->content_col && s->block_quote_level > 0))) {
+      return true;
+    }
+    // A shallower line's margin is the quote it reaches, not a host past it.
+    if (b->type == BLOCK_QUOTE && s->lazy_drop_markers > 0 && i == top) {
+      return false;
+    }
+    if (is_list(b->type)) {
+      if (b->content_col != 0 && column >= b->content_col) {
+        return true;
+      }
+      continue;
+    }
+    if (b->type == FOOTNOTE) {
+      if (column >= b->data) {
+        return true;
+      }
+      continue;
+    }
+    // A non-item container keeps the exact test, or an enclosing item would
+    // answer "at or past" for a line the div owns (#282).
+    if ((b->type == DIV || b->type == FIGURE_GROUP ||
+         b->type == TABLE_CAPTION) &&
+        b->content_col != 0) {
+      if (column == b->content_col) {
+        return true;
+      }
+      if (column > b->content_col) {
+        return b->type != TABLE_CAPTION && div_host_collects(s, i);
+      }
+      continue;
+    }
+  }
+  return true;
+}
+
+/// THE HOST DECIDES CONSUMPTION: a line past a div's content column is the
+/// div's text, except that a list item, description or footnote body hosting
+/// the div collects a definition written there (spec 21879d7). A quote does not.
+static bool div_host_collects(Scanner *s, int div_index) {
+  if (div_index == 0) {
+    return false;
+  }
+  BlockType host = (*array_get(s->open_blocks, div_index - 1))->type;
+  return host == FOOTNOTE || is_list(host);
+}
+
+/// The same question with no list item open: is the innermost container a div
+/// that `column` is past, hosted by a collecting body?
+static bool div_line_collected_by_host(Scanner *s, uint32_t column) {
+  for (int i = s->open_blocks->size - 1; i >= 0; --i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (b->type == DIV || b->type == FIGURE_GROUP) {
+      return b->content_col != 0 && column > b->content_col &&
+             div_host_collects(s, i);
+    }
+    if (b->type == BLOCK_QUOTE || b->type == FOOTNOTE ||
+        b->type == TABLE_CAPTION || is_list(b->type)) {
+      return false;
+    }
+  }
+  return false;
+}
+
+/// A HEADING interrupts an open paragraph with no blank line before it
+/// (PART 9 §10 I1: `#`..`######` + space).
+///
+/// Answers exactly what `parse_heading` answers, and no more: a marker at the
+/// margin, a separating space, and content after it. `#H`, `# ` and a marker
+/// short of the margin are paragraph text in carve-js and open nothing here.
+///
+/// SIX IS THE CAP, deliberately unlike the opener, which has none and builds a
+/// `<h7>` for `####### H` at a block start. Ending the paragraph on a
+/// seven-hash line would turn a document carve-js renders as ONE paragraph
+/// into a heading - a new over-acceptance in exchange for nothing. Refusing it
+/// is safe in the other direction because the line stays inline content, where
+/// `HEADING_BEGIN` is not valid and the opener cannot fire behind the peek's
+/// back. The opener's own laxity is pre-existing and tracked separately.
+static bool scan_heading_at_paragraph_end(Scanner *s, TSLexer *lexer) {
+  if (lexer->lookahead != '#') {
+    return false;
+  }
+  if (!at_block_opener_margin(s, line_column(s, lexer))) {
+    return false;
+  }
+  uint8_t hashes = consume_chars(s, lexer, '#');
+  if (hashes > 6) {
+    return false;
+  }
+  if (lexer->lookahead != ' ') {
+    return false;
+  }
+  advance(s, lexer);
+  // MARKER REQUIRES CONTENT, the same rule the list markers follow: `# ` with
+  // nothing after it renders as `<p>#</p>` in every engine.
+  return marker_line_has_content(s, lexer);
+}
+
+/// Does a fence opening HERE have a matching closer AHEAD?
+///
+/// PART 9 §10 I4, stated normatively: "an UNTERMINATED ``` or ~~~ opener does
+/// not interrupt; the line stays paragraph text, and a stray ``` in prose then
+/// opens an unclosed inline verbatim run rendering as `<code>` to the end of
+/// the block". Measured against carve-js: `intro` / ` ``` ` / `code` is one
+/// paragraph holding a `<code>` span, and the same document with a closing
+/// fence is a paragraph plus a `<pre>`.
+///
+/// Call with the lexer sitting just past the opener's run. Every advance here
+/// is scratch - `mark_end` was committed before the peek began - so the scan
+/// may read as far ahead as it needs without stretching a token.
+///
+/// A closer is a line at the OPENER'S OWN COLUMN whose first non-blank run is
+/// `width` or more of the same character with nothing but blanks after it.
+/// Width is `>=`, not exact: a three-tick fence is closed by four (measured),
+/// and a four-tick fence is not closed by three.
+///
+/// THE COLUMN IS EXACT, and it is the opener's rather than the container's.
+/// Measured over a run at every offset from 0 to 5: inside `- item` a fence
+/// opened at column 2 is closed by a run at column 2 and by nothing else -
+/// column 0, 1, 3 and 5 all leave carve-js rendering an inline `<code>` - and
+/// the same holds in a footnote and at the document root. Without the test the
+/// lookahead accepted an OUTDENTED run, so `- item` / `  ``` ` / `  code` /
+/// ``` ``` ``` at column 0 opened a `code_block` with no end marker where
+/// carve-js builds no block at all.
+static bool code_fence_has_closer_ahead(Scanner *s, TSLexer *lexer, int32_t c,
+                                        uint16_t width, uint32_t column,
+                                        bool ignore_host_list, int max_quotes) {
+  // An opener outside a preceding quote does not require that quote's
+  // markers on its own body and closer lines.
+  uint8_t quotes = 0;
+  for (int i = 0; i < s->open_blocks->size; ++i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (b->type == BLOCK_QUOTE && b->content_col <= column) {
+      ++quotes;
+    }
+  }
+  // An opener on a shallower quoted line belongs to the quote its markers
+  // reach, whatever column it stands at (PART 0 S3).
+  if (max_quotes >= 0 && quotes > max_quotes) quotes = (uint8_t)max_quotes;
+  // A candidate that would sit OUTSIDE the enclosing list gets no list scope:
+  // its body lines are the document's, so a sibling-marker-shaped line among
+  // them is fence body and must not end the search.
+  Block *host_list = (ignore_host_list || (s->state & STATE_LIST_CONTINUATION))
+                         ? NULL
+                         : find_list(s);
+  bool after_blank = false;
+  for (;;) {
+    // Skip the rest of the current line (the opener's info string, or a body
+    // line that was not a closer).
+    while (!lexer->eof(lexer) && !at_line_end(lexer)) {
+      advance(s, lexer);
+    }
+    if (lexer->eof(lexer)) {
+      return false;
+    }
+    consume_line_end(s, lexer); // over the newline
+    // Inside a quote a closer carries the quote's markers, and a line short of
+    // them leaves the quote before any closer is found.
+    if (quotes > 0) {
+      consume_whitespace(s, lexer);
+      bool ending_newline = false;
+      if (scan_block_quote_markers(s, lexer, &ending_newline) < quotes) {
+        return false;
+      }
+    }
+    uint8_t leading_indent = consume_whitespace(s, lexer);
+    uint32_t current_column = line_column(s, lexer);
+    if (quotes == 0 && leading_indent > current_column) {
+      current_column = leading_indent;
+    }
+    bool blank_line = at_line_end(lexer);
+    if (host_list && current_column < host_list->content_col &&
+        !at_line_end(lexer) && !lexer->eof(lexer)) {
+      if (after_blank) return false;
+      if (lexer->lookahead == '-' || lexer->lookahead == '*' ||
+          lexer->lookahead == ':' || lexer->lookahead == '(' ||
+          carve_is_alnum_ascii(lexer->lookahead)) {
+        TokenType token = scan_list_marker_token(s, lexer);
+        if (token != IGNORED && marker_line_has_content(s, lexer)) return false;
+      }
+    }
+    after_blank = blank_line;
+    bool owner_closer = host_list && count_blocks(s, BLOCK_QUOTE) == 0 &&
+        host_list->content_col != 0 && column > host_list->content_col &&
+        current_column == host_list->content_col;
+    if (current_column != column && !owner_closer) {
+      // Not at the opener's column: whatever it is, it is fence body. Fall
+      // round to the top, which skips the rest of the line.
+      continue;
+    }
+    uint16_t run = consume_fence_run(s, lexer, (char)c);
+    if (run >= width) {
+      while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+        advance(s, lexer);
+      }
+      if (lexer->eof(lexer) || at_line_end(lexer)) {
+        return true;
+      }
+    }
+  }
+}
+
+// Use the tab-expanded leading column while probing the next line. A marker
+// chain has its own column and must not inherit the line's leading indent.
+static uint32_t paragraph_end_line_column(Scanner *s, TSLexer *lexer) {
+  uint32_t column = line_column(s, lexer);
+  if (s->next_line_indent >= 0) {
+    if ((uint32_t)s->next_line_indent > column) {
+      column = (uint32_t)s->next_line_indent;
+    }
+  } else if (s->marker_end_col == 0 && s->indent > column) {
+    column = s->indent;
+  }
+  return column;
+}
+
+/// A FENCED CODE opener with a closer ahead interrupts an open paragraph
+/// (PART 9 §10 I1 + I4).
+///
+/// Both fence characters: a `~~~` fence opens a code block like a backtick one.
+///
+/// THE INFO STRING IS THE OPENER'S OWN TEST, shared rather than restated, for
+/// the same reason `colon_fence_tail_opens_block` is shared: an info string the
+/// grammar cannot model (```` ```js title="x" ````) is not a fence at all, so
+/// ending the paragraph on it split `intro` / ```` ```js title="x" ```` /
+/// `code` / ```` ``` ```` into two paragraphs where carve-js keeps one holding
+/// an inline run. A peek that closes a paragraph no opener follows is the same
+/// defect #103 recorded four times over for the colon fence.
+static bool scan_code_fence_at_paragraph_end(Scanner *s, TSLexer *lexer,
+                                              int markers_seen) {
+  int32_t fence_char = lexer->lookahead;
+  if (fence_char != '`') {
+    return false;
+  }
+  uint32_t column = paragraph_end_line_column(s, lexer);
+  if (!at_block_opener_margin(s, column)) {
+    return false;
+  }
+  uint16_t width = consume_fence_run(s, lexer, (char)fence_char);
+  if (width < 3) {
+    return false;
+  }
+  if (!code_fence_info_is_modeled(s, lexer)) {
+    return false;
+  }
+  return code_fence_has_closer_ahead(s, lexer, fence_char, width, column, false,
+                                     markers_seen);
+}
+
+/// A block quote that goes DEEPER than the one we are in interrupts an open
+/// paragraph (PART 9 §10: a visible block opener interrupts; only a list does
+/// not).
+///
+/// `end_paragraph_in_block_quote` above handles the other direction - a line
+/// that drops to a SHALLOWER depth - and does nothing when no quote is open at
+/// all, so a `>` line after a paragraph opened nothing: `x` / `> q` came out as
+/// one paragraph, and so did `- a` / `  > q` at a list item's content column,
+/// where carve-js and carve-php both open a quote (tree-sitter-carve#70).
+///
+/// Depth, not presence: `> a` / `> b` is one paragraph in every engine (the
+/// second line continues the first at the SAME depth), and `> a` / `b` is a
+/// lazy continuation. Only `> a` / `> > b` opens something new.
+static bool scan_deeper_block_quote_at_paragraph_end(Scanner *s,
+                                                     TSLexer *lexer,
+                                                     int markers_seen) {
+  if (lexer->lookahead != '>') {
+    return false;
+  }
+  // On a line carrying every quote's marker, a `>` at or past the content
+  // column of an item holding the paragraph opens a quote in that item.
+  if (markers_seen > 0 && markers_seen >= count_blocks(s, BLOCK_QUOTE)) {
+    uint32_t column = line_column(s, lexer);
+    for (int i = (int)s->open_blocks->size - 1; i >= 0; --i) {
+      Block *b = *array_get(s->open_blocks, i);
+      if (!is_list(b->type) || b->type == LIST_DEFINITION ||
+          b->content_col == 0) {
+        break;
+      }
+      if (column >= b->content_col) return !at_nesting_cap(s);
+    }
+  }
+  uint8_t open_depth = count_blocks(s, BLOCK_QUOTE);
+  bool ending_newline = false;
+  // At a paragraph's end the run is read with the paragraph's marker rules.
+  uint8_t marker_count =
+      scan_quote_marker_run(s, lexer, &ending_newline, NULL, true);
+  return marker_count > open_depth && !at_nesting_cap(s);
+}
+
+/// A definition line interrupts an open paragraph (PART 9 §10 I5). Answers
+/// what `parse_open_bracket` answers, at the margin the heading peek uses.
+static bool scan_definition_at_paragraph_end(Scanner *s, TSLexer *lexer) {
+  if (lexer->lookahead != '[') {
+    return false;
+  }
+  uint32_t column = line_column(s, lexer);
+  if (!at_block_opener_margin(s, column)) {
+    return false;
+  }
+  // No lazy-quote test: `block_quote_level` reads 0 here even on a marked line,
+  // and `close_paragraph` has already stopped a lazy one.
+  advance(s, lexer);
+  if (lexer->lookahead != '^') {
+    // S1 erases a reference definition without a boundary (CARVE-P0-011).
+    // A citation definition (`[@k]:`) still ends the paragraph.
+    if (lexer->lookahead == '@') return scan_ref_def(s, lexer);
+    if (scan_ref_def(s, lexer)) s->erasable_line = true;
+    return false;
+  }
+  advance(s, lexer);
+  return scan_footnote_after_caret(s, lexer);
+}
+
+/// An unmarked line leaves every quote, but a list item OUTSIDE the outermost
+/// quote still owns it if the line reaches that item's content column: an
+/// opener there closes the quote and lands in the item (corpus 369), while
+/// plain text still folds lazily into the quoted paragraph.
+static bool item_outside_quotes_reached(Scanner *s, uint32_t column) {
+  int outermost_quote = -1;
+  for (int i = 0; i < (int)s->open_blocks->size; ++i) {
+    if ((*array_get(s->open_blocks, i))->type == BLOCK_QUOTE) {
+      outermost_quote = i;
+      break;
+    }
+  }
+  for (int i = outermost_quote - 1; i >= 0; --i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (is_list(b->type) && b->content_col != 0 && column >= b->content_col) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/// A block attribute line interrupts an open paragraph (PART 9 §15): `q` over
+/// `{.k}` ends `q`, and the attribute reaches the block below. The whole block
+/// is validated first, wrapped lines included, so a line that only starts like
+/// one (`{.k} text`) stays paragraph text. A wrapped continuation inside a
+/// quote has to carry the quote's markers.
+static bool scan_block_attribute_at_paragraph_end(Scanner *s, TSLexer *lexer) {
+  if (lexer->lookahead != '{' ||
+      !at_block_opener_margin(s, line_column(s, lexer))) {
+    return false;
+  }
+  uint8_t quotes = count_blocks(s, BLOCK_QUOTE);
+  bool has_item = false;
+  advance(s, lexer);
+  while (!lexer->eof(lexer)) {
+    consume_whitespace(s, lexer);
+    switch (lexer->lookahead) {
+    case '}':
+      if (!has_item) {
+        return false;
+      }
+      advance(s, lexer);
+      s->attribute_block_line = true;
+      while (lexer->lookahead == '{') {
+        if (!scan_valid_inline_attribute(s, lexer)) {
+          s->attribute_block_line = false;
+          return false;
+        }
+      }
+      s->attribute_block_line = false;
+      while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+        advance(s, lexer);
+      }
+      return at_line_end(lexer) || lexer->eof(lexer);
+    case '.':
+      advance(s, lexer);
+      if (!scan_explicit_identifier(s, lexer) || !at_attribute_boundary(lexer)) {
+        return false;
+      }
+      has_item = true;
+      break;
+    case '#':
+      advance(s, lexer);
+      if (!scan_explicit_identifier(s, lexer) || !at_attribute_boundary(lexer)) {
+        return false;
+      }
+      has_item = true;
+      break;
+    case ':':
+      advance(s, lexer);
+      if (!scan_language_tag(s, lexer) || !at_attribute_boundary(lexer)) {
+        return false;
+      }
+      has_item = true;
+      break;
+    case '\r':
+    case '\n': {
+      consume_line_end(s, lexer);
+      if (quotes > 0) {
+        bool ending_newline = false;
+        if (scan_block_quote_markers(s, lexer, &ending_newline) != quotes ||
+            ending_newline) {
+          return false;
+        }
+      }
+      consume_whitespace(s, lexer);
+      if (at_line_end(lexer)) {
+        return false;
+      }
+      break;
+    }
+    default: {
+      int32_t first = lexer->lookahead;
+      if (!scan_name_no_digit_start(s, lexer)) {
+        return false;
+      }
+      has_item = true;
+      if (lexer->lookahead != '=') {
+        if (!valid_bare_boolean_first_char(first)) {
+          return false;
+        }
+        if (lexer->lookahead == '}' || lexer->lookahead == ' ' ||
+            lexer->lookahead == '\t' || at_line_end(lexer)) {
+          break;
+        }
+        return false;
+      }
+      advance(s, lexer);
+      if (!scan_value(s, lexer, NULL) || !at_attribute_boundary(lexer)) {
+        return false;
+      }
+    }
+    }
+  }
+  return false;
+}
+
+/// Does an abbreviation definition follow? Call with the lexer just past the
+/// `*`. In a paragraph S1 erases it in every container (corpus 95, 180).
+static bool abbreviation_definition_follows(Scanner *s, TSLexer *lexer) {
+  advance(s, lexer);
+  if (!carve_is_alnum_ascii(lexer->lookahead)) return false;
+  while (carve_is_alnum_ascii(lexer->lookahead)) advance(s, lexer);
+  if (lexer->lookahead != ']') return false;
+  advance(s, lexer);
+  if (lexer->lookahead != ':') return false;
+  advance(s, lexer);
+  if (lexer->lookahead != ' ') return false;
+  return marker_line_has_content(s, lexer);
+}
+
+/// A list marker does not interrupt a paragraph held by a quote or div nested
+/// in a list item: the line folds in lazily unless it is a sibling marker of
+/// an enclosing list (corpus 448, 507).
+static bool marker_folds_into_nested_paragraph(Scanner *s, uint32_t column) {
+  // A line inside every open quote, with no item or note body open in the
+  // innermost one, continues that quote's paragraph, which no list marker
+  // interrupts (PART 9 section 10 I2).
+  uint8_t quotes = count_blocks(s, BLOCK_QUOTE);
+  if (quotes > 0 && s->paragraph_markers_seen == quotes &&
+      s->lazy_drop_markers == 0 && !line_misses_note(s, column)) {
+    bool list_in_quote = false;
+    for (int i = s->open_blocks->size - 1; i >= 0; --i) {
+      Block *b = *array_get(s->open_blocks, i);
+      if (b->type == BLOCK_QUOTE) break;
+      if (is_list(b->type) || b->type == FOOTNOTE) list_in_quote = true;
+    }
+    if (!list_in_quote) return true;
+  }
+  // A line short of the quotes holding the list cannot reach its items.
+  if (s->lazy_drop_markers > 0) {
+    Block *missing = nth_quote(s, s->lazy_drop_markers + 1);
+    bool reachable = false;
+    for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
+      Block *b = *array_get(s->open_blocks, i);
+      if (b == missing) break;
+      if (is_list(b->type) && column < b->content_col) reachable = true;
+    }
+    if (missing && !reachable) return true;
+  }
+  Block *host = peek_block(s);
+  if (!host || find_list(s) == NULL) {
+    return false;
+  }
+  if (count_blocks(s, BLOCK_QUOTE) == 0 && is_list(host->type) &&
+      host->content_col != 0 && column >= host->content_col) {
+    return false;
+  }
+  // An unmarked line under a quote is lazy for every list inside the quote.
+  bool lazy_quote = s->paragraph_markers_seen == 0;
+  if (!lazy_quote && (s->paragraph_markers_seen > 0 ||
+                      (host->type != DIV && host->type != FIGURE_GROUP))) {
+    return false;
+  }
+  bool past_quote = false;
+  for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (lazy_quote && b->type == BLOCK_QUOTE) past_quote = true;
+    // Missing a quote and an item body inside it closes them (PART 0 family
+    // guards): `> - q` / `- x` opens a list outside the quote.
+    if (past_quote) {
+      if (is_list(b->type) && b->type != LIST_DEFINITION) return false;
+      continue;
+    }
+    if (is_list(b->type) && b->data == column + 1) return false;
+  }
+  return true;
+}
+
+static bool scan_row_or_break_at_paragraph_end(Scanner *s, TSLexer *lexer) {
+  int32_t c = lexer->lookahead;
+  if (c != '|' && line_block_body(s)) {
+    return false;
+  }
+  uint32_t column = paragraph_end_line_column(s, lexer);
+  bool at_margin = opener_reaches_item_margin(s, column);
+  if (c == '|') {
+    if (!at_margin) {
+      return false;
+    }
+    advance(s, lexer);
+    TokenType row_type;
+    bool continues = false;
+    uint16_t state = s->state;
+    bool row = scan_table_row(s, lexer, &row_type, &continues);
+    s->state = state;
+    return row;
+  }
+  uint8_t count = consume_chars(s, lexer, (char)c);
+  if (c == '*' && count == 1 && lexer->lookahead == '[') {
+    if (abbreviation_definition_follows(s, lexer)) {
+      s->erasable_line = true;
+    }
+    return false;
+  }
+  bool attributed = false;
+  if (count == 1 && lexer->lookahead == '{') {
+    attributed = true;
+    if (!scan_valid_inline_attribute(s, lexer)) {
+      return false;
+    }
+  }
+  bool separated = lexer->lookahead == ' ';
+  // A spaced break (`- - -`, `* * *`) interrupts like `---`; a refused run
+  // leaves its inner marker as the item's content.
+  bool spaced_run = false;
+  if (separated && count == 1 && !attributed && c != '_') {
+    advance(s, lexer);
+    if (lexer->lookahead == c) {
+      spaced_run = true;
+      uint32_t spaced = 1;
+      bool spaced_ok = false;
+      while (lexer->lookahead == c) {
+        advance(s, lexer);
+        ++spaced;
+        if (lexer->lookahead != ' ') {
+          while (lexer->lookahead == '\t' || lexer->lookahead == ' ') advance(s, lexer);
+          spaced_ok = at_line_end(lexer) || lexer->eof(lexer);
+          break;
+        }
+        advance(s, lexer);
+        if (lexer->lookahead != c) {
+          consume_whitespace(s, lexer);
+          spaced_ok = at_line_end(lexer) || lexer->eof(lexer);
+          break;
+        }
+      }
+      if (at_margin && spaced_ok && spaced >= 3) {
+        return true;
+      }
+    }
+  }
+  if (!spaced_run) consume_whitespace(s, lexer);
+  bool content = spaced_run || (!at_line_end(lexer) && !lexer->eof(lexer));
+  if (at_margin && count >= 3 && !attributed && !content) {
+    return true;
+  }
+  if (c == '_' || count != 1 || !separated || !content) {
+    return false;
+  }
+  // A note or description body opens a child list at its content column
+  // (PART 9 section 10 I2); below it the marker reads in the body's owner.
+  Block *body = peek_block(s);
+  if (body && (body->type == FOOTNOTE ||
+               (body->type == LIST_DEFINITION &&
+                !(body->flags & BLOCK_FLAG_DEFINITION_TERM)))) {
+    return true;
+  }
+  if (marker_folds_into_item(s, column) ||
+      marker_folds_into_nested_paragraph(s, column)) {
+    return false;
+  }
+  Block *list = find_list(s);
+  if (!list) {
+    return line_misses_note(s, column);
+  }
+  if (list == peek_block(s) && list->type == LIST_DEFINITION &&
+      !(list->flags & BLOCK_FLAG_DEFINITION_TERM)) {
+    for (int i = 0; i < s->open_blocks->size; ++i) {
+      Block *host = *array_get(s->open_blocks, i);
+      if (host == list) {
+        return false;
+      }
+      if (is_list(host->type) && host->type != LIST_DEFINITION) {
+        return true;
+      }
+    }
+  }
+  return true;
+}
+
+static bool paragraph_block_opener_ahead(Scanner *s, TSLexer *lexer, int markers_seen) {
+  // C2-B-014 to C2-B-024: only an accepted interrupter closes prose.
+  if (scan_code_fence_at_paragraph_end(s, lexer, markers_seen)) return true;
+  if (lexer->lookahead == '|') return scan_row_or_break_at_paragraph_end(s, lexer);
+  if (lexer->lookahead == '*') {
+    uint8_t stars = consume_chars(s, lexer, '*');
+    consume_whitespace(s, lexer);
+    if (stars >= 3 && (at_line_end(lexer) || lexer->eof(lexer))) return true;
+  }
+  if (lexer->lookahead == ':' && scan_paragraph_closing_marker(s, lexer)) return true;
+  if (find_list(s) && (lexer->lookahead == '-' || lexer->lookahead == '*' ||
+      lexer->lookahead == '.' || carve_is_alnum_ascii(lexer->lookahead)) &&
+      scan_paragraph_closing_marker(s, lexer)) return true;
+  if (scan_fenced_comment_at_paragraph_end(s, lexer)) return true;
+  if (scan_caption_at_paragraph_end(s, lexer)) return true;
+  return false;
+}
+static bool close_paragraph_after_quote(Scanner *s, TSLexer *lexer,
+                                        int markers_seen);
+/// A quote opens at `column` in an item when this line's markers reach every
+/// quote around the item, the line reaches the item's content column, and
+/// `column` is left of everything nested in the item.
+static bool quote_opens_in_outer_item(Scanner *s, uint8_t markers,
+                                      uint32_t column) {
+  uint8_t quotes_below = count_blocks(s, BLOCK_QUOTE);
+  uint32_t nested_start = UINT32_MAX;
+  for (int i = (int)s->open_blocks->size - 1; i >= 0; --i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (b->type == BLOCK_QUOTE) {
+      --quotes_below;
+      if (b->content_col >= 2 && b->content_col - 2 < nested_start) {
+        nested_start = b->content_col - 2;
+      }
+      continue;
+    }
+    if (!is_list(b->type) || b->type == LIST_DEFINITION || b->content_col == 0) {
+      continue;
+    }
+    if (markers >= quotes_below && column >= b->content_col &&
+        column < nested_start) {
+      return true;
+    }
+    if (b->content_col < nested_start) nested_start = b->content_col;
+  }
+  return false;
+}
+
+static bool close_paragraph(Scanner *s, TSLexer *lexer) {
+  // Workaround for not including the following blankline when closing a
+  // paragraph inside a block.
+  Block *top = peek_block(s);
+  if (top && top->type == BLOCK_QUOTE && at_line_end(lexer)) {
+    return true;
+  }
+
+  // A line block's paragraph runs to a blank line or a colon fence. In a
+  // quote the fence stands after the quote's markers.
+  if (line_block_body(s)) {
+    if (lexer->lookahead == '>' && count_blocks(s, BLOCK_QUOTE) > 0) {
+      int quoted = -1;
+      if (end_paragraph_in_block_quote(s, lexer, &quoted)) {
+        return true;
+      }
+      while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+        advance(s, lexer);
+      }
+    }
+    if (lexer->lookahead != ':') {
+      return false;
+    }
+  }
+
+  // Set by `end_paragraph_in_block_quote` to the `>` markers the next line
+  // carries; -1 while no quote is open.
+  int markers_seen = -1;
+  s->plus_probe_refused_line = false;
+  s->glued_quote_marker = false;
+  Block *lazy_quote = find_block(s, BLOCK_QUOTE);
+  if (lazy_quote) lazy_quote->flags &= (uint8_t)~BLOCK_FLAG_QUOTE_LAZY_DROP;
+  if (end_paragraph_in_block_quote(s, lexer, &markers_seen)) {
+    return true;
+  }
+  // A `>` left of the inner quote's column can open a quote in an item whose
+  // enclosing quotes this line's markers all reach.
+  if (lazy_quote && markers_seen > 0 && markers_seen < lazy_quote->data &&
+      lexer->lookahead == '>' && !s->plus_probe_refused_line &&
+      quote_opens_in_outer_item(s, (uint8_t)markers_seen,
+                                line_column(s, lexer)) &&
+      !at_nesting_cap(s)) {
+    s->drop_close_markers = (uint8_t)markers_seen;
+    return true;
+  }
+  if (lazy_quote && markers_seen > 0 && markers_seen < lazy_quote->data &&
+      s->plus_probe_refused_line) {
+    lazy_quote->flags |= BLOCK_FLAG_QUOTE_LAZY_DROP;
+    Block *first_quote = find_block_from_bottom(s, BLOCK_QUOTE);
+    bool list_outside_quote = false;
+    for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
+      Block *b = *array_get(s->open_blocks, i);
+      if (b == first_quote) break;
+      if (is_list(b->type)) list_outside_quote = true;
+    }
+    // An item outside the quote already has its own short-line handling.
+    if (!list_outside_quote) s->folded_plus_paragraph = true;
+    return false;
+  }
+  if (lazy_quote && markers_seen > 0 && markers_seen < lazy_quote->data) {
+    uint8_t level = s->block_quote_level;
+    s->block_quote_level = (uint8_t)markers_seen;
+    s->lazy_drop_markers = (uint8_t)markers_seen;
+    bool plus_line = lexer->lookahead == '+';
+    bool ends = close_paragraph_after_quote(s, lexer, markers_seen);
+    s->lazy_drop_markers = 0;
+    s->block_quote_level = level;
+    if (!ends) lazy_quote->flags |= BLOCK_FLAG_QUOTE_LAZY_DROP;
+    else if (!plus_line) s->drop_close_markers = (uint8_t)markers_seen;
+    return ends;
+  }
+  return close_paragraph_after_quote(s, lexer, markers_seen);
+}
+
+static bool close_paragraph_after_quote(Scanner *s, TSLexer *lexer,
+                                        int markers_seen) {
+  // A refused lone `+` is this paragraph's text, and the lexer now stands on
+  // the line after it, where no later probe may look.
+  if (s->plus_probe_refused_line) {
+    return false;
+  }
+
+  Block *note = find_block(s, FOOTNOTE);
+  // A line missing a quote that holds the note is asked the quote's rules,
+  // except a fence or marker lead, which ends the note even unclosed.
+  int32_t note_lead = lexer->lookahead;
+  if (note && markers_seen >= 0 && markers_seen < quotes_below(s, note) &&
+      note_lead != '>' && note_lead != '`' && note_lead != '~' &&
+      note_lead != '%' && peek_block(s) == note) {
+    note = NULL;
+  }
+  if (note && !at_line_end(lexer) && !lexer->eof(lexer)) {
+    uint32_t margin = note->data;
+    uint32_t quote_prefix = 0;
+    bool below_note = false;
+    for (int i = s->open_blocks->size - 1; i >= 0; --i) {
+      Block *b = *array_get(s->open_blocks, i);
+      if (b == note) {
+        below_note = true;
+      } else if (below_note && b->type == BLOCK_QUOTE) {
+        quote_prefix = b->content_col;
+        margin += quote_prefix;
+        break;
+      }
+    }
+    uint32_t column = line_column(s, lexer);
+    bool attached_lazy_line = (note->flags & BLOCK_FLAG_FOOTNOTE_ATTACHED) &&
+        (s->state & STATE_LIST_CONTINUATION) &&
+        (column == s->continuation_col ||
+         column == s->continuation_col + quote_prefix);
+    // A line short of the note folds into its paragraph unless it opens a
+    // block (PART 0 S4). A line that drops or skips a quote prefix is not
+    // asked the quote's lazy rules: a line led by an opener character ends it.
+    int32_t lead = lexer->lookahead;
+    if (column < margin && !attached_lazy_line && lead != '+') {
+      if (carve_is_alnum_ascii(lead) || lead == '(' || lead == '.') {
+        return scan_list_marker(s, lexer) && marker_line_has_content(s, lexer);
+      }
+      bool list_in_note = false;
+      for (int i = s->open_blocks->size - 1; i >= 0; --i) {
+        Block *b = *array_get(s->open_blocks, i);
+        if (b == note) break;
+        if (is_list(b->type)) list_in_note = true;
+      }
+      // A fence ends the note even unclosed; the probes ask for a closer.
+      bool fence_lead = lead == '`' || lead == '~' || lead == '%';
+      if (lead != '>' && !fence_lead && !list_in_note &&
+          (markers_seen < 0 ||
+           markers_seen == count_blocks(s, BLOCK_QUOTE))) {
+        s->paragraph_markers_seen = markers_seen;
+        return paragraph_block_opener_ahead(s, lexer, markers_seen);
+      }
+      // S1 erases a one-line comment or definition (CARVE-P0-011).
+      if (lead == '%' || lead == '[' || lead == '*') {
+        advance(s, lexer);
+        bool erased = false;
+        if (lead == '%' && lexer->lookahead == '%') {
+          advance(s, lexer);
+          erased = comment_line_is_erased(s, lexer);
+        } else if (lead == '[' && lexer->lookahead != '^' &&
+                   lexer->lookahead != '@') {
+          erased = scan_ref_def(s, lexer);
+        } else if (lead == '*' && lexer->lookahead == '[') {
+          erased = abbreviation_definition_follows(s, lexer);
+        }
+        if (erased) s->erasable_line = true;
+        return !erased;
+      }
+      switch (lead) {
+      case '#': case '>': case '`': case '~': case ':': case '|': case '*':
+      case '-': case '_': case '[': case '{': case '%': case '^': case '=':
+      case '$': case '!': case '<':
+        return true;
+      default:
+        return false;
+      }
+    }
+    if (column < margin && !attached_lazy_line && lead == '+') {
+      {
+        advance(s, lexer);
+        while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+          advance(s, lexer);
+        }
+        if (lexer->eof(lexer)) {
+          note->flags |= BLOCK_FLAG_FOOTNOTE_DANGLING_PLUS;
+        } else if (at_line_end(lexer)) {
+          consume_line_end(s, lexer);
+          if (plus_follower(s, lexer, column, 0, NULL, NULL, NULL, NULL,
+                            NULL) != PLUS_ATTACHES) {
+            note->flags |= BLOCK_FLAG_FOOTNOTE_DANGLING_PLUS;
+          }
+        }
+      }
+      return true;
+    }
+  }
+
+  // A LAZY line inside a quote (no `>` marker) is asked the paragraph's
+  // interrupt rules like any other line: an opener on it ends the quote at any
+  // indentation (PART 0 S3/S4). Only a `+` or a caption is decided here: on a
+  // lazy line past its attachment column it is text.
+  //
+  // Decided HERE, from the marker count this very call just computed, because
+  // nothing downstream can tell a lazy line from a marked one: at this peek
+  // both read column 2, an `indent` of 0 left over from the previous line, and
+  // a `block_quote_level` of 0.
+  if (markers_seen == 0) {
+    Block *quote = find_block(s, BLOCK_QUOTE);
+    uint32_t column = line_column(s, lexer);
+    if (quote && quote->content_col != 0 && column >= quote->content_col &&
+        lexer->lookahead == '+' && !item_outside_quotes_reached(s, column)) {
+      return false;
+    }
+    // A caption attaches only at the margin of the context holding the quote.
+    if (quote && lexer->lookahead == '^' &&
+        !escapes_open_block_quote(s, column)) {
+      return false;
+    }
+  }
+
+  // Indented block-looking lines are term text. A list marker with content
+  // ends the term instead, allowing a sibling list in the enclosing body.
+  for (int i = s->open_blocks->size - 1; i >= 0; --i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (is_list(b->type)) {
+      uint32_t term_margin = list_opened_in_quote(s, b) && b->content_col >= 3
+                                 ? b->content_col - 2
+                                 : b->data;
+      if (b->type == LIST_DEFINITION &&
+          (b->flags & BLOCK_FLAG_DEFINITION_TERM) &&
+          line_column(s, lexer) >= term_margin && !at_line_end(lexer) &&
+          !lexer->eof(lexer)) {
+        return scan_list_marker(s, lexer) && marker_line_has_content(s, lexer);
+      }
+      break;
+    }
+  }
+
+  if (false && scan_deeper_block_quote_at_paragraph_end(s, lexer, markers_seen)) {
+    return true;
+  }
+
+  if (s->folded_plus_paragraph && markers_seen > 0 &&
+      !(s->state & STATE_AFTER_BLANK_LINE)) return false;
+  if (s->glued_quote_marker) return false;
+
+  s->paragraph_markers_seen = markers_seen;
+  return paragraph_block_opener_ahead(s, lexer, markers_seen);
+}
+
+static bool parse_close_paragraph(Scanner *s, TSLexer *lexer) {
+  // No open inline at paragraph boundary.
+  if (has_open_span(s)) {
+    return false;
+  }
+  s->drop_close_markers = 0;
+  if (!close_paragraph(s, lexer)) {
+    return false;
+  }
+  s->folded_plus_paragraph = false;
+  // An opener on a shallower quoted line closes the deeper quotes before the
+  // line's markers are read, as it does after any other block.
+  if (s->drop_close_markers > 0) {
+    size_t deeper = number_of_blocks_from_top(s, BLOCK_QUOTE,
+                                              s->drop_close_markers + 1);
+    if (deeper > 0) s->blocks_to_close = (uint8_t)deeper;
+    s->drop_close_markers = 0;
+  }
+
+  // The paragraph is over, so whatever malformed fence it absorbed no longer
+  // governs the next one: `::: {.x}` / `x` / blank / `:::` ends with a real
+  // div in every engine.
+  s->state &= ~STATE_FENCE_ABSORBS;
+  s->state &= ~STATE_MULTILINE_IDENTIFIER;
+  Block *note = peek_block(s);
+  if (note && note->type == FOOTNOTE &&
+      (note->flags & BLOCK_FLAG_FOOTNOTE_ATTACHED)) {
+    note->flags &= (uint8_t)~BLOCK_FLAG_FOOTNOTE_ATTACHED;
+    s->state &= ~STATE_LIST_CONTINUATION;
+  }
+  s->table_attribute_pending = 0;
+  clear_literal_brackets(s);
+  lexer->result_symbol = CLOSE_PARAGRAPH;
+  return true;
+}
+
+// Decide if we should emit a `NEWLINE_INLINE` token.
+//
+// This should only be allowed inside a paragraph (or inline context),
+// not at the end of a paragraph. Therefore there's logic
+// here to detect the end of a paragraph.
+//
+// We should have already advanced over `\n` before calling this function.
+static bool emit_newline_inline(Scanner *s, TSLexer *lexer,
+                                uint32_t newline_column) {
+  // Need a proper `NEWLINE` to end a paragraph.
+  if (lexer->eof(lexer)) {
+    return false;
+  }
+
+  // Is never valid as the first character of a line.
+  if (newline_column == 0) {
+    return false;
+  }
+
+  Block *top = peek_block(s);
+  if (disallow_newline(top)) {
+    return false;
+  }
+
+  // This is a lookahead for the next line, to check if
+  // there's a blankline ending the paragraph or not (in which case we
+  // shouldn't emit a `NEWLINE_INLINE`).
+  uint8_t next_line_whitespace = consume_whitespace(s, lexer);
+  if (at_line_end(lexer)) {
+    return false;
+  }
+  if (top && top->type == HEADING &&
+      next_line_whitespace <= top->content_col) return false;
+
+  // Need an extra check so we don't emit a NEWLINE_INLINE at the end
+  // of a table caption if there's a mismatched indent.
+  if (top && top->type == TABLE_CAPTION && !has_open_span(s) && next_line_whitespace < top->data) {
+    return false;
+  }
+
+  // Caption continuations use the same margin checks as opener lookahead.
+  bool ends;
+  if (in_caption(s)) {
+    BracketProbe probe = bracket_probe_new(s, lexer);
+    ends = caption_line_ends_block(s, &probe, next_line_whitespace);
+    array_delete(&probe.characters);
+  } else {
+    s->next_line_indent = next_line_whitespace;
+    // Probe the next line with the marker chain that line will have.
+    uint8_t chain_col = s->chain_col;
+    uint8_t marker_end_col = s->marker_end_col;
+    s->chain_col = UINT8_MAX;
+    s->marker_end_col = 0;
+    s->erasable_line = false;
+    ends = close_paragraph(s, lexer);
+    s->chain_col = chain_col;
+    s->marker_end_col = marker_end_col;
+    s->next_line_indent = -1;
+  }
+  if (ends) return false;
+
+  lexer->result_symbol = NEWLINE_INLINE;
+  return true;
+}
+
+static bool emit_paragraph_newline(Scanner *s, TSLexer *lexer,
+                                   const bool *valid_symbols,
+                                   uint32_t newline_column) {
+  s->erasable_line = false;
+  if (!emit_newline_inline(s, lexer, newline_column)) return false;
+  if (s->erasable_line && valid_symbols[ERASED_LINE_NEWLINE]) {
+    lexer->result_symbol = ERASED_LINE_NEWLINE;
+  }
+  s->erasable_line = false;
+  return true;
+}
+
+static bool parse_newline(Scanner *s, TSLexer *lexer,
+                          const bool *valid_symbols) {
+  if (valid_symbols[TABLE_ROW_END_NEWLINE] &&
+      parse_table_end_newline(s, lexer)) {
+    return true;
+  }
+  if (valid_symbols[VERBATIM_END] && try_implicit_close_verbatim(s, lexer)) {
+    return true;
+  }
+
+  // Various different newline types share the `\n` consumption.
+  if (!valid_symbols[NEWLINE] && !valid_symbols[NEWLINE_INLINE] &&
+      !valid_symbols[EOF_OR_NEWLINE]) {
+    return false;
+  }
+
+  Block *top = peek_block(s);
+  if (disallow_newline(top)) {
+    return false;
+  }
+
+  uint32_t newline_column = line_column(s, lexer);
+
+  if (at_line_end(lexer)) {
+    consume_line_end(s, lexer);
+  }
+  mark_end(s, lexer);
+
+  // A comment-only line inside a line block stays in its paragraph.
+  if (valid_symbols[NEWLINE_INLINE] && valid_symbols[VERBATIM_COMMENT_LINE] &&
+      newline_column != 0 && !lexer->eof(lexer) && line_block_body(s)) {
+    consume_whitespace(s, lexer);
+    if (lexer->lookahead == '%') {
+      advance(s, lexer);
+      if (lexer->lookahead == '%') {
+        while (!lexer->eof(lexer) && !at_line_end(lexer)) {
+          advance(s, lexer);
+        }
+        mark_end(s, lexer);
+        lexer->result_symbol = VERBATIM_COMMENT_LINE;
+        return true;
+      }
+      lexer->result_symbol = NEWLINE_INLINE;
+      return true;
+    }
+  }
+
+  // Prefer NEWLINE_INLINE for newlines in inline context.
+  // When they're no longer accepted, this marks the end of a paragraph
+  // and a regular NEWLINE (or EOF_OR_NEWLINE) can be emitted.
+  if (valid_symbols[NEWLINE_INLINE] &&
+      emit_paragraph_newline(s, lexer, valid_symbols, newline_column)) {
+    return true;
+  }
+
+  // Only allow `NEWLINE_INLINE` style of newlines with open inline elements.
+  if (has_open_span(s)) {
+    return false;
+  }
+
+  // We need to handle NEWLINE in the external scanner for our
+  // changes to the Scanner state to be saved
+  // (the reset of `block_quote_level` at newline in the main scan function).
+  // A plain NEWLINE (rather than NEWLINE_INLINE) is the end of the paragraph,
+  // which is where the §12 absorption stops - see `parse_close_paragraph`.
+  if (valid_symbols[NEWLINE]) {
+    s->state &= ~STATE_FENCE_ABSORBS;
+    // The token end is pinned, so reading the next line here is free.
+    s->state &= ~(STATE_QUOTED_FENCE_CLOSER | STATE_QUOTED_LINE_SHORT_OF_ITEM);
+    if (scan_quoted_code_fence_closer(s, lexer)) {
+      s->state |= STATE_QUOTED_FENCE_CLOSER;
+    }
+    s->state &= ~STATE_SINGLE_LINE_CAPTION;
+    clear_literal_brackets(s);
+    lexer->result_symbol = NEWLINE;
+    return true;
+  }
+
+  if (valid_symbols[EOF_OR_NEWLINE]) {
+    s->state &= ~STATE_FENCE_ABSORBS;
+    s->state &= ~STATE_SINGLE_LINE_CAPTION;
+    if (newline_column == 0 && top && is_list(top->type)) {
+      s->blank_line_taken = true;
+    }
+    clear_literal_brackets(s);
+    lexer->result_symbol = EOF_OR_NEWLINE;
+    return true;
+  }
+
+  // Something should already have matched, but lets not rely on that shall
+  // we?
+  return false;
+}
+
+/// The `#` of an editorial comment's body, or the `#` that closes it.
+///
+/// AN EDITORIAL COMMENT CLOSES ON `#}` AND ON NOTHING ELSE (grammar.ebnf:
+/// `editorial_comment = "{#", comment_content, "#}"`, whose content is "any
+/// text until the matching `#}`"). So the `#` in `{# renumber #4 #}` is body
+/// text and the one before the `}` is the closer, told apart only by the
+/// character that FOLLOWS - the same reason COMMENT_BODY_PERCENT exists for the
+/// braced comment.
+///
+/// CALLED BEFORE `parse_heading`, and that placement is the whole reason this
+/// is not another branch of `parse_comment_end`. The heading probe consumes its
+/// `#` run before it can decide anything, and the lexer has no rewind - so a
+/// comment body's `#` reached the comment branch already eaten and the whole
+/// construct came back as ERROR. The braced comment never had to care: nothing
+/// upstream of it wants a `%`.
+static bool parse_editorial_comment_hash(Scanner *s, TSLexer *lexer,
+                                         const bool *valid_symbols) {
+  if (lexer->lookahead != '#') {
+    return false;
+  }
+  if (!valid_symbols[COMMENT_BODY_HASH] &&
+      !valid_symbols[COMMENT_HASH_END_MARKER]) {
+    return false;
+  }
+  advance(s, lexer);
+  mark_end(s, lexer);
+  if (lexer->lookahead != '}' && valid_symbols[COMMENT_BODY_HASH]) {
+    lexer->result_symbol = COMMENT_BODY_HASH;
+    return true;
+  }
+  if (lexer->lookahead == '}' && valid_symbols[COMMENT_HASH_END_MARKER]) {
+    lexer->result_symbol = COMMENT_HASH_END_MARKER;
+    return true;
+  }
+  return false;
+}
+
+static bool parse_comment_end(Scanner *s, TSLexer *lexer,
+                              const bool *valid_symbols) {
+  // A BRACED COMMENT CLOSES ON `%}` AND ON NOTHING ELSE (grammar.ebnf:
+  // `braced_comment = "{%", {character - "%}"}, "%}"`). So the `%` in
+  // `{% 50% off %}` is body text, and the one in `{% x %}` is the closer -
+  // told apart only by the character after it, which is why this is a scanner
+  // decision and not a token regex.
+  //
+  // COMMENT_BODY_PERCENT is valid only inside `_braced_comment_body`, so the
+  // ATTRIBUTE comment - `{.a %note% .b}`, whose `_comment` ends at a bare `%`
+  // or at the attribute's own `}` - never reaches this branch and keeps the
+  // reading it has. One place decides, for both tokens a `%` can be.
+  if (valid_symbols[COMMENT_BODY_PERCENT] && lexer->lookahead == '%') {
+    advance(s, lexer);
+    mark_end(s, lexer);
+    if (lexer->lookahead != '}') {
+      lexer->result_symbol = COMMENT_BODY_PERCENT;
+      return true;
+    }
+    if (valid_symbols[COMMENT_END_MARKER]) {
+      lexer->result_symbol = COMMENT_END_MARKER;
+      return true;
+    }
+    return false;
+  }
+  if (valid_symbols[COMMENT_END_MARKER] && lexer->lookahead == '%') {
+    advance(s, lexer);
+    mark_end(s, lexer);
+    lexer->result_symbol = COMMENT_END_MARKER;
+    return true;
+  }
+  if (valid_symbols[COMMENT_CLOSE] && lexer->lookahead == '}') {
+    lexer->result_symbol = COMMENT_CLOSE;
+    return true;
+  }
+  return false;
+}
+
+static SpanType inline_span_type(InlineType type) {
+  switch (type) {
+  case EMPHASIS:
+  case STRONG:
+  case UNDERLINE:
+  case STRIKETHROUGH:
+  case HIGHLIGHTED:
+    return SpanBracketedAndSingleNoWhitespace;
+  case SUPERSCRIPT:
+  case SUBSCRIPT:
+    // Braced-only since spec PR 259: bare `^`/`,` are literal text.
+  case INSERT:
+  case DELETE:
+    return SpanBracketed;
+  case BOLD_ITALIC:
+    return SpanPair;
+  case PARENS_SPAN:
+  case CURLY_BRACKET_SPAN:
+  case SQUARE_BRACKET_SPAN:
+    return SpanSingle;
+  case INLINE_NOTE:
+    return SpanSingle;
+  default:
+    return SpanSingle;
+  }
+}
+
+static char inline_begin_token(InlineType type) {
+  switch (type) {
+  case VERBATIM:
+    return VERBATIM_BEGIN;
+  case EMPHASIS:
+    return EMPHASIS_MARK_BEGIN;
+  case STRONG:
+    return STRONG_MARK_BEGIN;
+  case UNDERLINE:
+    return UNDERLINE_MARK_BEGIN;
+  case STRIKETHROUGH:
+    return STRIKETHROUGH_MARK_BEGIN;
+  case SUPERSCRIPT:
+    return SUPERSCRIPT_MARK_BEGIN;
+  case SUBSCRIPT:
+    return SUBSCRIPT_MARK_BEGIN;
+  case HIGHLIGHTED:
+    return HIGHLIGHTED_MARK_BEGIN;
+  case INSERT:
+    return INSERT_MARK_BEGIN;
+  case DELETE:
+    return DELETE_MARK_BEGIN;
+  case BOLD_ITALIC:
+    return BOLD_ITALIC_MARK_BEGIN;
+  case PARENS_SPAN:
+    return PARENS_SPAN_MARK_BEGIN;
+  case CURLY_BRACKET_SPAN:
+    return CURLY_BRACKET_SPAN_MARK_BEGIN;
+  case SQUARE_BRACKET_SPAN:
+    return SQUARE_BRACKET_SPAN_MARK_BEGIN;
+  case INLINE_NOTE:
+    return INLINE_NOTE_MARK_BEGIN;
+  default:
+    return ERROR;
+  }
+}
+
+static char inline_end_token(InlineType type) {
+  switch (type) {
+  case VERBATIM:
+    return VERBATIM_END;
+  case EMPHASIS:
+    return EMPHASIS_END;
+  case STRONG:
+    return STRONG_END;
+  case UNDERLINE:
+    return UNDERLINE_END;
+  case STRIKETHROUGH:
+    return STRIKETHROUGH_END;
+  case SUPERSCRIPT:
+    return SUPERSCRIPT_END;
+  case SUBSCRIPT:
+    return SUBSCRIPT_END;
+  case HIGHLIGHTED:
+    return HIGHLIGHTED_END;
+  case INSERT:
+    return INSERT_END;
+  case DELETE:
+    return DELETE_END;
+  case BOLD_ITALIC:
+    return BOLD_ITALIC_END;
+  case PARENS_SPAN:
+    return PARENS_SPAN_END;
+  case CURLY_BRACKET_SPAN:
+    return CURLY_BRACKET_SPAN_END;
+  case SQUARE_BRACKET_SPAN:
+    return SQUARE_BRACKET_SPAN_END;
+  case INLINE_NOTE:
+    return INLINE_NOTE_END;
+  default:
+    return ERROR;
+  }
+}
+
+static char inline_marker(InlineType type) {
+  switch (type) {
+  case EMPHASIS:
+    return '/';
+  case STRONG:
+    return '*';
+  case UNDERLINE:
+    return '_';
+  case STRIKETHROUGH:
+    return '~';
+  case SUPERSCRIPT:
+    return '^';
+  case SUBSCRIPT:
+    return ',';
+  case HIGHLIGHTED:
+    return '=';
+  case INSERT:
+    return '+';
+  case DELETE:
+    return '-';
+  case BOLD_ITALIC:
+    // The FIRST character of the closer; scan_bold_italic_span_end reads the
+    // `/` that follows it.
+    return '*';
+  case PARENS_SPAN:
+    return ')';
+  case CURLY_BRACKET_SPAN:
+    return '}';
+  case SQUARE_BRACKET_SPAN:
+    return ']';
+  case INLINE_NOTE:
+  case EXTENSION:
+    return ']';
+  default:
+    // Not used as verbatim is parsed separately.
+    return '`';
+  }
+}
+
+static Inline *find_inline(Scanner *s, InlineType type) {
+  for (int i = s->open_inline->size - 1; i >= 0; --i) {
+    Inline *e = *array_get(s->open_inline, i);
+    if (e->type == type) {
+      return e;
+    }
+  }
+  return NULL;
+}
+
+// The innermost extension when no unescaped `]` comes before its closer, so
+// no bracket construct can complete inside it: the closer is the first raw
+// `]`, or the fallback for an unbalanced `[` (`data` set).
+static Inline *first_bracket_extension(Scanner *s) {
+  Inline *extension = find_inline(s, EXTENSION);
+  return extension && (!extension->literal_closes || extension->data) ? extension : NULL;
+}
+
+// Does the host lexer stand on the innermost extension's closing `]`?
+static bool extension_closes_here(Scanner *s, TSLexer *lexer) {
+  if (lexer->lookahead != ']' || lexer->advance == bracket_probe_advance) return false;
+  Inline *extension = find_inline(s, EXTENSION);
+  if (!extension) return false;
+  if (!extension->literal_closes) return true;
+  return extension_close_newlines(extension) == s->host_newlines &&
+         lexer->get_column(lexer) == extension_close_column(extension);
+}
+
+/// Is a span of this kind already open in the CURRENT scope?
+///
+/// Corpus 471: an opener of a kind already open is content, bare or braced
+/// alike, and a BRACED span starts a scope of its own - so the walk stops at
+/// the first braced entry, having examined it. That is what separates
+///
+///     {*a *b* c*}            one strong over the literal `a *b* c`
+///     *a {/b *c* d/} e*      strong over em over strong
+///
+/// In the first the walk meets the braced strong itself and refuses the bare
+/// `*`; in the second it stops at the braced `{/`, never sees the outer bare
+/// strong, and the inner `*c*` opens.
+static Inline *find_inline_in_scope(Scanner *s, InlineType type) {
+  for (int i = s->open_inline->size - 1; i >= 0; --i) {
+    Inline *e = *array_get(s->open_inline, i);
+    if (e->type == type) {
+      return e;
+    }
+    if (e->flags & INLINE_BRACED) {
+      return NULL;
+    }
+  }
+  return NULL;
+}
+
+static Inline *innermost_braced(Scanner *s) {
+  for (int i = s->open_inline->size - 1; i >= 0; --i) {
+    Inline *e = *array_get(s->open_inline, i);
+    if (e->flags & INLINE_BRACED) {
+      return e;
+    }
+  }
+  return NULL;
+}
+
+/// Where a `%%` trailing comment must stop early, per CARVE-P9-042 SS21a: a
+/// forced span `{X...X}` and the combined `/*...*/` token are read inline
+/// rather than cut and re-parsed, so (unlike a table cell or link text) their
+/// own closer is not a structural boundary and the comment used to run past
+/// it to end of line. Walks the same innermost-first scope `innermost_braced`
+/// does; a forced span answers with its own marker (closer `<marker>}`), the
+/// combined token answers with no marker at all (closer `*/`). A BARE
+/// emphasis/strong is untouched: only `forced<d>` and `biInner` were widened
+/// in the spec, so `*a %% b*` still runs to end of line.
+static bool innermost_comment_bound(Scanner *s, char *marker) {
+  for (int i = s->open_inline->size - 1; i >= 0; --i) {
+    Inline *e = *array_get(s->open_inline, i);
+    if (e->type == SQUARE_BRACKET_SPAN || e->type == INLINE_NOTE) {
+      *marker = ']';
+      return true;
+    }
+    if (e->type == BOLD_ITALIC) {
+      *marker = 0;
+      return true;
+    }
+    if (e->flags & INLINE_BRACED) {
+      *marker = inline_marker(e->type);
+      return true;
+    }
+  }
+  return false;
+}
+
+/// `text %% to end of line` (SS21), bounded at a forced span's or the
+/// combined token's own closer (SS21a) when one is open - see
+/// `innermost_comment_bound`. External rather than a token regex because the
+/// bound is runtime state (which closer, if any, is currently open), not
+/// something a fixed pattern can express; `_cell_trailing_comment` in
+/// grammar.js is the same idea for a table cell's `|`, which a regex CAN
+/// express because the grammar routes a cell's content through its own rule.
+///
+/// The unbounded case matches the retired regex exactly: `[ \t]`, `%%`, then
+/// every character up to (not including) the line ending.
+/// `text %% to end of line` (SS21), bounded at a forced span's or the
+/// combined token's own closer (SS21a) when one is open. Called from TWO
+/// positions in `scan` (see each call site), because neither alone is safe:
+///
+/// A BOUNDED read is asked for EARLY, right after the position's OWN state is
+/// known - `innermost_comment_bound` costs nothing (it only inspects
+/// `open_inline`, never the lexer), so it is checked BEFORE any speculative
+/// advance and the whole call is free everywhere it does not apply. It is
+/// also TRUSTWORTHY there: an entry on `open_inline` only exists from a
+/// PRIOR, already-committed token from an EARLIER call to `scan`, never from
+/// a same-call speculative push, so a bounded read is never fooled by this
+/// call's own probes.
+///
+/// An UNBOUNDED read is asked for LAST, once every other reader this
+/// position could offer has had its turn - a probe that consumes and then
+/// declines leaves every later probe in the same call reading from where it
+/// stopped (the same reason `parse_comment_fence_begin` is last), and an
+/// unbounded read has no witness like `open_inline` to catch a false
+/// positive: at `{_a %% b_} y`'s very first token, the curly-bracket span's
+/// own bare-vs-forced lookahead reads (and does not mark) `{_a ` before
+/// declining - underline was never pushed - so an EARLY unbounded attempt
+/// reads this as a comment running to end of line, where the correct answer
+/// is that no comment starts here at all: `{_` is its own token, reached only
+/// once the whole call declines and tree-sitter's internal lexer restarts
+/// cleanly from the position it actually asked about. `advances_at_entry`
+/// guards exactly that: refuse the unbounded reading once an earlier reader
+/// in this same call has already moved the lexer (tree-sitter-carve#449).
+///
+/// The MIRROR hazard is why a bounded read cannot simply run last too: at
+/// `{_a %% b_}`'s content, the underline IS on `open_inline` by the time this
+/// position is reached, but some other zero-width reader ahead of a LATE
+/// call (offered the same position, since every span type is a candidate
+/// everywhere in `_inline_element`) reads the leading space as harmless
+/// scratch and declines without marking - so a bounded attempt placed last
+/// inherits a lexer already sitting on the `%` and never sees the space its
+/// own prefix needs.
+static bool parse_trailing_comment(Scanner *s, TSLexer *lexer,
+                                   const bool *valid_symbols,
+                                   uint32_t advances_at_entry,
+                                   bool require_bounded) {
+  if (!valid_symbols[TRAILING_COMMENT] && !valid_symbols[LABEL_START_COMMENT]) {
+    return false;
+  }
+  char bound_marker = 0;
+  bool bounded = innermost_comment_bound(s, &bound_marker);
+  if (bounded != require_bounded) {
+    return false;
+  }
+  bool unspaced = valid_symbols[LABEL_START_COMMENT] && bound_marker == ']' &&
+                  lexer->lookahead == '%' && s->advances == advances_at_entry;
+  TokenType comment_token = unspaced ? LABEL_START_COMMENT : TRAILING_COMMENT;
+  if (!unspaced && lexer->lookahead != ' ' && lexer->lookahead != '\t') {
+    return false;
+  }
+  if (!bounded && s->advances != advances_at_entry) {
+    return false;
+  }
+  // Pin the boundary at the TRUE start before any speculative advance. The
+  // three-character prefix below may fail (`a, {b}` is not a comment), and a
+  // probe that reads ahead without marking first leaves whatever runs after
+  // it in this same `scan` call sitting past this point with no boundary of
+  // its own to fall back on - a zero-width check further down (`check_non_
+  // whitespace`, offered right after this one at the very same position)
+  // never calls `mark_end` itself and instead trusts the lexer's CURRENT
+  // position at return, so it silently swallowed this probe's two stray
+  // characters and the span after them never opened
+  // (tree-sitter-carve#449). Marking here first means a failed probe leaves
+  // the boundary where it already was, whatever it advances over next.
+  mark_end(s, lexer);
+  if (!unspaced) advance(s, lexer);
+  if (lexer->lookahead != '%') {
+    return false;
+  }
+  advance(s, lexer);
+  if (lexer->lookahead != '%') {
+    return false;
+  }
+  advance(s, lexer);
+
+  char closer_first = bounded ? (bound_marker ? bound_marker : '*') : 0;
+  char closer_second = bounded ? (bound_marker ? '}' : '/') : 0;
+
+  if (bound_marker == ']') {
+    bool outer_label = false;
+    for (int i = s->open_inline->size - 1; i >= 0; --i) {
+      Inline *e = *array_get(s->open_inline, i);
+      if (e->type == SQUARE_BRACKET_SPAN) {
+        outer_label = ((e->flags & (INLINE_LABEL | INLINE_BRACED)) == INLINE_LABEL) && e->literal_closes == 0;
+        break;
+      }
+    }
+    if (outer_label) {
+      // A validated label ends at its final non-whitespace bracket. Code and
+      // comments inside the discarded tail still determine that boundary.
+      bool found = false;
+      while (!lexer->eof(lexer) && !at_line_end(lexer)) {
+        if (lexer->lookahead == ']') { mark_end(s, lexer); found = true; }
+        advance(s, lexer);
+      }
+      if (!found) return false;
+      lexer->result_symbol = comment_token;
+      return true;
+    }
+  }
+  mark_end(s, lexer);
+  while (!lexer->eof(lexer) && !at_line_end(lexer)) {
+    if (bounded && lexer->lookahead == (int32_t)(uint8_t)closer_first) {
+      // The candidate closer's first character ends the comment HERE if the
+      // second follows; mark_end already sits right before it, so returning
+      // now excludes both the candidate and everything after it.
+      if (bound_marker == ']') {
+        lexer->result_symbol = comment_token;
+        return true;
+      }
+      advance(s, lexer);
+      if (lexer->lookahead == (int32_t)(uint8_t)closer_second) {
+        lexer->result_symbol = comment_token;
+        return true;
+      }
+      // Not the closer after all - the candidate character is ordinary
+      // comment content, already consumed; keep reading from here.
+      mark_end(s, lexer);
+      continue;
+    }
+    advance(s, lexer);
+    mark_end(s, lexer);
+  }
+  lexer->result_symbol = comment_token;
+  return true;
+}
+
+/// A braced opener of an already-open kind is text only for insert and
+/// delete; the seven emphasis kinds nest (CARVE-P9-043).
+static bool braced_same_kind_blocked(Scanner *s, InlineType type) {
+  return (type == INSERT || type == DELETE) && kind_open_in_scope(s, type);
+}
+
+static bool kind_open_in_scope(Scanner *s, InlineType type) {
+  for (int i = s->open_inline->size - 1; i >= 0; --i) {
+    Inline *e = *array_get(s->open_inline, i);
+    if (e->type == type || (e->type == BOLD_ITALIC &&
+        (type == STRONG || type == EMPHASIS))) {
+      return true;
+    }
+    if (e->flags & INLINE_BRACED) {
+      return false;
+    }
+  }
+  return false;
+}
+
+/// Does a BRACED opener that has just been read reach its own `X}` closer?
+///
+/// Asked from the fallback branch, and only where the span could open at all.
+/// If the closer is there, the literal reading of the opener is refused, so the
+/// branch that would have read `{X` as text fails to parse rather than losing
+/// on score. Dynamic precedence sums per branch and cannot say "leftmost
+/// opener"; a branch that does not exist does not need outscoring
+/// (tree-sitter-carve#316).
+///
+/// A braced opener on the way, of this kind or another, is tracked: a closer
+/// inside it belongs to it (`{*a {*b*} c*}` nests, `{*a {/b *} d/} e*}` keeps
+/// its `*}` as content).
+/// Anything this cannot account for answers "no closer", which leaves the old
+/// behavior in place rather than forcing a span that may not close.
+///
+/// Speculative: only `advance` and `lookahead`, never a helper that writes
+/// scanner state (#319).
+/// Does a BARE span opened here close before its scope does?
+///
+/// A span cannot outlive the braced span it opens in, so `{/a *b {/c/}*/}`
+/// keeps its `*` literal: the only bare `*` that could close it lies past the
+/// emphasis's `/}`. Pass `braced` as 0 where no braced span encloses the opener.
+///
+/// A table CELL is a scope of the same sort. `|=v Bottom |=<^ Paired |` holds
+/// two literal `=` markers rather than one highlight reaching across the pipe
+/// (spec corpus 373), and the bare forms have no closer lookahead of their own -
+/// GLR races them - so this is where the row is answered for. One scan answers
+/// both questions because the lexer cannot rewind: a second scan would read from
+/// wherever the first stopped.
+///
+/// Asked from the opener, reading ahead only.
+/// Does this row's own line end, right here, give way to a ONE-CELL row's
+/// `+` continuation line? A pure lookahead - `mark_span_begin` has already
+/// pinned this call's token end before running it, so whatever this consumes
+/// while looking is thrown away regardless of the answer (tree-sitter-
+/// carve#437). Mirrors `parse_table_row_continuation_seam`'s own shape check,
+/// but never touches the flag that function consumes for real.
+static bool continuation_row_ahead(Scanner *s, TSLexer *lexer) {
+  Block *row = find_block(s, TABLE_ROW);
+  if (!row || row->data != 0 ||
+      (row->flags & BLOCK_FLAG_TABLE_ROW_CONTINUES) == 0) {
+    return false;
+  }
+  consume_whitespace(s, lexer);
+  if (!at_line_end(lexer)) {
+    return false;
+  }
+  consume_line_end(s, lexer);
+  // A row inside a quote carries the SAME prefix on its continuation line
+  // (`> + c |`), exactly as `scan_table_row` reads it at the row's own open.
+  bool ignored_newline = false;
+  scan_block_quote_markers(s, lexer, &ignored_newline);
+  if (lexer->lookahead != '+') {
+    return false;
+  }
+  advance(s, lexer);
+  if (lexer->lookahead != ' ') {
+    return false;
+  }
+  advance(s, lexer);
+  while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+    advance(s, lexer);
+  }
+  return true;
+}
+
+/// The end of a closer probe's scope: a closer it set aside inside a bracket
+/// that never closed is the span's closer after all. A probe is rewound to
+/// stand on its `}`, as a direct find leaves it.
+static bool braced_closer_in_open_run(Scanner *s, BracketProbe *probe,
+                                      unsigned pending,
+                                      uint32_t pending_position,
+                                      uint32_t pending_col_base,
+                                      uint32_t *close_position) {
+  if (!pending) return false;
+  if (probe) {
+    if (close_position) *close_position = pending_position;
+    bracket_probe_rewind(probe, pending_position + 1);
+    s->col_base = pending_col_base;
+  }
+  return true;
+}
+
+static bool probe_braced_closer_ahead(Scanner *s, TSLexer *lexer, char marker, BracketProbe *probe, uint32_t *close_position, uint32_t before) {
+  // An EMPTY braced span is not a span (carve#1447): `{--}` is the en dash.
+  if (lexer->lookahead == marker) {
+    advance(s, lexer);
+    if (lexer->lookahead == '}') {
+      return false;
+    }
+  }
+  // A span does not outlive its table row, and neither does a verbatim run
+  // inside one - EXCEPT a one-cell row's own `+` continuation, which is this
+  // row's own content rather than past its scope (tree-sitter-carve#437).
+  bool in_bracket = find_inline(s, LITERAL_BRACKET) || find_inline(s, SQUARE_BRACKET_SPAN) || find_inline(s, INLINE_NOTE) || find_inline(s, EXTENSION);
+  unsigned bracket_depth = 0;
+  // A closer inside a bracket run is content (E2b); it counts only if its
+  // bracket never closes. `pending` is that bracket depth, 0 for none.
+  unsigned pending = 0;
+  uint32_t pending_position = 0;
+  uint32_t pending_col_base = 0;
+  bool in_row = find_block(s, TABLE_ROW) != NULL;
+  // Braced spans nest up to the inline nesting cap (MAX_NESTING_DEPTH).
+  char nested[200];
+  uint8_t depth = 0;
+  // Past the cap there is no closer. For the memoizing caller the host reads
+  // on to the paragraph end, so the note covers every later opener.
+  bool capped = false, read_past_cap = !probe && s->braced_probe_marker == marker;
+  while (!lexer->eof(lexer) && (!probe || probe->position < before)) {
+    if (at_line_end(lexer)) {
+      if (in_row) {
+        if (continuation_row_ahead(s, lexer)) {
+          continue;
+        }
+        return braced_closer_in_open_run(s, probe, capped ? 0 : pending, pending_position, pending_col_base, close_position);
+      }
+      if (probe) {
+        consume_line_end(s, lexer);
+      } else if (lexer->lookahead == '\r') {
+        advance(s, lexer);
+        if (lexer->lookahead == '\n') {
+          advance(s, lexer);
+        }
+      } else {
+        advance(s, lexer);
+      }
+      uint8_t indent = consume_whitespace(s, lexer);
+      if (lexer->eof(lexer) || at_line_end(lexer)) {
+        return braced_closer_in_open_run(s, probe, capped ? 0 : pending, pending_position, pending_col_base, close_position);
+      }
+      if (probe && caption_line_ends_block(s, probe, indent)) return braced_closer_in_open_run(s, probe, capped ? 0 : pending, pending_position, pending_col_base, close_position);
+      continue;
+    }
+    int32_t c = lexer->lookahead;
+    if (c == '\\') {
+      advance(s, lexer);
+      if (!lexer->eof(lexer) && !at_line_end(lexer)) {
+        advance(s, lexer);
+      }
+      continue;
+    }
+    if (c == '`') {
+      // Read the run the way the content token reads it, or the two disagree
+      // about where this span ends: an unterminated run inside it stops at its
+      // closer (corpus 472), and a matching run wins from anywhere in the block.
+      uint32_t run_start = probe ? probe->position : 0;
+      uint8_t width = consume_chars(s, lexer, '`');
+      VerbatimRunEnd end =
+          read_verbatim_run(s, lexer, width, depth == 0 ? marker : 0, in_row);
+      if (end == VerbatimRunReachesSpanCloser) {
+        if (capped) continue;
+        s->braced_probe_closer_in_code = true;
+        if (close_position && probe) {
+          for (uint32_t i = run_start; i + 1 < probe->characters.size; ++i) {
+            if (probe->characters.contents[i].character == marker &&
+                probe->characters.contents[i + 1].character == '}') {
+              *close_position = i;
+              break;
+            }
+          }
+        }
+        return true;
+      }
+      if (end == VerbatimRunReachesBlockEnd) {
+        return braced_closer_in_open_run(s, probe, capped ? 0 : pending, pending_position, pending_col_base, close_position);
+      }
+      continue;
+    }
+    if (c == '[') ++bracket_depth;
+    if (c == ']') {
+      if (bracket_depth) {
+        --bracket_depth;
+        if (pending > bracket_depth) pending = 0;
+      }
+      else if (in_bracket) return braced_closer_in_open_run(s, probe, capped ? 0 : pending, pending_position, pending_col_base, close_position);
+    }
+    if (c == '{') {
+      advance(s, lexer);
+      int32_t m = lexer->lookahead;
+      if (m == marker && (m == '+' || m == '-')) {
+        advance(s, lexer);
+        continue;
+      }
+      if (m == marker) {
+        // A same-kind braced emphasis opener nests (CARVE-P9-043), unless it
+        // is the empty `{XX}`, which is text.
+        advance(s, lexer);
+        if (lexer->lookahead == marker) {
+          advance(s, lexer);
+          if (lexer->lookahead == '}') {
+            advance(s, lexer);
+            continue;
+          }
+        }
+        if (depth == sizeof(nested) || capped) {
+          if (!read_past_cap) {
+            s->braced_probe_capped = true;
+            return false;
+          }
+          capped = true;
+          continue;
+        }
+        nested[depth++] = (char)m;
+        continue;
+      }
+      if (m == '*' || m == '/' || m == '_' || m == '~' || m == '=' ||
+          m == '^' || m == ',' || m == '+' || m == '-') {
+        if (depth == sizeof(nested) || capped) {
+          if (!read_past_cap) {
+            s->braced_probe_capped = true;
+            return false;
+          }
+          capped = true;
+          continue;
+        }
+        nested[depth++] = (char)m;
+        advance(s, lexer);
+      }
+      continue;
+    }
+    if (c == marker || (depth > 0 && c == nested[depth - 1])) {
+      advance(s, lexer);
+      if (lexer->lookahead == '}') {
+        if (depth > 0 && c == nested[depth - 1]) {
+          depth--;
+          advance(s, lexer);
+          continue;
+        }
+        if (depth == 0 && bracket_depth == 0 && !capped) {
+          if (close_position && probe) *close_position = probe->position - 1;
+          return true;
+        }
+        if (depth == 0 && !pending) {
+          pending = bracket_depth;
+          pending_position = probe ? probe->position - 1 : 0;
+          pending_col_base = s->col_base;
+        }
+      }
+      continue;
+    }
+    advance(s, lexer);
+  }
+  return braced_closer_in_open_run(s, probe, capped ? 0 : pending, pending_position, pending_col_base, close_position);
+}
+
+
+static bool braced_closer_ahead(Scanner *s, TSLexer *lexer, char marker) {
+  // Inside another probe, pass it on so a closer found in an open bracket run
+  // can leave the probe standing on it.
+  if (lexer->advance == bracket_probe_advance)
+    return probe_braced_closer_ahead(s, lexer, marker, (BracketProbe *)lexer, NULL, UINT32_MAX);
+  if (!in_caption(s) && !find_inline(s, EXTENSION)) return probe_braced_closer_ahead(s, lexer, marker, NULL, NULL, UINT32_MAX);
+  BracketProbe probe = bracket_probe_new(s, lexer);
+  bool closer = probe_braced_closer_ahead(s, &probe.lexer, marker, &probe, NULL, UINT32_MAX);
+  array_delete(&probe.characters);
+  return closer;
+}
+
+static bool scan_single_span_end(Scanner *s, TSLexer *lexer, char marker) {
+  if (lexer->lookahead != marker) {
+    return false;
+  }
+  advance(s, lexer);
+  return true;
+}
+
+// Match the `*/` that closes a bold-italic span. Two characters, and not a
+// mirror of the `/*` that opened it, which is why this span has a kind of its
+// own rather than reusing the single/bracketed helpers.
+static bool scan_bold_italic_span_end(Scanner *s, TSLexer *lexer) {
+  if (lexer->lookahead != '*') {
+    return false;
+  }
+  advance(s, lexer);
+  if (lexer->lookahead != '/') {
+    return false;
+  }
+  advance(s, lexer);
+  if (carve_is_alnum_ascii(lexer->lookahead) ||
+      carve_is_grapheme_extender(lexer->lookahead)) {
+    return false;
+  }
+  return true;
+}
+
+// Match a `_}` style token.
+static bool scan_bracketed_span_end(Scanner *s, TSLexer *lexer, char marker) {
+  if (lexer->lookahead != marker) {
+    return false;
+  }
+  advance(s, lexer);
+  if (lexer->lookahead != '}') {
+    return false;
+  }
+  advance(s, lexer);
+  return true;
+}
+
+// Scan an ending token for a span (`_` or `_}`) if marker == '_'.
+//
+// This routine is responsible for parsing the trailing whitespace in a span,
+// so the token may become a `  _}`.
+//
+// If `whitespace_sensitive == true` then we should not allow a space
+// before the single marker (` _` isn't a valid ending token)
+// and only allow spaces with the bracketed variant.
+static bool scan_span_end(Scanner *s, TSLexer *lexer, char marker,
+                          bool whitespace_sensitive) {
+  // Match `_` or `_}`
+  if (lexer->lookahead == marker) {
+    advance(s, lexer);
+    if (lexer->lookahead == '}') {
+      advance(s, lexer);
+    }
+    return true;
+  }
+
+  if (whitespace_sensitive && consume_whitespace(s, lexer) == 0) {
+    return false;
+  }
+
+  // Only match `_}`.
+  return scan_bracketed_span_end(s, lexer, marker);
+}
+
+static bool scan_span_end_marker(Scanner *s, TSLexer *lexer,
+                                 InlineType element) {
+  char marker = inline_marker(element);
+
+  switch (inline_span_type(element)) {
+  case SpanSingle:
+    return scan_single_span_end(s, lexer, marker);
+  case SpanBracketed:
+    return scan_bracketed_span_end(s, lexer, marker);
+  case SpanBracketedAndSingle:
+    return scan_span_end(s, lexer, marker, false);
+  case SpanBracketedAndSingleNoWhitespace:
+    return scan_span_end(s, lexer, marker, true);
+  case SpanPair:
+    return scan_bold_italic_span_end(s, lexer);
+  default:
+    return false;
+  }
+}
+
+// Scan until `c`, aborting if an ending marker for the `top` element is
+// found.
+static bool scan_until(Scanner *s, TSLexer *lexer, char c, InlineType *top) {
+  while (!lexer->eof(lexer)) {
+    if (top && scan_span_end_marker(s, lexer, *top)) {
+      return false;
+    }
+    if (lexer->lookahead == c) {
+      return true;
+    } else if (lexer->lookahead == '\\') {
+      advance(s, lexer);
+      advance(s, lexer);
+    } else if (at_line_end(lexer)) {
+      // One newline is ok in inline spans, but not several in a row.
+      consume_line_end(s, lexer);
+      consume_whitespace(s, lexer);
+      if (at_line_end(lexer)) {
+        return false;
+      }
+    } else {
+      advance(s, lexer);
+    }
+  }
+  return false;
+}
+
+static bool scan_until_no_newline(Scanner *s, TSLexer *lexer, char c,
+                                  InlineType *top) {
+  while (!lexer->eof(lexer)) {
+    if (top && scan_span_end_marker(s, lexer, *top)) {
+      return false;
+    }
+    if (lexer->lookahead == c) {
+      return true;
+    }
+    if (at_line_end(lexer)) {
+      return false;
+    }
+    if (lexer->lookahead == '\\') {
+      advance(s, lexer);
+      if (at_line_end(lexer) || lexer->eof(lexer)) {
+        return false;
+      }
+    }
+    advance(s, lexer);
+  }
+  return false;
+}
+
+// Validate a `{...}` inline attribute, mirroring the payload grammar used for
+// block attributes in `parse_open_curly_bracket` (class `.x`, id `#x`,
+// `key=value`, bare boolean `key`, spaces; a block line also takes tabs and a
+// single newline).
+// The lexer must be positioned at the opening `{`. Returns true and leaves the
+// lexer just past the closing `}` when the attribute is well-formed; otherwise
+// returns false. Used so an unparseable attribute (`[x]{???}`, `[x]{.a!b}`)
+// does NOT mark a span, letting the brackets fall back to literal text instead
+// of forcing an ERROR/MISSING into the tree.
+static bool scan_inline_attribute_body(Scanner *s, TSLexer *lexer);
+
+static bool scan_valid_inline_attribute(Scanner *s, TSLexer *lexer) {
+  if (lexer->lookahead != '{') {
+    return false;
+  }
+  advance(s, lexer);
+  return scan_inline_attribute_body(s, lexer);
+}
+
+/// The rest of an inline attribute, from just past its `{`.
+static bool scan_inline_attribute_body(Scanner *s, TSLexer *lexer) {
+  if (find_inline(s, EXTENSION) && lexer->advance != bracket_probe_advance) {
+    BracketProbe probe = bracket_probe_new(s, lexer);
+    bool valid = scan_inline_attribute_body(s, &probe.lexer);
+    array_delete(&probe.characters);
+    return valid;
+  }
+  bool seen_newline = false;
+  bool line_start = false;
+  while (!lexer->eof(lexer)) {
+    // A tab inside the braces is content on a block line too (spec 21879d7);
+    // only a wrapped line's indentation may hold one.
+    if (line_start) {
+      consume_whitespace(s, lexer);
+    } else {
+      while (lexer->lookahead == ' ') advance(s, lexer);
+      if (lexer->lookahead == '\t') return false;
+    }
+    line_start = false;
+    switch (lexer->lookahead) {
+    case '}':
+      advance(s, lexer);
+      return true;
+    case '\\':
+      advance(s, lexer);
+      advance(s, lexer);
+      break;
+    case '.':
+      advance(s, lexer);
+      if (!scan_explicit_identifier(s, lexer)) {
+        return false;
+      }
+      // AN ITEM ENDS AT A BOUNDARY, the rule the language tag below already
+      // applies: two attributes need a separator between them (PART 9 §15), so
+      // `{#i.c}` and `{.sm:hover}` are not two items and the brace run is
+      // literal content.
+      if (!at_attribute_boundary(lexer)) {
+        return false;
+      }
+      break;
+    case '#':
+      advance(s, lexer);
+      if (!scan_explicit_identifier(s, lexer) || !at_attribute_boundary(lexer)) {
+        return false;
+      }
+      break;
+    case ':': {
+      // The language attribute. This function is what sets
+      // STATE_BRACKET_STARTS_SPAN, so without this case `[x]{:fr}` failed the
+      // payload check and never became a span - the attribute attached to the
+      // paragraph and the `[x]` content node disappeared, while `[x]{#id}` and
+      // `[x]{.c}` were unaffected (markup-carve/tree-sitter-carve#193).
+      advance(s, lexer);
+      if (!scan_language_tag(s, lexer) || !at_attribute_boundary(lexer)) {
+        return false;
+      }
+      break;
+    }
+    case '\r':
+    case '\n':
+      // An inline block stays on its line; a block line takes one wrap.
+      if (seen_newline || !s->attribute_block_line) {
+        return false;
+      }
+      seen_newline = true;
+      line_start = true;
+      consume_line_end(s, lexer);
+      break;
+    default: {
+      // An attribute key must not start with a digit (`12=v` is not a key).
+      int32_t first = lexer->lookahead;
+      if (!((first >= 'A' && first <= 'Z') ||
+            (first >= 'a' && first <= 'z') || first == '_')) {
+        return false;
+      }
+      const char *table_key = "table";
+      size_t key_length = 0;
+      bool is_table_key = true;
+      while (carve_is_alnum_ascii(lexer->lookahead) ||
+             lexer->lookahead == '-' || lexer->lookahead == '_') {
+        if (key_length >= 5 || lexer->lookahead != table_key[key_length])
+          is_table_key = false;
+        ++key_length;
+        advance(s, lexer);
+      }
+      is_table_key = is_table_key && key_length == 5;
+      if (lexer->lookahead != '=') {
+        // Bare boolean attribute: a key (already known non-digit-leading and
+        // not `_`-leading, carve#1450) followed by a valid boundary (`}`,
+        // whitespace, newline).
+        if (!valid_bare_boolean_first_char(first)) {
+          return false;
+        }
+        if (lexer->lookahead == '}' || lexer->lookahead == ' ' ||
+            lexer->lookahead == '\t' || at_line_end(lexer)) {
+          if (s->attribute_block_line && is_table_key)
+            s->attribute_saw_table = true;
+          break;
+        }
+        return false;
+      }
+      advance(s, lexer);
+      bool empty_value = false;
+      if (!scan_value(s, lexer, &empty_value) || !at_attribute_boundary(lexer)) {
+        return false;
+      }
+      if (s->attribute_block_line && is_table_key && empty_value)
+        s->attribute_saw_table = true;
+    }
+    }
+  }
+  return false;
+}
+
+// Consecutive literal openers share one depth counter instead of looking
+// ahead from every bracket. Emit only the prefix so inline content keeps its
+// structure. Qualifying tails and line boundaries use the regular reader.
+static const uint8_t PLAIN_BRACKET_REMAINDER = UINT8_MAX - 2;
+
+static bool parse_plain_bracket_run(Scanner *s, TSLexer *lexer) {
+  if (first_bracket_extension(s)) {
+    while (lexer->lookahead == '[') advance(s, lexer);
+    mark_end(s, lexer);
+    lexer->result_symbol = LITERAL_RUN;
+    return true;
+  }
+  if (s->after_closer_char == PLAIN_BRACKET_REMAINDER) {
+    bool same_position = line_column(s, lexer) == s->after_closer_col;
+    s->after_closer_char = 0;
+    s->after_closer_col = 0;
+    if (same_position) {
+      while (!lexer->eof(lexer) && !at_line_end(lexer) && !extension_closes_here(s, lexer)) advance(s, lexer);
+      mark_end(s, lexer);
+      lexer->result_symbol = LITERAL_RUN;
+      return true;
+    }
+  }
+  uint32_t remainder_advances = s->advances;
+  uint32_t remainder_column = 0;
+  bool have_remainder_column = false;
+  unsigned first_line_depth = 0;
+  unsigned prefix = 0;
+  while (lexer->lookahead == '[') {
+    mark_end(s, lexer);
+    remainder_advances = s->advances;
+    ++prefix;
+    advance(s, lexer);
+    while (lexer->lookahead == ' ' || lexer->lookahead == '\t') advance(s, lexer);
+  }
+  if (prefix < 2) return false;
+  unsigned depth = prefix;
+  bool plain = true;
+  bool punctuation = false;
+  bool continued = false;
+  while (!lexer->eof(lexer) && !extension_closes_here(s, lexer)) {
+    if (at_line_end(lexer)) {
+      Block *host = peek_block(s);
+      if (host && (host->type == HEADING || disallow_newline(host))) return false;
+      if (plain && punctuation && !continued) {
+        remainder_column = line_column(s, lexer) - (s->advances - remainder_advances);
+        have_remainder_column = true;
+        first_line_depth = depth;
+      }
+      int32_t ending = lexer->lookahead;
+      advance(s, lexer);
+      if (ending == '\r' && lexer->lookahead == '\n') advance(s, lexer);
+      while (lexer->lookahead == ' ' || lexer->lookahead == '\t') advance(s, lexer);
+      if (lexer->eof(lexer)) break;
+      if (at_line_end(lexer)) {
+        if (have_remainder_column && !find_inline(s, INLINE_NOTE)) {
+          s->after_closer_char = PLAIN_BRACKET_REMAINDER;
+          s->after_closer_col = remainder_column;
+          lexer->result_symbol = LITERAL_RUN;
+          return true;
+        }
+        return false;
+      }
+      continued = true;
+      if (punctuation && !have_remainder_column) plain = false;
+      continue;
+    }
+    int32_t c = lexer->lookahead;
+    if (c == '.' || c == ',' || c == ';' || c == '?') {
+      punctuation = true;
+      if (continued && !have_remainder_column) plain = false;
+      advance(s, lexer);
+      // Leave dotted runs available to the ellipsis token.
+      if (c == '.' && lexer->lookahead == '.') plain = false;
+      continue;
+    }
+    if (!carve_is_alnum_ascii(c) && c != '[' && c != ']' && c != ' ' && c != '\t' && c < 0x80) plain = false;
+    if (c == '\\') {
+      advance(s, lexer);
+      if (lexer->eof(lexer) || at_line_end(lexer)) return false;
+      advance(s, lexer);
+      continue;
+    }
+    if (c == '[') ++depth;
+    if (c == ']') {
+      --depth;
+      advance(s, lexer);
+      if (have_remainder_column && depth < first_line_depth &&
+          (lexer->lookahead == '(' || lexer->lookahead == '[' || lexer->lookahead == '{')) return false;
+      if (lexer->lookahead == '[') plain = false;
+      if (depth < prefix - 1 && (lexer->lookahead == '(' ||
+          lexer->lookahead == '[' || lexer->lookahead == '{')) return false;
+      if (depth == 0) {
+        // Leave the innermost opener to the regular lexer: it may start a
+        // footnote, citation, link or attributed span.
+        push_inline_flagged(s, LITERAL_BRACKET, 0, 0);
+        peek_inline(s)->literal_closes = prefix - 1;
+        lexer->result_symbol = LITERAL_RUN;
+        return true;
+      }
+      continue;
+    }
+    advance(s, lexer);
+  }
+  if (plain || have_remainder_column) {
+    if (punctuation && (!continued || have_remainder_column)) {
+      if (find_inline(s, INLINE_NOTE)) return false;
+      if (!have_remainder_column) {
+        remainder_column = line_column(s, lexer) - (s->advances - remainder_advances);
+      }
+      s->after_closer_char = PLAIN_BRACKET_REMAINDER;
+      s->after_closer_col = remainder_column;
+    } else mark_end(s, lexer);
+    lexer->result_symbol = LITERAL_RUN;
+    return true;
+  }
+  return false;
+}
+
+// Scan for the `]` that closes the bracket run we are already inside,
+// skipping over any NESTED bracket run on the way.
+//
+// This is `scan_until(s, lexer, ']', top)` plus a depth counter, and the
+// counter is the whole point. A nested `[^1]{.k}` is CLOSER-SHAPED: it ends in
+// `]` immediately followed by `{`, which is exactly the `] {attrs}` tail the
+// caller uses to decide "this `[` opens a span". Stopping at the first `]`
+// therefore reads the INNER close as the outer one and flags the outer
+// bracket as a span it cannot actually be, and the parse of
+//
+//     x [a [^1]{.k} c]
+//
+// dies with an ERROR spanning the paragraph -- while `x [a [^1] {.k} c]`
+// (attribute detached) and `x [^1]{.k}` (not nested) both parse fine.
+// Counting depth means the outer lookahead only ever tests the `]` that
+// actually belongs to it.
+static bool probe_scan_until_bracket_close(Scanner *s, TSLexer *lexer,
+                                     InlineType *top, BracketProbe *probe) {
+  // The opening `[` is already consumed by the caller, so we start one level
+  // in and are looking for the `]` that brings us back out.
+  unsigned depth = 0;
+  while (!lexer->eof(lexer)) {
+    if (top && scan_span_end_marker(s, lexer, *top)) {
+      return false;
+    }
+    if (lexer->lookahead == ']') {
+      if (depth == 0) {
+        return true;
+      }
+      depth--;
+      advance(s, lexer);
+    } else if (lexer->lookahead == '[') {
+      depth++;
+      advance(s, lexer);
+    } else if (lexer->lookahead == '\\') {
+      advance(s, lexer);
+      advance(s, lexer);
+    } else if (at_line_end(lexer)) {
+      // One newline is ok in inline spans, but not several in a row.
+      consume_line_end(s, lexer);
+      uint8_t indent = consume_whitespace(s, lexer);
+      if ((probe && caption_line_ends_block(s, probe, indent)) || at_line_end(lexer)) {
+        return false;
+      }
+    } else {
+      advance(s, lexer);
+    }
+  }
+  return false;
+}
+
+static bool scan_until_bracket_close(Scanner *s, TSLexer *lexer, InlineType *top) {
+  if (!in_caption(s) && !find_inline(s, EXTENSION)) return probe_scan_until_bracket_close(s, lexer, top, NULL);
+  if (lexer->advance == bracket_probe_advance)
+    return probe_scan_until_bracket_close(s, lexer, top, (BracketProbe *)lexer);
+  BracketProbe probe = bracket_probe_new(s, lexer);
+  bool closed = probe_scan_until_bracket_close(s, &probe.lexer, top, &probe);
+  array_delete(&probe.characters);
+  return closed;
+}
+
+// A pipe inside code or a comment can still be the row's closing marker.
+// Continue only through the one-cell row's existing continuation seam.
+static bool bracket_probe_pipe(Scanner *s, BracketProbe *probe, bool opaque) {
+  TSLexer *lexer = &probe->lexer;
+  if (probe->row_boundary_known) opaque = !bracket_probe_boundary(probe);
+  advance(s, lexer);
+  uint32_t restart = probe->position;
+  uint32_t base = s->col_base;
+  if (continuation_row_ahead(s, lexer)) return true;
+  bool line_end = at_line_end(lexer) || lexer->eof(lexer);
+  bracket_probe_rewind(probe, restart);
+  s->col_base = base;
+  return opaque && !line_end;
+}
+
+static bool bracket_probe_verbatim(Scanner *s, BracketProbe *probe, uint8_t width) {
+  TSLexer *lexer = &probe->lexer;
+  bool in_row = find_block(s, TABLE_ROW) != NULL;
+  while (!lexer->eof(lexer)) {
+    if (lexer->lookahead == '`') {
+      if (consume_chars(s, lexer, '`') == width) return true;
+    } else if (in_row && lexer->lookahead == '|') {
+      if (!bracket_probe_pipe(s, probe, true)) return false;
+    } else if (at_line_end(lexer)) {
+      Block *host = peek_block(s);
+      if (in_row || (host && (host->type == HEADING || disallow_newline(host)))) return false;
+      consume_line_end(s, lexer);
+      uint8_t indent = consume_whitespace(s, lexer);
+      if (at_line_end(lexer) || caption_line_ends_block(s, probe, indent)) return false;
+    } else {
+      advance(s, lexer);
+    }
+  }
+  return false;
+}
+
+// Pair brackets outside code and closed comments, as the engine's bracket map
+// does. An unclosed comment remains text; an unclosed code run has no close.
+static bool scan_qualified_bracket_close(Scanner *s, BracketProbe *probe, InlineType *top) {
+  TSLexer *lexer = &probe->lexer;
+  bool in_row = find_block(s, TABLE_ROW) != NULL;
+  uint32_t root = probe->position &&
+      probe->characters.contents[probe->position - 1].character == '['
+      ? probe->position - 1 : UINT32_MAX;
+  if (root != UINT32_MAX && probe->characters.contents[root].bracket_known) {
+    BracketProbeCharacter cached = probe->characters.contents[root];
+    if (cached.bracket_close == UINT32_MAX) return false;
+    bracket_probe_rewind(probe, cached.bracket_close);
+    s->col_base = cached.bracket_close_base;
+    return true;
+  }
+  Array(uint32_t) open;
+  array_init(&open);
+  array_push(&open, root);
+  ++probe->bracket_scans;
+  while (!lexer->eof(lexer)) {
+    if (top && scan_span_end_marker(s, lexer, *top)) goto failed;
+    int32_t c = lexer->lookahead;
+    if (c == ']') {
+      uint32_t opener = array_pop(&open);
+      if (opener != UINT32_MAX) {
+        BracketProbeCharacter *cached = &probe->characters.contents[opener];
+        cached->bracket_known = true;
+        cached->bracket_close = probe->position;
+        cached->bracket_close_base = s->col_base;
+      }
+      if (!open.size) {
+        --probe->bracket_scans;
+        array_delete(&open);
+        return true;
+      }
+      advance(s, lexer);
+    } else if (c == '[') {
+      array_push(&open, probe->position);
+      advance(s, lexer);
+    } else if (c == '\\') {
+      advance(s, lexer);
+      if (!lexer->eof(lexer)) advance(s, lexer);
+    } else if (c == '`') {
+      uint8_t width = consume_chars(s, lexer, '`');
+      if (!bracket_probe_verbatim(s, probe, width)) goto failed;
+    } else if (c == '{') {
+      advance(s, lexer);
+      if (lexer->lookahead != '#' && lexer->lookahead != '%') continue;
+      uint32_t restart = probe->position;
+      int32_t delimiter = lexer->lookahead;
+      unsigned comment = delimiter == '%' ? 0 : 1;
+      if (probe->no_comment_close[comment] &&
+          restart >= probe->no_comment_close_from[comment]) continue;
+      uint32_t base = s->col_base;
+      advance(s, lexer);
+      bool closed = false;
+      while (!lexer->eof(lexer)) {
+        const BracketProbeCharacter *current = &probe->characters.contents[probe->position];
+        if (in_row && current->character == '|') {
+          if (!bracket_probe_pipe(s, probe, current->row_ticks || current->escaped_pipe)) break;
+          continue;
+        }
+        if (at_line_end(lexer)) {
+          if (in_row) break;
+          consume_line_end(s, lexer);
+          uint8_t indent = consume_whitespace(s, lexer);
+          if (at_line_end(lexer) || caption_line_ends_block(s, probe, indent)) break;
+          continue;
+        }
+        if (lexer->lookahead == delimiter) {
+          advance(s, lexer);
+          if (lexer->lookahead == '}') {
+            advance(s, lexer);
+            closed = true;
+            break;
+          }
+          continue;
+        }
+        advance(s, lexer);
+      }
+      if (!closed) {
+        probe->no_comment_close[comment] = true;
+        probe->no_comment_close_from[comment] = restart;
+        bracket_probe_rewind(probe, restart);
+        s->col_base = base;
+      }
+    } else if (c == '|' && in_row) {
+      const BracketProbeCharacter *current = &probe->characters.contents[probe->position];
+      if (!bracket_probe_pipe(s, probe, current->row_ticks || current->escaped_pipe)) goto failed;
+    } else if (at_line_end(lexer)) {
+      Block *host = peek_block(s);
+      if (in_row || (host && (host->type == HEADING || disallow_newline(host)))) goto failed;
+      consume_line_end(s, lexer);
+      uint8_t indent = consume_whitespace(s, lexer);
+      if (at_line_end(lexer) || caption_line_ends_block(s, probe, indent)) goto failed;
+    } else {
+      advance(s, lexer);
+    }
+  }
+failed:
+  for (uint32_t i = 0; i < open.size; ++i) if (open.contents[i] != UINT32_MAX) {
+    BracketProbeCharacter *cached = &probe->characters.contents[open.contents[i]];
+    cached->bracket_known = true;
+    cached->bracket_close = UINT32_MAX;
+  }
+  --probe->bracket_scans;
+  array_delete(&open);
+  return false;
+}
+
+static bool qualified_bracket_balanced(Scanner *s, TSLexer *lexer) {
+  if (first_bracket_extension(s)) return false;
+  BracketProbe probe = bracket_probe_new(s, lexer);
+  bool balanced = scan_qualified_bracket_close(s, &probe, NULL);
+  array_delete(&probe.characters);
+  return balanced;
+}
+
+// Read a possible paragraph boundary without committing its marker state.
+static bool extension_line_ends_block(Scanner *s, BracketProbe *probe, uint8_t indent) {
+  if (in_caption(s)) return caption_line_ends_block(s, probe, indent);
+  uint32_t restart = probe->position;
+  uint32_t base = s->col_base;
+  uint32_t marker_end_col = s->marker_end_col;
+  uint8_t marker_attribute_width = s->marker_attribute_width;
+  bool combined_probe = s->combined_probe;
+  s->combined_probe = false;
+  bool ends = verbatim_line_ends_paragraph(s, &probe->lexer, indent);
+  bracket_probe_rewind(probe, restart);
+  s->col_base = base;
+  s->marker_end_col = marker_end_col;
+  s->marker_attribute_width = marker_attribute_width;
+  s->combined_probe = combined_probe;
+  return ends;
+}
+
+// Extension payloads close at the `]` at bracket depth zero, or at the first
+// unescaped `]` when the `[` is unbalanced, before their inline markup is
+// parsed (carve#4513). Only escapes hide a bracket from that pairing; code and
+// comments do not. `*close` receives the closer's encoded position, or zero
+// when it is the first raw `]` ahead.
+static bool extension_payload_close(Scanner *s, TSLexer *host, uint32_t *remaining, bool *changes_scope, bool *opaque_cut,
+                                    uint32_t *close, bool *fallback) {
+  *remaining = 0;
+  *changes_scope = false;
+  *opaque_cut = false;
+  *close = 0;
+  *fallback = false;
+  if (first_bracket_extension(s)) return false;
+  uint32_t start_newlines = s->host_newlines;
+  BracketProbe probe = bracket_probe_new(s, host);
+  TSLexer *lexer = &probe.lexer;
+  bool closed = false;
+  char enclosing_marker = 0;
+  for (int i = s->open_inline->size - 1; i >= 0; --i) {
+    Inline *span = *array_get(s->open_inline, i);
+    if ((span->flags & INLINE_BRACED) &&
+        ((span->type >= EMPHASIS && span->type <= DELETE) || span->type == SUBSTITUTION)) {
+      enclosing_marker = inline_marker(span->type);
+      break;
+    }
+  }
+  bool possible_scope_end = false;
+  bool previous_scope_marker = false;
+  bool escaped = false;
+  // The bounded span probe resolves escapes and code after any tick is seen.
+  bool saw_tick = false;
+  uint32_t base = s->col_base;
+  uint32_t depth = 0, first_raw = UINT32_MAX, first_unescaped = UINT32_MAX, scope_end_at = UINT32_MAX;
+  uint32_t depth_zero = UINT32_MAX, first_unescaped_column = 0;
+  while (!lexer->eof(lexer)) {
+    if (lexer->lookahead == ']') {
+      if (first_raw == UINT32_MAX) first_raw = probe.position;
+      if (!escaped) {
+        if (!depth) { depth_zero = probe.position; break; }
+        // The fallback closer's column is read while the probe stands on it.
+        if (first_unescaped == UINT32_MAX) {
+          first_unescaped = probe.position;
+          first_unescaped_column = bracket_probe_column_at(&probe, probe.position);
+        }
+        --depth;
+      }
+    } else if (lexer->lookahead == '[' && !escaped) ++depth;
+    if (previous_scope_marker && lexer->lookahead == '}' && scope_end_at == UINT32_MAX) scope_end_at = probe.position;
+    if (lexer->lookahead == '`') saw_tick = true;
+    previous_scope_marker = enclosing_marker && lexer->lookahead == enclosing_marker &&
+        (!escaped || saw_tick);
+    escaped = lexer->lookahead == '\\' && !escaped;
+    if (at_line_end(lexer)) {
+      Block *block = peek_block(s);
+      if (block && (block->type == HEADING || disallow_newline(block))) break;
+      consume_line_end(s, lexer);
+      uint8_t indent = consume_whitespace(s, lexer);
+      if (at_line_end(lexer) || extension_line_ends_block(s, &probe, indent)) break;
+    } else if (find_block(s, TABLE_ROW) && lexer->lookahead == '|') {
+      if (!bracket_probe_pipe(s, &probe, false)) break;
+    } else advance(s, lexer);
+  }
+  uint32_t closer = depth_zero != UINT32_MAX ? depth_zero : first_unescaped;
+  if (closer != UINT32_MAX) {
+    closed = true;
+    *fallback = closer != depth_zero;
+    possible_scope_end = scope_end_at < closer;
+    if (closer != first_raw) {
+      uint32_t newlines = start_newlines + probe.characters.contents[closer].newlines;
+      uint32_t column = (closer == depth_zero ? bracket_probe_column_at(&probe, closer) : first_unescaped_column) + 1;
+      // A closer too far away to encode would read as the first raw `]`;
+      // the opener stays text instead.
+      if (newlines < (UINT32_C(1) << (32 - EXTENSION_CLOSE_COLUMN_BITS)) &&
+          column < (UINT32_C(1) << EXTENSION_CLOSE_COLUMN_BITS))
+        *close = newlines << EXTENSION_CLOSE_COLUMN_BITS | column;
+      else closed = false;
+    }
+    bracket_probe_rewind(&probe, closer);
+    s->col_base = base;
+  }
+  if (closed && possible_scope_end) {
+    uint32_t cut = probe.position;
+    bracket_probe_rewind(&probe, 0);
+    s->col_base = base;
+    bool scope_end = false;
+    // Only a code run reaching the closer ends the scope inside the payload;
+    // a bare closer there is bracket content (E2b).
+    uint32_t close_position = UINT32_MAX;
+    s->braced_probe_closer_in_code = false;
+    if (probe_braced_closer_ahead(s, lexer, enclosing_marker, &probe, &close_position, cut))
+      scope_end = close_position < cut && s->braced_probe_closer_in_code;
+    closed = !scope_end;
+    bracket_probe_rewind(&probe, cut);
+    s->col_base = base;
+  }
+  // The enclosing bracket map still pairs the original source. Keep closes
+  // left behind by the shorter extension literal in that enclosing scope.
+  Inline *parent = peek_inline(s);
+  if (closed && parent && parent->type != EXTENSION) {
+    uint32_t cut = probe.position;
+    bracket_probe_rewind(&probe, 0);
+    s->col_base = base;
+    bool paired = scan_qualified_bracket_close(s, &probe, NULL);
+    bool matched_cut = paired && probe.position == cut;
+    for (uint32_t i = 0; i < cut; ++i) {
+      BracketProbeCharacter *character = &probe.characters.contents[i];
+      if (character->character == '[' && character->bracket_known && character->bracket_close == cut)
+        matched_cut = true;
+    }
+    *opaque_cut = probe.characters.contents[cut].row_ticks != 0;
+    bool unmatched_cut = !matched_cut &&
+        (!cut || probe.characters.contents[cut - 1].character != '\\');
+    *changes_scope = paired ? probe.position > cut : (*opaque_cut || unmatched_cut);
+    if (paired) {
+      if (probe.position > cut) ++*remaining;
+      for (uint32_t i = 0; i < cut; ++i) {
+        BracketProbeCharacter *character = &probe.characters.contents[i];
+        if (character->character == '[' && character->bracket_known &&
+            character->bracket_close != UINT32_MAX && character->bracket_close > cut)
+          ++*remaining;
+      }
+    }
+  }
+  s->col_base = base;
+  array_delete(&probe.characters);
+  return closed;
+}
+
+static bool extension_payload_closed(Scanner *s, TSLexer *host, uint32_t *remaining, bool *changes_scope, bool *opaque_cut) {
+  uint32_t close;
+  bool fallback;
+  return extension_payload_close(s, host, remaining, changes_scope, opaque_cut, &close, &fallback);
+}
+
+static bool scan_inline_link_tail(Scanner *s, TSLexer *lexer, char bare, bool *closer, bool *boundary);
+
+/// Is an unescaped `bare` character reachable ahead, before this paragraph
+/// ends, that is NOT inside a later `[...]` run's own balanced extent?
+///
+/// The reference pairs brackets before reading their markup, with code and
+/// closed comments kept opaque. Bracket content does not close formatting
+/// opened outside the bracket.
+/// So a `*` whose only occurrence sits inside a link's own brackets
+/// (`a *[t [z]* w](/u)`) never actually closes a strong opened before the
+/// bracket, and `mark_span_begin`'s real-open path for `STRONG` refuses
+/// rather than explore a branch that competes for GLR's bounded number of
+/// live versions with the branch this ticket needs instead
+/// (tree-sitter-carve#436). A `[` with no matching `]` ahead is content, not
+/// an opaque run, so it does not stop the search.
+static void skipped_opaque_run(Scanner *s, BracketProbe *probe, uint32_t start, char bare) {
+  s->probe_skipped_opaque = true;
+  for (uint32_t i = start; i < probe->position && i < probe->characters.size; ++i) {
+    if (probe->characters.contents[i].character == (int32_t)(unsigned char)bare) {
+      s->probe_opaque_holds_bare = true;
+      return;
+    }
+  }
+}
+
+static bool probe_bare_closer_skips_brackets(Scanner *s, BracketProbe *probe, char bare,
+                                             bool *combined_literal) {
+  TSLexer *lexer = &probe->lexer;
+  // A slash emphasis may start with either a literal star or a real strong
+  // span. Decide that on its own branch, before its slash closer.
+  bool saw_strong_closer = false;
+  uint8_t unclosed_comments = 0;
+  uint16_t unclosed_braced = 0;
+  int32_t previous = 0;
+  uint32_t characters = 0;
+  if (combined_literal) *combined_literal = false;
+  s->probe_reached_end = false;
+  s->probe_skipped_opaque = false;
+  s->probe_opaque_holds_bare = false;
+  s->probe_crossed_line = false;
+  s->probe_end_judged = false;
+  bool in_row = find_block(s, TABLE_ROW) != NULL;
+  bool in_bracket = find_inline(s, LITERAL_BRACKET) || find_inline(s, SQUARE_BRACKET_SPAN) || find_inline(s, INLINE_NOTE) || find_inline(s, EXTENSION);
+  while (!lexer->eof(lexer)) {
+    if (at_line_end(lexer)) {
+      Block *host = peek_block(s);
+      if (in_row ||
+          (host && (host->type == HEADING || disallow_newline(host)))) {
+        s->probe_reached_end = true;
+        return false;
+      }
+      consume_line_end(s, lexer);
+      s->probe_crossed_line = true;
+      uint8_t indent = consume_whitespace(s, lexer);
+      if (lexer->eof(lexer) || at_line_end(lexer)) {
+        s->probe_reached_end = true;
+        return false;
+      }
+      uint32_t row_restart = probe->position;
+      uint32_t row_base = s->col_base;
+      if (in_caption(s) ? caption_line_ends_block(s, probe, indent) : close_paragraph(s, lexer)) {
+        s->probe_reached_end = true;
+        s->probe_end_judged = true;
+        return false;
+      }
+      bracket_probe_rewind(probe, row_restart);
+      s->col_base = row_base;
+      previous = '\n';
+      ++characters;
+      continue;
+    }
+    int32_t c = lexer->lookahead;
+    if (in_row && c == '|') {
+      advance(s, lexer);
+      if (continuation_row_ahead(s, lexer)) {
+        previous = '\n';
+        continue;
+      }
+      return false;
+    }
+    Inline *enclosing = peek_inline(s);
+    if (enclosing && (enclosing->flags & INLINE_BRACED) &&
+        enclosing->type != EXTENSION && enclosing->type != SQUARE_BRACKET_SPAN && enclosing->type != INLINE_NOTE &&
+        bare != inline_marker(enclosing->type) && c == inline_marker(enclosing->type)) {
+      advance(s, lexer);
+      if (lexer->lookahead == '}') return false;
+      previous = c;
+      ++characters;
+      continue;
+    }
+    if (enclosing && (enclosing->type == STRONG || enclosing->type == EMPHASIS ||
+        enclosing->type == UNDERLINE || enclosing->type == STRIKETHROUGH ||
+        enclosing->type == HIGHLIGHTED || enclosing->type == SUPERSCRIPT ||
+        enclosing->type == SUBSCRIPT) &&
+        bare != inline_marker(enclosing->type) && c == inline_marker(enclosing->type) &&
+        !(enclosing->flags & INLINE_BRACED) && previous != ' ' && previous != '\t' && previous != '\n') {
+      advance(s, lexer);
+      if (!carve_is_alnum_ascii(lexer->lookahead)) return false;
+      previous = c;
+      ++characters;
+      continue;
+    }
+    if (c == '\\') {
+      uint32_t start = probe->position;
+      advance(s, lexer);
+      previous = '\\';
+      if (!lexer->eof(lexer) && !at_line_end(lexer)) {
+        previous = lexer->lookahead;
+        advance(s, lexer);
+      }
+      skipped_opaque_run(s, probe, start, bare);
+      ++characters;
+      continue;
+    }
+    if (c == '%' && (previous == ' ' || previous == '\t')) {
+      advance(s, lexer);
+      if (lexer->lookahead == '%') return false;
+      previous = c;
+      ++characters;
+      continue;
+    }
+    if (c == '{') {
+      advance(s, lexer);
+      uint32_t comment_restart = probe->position;
+      uint32_t comment_base = s->col_base;
+      int32_t comment = lexer->lookahead;
+      uint8_t comment_bit = comment == '%' ? 1 : comment == '#' ? 2 : 0;
+      if (comment_bit && !(unclosed_comments & comment_bit)) {
+        advance(s, lexer);
+        bool closed = false;
+        while (!lexer->eof(lexer)) {
+          Block *host = peek_block(s);
+          if (at_line_end(lexer) && ((host && (host->type == HEADING || disallow_newline(host)))))
+            break;
+          if (at_line_end(lexer) && in_caption(s)) {
+            consume_line_end(s, lexer);
+            uint8_t indent = consume_whitespace(s, lexer);
+            if (at_line_end(lexer) || lexer->eof(lexer) || caption_line_ends_block(s, probe, indent)) break;
+            continue;
+          }
+          int32_t current = lexer->lookahead;
+          advance(s, lexer);
+          if (current == comment && lexer->lookahead == '}') {
+            advance(s, lexer);
+            closed = true;
+            break;
+          }
+        }
+        if (!closed) {
+          unclosed_comments |= comment_bit;
+          bracket_probe_rewind(probe, comment_restart);
+          s->col_base = comment_base;
+          previous = '{';
+          ++characters;
+          continue;
+        }
+        skipped_opaque_run(s, probe, comment_restart, bare);
+        previous = '}';
+        ++characters;
+        continue;
+      }
+      const char *markers = "*/_~=^,+-";
+      const char *candidate = lexer->lookahead ? strchr(markers, lexer->lookahead) : NULL;
+      static const InlineType braced_kinds[] = {STRONG, EMPHASIS, UNDERLINE, STRIKETHROUGH,
+          HIGHLIGHTED, SUPERSCRIPT, SUBSCRIPT, INSERT, DELETE};
+      uint16_t brace_bit = candidate ? (uint16_t)(1 << (candidate - markers)) : 0;
+      // A braced span of the bare kind is opaque too: it nests (E3).
+      if (brace_bit && !(unclosed_braced & brace_bit) &&
+          !braced_same_kind_blocked(s, braced_kinds[candidate - markers])) {
+        char marker = (char)lexer->lookahead;
+        advance(s, lexer);
+        if (braced_closer_ahead(s, lexer, marker)) {
+          advance(s, lexer);
+          skipped_opaque_run(s, probe, comment_restart, bare);
+          previous = '}';
+          ++characters;
+          continue;
+        }
+        unclosed_braced |= brace_bit;
+        bracket_probe_rewind(probe, comment_restart);
+        s->col_base = comment_base;
+      }
+      previous = c;
+      ++characters;
+      continue;
+    }
+    if (c == '`') {
+      uint32_t start = probe->position;
+      uint8_t width = consume_chars(s, lexer, '`');
+      if (read_verbatim_run(s, lexer, width, 0, in_row) != VerbatimRunCloses) {
+        return false;
+      }
+      skipped_opaque_run(s, probe, start, bare);
+      previous = 'x';
+      ++characters;
+      continue;
+    }
+    if (c == '<') {
+      uint32_t start = probe->position;
+      uint32_t base = s->col_base;
+      advance(s, lexer);
+      bool crossref = false;
+      if (lexer->lookahead == '/') {
+        advance(s, lexer);
+        if (lexer->lookahead == '#') {
+          crossref = true;
+          advance(s, lexer);
+        }
+      }
+      bool body = false;
+      bool scheme = false;
+      bool scheme_prefix = !crossref &&
+          ((lexer->lookahead >= 'a' && lexer->lookahead <= 'z') ||
+           (lexer->lookahead >= 'A' && lexer->lookahead <= 'Z'));
+      bool email = false;
+      bool email_dot = false;
+      bool email_invalid = false;
+      while (!lexer->eof(lexer) && !at_line_end(lexer) &&
+             lexer->lookahead != '>' && lexer->lookahead != ' ') {
+        int32_t current = lexer->lookahead;
+        body = true;
+        if (current == ':' && scheme_prefix) scheme = true;
+        else if (!scheme && !carve_is_alnum_ascii(current) &&
+                 current != '+' && current != '.' && current != '-') scheme_prefix = false;
+        if (current == '@') email = true;
+        if (current == '.' && email) email_dot = true;
+        if (current == '~' && email) email_invalid = true;
+        advance(s, lexer);
+      }
+      if (body && lexer->lookahead == '>' &&
+          (crossref || scheme || (email && email_dot && !email_invalid))) {
+        advance(s, lexer);
+        skipped_opaque_run(s, probe, start, bare);
+        previous = 'x';
+        ++characters;
+        continue;
+      }
+      bracket_probe_rewind(probe, start + 1);
+      s->col_base = base;
+      previous = '<';
+      ++characters;
+      continue;
+    }
+    if (c == ']' && in_bracket) return false;
+    if (c == (int32_t)(unsigned char)bare &&
+        (previous != 0 && previous != ' ' && previous != '\t' && previous != '\n')) {
+      advance(s, lexer);
+      if (carve_is_alnum_ascii(lexer->lookahead) ||
+          carve_is_grapheme_extender(lexer->lookahead)) {
+        previous = c;
+        ++characters;
+        continue;
+      }
+      if (combined_literal) *combined_literal = !saw_strong_closer;
+      return true;
+    }
+    if (c == '[') {
+      advance(s, lexer);
+      uint32_t restart = probe->position;
+      uint32_t base = s->col_base;
+      if (scan_qualified_bracket_close(s, probe, NULL)) {
+        s->probe_skipped_opaque = true;
+        advance(s, lexer); // past the matching `]`
+        if (lexer->lookahead == '(') {
+          advance(s, lexer);
+          uint32_t tail_restart = probe->position;
+          uint32_t tail_base = s->col_base;
+          bool closer = false;
+          bool boundary = false;
+          if (scan_inline_link_tail(s, lexer, bare, &closer, &boundary)) advance(s, lexer);
+          else if (closer) {
+            bracket_probe_rewind(probe, tail_restart);
+            s->col_base = tail_base;
+          } else if (boundary) return false;
+        }
+        skipped_opaque_run(s, probe, restart, bare);
+        previous = 'x';
+        ++characters;
+        continue;
+      }
+      bracket_probe_rewind(probe, restart);
+      s->col_base = base;
+      // No matching `]`: this `[` is content, not an opaque run - fall
+      // through and keep searching from right after it.
+      previous = 'x';
+      ++characters;
+      continue;
+    }
+    advance(s, lexer);
+    if (combined_literal && c == '*' && characters > 0 && previous != ' ' &&
+        previous != '\t' && previous != '\n' && previous != 0 &&
+        !carve_is_alnum_ascii(lexer->lookahead)) saw_strong_closer = true;
+    previous = c;
+    ++characters;
+  }
+  s->probe_reached_end = true;
+  return false;
+}
+
+// After a found closer: true when it cannot open (whitespace follows) and the
+// rest of its line holds no `bare` and nothing the closer probe would treat
+// as opaque, so no opener of the kind at or after it exists on the line.
+static bool closer_last_on_line(Scanner *s, TSLexer *lexer, char bare) {
+  if (lexer->lookahead != ' ' && lexer->lookahead != '\t' && !at_line_end(lexer) &&
+      !lexer->eof(lexer)) return false;
+  while (!lexer->eof(lexer) && !at_line_end(lexer)) {
+    int32_t c = lexer->lookahead;
+    if (c == (int32_t)(unsigned char)bare || c == '`' || c == '[' || c == '<' ||
+        c == '{' || c == '\\' || c == '%' || c == '|') return false;
+    advance(s, lexer);
+  }
+  return true;
+}
+
+static bool bare_closer_skips_brackets_noting(Scanner *s, TSLexer *lexer, char bare,
+                                              bool *combined_literal, bool *last_on_line) {
+  BracketProbe probe = bracket_probe_new(s, lexer);
+  bool closer = probe_bare_closer_skips_brackets(s, &probe, bare, combined_literal);
+  if (last_on_line)
+    *last_on_line = closer && !s->probe_skipped_opaque && !s->probe_crossed_line &&
+                    closer_last_on_line(s, &probe.lexer, bare);
+  array_delete(&probe.characters);
+  return closer;
+}
+
+static bool bare_closer_skips_brackets(Scanner *s, TSLexer *lexer, char bare,
+                                       bool *combined_literal) {
+  return bare_closer_skips_brackets_noting(s, lexer, bare, combined_literal, NULL);
+}
+
+static const char BARE_CLOSER_MARKERS[] = "*/_~=^,+-";
+
+// What a closer probe's answer depends on besides the text ahead: the inline
+// scope it starts in and the paragraph's block context.
+static uint16_t closer_probe_scope(Scanner *s) {
+  uint32_t hash = 2166136261u;
+  uint16_t state = s->state & ~(STATE_BRACKET_STARTS_INLINE_LINK | STATE_BRACKET_STARTS_SPAN |
+                                STATE_BARE_SPAN_OPENER | STATE_SPAN_END_AT_CR);
+  hash = (hash ^ state) * 16777619u;
+  hash = (hash ^ s->open_blocks->size) * 16777619u;
+  hash = (hash ^ s->open_inline->size) * 16777619u;
+  for (uint32_t i = 0; i < s->open_inline->size; ++i) {
+    Inline *e = *array_get(s->open_inline, i);
+    hash = (hash ^ (uint32_t)(e->type | e->flags << 8)) * 16777619u;
+  }
+  return (uint16_t)(hash ^ hash >> 16);
+}
+
+// `bare_closer_skips_brackets` for a real opener. A probe that read to the
+// paragraph end without a closer, and skipped no opaque run a later opener
+// could stand inside, is noted: a later opener of the same marker in the same
+// scope reads a suffix of that text, so it has none either. Without the note
+// every opener rescans the rest of the paragraph.
+static bool bare_closer_ahead(Scanner *s, TSLexer *lexer, char bare, bool *combined_literal) {
+  const char *slot = strchr(BARE_CLOSER_MARKERS, bare);
+  uint16_t bit = slot ? (uint16_t)(1 << (slot - BARE_CLOSER_MARKERS)) : 0;
+  if (!bit || find_block(s, TABLE_ROW)) return bare_closer_skips_brackets(s, lexer, bare, combined_literal);
+  uint16_t scope = closer_probe_scope(s);
+  if ((s->no_closer_kinds & bit) && s->no_closer_scope == scope) {
+    if (combined_literal) *combined_literal = false;
+    return false;
+  }
+  if (!combined_literal && (s->closer_ahead_kinds & bit) && s->no_closer_scope == scope)
+    return true;
+  bool last_on_line = false;
+  bool closer = bare_closer_skips_brackets_noting(
+      s, lexer, bare, combined_literal,
+      combined_literal || find_inline(s, EXTENSION) ? NULL : &last_on_line);
+  bool note = closer ? last_on_line : s->probe_reached_end && !s->probe_opaque_holds_bare;
+  if (note) {
+    if (s->no_closer_scope != scope) s->no_closer_kinds = s->closer_ahead_kinds = 0;
+    if (closer) s->closer_ahead_kinds |= bit;
+    else s->no_closer_kinds |= bit;
+    s->no_closer_scope = scope;
+  }
+  return closer;
+}
+
+// Updates lookahead states that are used to block the acceptance of
+// the fallback characters `(` and `{` if there's a valid inline link
+// or span to be chosen.
+// The Unicode White_Space characters outside ASCII, `uSpace` in
+// resources/carve-core.ohm. `destChar` excludes them, and so does the `\s` in
+// the destination token, whose class the tree-sitter regex engine reads as the
+// same property. The lookahead below has to stop on exactly what that token
+// stops on, or it marks a link the grammar then cannot build.
+static bool is_destination_space(int32_t c) {
+  return c == ' ' || c == '\t' || c == '\v' || c == '\f' || c == 0x85 ||
+         c == 0xA0 || c == 0x1680 || (c >= 0x2000 && c <= 0x200A) ||
+         c == 0x2028 || c == 0x2029 || c == 0x202F || c == 0x205F ||
+         c == 0x3000;
+}
+
+/// Does a well-formed inline link TAIL start at the character after this `(`,
+/// with the `(` already consumed?
+///
+/// `linkTail = "(" dest destTitle? ")"` (resources/carve-core.ohm). Two slots,
+/// not one: `dest` admits no whitespace, and `destTitle` is EXACTLY one space
+/// and then a quoted run that may contain line breaks. So `[t](/u  "T")` and
+/// `[t](/u` + TAB + `"T")` are paragraphs (corpus 262, 257) and `[x](a b)` is
+/// one too.
+///
+/// This reader keeps the grammar's own reading of the destination rather than
+/// the ohm's in one place: nested parentheses are NOT balanced here, matching
+/// `_inline_link_url`, so `[t](/a(b)c` / `SECOND)` reads as it always has.
+static bool probe_scan_inline_link_tail(Scanner *s, TSLexer *lexer, char bare, bool *closer, bool *boundary, BracketProbe *probe) {
+  if (closer) *closer = false;
+  if (boundary) *boundary = false;
+  bool any_dest = false;
+  bool escaped = false;
+  while (!lexer->eof(lexer) && !at_line_end(lexer) &&
+         lexer->lookahead != ')' && !is_destination_space(lexer->lookahead)) {
+    any_dest = true;
+    bool candidate_closer = closer && lexer->lookahead == bare && !escaped;
+    escaped = lexer->lookahead == '\\' && !escaped;
+    // `\)` is the one escape the destination token spells; a backslash before
+    // anything else is an ordinary destination character.
+    if (lexer->lookahead == '\\') {
+      advance(s, lexer);
+      if (lexer->lookahead != ')') {
+        continue;
+      }
+      escaped = false;
+    }
+    advance(s, lexer);
+    if (candidate_closer && !carve_is_alnum_ascii(lexer->lookahead)) *closer = true;
+  }
+  // No `)` and no space from here to the line end: every later destination on
+  // this line fails the same way (see `link_tail_open_line`). Only noted while
+  // the host lexer is still on the line this scan started on.
+  if (at_line_end(lexer) && !s->host_crossed_line) s->link_tail_open_line = true;
+  if (lexer->lookahead == ')') {
+    return true;
+  }
+  bool title_space_consumed = false;
+  if (!any_dest && (lexer->lookahead == ' ' || lexer->lookahead == '\t')) {
+    bool title_separator = lexer->lookahead == ' ';
+    advance(s, lexer);
+    if (title_separator && (lexer->lookahead == '"' || lexer->lookahead == '\'')) {
+      title_space_consumed = true;
+    } else {
+      while (lexer->lookahead == ' ' || lexer->lookahead == '\t') advance(s, lexer);
+      return lexer->lookahead == ')';
+    }
+  }
+  if (!any_dest && !title_space_consumed) {
+    return false;
+  }
+  if (!title_space_consumed && lexer->lookahead != ' ') {
+    return false;
+  }
+  if (!title_space_consumed) advance(s, lexer);
+  int32_t quote = lexer->lookahead;
+  if (quote != '"' && quote != '\'') {
+    return false;
+  }
+  advance(s, lexer);
+  int32_t previous = quote;
+  while (!lexer->eof(lexer)) {
+    if (at_line_end(lexer)) {
+      if (!any_dest) return false;
+      Block *host = peek_block(s);
+      if ((host && (host->type == HEADING || disallow_newline(host)))) {
+        if (boundary) *boundary = true;
+        return false;
+      }
+      consume_line_end(s, lexer);
+      uint8_t indent = consume_whitespace(s, lexer);
+      if (lexer->eof(lexer) || at_line_end(lexer) ||
+          (probe ? caption_line_ends_block(s, probe, indent) : close_paragraph(s, lexer))) {
+        if (boundary) *boundary = true;
+        return false;
+      }
+      previous = '\n';
+      continue;
+    }
+    if (lexer->lookahead == '\\') {
+      advance(s, lexer);
+      if (lexer->eof(lexer)) {
+        return false;
+      }
+      if (at_line_end(lexer)) {
+        return false;
+      }
+      previous = lexer->lookahead;
+      advance(s, lexer);
+      continue;
+    }
+    int32_t current = lexer->lookahead;
+    bool candidate_closer = closer && current == bare && previous != ' ' &&
+                            previous != '\t' && previous != '\n';
+    if (lexer->lookahead == quote) {
+      advance(s, lexer);
+      if (!any_dest) {
+        while (lexer->lookahead == ' ' || lexer->lookahead == '\t') advance(s, lexer);
+      } else {
+        while (lexer->lookahead == ' ') advance(s, lexer);
+      }
+      return lexer->lookahead == ')';
+    }
+    advance(s, lexer);
+    if (candidate_closer && !carve_is_alnum_ascii(lexer->lookahead)) *closer = true;
+    previous = current;
+  }
+  return false;
+}
+
+static bool scan_inline_link_tail(Scanner *s, TSLexer *lexer, char bare, bool *closer, bool *boundary) {
+  if (!in_caption(s) && !find_inline(s, EXTENSION)) return probe_scan_inline_link_tail(s, lexer, bare, closer, boundary, NULL);
+  if (lexer->advance == bracket_probe_advance)
+    return probe_scan_inline_link_tail(s, lexer, bare, closer, boundary, (BracketProbe *)lexer);
+  BracketProbe probe = bracket_probe_new(s, lexer);
+  bool closed = probe_scan_inline_link_tail(s, &probe.lexer, bare, closer, boundary, &probe);
+  array_delete(&probe.characters);
+  return closed;
+}
+
+static bool probe_square_bracket_lookahead_states(Scanner *s, BracketProbe *probe,
+                                                  Inline *top) {
+  TSLexer *lexer = &probe->lexer;
+  // Reset flags so we can set them later if the scanning succeeds.
+  s->state &= ~STATE_BRACKET_STARTS_INLINE_LINK;
+  s->state &= ~STATE_BRACKET_STARTS_SPAN;
+  s->citation_label_tail = false;
+
+  InlineType *top_type = NULL;
+  // An enclosing bracket's `]` is also this one's, and the depth count below
+  // already pairs brackets; asking for the enclosing span's end would stop at
+  // this bracket's own `]` (`[t[z]](/u)`, #422).
+  // A braced span's closer inside the bracket is bracket content (E2b), so
+  // it does not end the run: `{*a [x *}] b*}` keeps one strong.
+  bool braced_span = top && (top->flags & INLINE_BRACED) &&
+                         top->type >= EMPHASIS && top->type <= DELETE;
+  if (top && top->type != SQUARE_BRACKET_SPAN && top->type != LITERAL_BRACKET &&
+      top->type != EXTENSION && !braced_span) {
+    top_type = &top->type;
+  }
+
+  // Scan the `[some text]` span, stepping over nested bracket runs so a
+  // nested `[^1]{.k}` is not mistaken for this bracket's own `] {attrs}` tail.
+  if (!scan_qualified_bracket_close(s, probe, top_type)) {
+    return false;
+  }
+  advance(s, lexer);
+  probe->cell_tail = find_block(s, TABLE_ROW) != NULL;
+
+  if (lexer->lookahead == '(') {
+    // An inline link may follow.
+    // A link destination is opaque to the inline delimiter stack. A `/`,
+    // `*`, `_`, or `~` inside it cannot close the span that contains the
+    // link; only the destination's own `)` ends this lookahead.
+    //
+    // The whole tail is read, not just its closing `)`: a destination that
+    // opens on whitespace, carries one, or is followed by something other than
+    // a title is no link at all (carve#2070), and marking one here left the
+    // branch with nothing to build and an ERROR where the text belongs.
+    advance(s, lexer);
+    // A destination that met the line end with no `)` and no space leaves
+    // every later one on the line in the same place: noted, not rescanned.
+    bool plain_line = !probe->cell_tail && !probe->extension_cut;
+    if (plain_line && s->link_tail_open_line) {
+      s->state |= STATE_MULTILINE_IDENTIFIER;
+    } else if (scan_inline_link_tail(s, lexer, 0, NULL, NULL)) {
+      s->state |= STATE_BRACKET_STARTS_INLINE_LINK;
+    } else if (at_line_end(lexer)) {
+      s->state |= STATE_MULTILINE_IDENTIFIER;
+    }
+  } else if (lexer->lookahead == '[') {
+    advance(s, lexer);
+    bool citation_label = lexer->lookahead == '@';
+    if (scan_until_no_newline(s, lexer, ']', top_type)) {
+      if (citation_label && probe->position + 1 == probe->characters.size) {
+        advance(s, lexer);
+        s->citation_label_tail = true;
+      }
+    } else if (at_line_end(lexer)) {
+      s->state |= STATE_MULTILINE_IDENTIFIER;
+    }
+  } else if (lexer->lookahead == '{') {
+    // An inline attribute may follow, turning it into the Carve `span` type.
+    //
+    // We validate the attribute payload here (same shape as block
+    // attributes). Only a well-formed attribute marks a span; an unparseable
+    // one (`[x]{???}`, `[x]{.a!b}`) leaves the flag clear so the brackets fall
+    // back to literal text instead of forcing an ERROR/MISSING into the tree.
+    if (scan_valid_inline_attribute(s, lexer)) {
+      s->state |= STATE_BRACKET_STARTS_SPAN;
+    }
+  }
+  return true;
+}
+
+static bool update_square_bracket_lookahead_states(Scanner *s, TSLexer *lexer,
+                                                   Inline *top) {
+  BracketProbe probe = bracket_probe_new(s, lexer);
+  bool balanced = probe_square_bracket_lookahead_states(s, &probe, top);
+  array_delete(&probe.characters);
+  return balanced;
+}
+
+/// Does a TOP-LEVEL `~>` stand between here and this run's `~}`?
+///
+/// Asked at the character after a `{~`, which is where the construct is still
+/// undecided: corpus 472 makes `{~ ... ~}` a SUBSTITUTION when a top-level arrow
+/// splits it and an ordinary strikethrough when none does. Top-level means
+/// outside everything whose content is verbatim - a code span, a math run, an
+/// inline literal, an editorial or braced comment - and not behind a backslash.
+/// `{~`a~>b~}` is therefore a strikethrough over one code span, and
+/// `{~$`a~>b`~>c~}` a substitution split at its SECOND arrow.
+///
+/// A blank line ends the search, because the run does not cross one.
+///
+/// THIS READER AND THE INLINE GRAMMAR HAVE TO AGREE about what is verbatim and
+/// what is escaped. Where they do not, the opener commits to a substitution
+/// whose `~>` no token can then produce, and the parser churns through error
+/// recovery instead of building anything - measured by breaking either rule here
+/// on purpose. Both sides read the same two: a run of n backticks closes on the
+/// next run of n, and a backslash takes the character behind it.
+static bool probe_substitution_arrow_ahead(Scanner *s, TSLexer *lexer, bool *closed, BracketProbe *probe) {
+  bool in_bracket = find_inline(s, LITERAL_BRACKET) || find_inline(s, SQUARE_BRACKET_SPAN) || find_inline(s, INLINE_NOTE) || find_inline(s, EXTENSION);
+  bool arrow = false;
+  unsigned brackets = 0;
+  while (!lexer->eof(lexer)) {
+    if (at_line_end(lexer)) {
+      consume_line_end(s, lexer);
+      uint8_t indent = consume_whitespace(s, lexer);
+      if (lexer->eof(lexer) || at_line_end(lexer) ||
+          (probe && caption_line_ends_block(s, probe, indent))) {
+        return false;
+      }
+      continue;
+    }
+    if (lexer->lookahead == '\\') {
+      advance(s, lexer);
+      if (!lexer->eof(lexer) && !at_line_end(lexer)) {
+        advance(s, lexer);
+      }
+      continue;
+    }
+    if (lexer->lookahead == '`') {
+      // A run of n backticks closes on the next run of exactly n. An
+      // UNTERMINATED one ends at this run's own `~}`, which is what makes
+      // `{~`a~>b~}` a strikethrough: the arrow never comes back to top level.
+      // Read by the same function the content token uses, so the two cannot
+      // drift apart.
+      uint8_t width = consume_chars(s, lexer, '`');
+      VerbatimRunEnd end = read_verbatim_run(s, lexer, width, '~',
+                                              find_block(s, TABLE_ROW) != NULL);
+      if (end != VerbatimRunCloses) {
+        *closed = end == VerbatimRunReachesSpanCloser;
+        return false;
+      }
+      continue;
+    }
+    if (lexer->lookahead == '{') {
+      advance(s, lexer);
+      if (lexer->lookahead != '#' && lexer->lookahead != '%') {
+        continue;
+      }
+      char opener = (char)lexer->lookahead;
+      advance(s, lexer);
+      while (!lexer->eof(lexer)) {
+        if (probe && at_line_end(lexer)) {
+          consume_line_end(s, lexer);
+          uint8_t indent = consume_whitespace(s, lexer);
+          if (lexer->eof(lexer) || at_line_end(lexer) || caption_line_ends_block(s, probe, indent)) return false;
+          continue;
+        }
+        if (lexer->lookahead == opener) {
+          advance(s, lexer);
+          if (lexer->lookahead == '}') {
+            advance(s, lexer);
+            break;
+          }
+          continue;
+        }
+        advance(s, lexer);
+      }
+      continue;
+    }
+    if (lexer->lookahead == '<') {
+      advance(s, lexer);
+      bool crossref = false;
+      if (lexer->lookahead == '/') {
+        advance(s, lexer);
+        if (lexer->lookahead == '#') {
+          crossref = true;
+          advance(s, lexer);
+        }
+      }
+      bool body = false;
+      bool scheme = false;
+      bool email = false;
+      bool email_dot = false;
+      bool email_invalid = false;
+      bool inner_arrow = false;
+      bool inner_closer = false;
+      while (!lexer->eof(lexer) && !at_line_end(lexer) &&
+             lexer->lookahead != '>' && lexer->lookahead != ' ') {
+        int32_t current = lexer->lookahead;
+        body = true;
+        if (current == ':') scheme = true;
+        if (current == '@') email = true;
+        if (current == '.' && email) email_dot = true;
+        if (current == '~' && email) email_invalid = true;
+        advance(s, lexer);
+        if (current == '~' && lexer->lookahead == '>') inner_arrow = true;
+        if (current == '~' && lexer->lookahead == '}') inner_closer = true;
+      }
+      bool closed_angle = lexer->lookahead == '>';
+      if (closed_angle) advance(s, lexer);
+      if (closed_angle && body && (crossref || scheme || (email && email_dot && !email_invalid)))
+        continue;
+      if (inner_arrow) return true;
+      if (inner_closer) {
+        *closed = true;
+        return arrow;
+      }
+      continue;
+    }
+    if (lexer->lookahead == '[') ++brackets;
+    if (lexer->lookahead == ']') {
+      if (brackets) {
+        --brackets;
+        if (!brackets) arrow = false;
+      }
+      else if (in_bracket) return false;
+    }
+    if (lexer->lookahead == '~') {
+      advance(s, lexer);
+      if (lexer->lookahead == '>') {
+        if (!in_bracket && !brackets) return true;
+        arrow = true;
+      }
+      if (lexer->lookahead == '}') {
+        *closed = true;
+        return arrow;
+      }
+      continue;
+    }
+    advance(s, lexer);
+  }
+  return false;
+}
+
+static bool substitution_arrow_ahead(Scanner *s, TSLexer *lexer, bool *closed) {
+  if (!in_caption(s) && !find_inline(s, EXTENSION)) return probe_substitution_arrow_ahead(s, lexer, closed, NULL);
+  if (lexer->advance == bracket_probe_advance)
+    return probe_substitution_arrow_ahead(s, lexer, closed, (BracketProbe *)lexer);
+  BracketProbe probe = bracket_probe_new(s, lexer);
+  bool arrow = probe_substitution_arrow_ahead(s, &probe.lexer, closed, &probe);
+  array_delete(&probe.characters);
+  return arrow;
+}
+
+// Bare emphasis has no intervening strong closer before this cache ends.
+#define AFTER_COMBINED_CLOSER (UINT8_MAX - 4)
+// A note's column when only the token right behind its writer reads it: the
+// character there instead, and the parse it was written in. `get_column`
+// rereads the line from its start, so a column read per closer is quadratic.
+// The scan wrapper keeps the note only until that token is scanned (see
+// `scan_right_behind`). The parse number stands in for the column in keeping a
+// later parse from reusing the token after a writer that moved.
+#define NOTE_NEXT_TOKEN(c) (0xFF000000u | (uint32_t)s->parse_generation << 8 | (uint8_t)(c))
+#define IS_NOTE_NEXT_TOKEN(col) ((col) >= 0xFF000000u)
+
+static bool marker_of_open_inline(Scanner *s, int32_t c);
+
+// The literal run reader turns this note's next token down, which leaves it
+// to the internal lexer: a column then keeps incremental reuse honest.
+static bool note_declines(Scanner *s, uint8_t marker, int32_t next) {
+  return (marker == AFTER_COMBINED_CLOSER || marker == '/') && next != '/' && next != '_' &&
+         !marker_of_open_inline(s, next);
+}
+
+// The note an empty fallback leaves behind a declined bare opener, written as
+// a closer writes its own: only a delimiter right behind reads it, and a
+// column in an empty token goes stale when node reuse shifts it along the row.
+static void note_behind_fallback(Scanner *s, TSLexer *lexer, uint8_t marker) {
+  InlineType following;
+  bool delimiter = is_bare_delim_kind(lexer->lookahead, &following);
+  bool next = delimiter && !note_declines(s, marker, lexer->lookahead);
+  // An unused read still warms the host's column for the line-start check of
+  // the next scan; with `mid_line` known that check reads nothing, and a read
+  // from a cold cache rescans the line.
+  uint32_t column = 0;
+  if ((delimiter && !next) || !s->mid_line) column = deferred_column(s, lexer);
+  else s->deferred_column_pending = false;
+  if (!delimiter) {
+    s->after_closer_char = 0;
+    s->after_closer_col = 0;
+    return;
+  }
+  s->after_closer_char = marker;
+  s->after_closer_col = next ? NOTE_NEXT_TOKEN(lexer->lookahead) : column;
+  s->note_written = next;
+}
+#define AFTER_WORD_BEFORE_COMBINED (UINT8_MAX - 5)
+#define NO_STRONG_IN_EMPHASIS (UINT8_MAX - 3)
+#define NO_COMBINED_CLOSER UINT8_MAX
+#define NO_COMBINED_CLOSER_LINE (UINT8_MAX - 1)
+#define HAS_NO_COMBINED_CLOSER(s) ((s)->after_closer_char == NO_STRONG_IN_EMPHASIS || \
+                                 (s)->after_closer_char >= NO_COMBINED_CLOSER_LINE)
+
+static bool is_bare_delim_kind(int32_t c, InlineType *kind);
+
+static bool mark_span_begin(Scanner *s, TSLexer *lexer,
+                            const bool *valid_symbols, InlineType inline_type,
+                            TokenType token);
+
+// Qualify an attributed span before its content branches merge. The shared
+// bracket mark remains available for links and literal bracket fallback.
+static bool parse_attributed_span_mark_begin(Scanner *s, TSLexer *lexer,
+                                             const bool *valid_symbols) {
+  mark_end(s, lexer);
+  Inline *top = peek_inline(s);
+  bool balanced = update_square_bracket_lookahead_states(s, lexer,
+      top && (top->flags & INLINE_BRACED) && top->type != INLINE_NOTE ? top : NULL);
+  // `[*b*][@a]`: a label may not start with `@`, so carve-js keeps the whole
+  // reference-link shape as text, markup included (corpus 334).
+  if (balanced && s->citation_label_tail && valid_symbols[IN_FALLBACK]) {
+    s->citation_label_tail = false;
+    s->state &= ~(STATE_BRACKET_STARTS_INLINE_LINK | STATE_BRACKET_STARTS_SPAN);
+    mark_end(s, lexer);
+    lexer->result_symbol = IN_FALLBACK;
+    return true;
+  }
+  if (balanced && (s->state & STATE_BRACKET_STARTS_SPAN)) {
+    push_inline_flagged(s, SQUARE_BRACKET_SPAN, 0, INLINE_BRACED);
+    // Qualification belongs to the opener; its content may contain braces.
+    s->state &= ~STATE_BRACKET_STARTS_SPAN;
+    lexer->result_symbol = ATTRIBUTED_SPAN_MARK_BEGIN;
+    return true;
+  }
+  if (!valid_symbols[SQUARE_BRACKET_SPAN_MARK_BEGIN]) return false;
+  if (valid_symbols[IN_FALLBACK]) {
+    if (balanced && (s->state & STATE_BRACKET_STARTS_INLINE_LINK)) {
+      push_inline_flagged(s, SQUARE_BRACKET_SPAN, 0, INLINE_BRACED);
+    } else if (balanced) {
+      if (top && top->type == SQUARE_BRACKET_SPAN && ((top->flags & (INLINE_LABEL | INLINE_BRACED)) == INLINE_LABEL)) {
+        if (top->literal_closes < UINT32_MAX) ++top->literal_closes;
+      } else {
+        push_inline_flagged(s, LITERAL_BRACKET, 0, 0);
+      }
+    } else {
+      Inline *open = find_inline_in_scope(s, SQUARE_BRACKET_SPAN);
+      if (open) ++open->data;
+    }
+  } else {
+    if (!balanced) return false;
+    push_inline_flagged(s, SQUARE_BRACKET_SPAN, 0, INLINE_BRACED);
+  }
+  lexer->result_symbol = SQUARE_BRACKET_SPAN_MARK_BEGIN;
+  return true;
+}
+
+/// WHICH RUN A `{~` OPENS, asked zero-width at the character behind it.
+///
+/// `_substitution_begin` is valid in exactly one place - right there - so the
+/// question and its two answers are settled in one call. The reader moves the
+/// lexer to the end of the run, which is why BOTH answers are given here rather
+/// than left to the probes further down: those would read from wherever this
+/// one stopped.
+static bool parse_substitution_or_strikethrough(Scanner *s, TSLexer *lexer,
+                                              const bool *valid_symbols) {
+  // Zero-width, whatever the reader below advances over.
+  mark_end(s, lexer);
+  if (carve_is_grapheme_extender(lexer->lookahead)) {
+    if (!valid_symbols[BRACED_FALLBACK]) return false;
+    lexer->result_symbol = BRACED_FALLBACK;
+    return true;
+  }
+  bool closed = false;
+  if (substitution_arrow_ahead(s, lexer, &closed)) {
+    push_inline_flagged(s, SUBSTITUTION, 0, INLINE_BRACED);
+    lexer->result_symbol = SUBSTITUTION_BEGIN;
+    return true;
+  }
+  if (!closed) {
+    if (!valid_symbols[BRACED_FALLBACK]) return false;
+    lexer->result_symbol = BRACED_FALLBACK;
+    return true;
+  }
+  return valid_symbols[STRIKETHROUGH_MARK_BEGIN] &&
+         mark_span_begin(s, lexer, valid_symbols, STRIKETHROUGH,
+                         STRIKETHROUGH_MARK_BEGIN);
+}
+
+/// The `~>` that splits the halves, and the `~}` that ends the run. Both are
+/// offered only while the substitution is the innermost open span, which is what
+/// keeps an arrow inside one of its own halves' constructs from reaching them.
+static bool parse_substitution_mark(Scanner *s, TSLexer *lexer, char second,
+                                    TokenType token) {
+  Inline *top = peek_inline(s);
+  if (!top || top->type != SUBSTITUTION || lexer->lookahead != '~') {
+    return false;
+  }
+  advance(s, lexer);
+  if (lexer->lookahead != second) {
+    return false;
+  }
+  advance(s, lexer);
+  mark_end(s, lexer);
+  if (token == SUBSTITUTION_END) {
+    remove_inline(s);
+  }
+  lexer->result_symbol = token;
+  return true;
+}
+
+static bool mark_span_begin(Scanner *s, TSLexer *lexer,
+                            const bool *valid_symbols, InlineType inline_type,
+                            TokenType token) {
+  Inline *top = peek_inline(s);
+  Inline *bare_emphasis = find_inline_in_scope(s, EMPHASIS);
+  if (inline_type == BOLD_ITALIC && !valid_symbols[IN_FALLBACK] && bare_emphasis &&
+      !(bare_emphasis->flags & INLINE_BRACED)) return false;
+  if (inline_type == BOLD_ITALIC && !valid_symbols[IN_FALLBACK] && top &&
+      top->type == STRONG && (top->flags & INLINE_SCOPED_COMBINED_LITERAL)) return false;
+  bool combined_fallback = inline_type == EMPHASIS &&
+      s->after_closer_char == '*' &&
+      (IS_NOTE_NEXT_TOKEN(s->after_closer_col)
+           ? s->note_here
+           : s->after_closer_col == line_column(s, lexer));
+  bool bare = (s->state & STATE_BARE_SPAN_OPENER) != 0;
+  s->state &= ~STATE_BARE_SPAN_OPENER;
+  if (!valid_symbols[IN_FALLBACK] &&
+      carve_is_grapheme_extender(lexer->lookahead)) return false;
+  if (bare && inline_type != BOLD_ITALIC && !valid_symbols[IN_FALLBACK] &&
+      lexer->lookahead == inline_marker(inline_type)) return false;
+  if (bare && (inline_type == STRONG || inline_type == EMPHASIS) &&
+      find_inline_in_scope(s, BOLD_ITALIC) && !valid_symbols[IN_FALLBACK]) return false;
+  if (inline_type == STRONG && bare && top && top->type == STRONG &&
+      (top->flags & INLINE_SCOPED_COMBINED_LITERAL)) {
+    if (!valid_symbols[IN_FALLBACK]) return false;
+    lexer->result_symbol = token;
+    return true;
+  }
+  // If IN_FALLBACK is valid then it means we're processing the
+  // `_symbol_fallback` branch (see `grammar.js`).
+  if (valid_symbols[IN_FALLBACK]) {
+    bool balanced_bracket = false;
+    // There's a challenge when we have multiple elements inside an inline
+    // link:
+    //
+    //     [x](a_b_c_d_e)
+    //
+    // Because of the dynamic precedence treesitter will not parse this as a
+    // link but as some fallback characters and then some emphasis.
+    //
+    // To prevent this we don't allow the parsing of `(` when it's a fallback
+    // symbol if we can scan ahead and see that we should be able to parse it
+    // as a link, stopping the contained emphasis from being considered.
+    //
+    // This is done here at `[` as a fallback character so when we reach `(`
+    // we can abort and prune that branch (since we should parse it as a
+    // link).
+    if (inline_type == SQUARE_BRACKET_SPAN) {
+      // A `[` whose own `]` closes inside the enclosing bracket is a balanced
+      // pair of literal brackets there (`[t[z]](/u)`), not a competing opener,
+      // and that `]` is text rather than the enclosing close.
+      bool balanced = update_square_bracket_lookahead_states(s, lexer, top);
+      // `![*b*][@a]` is text, as `[*b*][@a]` is above.
+      if (balanced && s->citation_label_tail && valid_symbols[IN_FALLBACK]) {
+        s->citation_label_tail = false;
+        s->state &= ~(STATE_BRACKET_STARTS_INLINE_LINK | STATE_BRACKET_STARTS_SPAN);
+        mark_end(s, lexer);
+        lexer->result_symbol = IN_FALLBACK;
+        return true;
+      }
+      if (balanced && (s->state & (STATE_BRACKET_STARTS_SPAN | STATE_BRACKET_STARTS_INLINE_LINK))) {
+        push_inline_flagged(s, SQUARE_BRACKET_SPAN, 0, INLINE_BRACED);
+        lexer->result_symbol = token;
+        return true;
+      }
+      balanced_bracket = balanced;
+    }
+
+    // This is where we've reached the `(` in:
+    //
+    //     [x](a_b_c_d_e)
+    //
+    // and if `STATE_BRACKET_CAN_START_INLINE_LINK` is true then we should
+    // prune the branch and instead treat it as a link.
+    if (inline_type == PARENS_SPAN &&
+        (s->state & STATE_BRACKET_STARTS_INLINE_LINK)) {
+      return false;
+    }
+
+    // For spans `[text]{.class}` we use the same mechanism to solve
+    // precedence in this example:
+    //
+    //     [_]{.c}_
+    //
+    // Where we'll block at `{` if we should instead treat it as a span.
+    if (inline_type == CURLY_BRACKET_SPAN &&
+        (s->state & STATE_BRACKET_STARTS_SPAN)) {
+      return false;
+    }
+
+    // If there's multiple valid opening spans, for example:
+    //
+    //      {_ {_ a_
+    //
+    // Then we should choose the shorter one and the first `{_`
+    // should be regarded as regular text.
+    // To handle this case we count the number of opening tags
+    // an open element has and when we try to close an element with
+    // open tags then we issue an error (in `parse_span_end`).
+    //
+    // Counted only within the current scope: a marker inside a nested BRACED
+    // span belongs to that span, so it must not stop an outer one closing.
+    // `{*a {/b *} d/} e*}` keeps its strong, and `~a{+b~+} c~` its strikethrough.
+    // A literal opener leaves its left boundary for the adjacent delimiter.
+    if (bare && inline_type != BOLD_ITALIC) {
+      InlineType following;
+      if (is_bare_delim_kind(lexer->lookahead, &following)) {
+        s->after_closer_char = (uint8_t)inline_marker(inline_type);
+        s->after_closer_col = line_column(s, lexer);
+      }
+    }
+    Inline *open = find_inline_in_scope(s, inline_type);
+    // A bare marker of an already-open kind is literal in that scope.
+    // It must not block the first opener from closing.
+    if (balanced_bracket) {
+      if (top && top->type == SQUARE_BRACKET_SPAN && ((top->flags & (INLINE_LABEL | INLINE_BRACED)) == INLINE_LABEL)) {
+        if (top->literal_closes < UINT32_MAX) ++top->literal_closes;
+      } else {
+        push_inline_flagged(s, LITERAL_BRACKET, 0, 0);
+      }
+    } else if (open != NULL && !bare && inline_type != BOLD_ITALIC &&
+               !(inline_type == EMPHASIS &&
+                 (open->flags & INLINE_COMBINED_FALLBACK))) {
+      ++open->data;
+    }
+    // A literal caption opener must retain the lookahead dependency too:
+    // removing the next line's block marker can make this a paired span.
+    if (bare && in_caption(s) && inline_type != BOLD_ITALIC &&
+        (inline_type == STRONG || inline_type == EMPHASIS || inline_type == UNDERLINE ||
+         inline_type == STRIKETHROUGH || inline_type == HIGHLIGHTED)) {
+      mark_end(s, lexer);
+      bare_closer_skips_brackets(s, lexer, inline_marker(inline_type), NULL);
+    } else if (bare && inline_type != BOLD_ITALIC && !find_block(s, TABLE_ROW) &&
+               !find_inline_in_scope(s, inline_type)) {
+      // The real-span branch declines here without a token, which drops its
+      // no-closer note; this token keeps it, so later openers skip the probe.
+      // Not past a judged paragraph end: the grammar may read on (lazy lines).
+      uint16_t kinds = s->no_closer_kinds, ahead = s->closer_ahead_kinds, scope = s->no_closer_scope;
+      mark_end(s, lexer);
+      s->probe_end_judged = false;
+      bare_closer_ahead(s, lexer, inline_marker(inline_type), NULL);
+      if (s->probe_end_judged) {
+        s->no_closer_kinds = kinds;
+        s->closer_ahead_kinds = ahead;
+        s->no_closer_scope = scope;
+      }
+    }
+    // We need to output the token common to both the fallback symbol and
+    // the span so the resolver will detect the collision.
+    lexer->result_symbol = token;
+    return true;
+  } else {
+    // Reset blocking states when the correct branch was chosen.
+    if (inline_type == SQUARE_BRACKET_SPAN) {
+      // A `[` with no matching `]` ahead of it in this paragraph is never
+      // going to be a real span - refuse it here rather than keep an
+      // unclosable branch alive (tree-sitter-carve#435). `top` is NULL,
+      // unlike the fallback branch's own lookahead below: passing the
+      // enclosing span would also refuse a nested `[^1]` whose `]` reads as
+      // that span's own closer. Pin the zero-width mark first, since the
+      // lookahead advances the lexer past it.
+      mark_end(s, lexer);
+      if (!qualified_bracket_balanced(s, lexer)) {
+        return false;
+      }
+    } else if (inline_type == PARENS_SPAN) {
+      s->state &= ~STATE_BRACKET_STARTS_INLINE_LINK;
+    } else if (inline_type == CURLY_BRACKET_SPAN) {
+      s->state &= ~STATE_BRACKET_STARTS_SPAN;
+    }
+    // The `{` or the `(` is not adjacent to the `]` it would qualify - a
+    // carriage return sits between them, skipped as an extra. Refuse it so the
+    // brackets stay literal text and the CR keeps its line break.
+    //
+    // The `(` was added with tree-sitter-carve#265. An inline destination binds
+    // to the bracket it TOUCHES - `[t] (/u)` is a paragraph, and so is `[t]` on
+    // one line with `(/u)` on the next - and the attribute list's rule was
+    // already exactly this one. Said in `grammar.js` instead, as
+    // `token.immediate("(")`, it works and costs more than it is worth: the
+    // immediate token is a SEPARATE symbol from the plain `(` the fallback
+    // spells, so `queries/highlights.scm` stops resolving
+    // `(inline_link_destination ["(" ")"])` and `tree-sitter test` reports an
+    // impossible pattern.
+    if ((inline_type == CURLY_BRACKET_SPAN || inline_type == PARENS_SPAN) &&
+        (s->state & STATE_SPAN_END_AT_CR)) {
+      s->state &= ~STATE_SPAN_END_AT_CR;
+      return false;
+    }
+
+    // Corpus 471: a bare opener of a kind already open as a BRACED span in
+    // this scope is content. `{/a/b/}` is one emphasis over `a/b`.
+    if (bare && inline_type != BOLD_ITALIC) {
+      Inline *same = find_inline_in_scope(s, inline_type);
+      if (same != NULL) {
+        return false;
+      }
+      Inline *around = innermost_braced(s);
+      bool in_braced = around != NULL && around->type != SUBSTITUTION;
+
+      if (in_braced || find_block(s, TABLE_ROW) != NULL) {
+        // The scan below only LOOKS; the mark pins this zero-width token where
+        // it belongs whatever the scan advances over.
+        mark_end(s, lexer);
+        bool closer = bare_closer_ahead(s, lexer, inline_marker(inline_type), NULL);
+        if (!closer) return false;
+      } else {
+        // Bracket content and link destinations do not close a bare span
+        // opened before the bracket.
+        mark_end(s, lexer);
+        bool literal_combined = false;
+        bool *combined_decision = inline_type == EMPHASIS && lexer->lookahead == '*'
+                                      ? &literal_combined : NULL;
+        if (!bare_closer_ahead(s, lexer, inline_marker(inline_type),
+                               combined_decision)) {
+
+          return false;
+        }
+        if (combined_decision) combined_fallback = literal_combined;
+      }
+    }
+    lexer->result_symbol = token;
+    if (combined_fallback) {
+      s->after_closer_char = 0;
+      s->after_closer_col = 0;
+      push_inline_flagged(s, inline_type, 1, INLINE_COMBINED_FALLBACK);
+    } else {
+      push_inline_flagged(s, inline_type, 0, bare ? 0 : INLINE_BRACED);
+      if (!bare && inline_type == EMPHASIS && lexer->lookahead == '/') {
+        s->after_closer_char = '/';
+        s->after_closer_col = line_column(s, lexer);
+      }
+    }
+    return true;
+  }
+}
+
+/// Can this character be part of an inline DELIMITER?
+///
+/// Read by the label half of `identifier_after_bracket_stays_on_one_line`, which
+/// may only refuse a wrapped label when it is certain the wrap is at the label's
+/// own level. Every character here opens, closes or escapes something whose
+/// content is `_inline` and may therefore hold a line break of its own: the bare
+/// span markers `_ * ~ = /`, the verbatim tick, the brace that opens every
+/// braced form, the brackets and parentheses, the autolink's angles, and the
+/// backslash that escapes any of them. Anything else - a letter, a digit, a
+/// space, a tab, ordinary punctuation, a character outside ASCII - is content
+/// and nothing more.
+///
+/// The BRACED-ONLY markers are absent on purpose. `{^ ^}`, `{, ,}`, `{+ +}`,
+/// `{- -}`, `{: :}` and the rest reach their content only through a brace, and
+/// `^[`, `![`, `` !` ``, `$` ` `` and `{%` reach theirs only through a bracket, a
+/// tick or a brace. Every one of those characters is already here, so a label
+/// holding `-`, `+`, `,`, `:`, `^`, `!`, `$`, `%` or `#` and nothing else from
+/// this list cannot be holding a construct at all - which is what lets
+/// `[t][foo-bar` / `baz]` be refused.
+///
+/// The list is deliberately GENEROUS. A character wrongly called a delimiter
+/// costs a refusal this reader could have made; a character wrongly called
+/// content costs a construct the other two spellings of `newline` keep, which is
+/// the defect being fixed pointing the other way.
+static bool label_char_opens_nothing(int32_t c) {
+  switch (c) {
+  case '_':
+  case '*':
+  case '~':
+  case '=':
+  case '/':
+  case '`':
+  case '{':
+  case '}':
+  case '[':
+  case ']':
+  case '(':
+  case ')':
+  case '<':
+  case '>':
+  case '\\':
+    return false;
+  default:
+    // Control characters are not content either: the ones this grammar models
+    // have their own tokens, and refusing to call them plain only ever declines
+    // to refuse.
+    return c >= ' ' || c == '\t';
+  }
+}
+
+/// A BRACKETED CONSTRUCT'S IDENTIFIER STAYS ON ONE LINE, asked at the `]` the
+/// identifier follows, with that `]` already consumed.
+///
+/// `[text][label]` and `[text](destination)` are each written with the
+/// identifier on ONE line, and the two rules that carry one say so by admitting
+/// no terminator: `_inline_single_line` is a `repeat1` with no
+/// `_newline_inline` among its alternatives, and `_inline_link_url` is a
+/// `repeat1` over a regex that excludes both '\r' and '\n'. Neither says
+/// anything about the gap BETWEEN two repetitions, and a lone '\r' is this
+/// grammar's one EXTRA, skipped wherever a token can start - which a repetition
+/// boundary is. So under lone carriage returns the identifier ran on to the next
+/// line and the construct formed across the wrap: `[t][r` / `x]` built a
+/// full_reference_link and `![a](/i` / `q)` an inline_image, where both are a
+/// bare paragraph under '\n' (tree-sitter-carve#265).
+///
+/// `token.immediate` is the wrong instrument for it. That closed the ADJACENCY
+/// between `]` and `[` (tree-sitter-carve#262), where two tokens must TOUCH and
+/// an immediate token refuses the extra between them; here the skip to refuse
+/// sits in the MIDDLE of an arbitrary repetition, with no fixed join to attach
+/// it to. Saying it in `grammar.js` at all was tried and does not work either: a
+/// zero-width check between the label's `[` and its content re-shapes the state
+/// the parser is in when it reads that `[`, and `see [text][^]` - a caret label,
+/// which is a reference label and not an empty footnote - lexed `[^` there and
+/// stopped resolving.
+///
+/// So the question is asked one character EARLIER, at the `]` that closes the
+/// text or the description, where no grammar rule moves and the scanner can see
+/// the character the grammar cannot. It is the same place the sibling case is
+/// already decided: STATE_SPAN_END_AT_CR, just above, is this rule for a `{`
+/// rather than a `[` or a `(`. Refusing the `]` leaves the whole bracket run to
+/// the fallback, which is what '\n' and '\r\n' already build.
+///
+/// ONLY '\r' refuses. A '\n', a '\r\n' and end-of-input all ACCEPT and leave the
+/// verdict where it already is - with the rules above, which stop at those on
+/// their own. This is not a second opinion on what they decide; it is the one
+/// terminator they cannot be shown.
+///
+/// THE TWO IDENTIFIERS ARE READ DIFFERENTLY, because only one of them is flat.
+///
+/// A DESTINATION is `_inline_link_url`, a regex over characters, so the first
+/// unescaped `)` ends it and nothing in between can hold a line break of its
+/// own. Nested pairs are deliberately NOT counted: `[t](/a(b)c` / `SECOND)`
+/// builds an inline_link under every spelling of `newline`, so a reader that
+/// walked past the inner `)` to the outer one would meet the carriage return and
+/// refuse a construct the other two spellings keep.
+///
+/// A LABEL is inline CONTENT, and that changes the question. `_inline_single_line`
+/// forbids a terminator at its own level and says nothing about the levels below
+/// it: a span's content is `_inline`, which admits one. `[t][a *b` / `c* d]`
+/// therefore resolves under '\n' with the break inside the strong span, and so
+/// do an inline note, a braced comment and an editorial comment. Telling a wrap
+/// at the label's own level from a wrap inside something it contains is a
+/// question for the inline grammar, and a lexical scan that guessed at it
+/// refused four such labels that '\n' and '\r\n' both keep.
+///
+/// So the label is refused only where the answer needs no guessing: when no
+/// character from the label's `[` to the carriage return is part of an inline
+/// DELIMITER - see `label_char_opens_nothing`. With none of them present there
+/// is no level below the label's own for the break to belong to, and the wrap is
+/// the label's. That is what the corpus asks - `[t][r` / `x]`, `![a][r` / `x]` -
+/// and everything richer is left reading exactly as it did.
+///
+/// WHAT THAT LEAVES. A delimiter DECLINES the refusal wherever it stands, so a
+/// construct that opened and CLOSED before the break declines it too: the wrap
+/// in `[t][a *b* c` / `d]` is the label's own, and this reader will not say so.
+/// The same holds for a label whose nested bracket pair wraps the line. Both are
+/// lone-carriage-return divergences of exactly the shape this function exists to
+/// refuse, and neither is in the spec corpus. Closing them needs the reader to
+/// know which constructs are OPEN at the break, which is the inline grammar's
+/// question - answering it here would mean keeping a second copy of that
+/// grammar in a lookahead, and a second copy drifts from the first.
+static bool identifier_after_bracket_stays_on_one_line(Scanner *s,
+                                                       TSLexer *lexer) {
+  char closer;
+  if (lexer->lookahead == '[') {
+    closer = ']';
+  } else if (lexer->lookahead == '(') {
+    closer = ')';
+  } else {
+    // Nothing that has to stay on one line follows this bracket.
+    return true;
+  }
+  advance(s, lexer);
+  if (closer == ')') return !s->link_tail_open_line && scan_inline_link_tail(s, lexer, 0, NULL, NULL);
+
+  bool plain = true;
+  while (!lexer->eof(lexer)) {
+    if (lexer->lookahead == '\r') {
+      return closer == ']' && !plain;
+    }
+    if (lexer->lookahead == '\n' || lexer->lookahead == closer) {
+      return true;
+    }
+    if (closer == ']' && !label_char_opens_nothing(lexer->lookahead)) {
+      plain = false;
+    }
+    if (lexer->lookahead == '\\') {
+      advance(s, lexer);
+      if (lexer->lookahead == '\r') {
+        return closer == ']' && !plain;
+      }
+      if (lexer->eof(lexer) || lexer->lookahead == '\n') {
+        return true;
+      }
+    }
+    advance(s, lexer);
+  }
+  return true;
+}
+
+// Parse a span ending token, either `_` or `_}`.
+/// A span closes on its own marker FORM (corpus 471). A braced span takes
+/// `X}` and reads a bare `X` as content, so `{/a/b/}` is one emphasis over
+/// `a/b`. A bare span takes the bare marker and leaves a `}` behind it as text,
+/// so `*a {*b*} c*` closes at the `*` of `*}`. Only the real close asks this;
+/// the lookahead scanners keep accepting either form.
+static bool scan_span_end_by_form(Scanner *s, TSLexer *lexer,
+                                  InlineType element, bool braced) {
+  SpanType type = inline_span_type(element);
+  if (type != SpanBracketedAndSingle &&
+      type != SpanBracketedAndSingleNoWhitespace) {
+    return scan_span_end_marker(s, lexer, element);
+  }
+  char marker = inline_marker(element);
+  if (!braced) {
+    if (lexer->lookahead != marker) {
+      return false;
+    }
+    advance(s, lexer);
+    // bare_closer(d) = <&(non_ws), d, !(alnum). A bare marker glued to
+    // the word that follows it closes nothing: `/usr/local/` is one emphasis.
+    if (carve_is_alnum_ascii(lexer->lookahead) ||
+        carve_is_grapheme_extender(lexer->lookahead)) {
+      return false;
+    }
+    return true;
+  }
+  if (lexer->lookahead == marker) {
+    advance(s, lexer);
+    if (lexer->lookahead != '}') {
+      return false;
+    }
+    advance(s, lexer);
+    return true;
+  }
+  if (type == SpanBracketedAndSingleNoWhitespace &&
+      consume_whitespace(s, lexer) == 0) {
+    return false;
+  }
+  return scan_bracketed_span_end(s, lexer, marker);
+}
+
+static bool is_bare_delim_kind(int32_t c, InlineType *kind) {
+  switch (c) {
+  case '/':
+    *kind = EMPHASIS;
+    return true;
+  case '*':
+    *kind = STRONG;
+    return true;
+  case '_':
+    *kind = UNDERLINE;
+    return true;
+  case '~':
+    *kind = STRIKETHROUGH;
+    return true;
+  case '=':
+    *kind = HIGHLIGHTED;
+    return true;
+  default:
+    return false;
+  }
+}
+
+static bool parse_span_end(Scanner *s, TSLexer *lexer, InlineType element,
+                           TokenType token) {
+  // if (!scan_span_end_element(s, lexer, element)) {
+  //   return false;
+  // }
+  // Only close the topmost element, so in:
+  //
+  //    _a *b_
+  //
+  // The `*` isn't allowed to open a span, and that branch should not be
+  // valid.
+  Inline *top = peek_inline(s);
+  if (!top || top->type != element) {
+    return false;
+  }
+  // If we've chosen any fallback symbols inside the span then we
+  // should not accept the span.
+  if (top->data > 0) {
+    return false;
+  }
+
+  if (!scan_span_end_by_form(s, lexer, element,
+                             (top->flags & INLINE_BRACED) != 0)) {
+    return false;
+  }
+
+  mark_end(s, lexer);
+  lexer->result_symbol = token;
+  // a delimiter right behind a BARE closer of its own kind opens
+  // nothing (its previous character is the marker) and closes nothing (no span
+  // of the kind is open any more). The scanner cannot read behind itself, so
+  // the closer leaves the note.
+  if (!HAS_NO_COMBINED_CLOSER(s)) {
+    s->after_closer_char = 0;
+    s->after_closer_col = 0;
+  }
+  InlineType next_kind;
+  if ((top->flags & INLINE_BRACED) == 0 &&
+      is_bare_delim_kind(lexer->lookahead, &next_kind)) {
+    s->after_closer_char = (element == BOLD_ITALIC || (element == EMPHASIS && lexer->lookahead == '*')) ?
+        AFTER_COMBINED_CLOSER : (uint8_t)inline_marker(element);
+    bool next_token_only = (element == EMPHASIS || element == STRONG ||
+                            element == BOLD_ITALIC || element == STRIKETHROUGH ||
+                            element == UNDERLINE) &&
+                           !note_declines(s, s->after_closer_char, lexer->lookahead);
+    s->after_closer_col = next_token_only ? NOTE_NEXT_TOKEN(lexer->lookahead)
+                                          : line_column(s, lexer);
+    s->note_written = next_token_only;
+  }
+  // See STATE_SPAN_END_AT_CR: a `{` after this `]` is only the span's attribute
+  // list when it is ADJACENT, and a carriage return between them is invisible
+  // to the grammar because it is an extra.
+  if (element == SQUARE_BRACKET_SPAN && lexer->lookahead == '\r') {
+    s->state |= STATE_SPAN_END_AT_CR;
+  } else {
+    s->state &= ~STATE_SPAN_END_AT_CR;
+  }
+  // The identifier that FOLLOWS this bracket, when there is one, has to close
+  // on this line - see `identifier_after_bracket_stays_on_one_line`. Read after
+  // the flag above, which needs the character immediately behind the `]` and
+  // this reader moves past it.
+  if (element == SQUARE_BRACKET_SPAN &&
+      !identifier_after_bracket_stays_on_one_line(s, lexer)) {
+    return false;
+  }
+  remove_inline(s);
+  return true;
+}
+
+// Parse a span delimited with `marker`, with `_`, `{_`, and `_}` being valid
+// delimiters.
+/// The zero-width mark that opens an INLINE NOTE, `^[content]`.
+///
+/// `grammar.js` consumes the `^[` itself; this decides whether it opens a note
+/// at all, and the deciding case is the EMPTY one. `^[]` is a literal caret
+/// followed by an empty span, and `^[]{.c}` a caret followed by a span (spec
+/// corpus 307) - so a note must not form when the bracket closes immediately.
+/// A grammar rule cannot express that: the opener has to be one token for the
+/// lexer to prefer it over a bare `^`, and by then the decision is made.
+/// Refusing here kills the note branch and leaves the caret to the fallback,
+/// which is the reading the spec wants.
+///
+/// Everything else about the note's brackets is an ordinary square-bracket
+/// span, so it borrows that machinery wholesale and the existing
+/// `SQUARE_BRACKET_SPAN_END` closes it.
+static bool parse_inline_note_mark_begin(Scanner *s, TSLexer *lexer,
+                                         const bool *valid_symbols) {
+  return mark_span_begin(s, lexer, valid_symbols, INLINE_NOTE,
+                         INLINE_NOTE_MARK_BEGIN);
+}
+
+/// The `^[` that opens an inline note.
+///
+/// The EMPTY note is refused here, before either character is consumed. `^[]`
+/// is a literal caret followed by an empty span and `^[]{.c}` a caret followed
+/// by a span (spec corpus 307); a grammar token spelled `^[` cannot express
+/// that, because the lexer takes the longest match and the decision is over by
+/// the time anything can look at what follows. Refusing leaves the caret to
+/// the fallback, which is the reading the spec wants.
+static bool parse_inline_note_begin(Scanner *s, TSLexer *lexer) {
+  if (lexer->lookahead != '^') {
+    return false;
+  }
+  advance(s, lexer);
+  return parse_inline_note_after_caret(s, lexer);
+}
+
+static bool parse_inline_note_after_caret(Scanner *s, TSLexer *lexer) {
+  if (lexer->lookahead != '[') return false;
+  advance(s, lexer);
+  // The token is exactly `^[`; the scan below only looks.
+  mark_end(s, lexer);
+  // An EMPTY note is not a note, and neither is a whitespace-only one: `^[]`,
+  // `^[ ]` and `^[]{.c}` are all a literal caret followed by a bracket run
+  // (spec corpus 307). The content rule alone does not refuse `^[ ]` - a run
+  // of whitespace satisfies it - so the spaces are skipped here and the `]`
+  // behind them is what decides.
+  while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+    advance(s, lexer);
+  }
+  if (lexer->lookahead == ']') {
+    return false;
+  }
+  if (!scan_until_bracket_close(s, lexer, NULL)) return false;
+  lexer->result_symbol = INLINE_NOTE_BEGIN;
+
+  return true;
+}
+
+// The LEFT-BOUNDARY reader.
+//
+// `bare_opener(d)` refuses a delimiter whose PREVIOUS character is a word
+// character or the marker itself, and `bare_closer(d)` refuses one glued to the
+// word that follows it. The scanner is called AT a delimiter and cannot read
+// behind that position, so the previous character is read the only way it can
+// be: in one left-to-right pass that starts at the word or at the run's first
+// character and decides every delimiter behind it.
+//
+// What the pass emits is one literal token over the characters that open and
+// close nothing. It stops before a delimiter that may still close an open span
+// or open a new one, leaving those to the ordinary span machinery.
+
+/// Block-level readings that start on the character this pass is looking at.
+/// Where one of them is on offer the pass stands aside: it answers for the
+/// whole scan call, so consuming here would take the character away from a list
+/// marker, a fence or a thematic break. Asked per character, because a `=` or a
+/// `/` at a line start opens no block and a `*` or a `~` does.
+static bool block_reading_ahead(int32_t c, const bool *valid_symbols) {
+  if (valid_symbols[BLOCK_CLOSE]) {
+    return true;
+  }
+  switch (c) {
+  case '*':
+    return valid_symbols[LIST_MARKER_STAR] ||
+           valid_symbols[LIST_MARKER_TASK_BEGIN] ||
+           valid_symbols[THEMATIC_BREAK_STAR];
+  case '~':
+    return valid_symbols[CODE_BLOCK_BEGIN] || valid_symbols[CODE_BLOCK_END] ||
+           valid_symbols[COMMENT_FENCE_BEGIN] ||
+           valid_symbols[COMMENT_FENCE_CONTENT] ||
+           valid_symbols[COMMENT_FENCE_END];
+  case '_':
+    // `___` is a thematic break, and it is the container check that says so.
+    return valid_symbols[NOT_A_CONTAINER_OPENER];
+  case '=':
+    return valid_symbols[HEADING_BEGIN];
+  case '/':
+    return false;
+  default:
+    break;
+  }
+  // A word run: the ordered list markers and the block openers spelled with a
+  // word are the only block readings that start on an alphanumeric.
+  return valid_symbols[LIST_MARKER_DECIMAL_PERIOD] ||
+         valid_symbols[LIST_MARKER_LOWER_ALPHA_PERIOD] ||
+         valid_symbols[LIST_MARKER_UPPER_ALPHA_PERIOD] ||
+         valid_symbols[LIST_MARKER_LOWER_ROMAN_PERIOD] ||
+         valid_symbols[LIST_MARKER_UPPER_ROMAN_PERIOD] ||
+         valid_symbols[LIST_MARKER_DECIMAL_PAREN] ||
+         valid_symbols[LIST_MARKER_LOWER_ALPHA_PAREN] ||
+         valid_symbols[LIST_MARKER_UPPER_ALPHA_PAREN] ||
+         valid_symbols[LIST_MARKER_LOWER_ROMAN_PAREN] ||
+         valid_symbols[LIST_MARKER_UPPER_ROMAN_PAREN] ||
+         valid_symbols[LIST_MARKER_DECIMAL_PARENS] ||
+         valid_symbols[LIST_MARKER_LOWER_ALPHA_PARENS] ||
+         valid_symbols[LIST_MARKER_UPPER_ALPHA_PARENS] ||
+         valid_symbols[LIST_MARKER_LOWER_ROMAN_PARENS] ||
+         valid_symbols[LIST_MARKER_UPPER_ROMAN_PARENS] ||
+         valid_symbols[LIST_MARKER_DEFINITION] ||
+         valid_symbols[LIST_MARKER_DESCRIPTION] ||
+         valid_symbols[FRONTMATTER_MARKER] || valid_symbols[HEADING_BEGIN] ||
+         valid_symbols[BLOCK_ATTRIBUTE_BEGIN] ||
+         valid_symbols[LINK_REF_DEF_MARK_BEGIN] ||
+         valid_symbols[FOOTNOTE_MARK_BEGIN] ||
+         valid_symbols[TABLE_HEADER_BEGIN] ||
+         valid_symbols[TABLE_SEPARATOR_BEGIN] ||
+         valid_symbols[TABLE_ROW_BEGIN] || valid_symbols[TABLE_CELL_END] ||
+         valid_symbols[TABLE_CAPTION_BEGIN];
+}
+
+/// Is this character the marker of anything still open?
+static bool marker_of_open_inline(Scanner *s, int32_t c) {
+  for (int i = s->open_inline->size - 1; i >= 0; --i) {
+    Inline *e = *array_get(s->open_inline, i);
+    if ((int32_t)inline_marker(e->type) == c ||
+        (e->type == SUBSTITUTION && c == '~')) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/// Is this character the start of the closer of something that is open?
+///
+/// The pass may only swallow a delimiter that opens and closes nothing. A
+/// bold-italic takes `*/`, a substitution `~>` and `~}`, a braced span `X}`,
+/// and a bare span its own marker where no alphanumeric follows - so each of
+/// those characters belongs to its construct and not to this run.
+static bool open_closer_starts_here(Scanner *s, int32_t c, int32_t next) {
+  for (int i = s->open_inline->size - 1; i >= 0; --i) {
+    Inline *e = *array_get(s->open_inline, i);
+    if ((int32_t)inline_marker(e->type) != c &&
+        !(e->type == SUBSTITUTION && c == '~')) {
+      continue;
+    }
+    if (e->type == BOLD_ITALIC) {
+      if (next == '/') {
+        return true;
+      }
+      continue;
+    }
+    if (e->type == SUBSTITUTION) {
+      if (next == '>' || next == '}') {
+        return true;
+      }
+      continue;
+    }
+    if (e->flags & INLINE_BRACED) {
+      if (next == '}') {
+        return true;
+      }
+      continue;
+    }
+    if (!carve_is_alnum_ascii(next)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/// A zero-width mark or check the parser is waiting for right here. Every one
+/// of them stands between an opener character and its span, so a reader that
+/// answered the call instead would kill the span before it formed.
+static bool zero_width_mark_pending(const bool *valid_symbols) {
+  static const TokenType marks[] = {
+      NON_WHITESPACE_CHECK,      HIGHLIGHTED_OPEN_CHECK,
+      IN_FALLBACK,               BRACED_FALLBACK,
+      EMPHASIS_MARK_BEGIN,       STRONG_MARK_BEGIN,
+      UNDERLINE_MARK_BEGIN,      STRIKETHROUGH_MARK_BEGIN,
+      SUPERSCRIPT_MARK_BEGIN,    SUBSCRIPT_MARK_BEGIN,
+      HIGHLIGHTED_MARK_BEGIN,    INSERT_MARK_BEGIN,
+      DELETE_MARK_BEGIN,         BOLD_ITALIC_MARK_BEGIN,
+      PARENS_SPAN_MARK_BEGIN,    CURLY_BRACKET_SPAN_MARK_BEGIN,
+      SQUARE_BRACKET_SPAN_MARK_BEGIN, INLINE_NOTE_MARK_BEGIN,
+      SUBSTITUTION_BEGIN, ATTRIBUTED_SPAN_MARK_BEGIN,
+  };
+  for (size_t i = 0; i < sizeof(marks) / sizeof(marks[0]); ++i) {
+    if (valid_symbols[marks[i]]) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// A pure word this long is read whole by `parse_literal_run`.
+#define LONG_WORD 256
+
+void tree_sitter_carve2_external_scanner_deserialize(void *payload, char *buffer,
+                                                   unsigned length);
+unsigned tree_sitter_carve2_external_scanner_serialize(void *payload, char *buffer);
+// The one-byte state of a `MID_LINE_SPACE` read from the initial state.
+#define INITIAL_MID_LINE 1
+
+/// -1: the reader moved the lexer and produced nothing, so the call is over.
+///  0: the reader did not move the lexer; the rest of the call still applies.
+///  1: the token is the reader's.
+static int parse_literal_run(Scanner *s, TSLexer *lexer,
+                             const bool *valid_symbols, int32_t replay_marker,
+                             uint8_t replay_count, int32_t seed_prev) {
+  uint32_t literal_start_advances = s->advances;
+  // `prev` is the character behind the lexer, 0 while it is unknown. Unknown
+  // reads as a clean left boundary, which is what the grammar assumed before
+  // this pass existed.
+  if (s->after_literal_star && lexer->lookahead == '*') {
+    uint32_t before = s->advances;
+    mark_end(s, lexer);
+    if (valid_symbols[STRONG_END] && parse_span_end(s, lexer, STRONG, STRONG_END)) {
+      s->after_literal_star = false;
+      return 1;
+    }
+    if (s->advances == before) advance(s, lexer);
+    mark_end(s, lexer);
+    if (lexer->lookahead != '*') s->after_literal_star = false;
+    lexer->result_symbol = valid_symbols[LITERAL_STAR] ? LITERAL_STAR : LITERAL_RUN;
+    return 1;
+  }
+  int32_t prev = 0;
+  int32_t prev2 = 0;
+  InlineType kind;
+  bool leftover = false;
+  bool forbid_emphasis = false;
+  uint32_t delims_seen = 0;
+
+  if (HAS_NO_COMBINED_CLOSER(s) && carve_is_alnum_ascii(lexer->lookahead) &&
+      (s->after_closer_char == NO_COMBINED_CLOSER_LINE ||
+       line_column(s, lexer) < s->after_closer_col)) {
+    // Unclosed combined runs are literal. Read their plain words together,
+    // retaining other markup and any trailing whitespace for the grammar.
+    int32_t previous = 0;
+    Inline *literal_strong = find_inline(s, STRONG);
+    Inline *literal_emphasis = find_inline(s, EMPHASIS);
+    bool literal_slashes = !literal_emphasis ||
+                          (literal_emphasis->flags & INLINE_COMBINED_FALLBACK) ||
+                          (s->after_closer_char == NO_STRONG_IN_EMPHASIS &&
+                           !(literal_emphasis->flags & INLINE_BRACED));
+    bool literal_stars = literal_slashes && (!literal_strong ||
+                         (literal_strong->flags & INLINE_SCOPED_COMBINED_LITERAL));
+    bool consumed = false;
+    bool glued_name = false;
+    while (!lexer->eof(lexer) && !at_line_end(lexer)) {
+      int32_t current = lexer->lookahead;
+      bool whitespace = current == ' ' || current == '\t';
+      InlineType word_kind;
+      bool glued_marker = (current == '@' || current == '#') && carve_is_alnum_ascii(previous);
+      bool name_separator = glued_name && (current == '-' || current == '_');
+      bool word_marker = (carve_is_alnum_ascii(previous) || previous == current) &&
+                         is_bare_delim_kind(current, &word_kind) &&
+                         !find_inline_in_scope(s, word_kind);
+      if (!carve_is_alnum_ascii(current) && !whitespace && !word_marker && !glued_marker && !name_separator &&
+          !(current == '/' && literal_slashes) && current != '.' &&
+          !(current == '*' && previous == '/' && literal_stars)) break;
+      if (glued_marker) glued_name = true;
+      if (whitespace) glued_name = false;
+      if (current == '.') {
+        advance(s, lexer);
+        if (lexer->lookahead == '.') {
+          advance(s, lexer);
+          if (lexer->lookahead == '.') break;
+        }
+      } else {
+        advance(s, lexer);
+        if (current == '*' && literal_strong &&
+            !carve_is_alnum_ascii(lexer->lookahead)) break;
+        if (current == '/' && literal_emphasis && previous != 0 &&
+            previous != ' ' && previous != '\t' &&
+            !carve_is_alnum_ascii(lexer->lookahead)) break;
+      }
+      if (!whitespace) mark_end(s, lexer);
+      previous = current;
+      consumed = true;
+    }
+    if (consumed) {
+      lexer->result_symbol = LITERAL_RUN;
+      return 1;
+    }
+  }
+
+  if (seed_prev != 0) {
+    // A probe already read a word and stopped behind it (see the word\'s second
+    // chance in `scan`), so the character behind the lexer is `seed_prev`.
+    prev = seed_prev;
+    prev2 = seed_prev;
+  } else if (replay_count > 0) {
+    // A block probe consumed this run and handed it back (see the contract on
+    // `parse_list_marker_or_thematic_break`). Decide those characters here,
+    // where the one behind each of them is known, before reading on from where
+    // the probe stopped. Any of them that could open or close belongs to the
+    // span machinery, and the whole call goes back to it.
+    InlineType rk;
+    if (!is_bare_delim_kind(replay_marker, &rk)) {
+      return 0;
+    }
+    Inline *ropen = find_inline_in_scope(s, rk);
+    if (ropen != NULL) {
+      return 0;
+    }
+    for (uint8_t i = 0; i < replay_count; ++i) {
+      int32_t next =
+          (i + 1 < replay_count) ? replay_marker : lexer->lookahead;
+      bool next_ws = lexer->eof(lexer) || next == '\n' || next == '\r' ||
+                     next == ' ' || next == '\t';
+      bool may_open = !carve_is_alnum_ascii(prev) && prev != replay_marker &&
+                      !next_ws && next != replay_marker;
+      // UNREACHABLE under today's contract, and kept on purpose. A probe hands
+      // back only a pure run of one marker, and inside such a run every
+      // character has a neighbour of the same marker, so nothing in it can
+      // open. The check matters the moment the contract is widened to a run
+      // that is not pure; whoever widens it must also add a case that makes
+      // this fire, because nothing does today.
+      if (may_open) {
+        return 0;
+      }
+      prev2 = prev;
+      prev = replay_marker;
+      delims_seen++;
+    }
+    if (replay_count == 1 && replay_marker == '*' && valid_symbols[LITERAL_STAR]) {
+      mark_end(s, lexer);
+      s->after_closer_char = '*';
+      s->after_closer_col = line_column(s, lexer);
+      lexer->result_symbol = LITERAL_STAR;
+      return 1;
+    }
+  } else if (is_bare_delim_kind(lexer->lookahead, &kind)) {
+    if (s->after_closer_char != 0 && !HAS_NO_COMBINED_CLOSER(s) &&
+        (IS_NOTE_NEXT_TOKEN(s->after_closer_col)
+             ? s->note_here
+             : s->after_closer_col == line_column(s, lexer))) {
+      // Right behind a closer of this very marker: nothing of this kind is
+      // open any more and the previous character is the marker, so no
+      // character of the rest of the run can open or close.
+      if ((s->after_closer_char == AFTER_COMBINED_CLOSER || s->after_closer_char == '/') &&
+          lexer->lookahead != '/' && lexer->lookahead != '_') {
+        s->after_closer_char = 0;
+        s->after_closer_col = 0;
+        return 0;
+      }
+      prev = s->after_closer_char == AFTER_COMBINED_CLOSER ? '/' : (int32_t)s->after_closer_char;
+      prev2 = 'x';
+      leftover = true;
+    } else if (marker_of_open_inline(s, lexer->lookahead)) {
+      // A closer may be due here - this very character is the marker of
+      // something open. Leave the whole call to the span machinery, before
+      // reading anything: a reader that has moved cannot hand the position
+      // back.
+      return 0;
+    }
+  } else if (!carve_is_alnum_ascii(lexer->lookahead)) {
+    return 0;
+  }
+
+  mark_end(s, lexer);
+  uint32_t delims = delims_seen;
+  uint32_t run_start = s->advances;
+  // The last five uppercase letters of the run, to spot a keyword token
+  // (`todo`, `note`, `fixme`) that the internal lexer finds inside a word.
+  uint64_t upper_tail = 0;
+  bool keyword = false;
+  int32_t word_end = -1;
+  for (;;) {
+    int32_t c = lexer->lookahead;
+    if (carve_is_alnum_ascii(c)) {
+      upper_tail = c >= 'A' && c <= 'Z' ? (upper_tail << 8 | (uint64_t)c) & 0xffffffffffULL : 0;
+      if (upper_tail >= 0x10000 && !keyword) {
+        uint64_t three = upper_tail & 0xffffff, four = upper_tail & 0xffffffff;
+        keyword = three == 0x574950 || three == 0x585858 || four == 0x544f444f ||
+                  four == 0x4e4f5445 || four == 0x494e464f || upper_tail == 0x4649584d45ULL;
+      }
+      advance(s, lexer);
+      prev2 = prev;
+      prev = c;
+      continue;
+    }
+    InlineType k;
+    if (!is_bare_delim_kind(c, &k)) {
+      word_end = c;
+      break;
+    }
+    if (c == '/') mark_end(s, lexer);
+    advance(s, lexer);
+    int32_t next = lexer->lookahead;
+    bool at_end = lexer->eof(lexer) || next == '\n' || next == '\r';
+    bool next_ws = at_end || next == ' ' || next == '\t';
+    // bare_closer(d) = <&(non_ws), d, !(alnum): a real character behind it, no
+    // alphanumeric in front of it. Whether a span of the kind is open is the
+    // scanner's OWN stack rather than `valid_symbols`, which describes the
+    // parser state at the start of this token and not where the reader has
+    // got to. A braced span of the kind closes on `X}` only, so a bare marker
+    // inside it is content (corpus 471).
+    Inline *open = find_inline_in_scope(s, k);
+    bool open_bare = open != NULL && (open->flags & INLINE_BRACED) == 0;
+    bool open_braced = open != NULL && (open->flags & INLINE_BRACED) != 0;
+    bool may_close = prev != 0 && ((open_bare && !carve_is_alnum_ascii(next) &&
+                                    !carve_is_grapheme_extender(next)) ||
+                                   (open_braced && next == '}') ||
+                                   open_closer_starts_here(s, c, next));
+    // bare_opener(d) = <!(alnum | d | slash_if(d)), d, !(ws | d)
+    bool path_guard = (c == '/' || c == '_') && (prev == '/' || prev == '_') &&
+                      prev2 != 0;
+    bool may_open = !carve_is_alnum_ascii(prev) && prev != c &&
+                    prev != '_' && !path_guard &&
+                    !next_ws && next != c && !carve_is_grapheme_extender(next);
+    // A combined opener uses the same left boundary as a bare delimiter.
+    Inline *enclosing_em = find_inline_in_scope(s, EMPHASIS);
+    bool em_path = enclosing_em && (enclosing_em->flags & INLINE_BRACED) &&
+                   prev != 0 && prev != ' ' && prev != '\t' && prev != '\n';
+    bool bold_italic_opener = c == '/' && next == '*' && !em_path &&
+                             !carve_is_alnum_ascii(prev) && prev != '_' &&
+                             prev != '/' &&
+                             !find_inline_in_scope(s, BOLD_ITALIC);
+    if (find_inline_in_scope(s, BOLD_ITALIC) && (k == EMPHASIS || k == STRONG))
+      may_open = false;
+    if (may_close || may_open || bold_italic_opener) {
+      if (bold_italic_opener && !may_open) forbid_emphasis = true;
+      break;
+    }
+    mark_end(s, lexer);
+    TokenType literal_token = c == '*' ? LITERAL_STAR : LITERAL_SLASH;
+    if ((c == '*' || c == '/') && seed_prev == 0 &&
+        s->advances == literal_start_advances + 1 && valid_symbols[literal_token]) {
+      // Only a delimiter right behind reads the note.
+      InlineType following;
+      bool read = is_bare_delim_kind(lexer->lookahead, &following);
+      bool next = read && !note_declines(s, (uint8_t)c, lexer->lookahead);
+      s->after_closer_char = read ? (uint8_t)c : 0;
+      s->after_closer_col = next ? NOTE_NEXT_TOKEN(lexer->lookahead) : read ? line_column(s, lexer) : 0;
+      s->note_written = next;
+      lexer->result_symbol = literal_token;
+      return 1;
+    }
+    delims++;
+    prev2 = prev;
+    prev = c;
+  }
+  if (forbid_emphasis) {
+    s->after_closer_char = AFTER_WORD_BEFORE_COMBINED;
+    s->after_closer_col = line_column(s, lexer);
+  } else if (!HAS_NO_COMBINED_CLOSER(s)) {
+    s->after_closer_char = 0;
+    s->after_closer_col = 0;
+  }
+  if (delims == 0 && !leftover && !forbid_emphasis) {
+    // Nothing was decided here that the ordinary readings do not decide
+    // themselves; leaving the characters alone keeps every token they can be
+    // part of (a glued mention, a tag, a keyword) reachable.
+    //
+    // Except a long word that ends at whitespace and holds no keyword: no such
+    // token can start inside it, and declining makes this reader and the
+    // internal lexer each reread the rest of the word at every character. It
+    // is taken whole, with the state this call started from.
+    bool at_space = word_end == ' ' || word_end == '\t' || word_end == '\r' ||
+                    word_end == '\n' || (word_end == 0 && lexer->eof(lexer));
+    if (s->advances - run_start >= LONG_WORD && !keyword && seed_prev == 0 &&
+        replay_count == 0 && at_space) {
+      tree_sitter_carve2_external_scanner_deserialize(s, s->entry_state, s->entry_length);
+      mark_end(s, lexer);
+      lexer->result_symbol = LITERAL_RUN;
+      return 1;
+    }
+    return -1;
+  }
+  lexer->result_symbol = LITERAL_RUN;
+  return 1;
+}
+
+/// The `*` of a bold-italic opener, declined where no span can follow it.
+///
+/// `/**/` is an EMPHASIS over two literal asterisks (spec fixture 130, and
+/// carve-js agrees), and an empty bold-italic is not a span. The opener's
+/// second character is external so that this call can decide it: spelled as
+/// the internal token `"/*"`, the opener is longer than the `/` an emphasis
+/// opens with, so longest match took both characters before any branch was
+/// scored and the emphasis reading was never offered.
+///
+/// Only the empty shape is declined. `/***/` has one asterisk of content
+/// (fixture 473) and `/*a*/` is untouched.
+///
+/// Declining costs an advance the lexer cannot take back, and the only reader
+/// that runs behind this one at that position is the opener's own
+/// non-whitespace check. It is unharmed: this declines only on `*` `*` `/`, so
+/// the character it then reads is the `/` of the closer, non-whitespace either
+/// way.
+static bool parse_bold_italic_star(Scanner *s, TSLexer *lexer) {
+  if (lexer->lookahead != '*') {
+    return false;
+  }
+  advance(s, lexer);
+  mark_end(s, lexer);
+  // MARKER REQUIRES CONTENT, and the content may not open on whitespace:
+  // `/* */` is an emphasis over `* *`, not a bold-italic (spec fixture 130-2).
+  switch (lexer->lookahead) {
+  case ' ':
+  case '\t':
+  case '\r':
+  case '\n':
+    return false;
+  default:
+    break;
+  }
+  if (carve_is_grapheme_extender(lexer->lookahead)) return false;
+  if (lexer->lookahead == '*') {
+    advance(s, lexer);
+    if (lexer->lookahead == '/') {
+      return false;
+    }
+  }
+  lexer->result_symbol = BOLD_ITALIC_STAR;
+  return true;
+}
+
+static bool parse_span(Scanner *s, TSLexer *lexer, const bool *valid_symbols,
+                       InlineType element) {
+  TokenType begin_token = inline_begin_token(element);
+  TokenType end_token = inline_end_token(element);
+  if (valid_symbols[end_token] &&
+      parse_span_end(s, lexer, element, end_token)) {
+    return true;
+  }
+  if (valid_symbols[begin_token] &&
+      mark_span_begin(s, lexer, valid_symbols, element, begin_token)) {
+    return true;
+  }
+  return false;
+}
+
+/// The mark after an inline attribute's `{`, given only where a well-formed
+/// block follows. After an element the brace is also readable as text, and
+/// then an id-first block (`:widget[x]{#i}`) re-reads its `#i` as a tag that
+/// scores exactly what the attribute does. With the attribute's own mark, that
+/// reading has no token to continue on (#316). Where the block is malformed,
+/// the brace fallback's shared mark is emitted as before.
+///
+/// Zero width: the end is pinned before the body is read. The bookkeeping is
+/// `mark_span_begin`'s, which on this path reads flags and not the lexer.
+static bool parse_attribute_mark_begin(Scanner *s, TSLexer *lexer,
+                                       const bool *valid_symbols) {
+  mark_end(s, lexer);
+  bool well_formed = scan_inline_attribute_body(s, lexer);
+  TokenType shared = inline_begin_token(CURLY_BRACKET_SPAN);
+  if (!well_formed) {
+    return valid_symbols[shared] &&
+           mark_span_begin(s, lexer, valid_symbols, CURLY_BRACKET_SPAN, shared);
+  }
+  // The attribute's own path: the fallback is not taken here, so its marker
+  // must not steer the bookkeeping to the fallback's branch.
+  bool attribute_only[CELL_MARKER_BEGIN + 1];
+  memcpy(attribute_only, valid_symbols, sizeof(attribute_only));
+  attribute_only[IN_FALLBACK] = false;
+  if (!mark_span_begin(s, lexer, attribute_only, CURLY_BRACKET_SPAN, shared)) {
+    return false;
+  }
+  lexer->result_symbol = ATTRIBUTE_MARK_BEGIN;
+  return true;
+}
+
+/// The `{:TAG}` language attribute, as a token.
+///
+/// EXTERNAL rather than a grammar regex because the tag is only a language
+/// attribute when it ENDS at an attribute boundary, and a token regex cannot
+/// ask that. Spelled as a regex, `{:en_US}` matched `:en` and left `_US` to be
+/// picked up as a bare boolean key, so a malformed tag parsed as two valid
+/// attributes where carve-js leaves the whole brace group literal.
+///
+/// Failing to tokenize is the point: the brace group then falls to the same
+/// literal-text route `{!!bad}` and `{12=v}` already take.
+static bool parse_language_attribute(Scanner *s, TSLexer *lexer) {
+  if (lexer->lookahead != ':') {
+    return false;
+  }
+  advance(s, lexer);
+  if (!scan_language_tag(s, lexer) || !at_attribute_boundary(lexer)) {
+    return false;
+  }
+  mark_end(s, lexer);
+  lexer->result_symbol = LANGUAGE_ATTRIBUTE;
+
+  return true;
+}
+
+static bool check_non_whitespace(Scanner *s, TSLexer *lexer) {
+  switch (lexer->lookahead) {
+  case ' ':
+  case '\t':
+  case '\r':
+  case '\n':
+    return false;
+  default:
+    s->state |= STATE_BARE_SPAN_OPENER;
+    lexer->result_symbol = NON_WHITESPACE_CHECK;
+    return true;
+  }
+}
+
+// A bare `=` opens a highlight only when the next char can start content.
+// It must NOT open on whitespace, nor on `=> =~ =< ==`: in Carve those are
+// smart-typography ligatures (`=>` is `⇒`) or table alignment / header markers
+// (`|=>`, `|=~`, `|=<`, `|=`), not a highlight. Matches carve-js.
+static bool highlighted_open_declines(int32_t c) {
+  return c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == '>' || c == '~' || c == '<' || c == '=';
+}
+
+static bool check_highlighted_open(Scanner *s, TSLexer *lexer) {
+  if (highlighted_open_declines(lexer->lookahead)) return false;
+  s->state |= STATE_BARE_SPAN_OPENER;
+  lexer->result_symbol = HIGHLIGHTED_OPEN_CHECK;
+  return true;
+}
+
+/// The RESERVED kind word `figure`, and only where it opens a composite figure.
+///
+/// `figure_group_open = colon_fence:open, space, "figure"` (grammar.ebnf PART 9
+/// section 4c): the fence, its separator, the word, AND NOTHING ELSE. An opener
+/// carrying a quoted title or a `[label]` - `::: figure "T"`, `::: figure [g]` -
+/// does not match that production and stays an `admonition` of kind `figure`, a
+/// generic Tier-2 container.
+///
+/// So the word alone cannot decide it, and a token in `grammar.js` could not
+/// either: tree-sitter's lexer chooses between two tokens before the parser has
+/// seen what follows, and `admonition_type` matches the same six characters.
+/// Here the rest of the line is readable. The word is consumed, the token is
+/// pinned at its end - the opener's own trailing-whitespace slot still takes
+/// the run - and only a whitespace tail leaves it a group.
+///
+/// Whether a group NESTS is a different question and not this one:
+/// `queries/highlights.scm` demotes a bare opener inside an open group, because
+/// that rule is about what a reader is shown rather than about what the line is.
+static bool parse_figure_group_marker(Scanner *s, TSLexer *lexer) {
+  // Asked BEFORE a character is read, so a declined word is left exactly where
+  // the internal lexer needs it.
+  if (inside_open_figure_group(s)) {
+    return false;
+  }
+  Block *opener = peek_block(s);
+  if (!opener || opener->type != DIV) {
+    return false;
+  }
+  static const char word[] = "figure";
+  for (const char *c = word; *c != '\0'; ++c) {
+    if (lexer->lookahead != (int32_t)*c) {
+      return false;
+    }
+    advance(s, lexer);
+  }
+  mark_end(s, lexer);
+  bool glued_tail = lexer->lookahead != ' ' && lexer->lookahead != '\t' &&
+                    !at_line_end(lexer) && !lexer->eof(lexer);
+  if (glued_tail) {
+    scan_to_line_end(s, lexer);
+    mark_end(s, lexer);
+  }
+  while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+    advance(s, lexer);
+  }
+  if (!glued_tail && !at_line_end(lexer) && !lexer->eof(lexer)) {
+    return false;
+  }
+  // The container the word decided. Recorded on the block rather than derived
+  // later, because the question a nested opener asks - "is a group already
+  // open?" - can only be answered from the stack.
+  opener->type = FIGURE_GROUP;
+  lexer->result_symbol = FIGURE_GROUP_MARKER;
+  return true;
+}
+
+static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols);
+
+/// Counts blank lines at each emitted line ending. State is only kept for an
+/// emitted token, so this is the one place that sees every line end once.
+static void count_caption_gap(Scanner *s, TSSymbol token) {
+  if (token != NEWLINE && token != NEWLINE_INLINE && token != EOF_OR_NEWLINE &&
+      token != TABLE_ROW_END_NEWLINE) {
+    return;
+  }
+  if (s->line_blank) {
+    if (s->caption_gap < CAPTION_GAP_DETACHED) ++s->caption_gap;
+  } else {
+    s->caption_gap = s->caption_gap == CAPTION_GAP_FENCE ? CAPTION_GAP_DETACHED : 0;
+  }
+}
+
+// Tokens that stay inside one paragraph's inline content, so the closer and
+// link destination notes survive them. Any other token clears both.
+static bool keeps_inline_notes(TokenType token) {
+  if (token >= EMPHASIS_MARK_BEGIN && token <= SQUARE_BRACKET_SPAN_END) return true;
+  switch (token) {
+  case NEWLINE_INLINE: case NON_WHITESPACE_CHECK: case HIGHLIGHTED_OPEN_CHECK:
+  case LANGUAGE_ATTRIBUTE: case IN_FALLBACK: case BRACED_FALLBACK:
+  case BOLD_ITALIC_MARK_BEGIN: case BOLD_ITALIC_END: case LITERAL_RUN:
+  case BOLD_ITALIC_STAR: case ATTRIBUTE_MARK_BEGIN: case ATTRIBUTED_SPAN_MARK_BEGIN:
+  case BOLD_ITALIC_LITERAL_LT: case INLINE_ATTRIBUTE_CONTINUE:
+  case BOLD_ITALIC_OPEN_CHECK: case BOLD_ITALIC_SCOPED_OPEN_CHECK:
+  case BOLD_ITALIC_LITERAL_OPEN_CHECK: case EMPHASIS_COMBINED_MARK_BEGIN:
+  case STRONG_QUALIFIED_MARK_BEGIN: case BOLD_ITALIC_LITERAL_STAR:
+  case EMPHASIS_QUALIFIED_MARK_BEGIN: case WORD_END:
+  case HIGHLIGHTED_QUALIFIED_MARK_BEGIN: case LITERAL_STAR: case LITERAL_SLASH:
+  case LITERAL_SLASH_BOUNDARY: case AFTER_BARE_CLOSER:
+    return true;
+  default:
+    return false;
+  }
+}
+
+// The column the host started this scan call at, from where it stands now.
+static uint32_t scan_start_column(Scanner *s, TSLexer *lexer) {
+  if (s->host_crossed_line || s->host_jumped) return UINT32_MAX >> 1;
+  uint32_t column = line_column(s, lexer);
+  return column >= s->host_advances ? column - s->host_advances : UINT32_MAX >> 1;
+}
+
+// The scan right behind the writer of a next-token note. A token with a width
+// ends the note; an empty one keeps it for the next scan at the same spot. With
+// no token the internal lexer's token follows, and the note would outlive the
+// spot: the empty `_after_bare_closer` hands back the entry state with the note
+// as a column instead. False means the caller returns that token.
+static bool scan_right_behind(Scanner *s, TSLexer *lexer, const bool *valid_symbols,
+                              bool *found, uint8_t closer_char, uint32_t closer_col) {
+  bool kept = !s->note_written && s->after_closer_char == closer_char &&
+              s->after_closer_col == closer_col;
+  uint32_t width = s->host_marked ? s->host_advances_at_mark : 0;
+  if (*found && !s->host_marked) {
+    lexer->mark_end(lexer);
+    width = s->host_advances;
+  }
+  if (*found) {
+    if (kept && width) {
+      s->after_closer_char = 0;
+      s->after_closer_col = 0;
+    }
+    return true;
+  }
+  if (width || !valid_symbols[AFTER_BARE_CLOSER]) return true;
+  uint32_t column = scan_start_column(s, lexer);
+  tree_sitter_carve2_external_scanner_deserialize(s, s->entry_state, s->entry_length);
+  s->after_closer_col = column;
+  lexer->result_symbol = AFTER_BARE_CLOSER;
+  *found = true;
+  return false;
+}
+
+bool tree_sitter_carve2_external_scanner_scan(void *payload, TSLexer *lexer,
+                                            const bool *valid_symbols) {
+  Scanner *s = (Scanner *)payload;
+  s->initial_mid_line = false;
+  s->col_base_marked = false;
+  s->host_previous = -1;
+  s->host_previous_at_mark = -1;
+  s->host_marked = false;
+  s->host_crossed_line = false;
+  s->host_crossed_line_at_mark = false;
+  s->host_newlines = 0;
+  s->host_newlines_at_mark = 0;
+  s->host_advances = 0;
+  s->deferred_column_pending = false;
+  s->host_jumped = false;
+  s->marker_probe = false;
+  if (valid_symbols[CELL_MARKER_BEGIN] && !valid_symbols[ERROR]) {
+    Block *marker_row = peek_block(s);
+    if (marker_row && marker_row->type == TABLE_ROW &&
+        (marker_row->flags & BLOCK_FLAG_TABLE_ROW_CELL_MARKER)) {
+      marker_row->flags &= (uint8_t)~BLOCK_FLAG_TABLE_ROW_CELL_MARKER;
+      lexer->mark_end(lexer);
+      lexer->result_symbol = CELL_MARKER_BEGIN;
+      return true;
+    }
+  }
+  if (at_line_end(lexer) || lexer->eof(lexer)) s->missing_closers = 0;
+  bool line_end = at_line_end(lexer);
+  uint8_t closer_char = s->after_closer_char;
+  uint32_t closer_col = s->after_closer_col;
+  s->note_here = closer_char && IS_NOTE_NEXT_TOKEN(closer_col) && !valid_symbols[ERROR] &&
+                 lexer->lookahead == (int32_t)(closer_col & 0xff);
+  s->note_written = false;
+  // A token that never marks its end ends where the scan stopped; marking the
+  // start first lets a declined scan still hand back an empty marker.
+  if (s->note_here) lexer->mark_end(lexer);
+  // A fresh parse scans the spot right behind a bare `=` in the state before
+  // the `=` is reduced, which offers the highlight check; after node reuse the
+  // goto state does not. A check its lookahead already fails is not pending,
+  // so both states read the spot the same way.
+  bool without_check[CELL_MARKER_BEGIN + 1];
+  const bool *symbols = valid_symbols;
+  if (valid_symbols[HIGHLIGHTED_OPEN_CHECK] && !valid_symbols[ERROR] &&
+      highlighted_open_declines(lexer->lookahead)) {
+    memcpy(without_check, valid_symbols, sizeof(without_check));
+    without_check[HIGHLIGHTED_OPEN_CHECK] = false;
+    symbols = without_check;
+  }
+  // MID_LINE_SPACE: a line of internal tokens emits nothing that could set
+  // `mid_line`, so every scan on it would reread the line for its column.
+  bool mid_line_start = (!s->mid_line || s->block_quote_level) && valid_symbols[MID_LINE_SPACE] &&
+                        !valid_symbols[ERROR] && lexer->lookahead == ' ' &&
+                        !s->note_here;
+  s->read_mid_line = false;
+  s->read_past_quote = false;
+  bool found = scan(s, lexer, symbols);
+  // The scan read past exactly one space to a word: hand that space over.
+  if (mid_line_start && !found && (s->read_mid_line || s->read_past_quote) && s->col_base == 0 &&
+      s->host_advances == 1 &&
+      s->host_previous == ' ' && carve_is_alnum_ascii(lexer->lookahead)) {
+    uint16_t generation = s->parse_generation;
+    tree_sitter_carve2_external_scanner_deserialize(s, s->entry_state, s->entry_length);
+    s->parse_generation = generation;
+    s->mid_line = true;
+    // Past the quote's content column, the indent check has nothing to read.
+    if (s->read_past_quote) s->block_quote_level = 0;
+    // Keeps the `=` note off where it was off before: no token before it.
+    s->initial_mid_line = s->entry_initial;
+    lexer->mark_end(lexer);
+    lexer->result_symbol = MID_LINE_SPACE;
+    return true;
+  }
+  if (s->note_here && !scan_right_behind(s, lexer, valid_symbols, &found, closer_char, closer_col)) return true;
+  if (found && s->table_attribute_pending) {
+    TokenType token = (TokenType)lexer->result_symbol;
+    if (token == BLOCK_CLOSE || token == DIV_END || token == LIST_ITEM_END) {
+      s->table_attribute_pending = 0;
+    } else if (token == NEWLINE || token == EOF_OR_NEWLINE) {
+      s->table_attribute_pending = 2;
+    } else if (s->table_attribute_pending == 2) {
+      bool other_block = token == HEADING_BEGIN || token == DIV_BEGIN ||
+          token == BLOCK_QUOTE_BEGIN || token == COMMENT_FENCE_BEGIN ||
+          token == FOOTNOTE_MARK_BEGIN || token == LINK_REF_DEF_MARK_BEGIN ||
+          token == TABLE_HEADER_BEGIN || token == TABLE_SEPARATOR_BEGIN ||
+          token == TABLE_ROW_BEGIN || token == THEMATIC_BREAK_DASH ||
+          token == THEMATIC_BREAK_STAR ||
+          (token >= LIST_MARKER_DASH && token <= LIST_MARKER_UPPER_ROMAN_PARENS);
+      if (other_block) s->table_attribute_pending = 0;
+    }
+  }
+  // A closer note is a column on its own line. A token read from a line end
+  // carries it to the next line, where the same column is another character.
+  if (found && line_end && closer_char && !HAS_NO_COMBINED_CLOSER(s) &&
+      s->after_closer_char == closer_char && s->after_closer_col == closer_col) {
+    s->after_closer_char = 0;
+    s->after_closer_col = 0;
+  }
+  if (found && peek_block(s) && peek_block(s)->type == BLOCK_QUOTE &&
+      (lexer->result_symbol == LITERAL_RUN ||
+       lexer->result_symbol == THEMATIC_BREAK_DASH ||
+       lexer->result_symbol == THEMATIC_BREAK_STAR)) {
+    clear_opaque_quote_tail(s);
+  }
+  if (found && s->col_base_marked) {
+    s->col_base = s->col_base_at_mark;
+  }
+  if (found) {
+    uint32_t newlines = s->host_marked ? s->host_newlines_at_mark : s->host_newlines;
+    if (newlines) for (uint32_t i = 0; i < s->open_inline->size; ++i) {
+      Inline *e = *array_get(s->open_inline, i);
+      if (e->type != EXTENSION || !e->literal_closes) continue;
+      uint32_t ahead = extension_close_newlines(e);
+      ahead = ahead > newlines ? ahead - newlines : 0;
+      e->literal_closes = (ahead << EXTENSION_CLOSE_COLUMN_BITS) |
+          (e->literal_closes & ((UINT32_C(1) << EXTENSION_CLOSE_COLUMN_BITS) - 1));
+    }
+  }
+  if (found) count_caption_gap(s, lexer->result_symbol);
+  if (found && (lexer->result_symbol == BRACED_COMMENT_BEGIN ||
+                lexer->result_symbol == EDITORIAL_COMMENT_BEGIN))
+    s->comment_one_line = !s->host_crossed_line && !s->host_jumped;
+  // The CR adjacency note is for the token right after the `]`; a line end
+  // taking the CR must not leave it to refuse a `{` or `(` on a later line.
+  if (found && (lexer->result_symbol == NEWLINE || lexer->result_symbol == NEWLINE_INLINE ||
+                lexer->result_symbol == EOF_OR_NEWLINE || lexer->result_symbol == TABLE_ROW_END_NEWLINE))
+    s->state &= ~STATE_SPAN_END_AT_CR;
+  if (found) {
+    // A zero-width inline token keeps the note of whatever ended before it;
+    // any other one may follow a comment body that crossed a line.
+    int32_t last = s->host_marked ? s->host_previous_at_mark : s->host_previous;
+    bool crossed = s->host_marked ? s->host_crossed_line_at_mark : s->host_crossed_line;
+    if (last >= 0) s->mid_line = last != '\n' && last != '\r';
+    else if (!keeps_inline_notes(lexer->result_symbol)) s->mid_line = false;
+    if (!keeps_inline_notes(lexer->result_symbol)) {
+      s->no_closer_kinds = 0;
+      s->closer_ahead_kinds = 0;
+      s->link_tail_open_line = false;
+    }
+    if (crossed || lexer->result_symbol == NEWLINE_INLINE) {
+      s->link_tail_open_line = false;
+      s->closer_ahead_kinds = 0;
+    }
+  }
+  return found;
+}
+
+// The existing boundary note also caches a plain line with no combined or
+// slash closer, bounded before the first rich construct or line break.
+// Its sentinel cannot be mistaken for a delimiter character.
+static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
+  s->plus_scan_spent = false;
+  if (valid_symbols[FRONTMATTER_REST] && !valid_symbols[ERROR] &&
+      !lexer->eof(lexer)) {
+    while (!lexer->eof(lexer)) advance(s, lexer);
+    mark_end(s, lexer);
+    lexer->result_symbol = FRONTMATTER_REST;
+    return true;
+  }
+  if (valid_symbols[EMPTY_LINK_PADDING] && !valid_symbols[ERROR] &&
+      (lexer->lookahead == ' ' || lexer->lookahead == '\t')) {
+    do {
+      advance(s, lexer);
+    } while (lexer->lookahead == ' ' || lexer->lookahead == '\t');
+    if (lexer->lookahead == ')') {
+      mark_end(s, lexer);
+      lexer->result_symbol = EMPTY_LINK_PADDING;
+      return true;
+    }
+    return false;
+  }
+  // The erased line was validated where its line end was announced,
+  // wherever its column stands.
+  if (valid_symbols[ERASED_LINK_DEFINITION] && !valid_symbols[ERROR] &&
+      (lexer->lookahead == '[' || lexer->lookahead == '*' ||
+       lexer->lookahead == '%')) {
+    int32_t lead = lexer->lookahead;
+    while (!lexer->eof(lexer) && !at_line_end(lexer)) advance(s, lexer);
+    mark_end(s, lexer);
+    lexer->result_symbol = lead == '[' ? ERASED_LINK_DEFINITION
+        : lead == '*' ? ERASED_ABBREVIATION_DEFINITION : VERBATIM_COMMENT_LINE;
+    return true;
+  }
+  if (s->after_closer_char == PLAIN_BRACKET_REMAINDER &&
+      (lexer->lookahead != '[' || line_column(s, lexer) != s->after_closer_col)) {
+    s->after_closer_char = 0;
+    s->after_closer_col = 0;
+  }
+  s->col_base_at_mark = 0;
+  s->col_base_marked = false;
+  s->combined_probe = false;
+  s->line_blank = false;
+  s->attribute_block_line = false;
+  s->attribute_saw_table = false;
+  s->paragraph_markers_seen = 1;
+  s->next_line_indent = -1;
+  // Snapshot BEFORE any reader below runs, so a probe positioned late in this
+  // call (see `parse_trailing_comment`) can tell whether it is still looking
+  // at the position tree-sitter actually asked about, or at wherever an
+  // earlier probe's own declined scratch-read left the lexer. See the note at
+  // that call.
+  const uint32_t advances_at_entry = s->advances;
+  Inline *cut_parent = peek_inline(s);
+  Inline *cut_bracket = find_inline(s, SQUARE_BRACKET_SPAN);
+  bool bracket_remainder = cut_bracket &&
+      (cut_bracket->flags & (INLINE_BRACED | INLINE_EXTENSION_CUT)) ==
+          (INLINE_BRACED | INLINE_EXTENSION_CUT) && square_literal_closes(cut_bracket);
+  if (!valid_symbols[ERROR] && valid_symbols[LITERAL_RUN] && lexer->lookahead == ']' &&
+      cut_parent && cut_parent->type >= EMPHASIS && cut_parent->type <= BOLD_ITALIC &&
+      !find_inline(s, EXTENSION) && (cut_parent->literal_closes || bracket_remainder)) {
+    if (cut_parent->literal_closes > 1) --cut_parent->literal_closes;
+    Inline *bracket = find_inline(s, SQUARE_BRACKET_SPAN);
+    if (bracket && (bracket->flags & INLINE_BRACED) && square_literal_closes(bracket)) {
+      --bracket->literal_closes;
+      if (!square_literal_closes(bracket)) {
+        bracket->literal_closes = 0;
+        if (bracket->flags & INLINE_BRACED) bracket->flags &= ~INLINE_EXTENSION_CUT;
+      }
+    }
+    advance(s, lexer);
+    mark_end(s, lexer);
+    lexer->result_symbol = LITERAL_RUN;
+    return true;
+  }
+  if (!valid_symbols[ERROR] && find_inline(s, EXTENSION)) {
+    Inline *top = peek_inline(s);
+    if (extension_closes_here(s, lexer) && top && top->type == VERBATIM) {
+      mark_end(s, lexer);
+      if (valid_symbols[VERBATIM_END]) return try_implicit_close_verbatim(s, lexer);
+      if (valid_symbols[VERBATIM_CONTENT]) {
+        lexer->result_symbol = VERBATIM_CONTENT;
+        return true;
+      }
+    }
+    if (valid_symbols[HARD_LINE_BREAK] && lexer->lookahead == '\\') {
+      advance(s, lexer);
+      mark_end(s, lexer);
+      if (extension_closes_here(s, lexer) || lexer->eof(lexer) || at_line_end(lexer)) {
+        lexer->result_symbol = HARD_LINE_BREAK;
+        return true;
+      }
+      return false;
+    }
+    // Bracket constructs cannot complete inside a first-bracket payload.
+    // Stop the internal citation token before it consumes the payload cut.
+    if (valid_symbols[LITERAL_RUN] && lexer->lookahead == '[' && first_bracket_extension(s)) {
+      advance(s, lexer);
+      mark_end(s, lexer);
+      lexer->result_symbol = LITERAL_RUN;
+      return true;
+    }
+    // An internal angle token needs its own closer before the cut.
+    if (valid_symbols[LITERAL_RUN] &&
+        lexer->lookahead == '<') {
+      advance(s, lexer);
+      mark_end(s, lexer);
+      bool closed = false;
+      while (!lexer->eof(lexer) && !at_line_end(lexer) && !extension_closes_here(s, lexer)) {
+        if (lexer->lookahead == '>') { closed = true; break; }
+        advance(s, lexer);
+      }
+      if (!closed) { lexer->result_symbol = LITERAL_RUN; return true; }
+      return false;
+    }
+  }
+  if (valid_symbols[CONTAINER_INVALID_METADATA] &&
+      !at_line_end(lexer) && !lexer->eof(lexer)) {
+    // Let a valid first info token win before the fallback consumes its tail.
+    int32_t lead = lexer->lookahead;
+    Block *fence = peek_block(s);
+    bool sigil_tail = fence && fence->type == DIV &&
+        (fence->flags & (BLOCK_FLAG_QUOTE_FENCE | BLOCK_FLAG_LINE_BLOCK)) &&
+        line_column(s, lexer) > fence->content_col + fence->data + 1;
+    bool initial_div_sigil = fence && fence->type == DIV &&
+        line_column(s, lexer) <= fence->content_col + fence->data + 1;
+    bool closed_label = false;
+    if (lead == '[') {
+      BracketProbe probe = bracket_probe_new(s, lexer);
+      probe.lexer.advance(&probe.lexer, false);
+      while (!probe.lexer.eof(&probe.lexer) && !at_line_end(&probe.lexer) &&
+             probe.lexer.lookahead != ']') {
+        probe.lexer.advance(&probe.lexer, false);
+      }
+      closed_label = probe.lexer.lookahead == ']';
+      array_delete(&probe.characters);
+    }
+    if (!sigil_tail &&
+        (carve_is_alnum_ascii(lead) || lead == '_' || lead == '#' ||
+        lead == '+' || lead == '-' || lead == '.' ||
+        lead == '=' || lead == '"' || closed_label ||
+        (initial_div_sigil && (lead == '>' || lead == '|' || lead == '\\')))) {
+      return false;
+    }
+    if (lead == ' ' && fence && fence->type == CODE_BLOCK &&
+        line_column(s, lexer) == fence->content_col +
+                                      (fence->data & ~CODE_FENCE_TILDE)) {
+      BracketProbe probe = bracket_probe_new(s, lexer);
+      unsigned spaces = 0;
+      while (probe.lexer.lookahead == ' ') {
+        ++spaces;
+        probe.lexer.advance(&probe.lexer, false);
+      }
+      bool invalid = spaces > 1 && !at_line_end(&probe.lexer) &&
+                     !probe.lexer.eof(&probe.lexer);
+      array_delete(&probe.characters);
+      if (!invalid) return false;
+    }
+    if (colon_fence_metadata_tail_is_modeled(s, lexer)) return false;
+    scan_to_line_end(s, lexer);
+    mark_end(s, lexer);
+    lexer->result_symbol = CONTAINER_INVALID_METADATA;
+    return true;
+  }
+
+  if (valid_symbols[BOLD_ITALIC_LITERAL_STAR] && lexer->lookahead == '*') {
+    advance(s, lexer);
+    mark_end(s, lexer);
+    if (lexer->lookahead == '*') s->after_literal_star = true;
+    lexer->result_symbol = BOLD_ITALIC_LITERAL_STAR;
+    return true;
+  }
+
+  Inline *slash_scope = peek_inline(s);
+  if (valid_symbols[NON_WHITESPACE_CHECK] && valid_symbols[LITERAL_SLASH_BOUNDARY] &&
+      !valid_symbols[ERROR] && lexer->lookahead == '*' && slash_scope &&
+      slash_scope->type == STRONG) {
+    mark_end(s, lexer);
+    advance(s, lexer);
+    bool closes = (slash_scope->flags & INLINE_BRACED) ? lexer->lookahead == '}'
+                                                        : !carve_is_alnum_ascii(lexer->lookahead);
+    lexer->result_symbol = closes ? LITERAL_SLASH_BOUNDARY : NON_WHITESPACE_CHECK;
+    if (closes) s->state &= ~STATE_BARE_SPAN_OPENER;
+    else s->state |= STATE_BARE_SPAN_OPENER;
+    return true;
+  }
+
+  if (valid_symbols[NON_WHITESPACE_CHECK] && !valid_symbols[ERROR] &&
+      !(lexer->lookahead == '*' && (valid_symbols[BOLD_ITALIC_STAR] ||
+        valid_symbols[BOLD_ITALIC_OPEN_CHECK] || valid_symbols[BOLD_ITALIC_LITERAL_OPEN_CHECK] || valid_symbols[BOLD_ITALIC_SCOPED_OPEN_CHECK])) &&
+      !(lexer->lookahead == '*' && valid_symbols[LIST_MARKER_STAR]) &&
+      lexer->lookahead != ' ' && lexer->lookahead != '\t' &&
+      lexer->lookahead != '\r' && lexer->lookahead != '\n') {
+    mark_end(s, lexer);
+    return check_non_whitespace(s, lexer);
+  }
+  if (valid_symbols[LITERAL_RUN] && !valid_symbols[ERROR] &&
+      lexer->lookahead == '=' && !valid_symbols[HEADING_BEGIN] &&
+      !find_inline_in_scope(s, HIGHLIGHTED) &&
+      !zero_width_mark_pending(valid_symbols) &&
+      !(valid_symbols[TABLE_HEADER_BEGIN] && find_block(s, TABLE_ROW))) {
+    advance(s, lexer);
+    if (lexer->lookahead != '=') return false;
+    mark_end(s, lexer);
+    s->after_closer_char = '=';
+    s->after_closer_col = line_column(s, lexer);
+    lexer->result_symbol = LITERAL_RUN;
+    return true;
+  }
+  if (valid_symbols[HIGHLIGHTED_OPEN_CHECK] && !valid_symbols[HEADING_BEGIN] && !valid_symbols[ERROR]) {
+    mark_end(s, lexer);
+    if (check_highlighted_open(s, lexer)) return true;
+    if (lexer->lookahead == '=') {
+      s->after_closer_char = '=';
+      s->after_closer_col = line_column(s, lexer);
+    }
+  }
+  if (!valid_symbols[ERROR] && (valid_symbols[EXTENSION_CONTENT_BEGIN] || valid_symbols[EXTENSION_LITERAL_CHECK])) {
+    mark_end(s, lexer);
+    uint32_t remaining;
+    bool changes_scope, opaque_cut;
+    uint32_t close;
+    bool fallback;
+    bool balanced = extension_payload_close(s, lexer, &remaining, &changes_scope, &opaque_cut, &close, &fallback);
+    if (balanced && valid_symbols[EXTENSION_CONTENT_BEGIN]) {
+      Inline *parent = peek_inline(s);
+      if (opaque_cut && parent && parent->type >= EMPHASIS && parent->type <= BOLD_ITALIC)
+        parent->literal_closes = remaining + 1;
+      Inline *bracket = find_inline(s, SQUARE_BRACKET_SPAN);
+      if (changes_scope && bracket && (bracket->flags & INLINE_BRACED)) {
+        bracket->flags |= INLINE_EXTENSION_CUT;
+        bracket->literal_closes += remaining;
+        if (opaque_cut) bracket->literal_closes |= INLINE_CUT_CODE;
+      }
+      push_inline_flagged(s, EXTENSION, close && fallback, INLINE_BRACED);
+      peek_inline(s)->literal_closes = close;
+      lexer->result_symbol = EXTENSION_CONTENT_BEGIN;
+      return true;
+    }
+    if (!balanced && valid_symbols[EXTENSION_LITERAL_CHECK]) {
+      lexer->result_symbol = EXTENSION_LITERAL_CHECK;
+      return true;
+    }
+    return false;
+  }
+  if (!valid_symbols[ERROR] && valid_symbols[EXTENSION_END] && extension_closes_here(s, lexer)) {
+    // A literal bracket run paired across code may still wait for a close
+    // the extension's closer takes; its brackets stay text.
+    uint32_t top = s->open_inline->size;
+    while (top && (*array_get(s->open_inline, top - 1))->type == LITERAL_BRACKET) --top;
+    if (!top || (*array_get(s->open_inline, top - 1))->type != EXTENSION) return false;
+    while (s->open_inline->size > top) remove_inline(s);
+    advance(s, lexer);
+    mark_end(s, lexer);
+    remove_inline(s);
+    s->state &= ~(STATE_BRACKET_STARTS_INLINE_LINK | STATE_BRACKET_STARTS_SPAN);
+    lexer->result_symbol = EXTENSION_END;
+    return true;
+  }
+  if (valid_symbols[WORD_END] && !valid_symbols[ERROR]) {
+    mark_end(s, lexer);
+    s->after_closer_char = 'a';
+    s->after_closer_col = line_column(s, lexer);
+    lexer->result_symbol = WORD_END;
+    return true;
+  }
+  if (valid_symbols[HIGHLIGHTED_QUALIFIED_MARK_BEGIN] && !valid_symbols[ERROR] &&
+      (s->state & STATE_BARE_SPAN_OPENER)) {
+    defer_column(s);
+    mark_end(s, lexer);
+    bool real_symbols[CELL_MARKER_BEGIN + 1];
+    memcpy(real_symbols, valid_symbols, sizeof(real_symbols));
+    real_symbols[IN_FALLBACK] = false;
+    bool same_marker_before = (s->after_closer_char == '=' || s->after_closer_char == '_') &&
+                              s->after_closer_col + 1 == line_column(s, lexer);
+    if (!same_marker_before && mark_span_begin(s, lexer, real_symbols, HIGHLIGHTED, HIGHLIGHTED_QUALIFIED_MARK_BEGIN))
+      return true;
+    s->state &= ~STATE_BARE_SPAN_OPENER;
+    if (!valid_symbols[IN_FALLBACK]) return false;
+    s->after_closer_char = '=';
+    s->after_closer_col = deferred_column(s, lexer);
+    lexer->result_symbol = IN_FALLBACK;
+    return true;
+  }
+  if (valid_symbols[EMPHASIS_QUALIFIED_MARK_BEGIN] && !valid_symbols[ERROR] &&
+      (s->state & STATE_BARE_SPAN_OPENER) && lexer->lookahead != '*') {
+    defer_column(s);
+    mark_end(s, lexer);
+    bool real_symbols[CELL_MARKER_BEGIN + 1];
+    memcpy(real_symbols, valid_symbols, sizeof(real_symbols));
+    real_symbols[IN_FALLBACK] = false;
+    if (lexer->lookahead != '/' && mark_span_begin(s, lexer, real_symbols, EMPHASIS, EMPHASIS_QUALIFIED_MARK_BEGIN))
+      return true;
+    s->state &= ~STATE_BARE_SPAN_OPENER;
+    if (!valid_symbols[IN_FALLBACK]) return false;
+    note_behind_fallback(s, lexer, '/');
+    lexer->result_symbol = IN_FALLBACK;
+    return true;
+  }
+  if (valid_symbols[STRONG_QUALIFIED_MARK_BEGIN] && !valid_symbols[ERROR] &&
+      (s->state & STATE_BARE_SPAN_OPENER)) {
+    defer_column(s);
+    mark_end(s, lexer);
+    bool real_symbols[CELL_MARKER_BEGIN + 1];
+    memcpy(real_symbols, valid_symbols, sizeof(real_symbols));
+    real_symbols[IN_FALLBACK] = false;
+    if (lexer->lookahead != '*' &&
+        mark_span_begin(s, lexer, real_symbols, STRONG, STRONG_QUALIFIED_MARK_BEGIN))
+      return true;
+    s->state &= ~STATE_BARE_SPAN_OPENER;
+    if (!valid_symbols[IN_FALLBACK]) return false;
+    note_behind_fallback(s, lexer, '*');
+    lexer->result_symbol = IN_FALLBACK;
+    return true;
+  }
+
+  if (!valid_symbols[ERROR] && !valid_symbols[BRACED_FALLBACK] &&
+      !(lexer->lookahead == '*' && (valid_symbols[BOLD_ITALIC_OPEN_CHECK] || valid_symbols[BOLD_ITALIC_LITERAL_OPEN_CHECK] ||
+        valid_symbols[BOLD_ITALIC_SCOPED_OPEN_CHECK] || valid_symbols[BOLD_ITALIC_STAR]))) {
+    static const InlineType early_kinds[] = {
+      BOLD_ITALIC, EMPHASIS, STRONG, UNDERLINE, STRIKETHROUGH, HIGHLIGHTED
+    };
+    for (size_t i = 0; i < sizeof(early_kinds) / sizeof(early_kinds[0]); ++i) {
+      TokenType token = inline_begin_token(early_kinds[i]);
+      if (valid_symbols[token]) {
+        mark_end(s, lexer);
+        return mark_span_begin(s, lexer, valid_symbols, early_kinds[i], token);
+      }
+    }
+  }
+  // Whole-line notes cover only fully read lines whose nested tokens do not
+  // cross a line end; the next external line-end token clears them.
+  if (HAS_NO_COMBINED_CLOSER(s) &&
+      (at_line_end(lexer) || lexer->eof(lexer) ||
+       (s->after_closer_char == NO_COMBINED_CLOSER && line_column(s, lexer) == 0))) {
+    s->after_closer_char = 0;
+    s->after_closer_col = 0;
+  }
+  Inline *combined_fallback = peek_inline(s);
+  if (valid_symbols[LITERAL_RUN] && !valid_symbols[ERROR] && combined_fallback &&
+      combined_fallback->type == EMPHASIS &&
+      (combined_fallback->flags & INLINE_COMBINED_FALLBACK) &&
+      combined_fallback->data == 1 && lexer->lookahead == '*') {
+    advance(s, lexer);
+    mark_end(s, lexer);
+    combined_fallback->data = 0;
+    lexer->result_symbol = LITERAL_RUN;
+    return true;
+  }
+
+  if (valid_symbols[EMPHASIS_END] && valid_symbols[LITERAL_RUN] &&
+      !valid_symbols[ERROR] && combined_fallback &&
+      combined_fallback->type == EMPHASIS &&
+      (combined_fallback->flags & INLINE_COMBINED_FALLBACK) &&
+      lexer->lookahead == '/') {
+    uint32_t before = s->advances;
+    if (parse_span_end(s, lexer, EMPHASIS, EMPHASIS_END)) return true;
+    // A rejected slash close is literal within this fallback, not a new opener.
+    // A zero-width run would repeat forever, so a close that read nothing
+    // leaves the slash to the other readings.
+    if (s->advances == before) return false;
+    mark_end(s, lexer);
+    lexer->result_symbol = LITERAL_RUN;
+    return true;
+  }
+
+  if (valid_symbols[LITERAL_SLASH_BOUNDARY] && !valid_symbols[ERROR]) {
+    mark_end(s, lexer);
+    if (valid_symbols[NON_WHITESPACE_CHECK] && check_non_whitespace(s, lexer)) return true;
+    lexer->result_symbol = LITERAL_SLASH_BOUNDARY;
+    return true;
+  }
+
+  // Decide continuations before consuming a malformed group's opening brace.
+  if (valid_symbols[INLINE_ATTRIBUTE_CONTINUE] && !valid_symbols[ERROR] &&
+      lexer->lookahead == '{') {
+    // The continuation is an empty check ahead of the brace, so a declined one
+    // can still end the attribute here.
+    mark_end(s, lexer);
+    advance(s, lexer);
+    // `[x]{.a}{% c %}`: the brace opens a comment, not another block.
+    if (lexer->lookahead == '%' && valid_symbols[BRACED_COMMENT_BEGIN]) {
+      mark_end(s, lexer);
+      if (!scan_braced_comment_to_close(s, lexer)) return false;
+      lexer->result_symbol = BRACED_COMMENT_BEGIN;
+      return true;
+    }
+    if (scan_inline_attribute_body(s, lexer)) {
+      lexer->result_symbol = INLINE_ATTRIBUTE_CONTINUE;
+      return true;
+    }
+    // After node reuse the brace is read in the goto state, where no
+    // continuation is offered; end the attribute so a fresh parse reads it
+    // there too.
+    if (!valid_symbols[AFTER_BARE_CLOSER]) return false;
+    uint16_t generation = s->parse_generation;
+    tree_sitter_carve2_external_scanner_deserialize(s, s->entry_state, s->entry_length);
+    s->parse_generation = generation;
+    lexer->result_symbol = AFTER_BARE_CLOSER;
+    return true;
+  }
+  // Decide the combined opener before its star, retaining a slash fallback.
+  if ((valid_symbols[BOLD_ITALIC_OPEN_CHECK] || valid_symbols[BOLD_ITALIC_LITERAL_OPEN_CHECK] || valid_symbols[BOLD_ITALIC_SCOPED_OPEN_CHECK]) &&
+      !valid_symbols[ERROR] &&
+      lexer->lookahead == '*') {
+    bool emphasis_forbidden = s->after_closer_char == AFTER_WORD_BEFORE_COMBINED &&
+                              s->after_closer_col == line_column(s, lexer);
+    if (s->after_closer_char == AFTER_WORD_BEFORE_COMBINED) {
+      s->after_closer_char = 0;
+      s->after_closer_col = 0;
+    }
+    bool opener_at_zero = s->after_closer_char == NO_COMBINED_CLOSER_LINE;
+    defer_column(s);
+    mark_end(s, lexer);
+    if (HAS_NO_COMBINED_CLOSER(s) &&
+        (opener_at_zero || line_column(s, lexer) < s->after_closer_col)) {
+      Inline *cached_scope = peek_inline(s);
+      bool scoped = valid_symbols[BOLD_ITALIC_SCOPED_OPEN_CHECK] && cached_scope &&
+                    cached_scope->type == STRONG &&
+                    (cached_scope->flags & INLINE_SCOPED_COMBINED_LITERAL) &&
+                    !find_inline_in_scope(s, EMPHASIS);
+      if (!scoped && !valid_symbols[BOLD_ITALIC_LITERAL_OPEN_CHECK]) return false;
+      if (scoped) cached_scope->flags |= INLINE_SCOPED_COMBINED_LITERAL;
+      lexer->result_symbol = scoped ? BOLD_ITALIC_SCOPED_OPEN_CHECK : BOLD_ITALIC_LITERAL_OPEN_CHECK;
+      return true;
+    }
+    TSLexer *decision_lexer = lexer;
+    BracketProbe decision_probe = bracket_probe_new(s, lexer);
+    uint32_t decision_base = s->col_base;
+    lexer = &decision_probe.lexer;
+    uint32_t plain_prefix_end_column = 0;
+    uint32_t first_line_end_column = 0;
+    bool first_line_cache_safe = true;
+    Inline *scope = peek_inline(s);
+    InlineType scope_type = scope ? scope->type : EMPHASIS;
+    bool scope_braced = scope && (scope->flags & INLINE_BRACED);
+    char scope_marker = scope_type == LITERAL_BRACKET ? ']' : scope ? inline_marker(scope_type) : 0;
+    s->combined_probe = true;
+    s->combined_raw_closer = false;
+    s->combined_raw_strong_closer = false;
+    s->combined_raw_pair = false;
+    s->combined_raw_line_end = false;
+    s->combined_raw_previous = 0;
+    int32_t previous = 0;
+    uint32_t characters = 0;
+    bool emphasis_closer = false;
+    bool strong_closer = false;
+    bool combined_pair = false;
+    bool opener_has_content = true;
+    bool strong_opener_has_content = true;
+    bool enclosing_closer = false;
+    while (!lexer->eof(lexer)) {
+      if (at_line_end(lexer)) {
+        if (!plain_prefix_end_column) plain_prefix_end_column = line_column(s, lexer);
+        if (!first_line_end_column) {
+          first_line_end_column = line_column(s, lexer);
+          first_line_cache_safe = !s->combined_raw_line_end;
+        }
+        Block *host = peek_block(s);
+        if (disallow_newline(host) || (host && host->type == HEADING)) break;
+        consume_line_end(s, lexer);
+        uint8_t indent = consume_whitespace(s, lexer);
+        if (at_line_end(lexer) || lexer->eof(lexer) || caption_line_ends_block(s, &decision_probe, indent)) break;
+        // Quote prefixes belong to the host, not to the inline content.
+        unsigned quotes = 0;
+        for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
+          if ((*array_get(s->open_blocks, i))->type == BLOCK_QUOTE) ++quotes;
+        }
+        while (quotes > 0 && lexer->lookahead == '>') {
+          advance(s, lexer);
+          if (lexer->lookahead == ' ' || lexer->lookahead == '\t') advance(s, lexer);
+          --quotes;
+        }
+        consume_whitespace(s, lexer);
+        if (at_line_end(lexer) || lexer->eof(lexer)) break;
+        if (lexer->lookahead == ':' && (find_block(s, DIV) || find_block(s, FIGURE_GROUP))) {
+          uint16_t colons = consume_colons(s, lexer);
+          uint8_t spaces = consume_whitespace(s, lexer);
+          if (colons >= 3 && number_of_colon_fence_blocks_from_top(s, colons) &&
+              (at_line_end(lexer) || lexer->eof(lexer))) break;
+          previous = spaces ? ' ' : ':';
+          characters += colons + spaces;
+          continue;
+        }
+        previous = '\n';
+      }
+      int32_t current = lexer->lookahead;
+      if (scope && (scope_type == LITERAL_BRACKET || scope_type == SQUARE_BRACKET_SPAN || scope_type == INLINE_NOTE || scope_type == EXTENSION ||
+                    scope_type == CURLY_BRACKET_SPAN || scope_type == PARENS_SPAN) &&
+          current == scope_marker) break;
+      if (current == '\\') {
+        if (!plain_prefix_end_column) plain_prefix_end_column = line_column(s, lexer);
+        advance(s, lexer);
+        if (!lexer->eof(lexer) && !at_line_end(lexer)) advance(s, lexer);
+        previous = 'x';
+        characters += 2;
+        continue;
+      }
+      if (current == '`') {
+        if (!plain_prefix_end_column) plain_prefix_end_column = line_column(s, lexer);
+        uint8_t width = consume_chars(s, lexer, '`');
+        VerbatimRunEnd end = read_verbatim_run(s, lexer, width, 1, false);
+        if (end == VerbatimRunReachesSpanCloser) { combined_pair = true; break; }
+        if (end != VerbatimRunCloses) break;
+        previous = 'x';
+        ++characters;
+        continue;
+      }
+      if (current == '<') {
+        uint32_t angle_restart = decision_probe.position;
+        uint32_t angle_base = s->col_base;
+        advance(s, lexer);
+        bool crossref = false;
+        if (lexer->lookahead == '/') {
+          advance(s, lexer);
+          if (lexer->lookahead == '#') {
+            crossref = true;
+            advance(s, lexer);
+          }
+        }
+        bool body = false;
+        bool scheme = false;
+        bool scheme_prefix = !crossref &&
+            ((lexer->lookahead >= 'a' && lexer->lookahead <= 'z') ||
+             (lexer->lookahead >= 'A' && lexer->lookahead <= 'Z'));
+        bool email = false;
+        bool email_dot = false;
+        bool email_invalid = false;
+        while (!lexer->eof(lexer) && !at_line_end(lexer) &&
+               lexer->lookahead != '>' && lexer->lookahead != ' ') {
+          int32_t angle_char = lexer->lookahead;
+          body = true;
+          if (angle_char == ':' && scheme_prefix) scheme = true;
+          else if (!scheme && !carve_is_alnum_ascii(angle_char) &&
+                   angle_char != '+' && angle_char != '.' && angle_char != '-') scheme_prefix = false;
+          if (angle_char == '@') email = true;
+          if (angle_char == '.' && email) email_dot = true;
+          if (angle_char == '~' && email) email_invalid = true;
+          advance(s, lexer);
+        }
+        if (body && lexer->lookahead == '>' &&
+            (crossref || scheme || (email && email_dot && !email_invalid))) {
+          advance(s, lexer);
+          previous = 'x';
+          ++characters;
+          continue;
+        }
+        bracket_probe_rewind(&decision_probe, angle_restart + 1);
+        s->col_base = angle_base;
+        previous = '<';
+        ++characters;
+        continue;
+      }
+      if (current == '[') {
+        if (!plain_prefix_end_column) plain_prefix_end_column = line_column(s, lexer);
+        advance(s, lexer);
+        uint32_t bracket_restart = decision_probe.position;
+        uint32_t bracket_base = s->col_base;
+        s->combined_raw_pair = false;
+        s->combined_raw_strong_closer = false;
+        s->combined_raw_previous = 0;
+        if (!scan_until_bracket_close(s, lexer, NULL)) {
+          if (scope && scope_type == STRONG && !scope_braced &&
+              s->combined_raw_strong_closer) enclosing_closer = true;
+          else if (s->combined_raw_pair) combined_pair = true;
+          else {
+            bracket_probe_rewind(&decision_probe, bracket_restart);
+            s->col_base = bracket_base;
+            previous = '[';
+            ++characters;
+            continue;
+          }
+          break;
+        }
+        advance(s, lexer);
+        if (lexer->lookahead == '(') {
+          advance(s, lexer);
+          if (!scan_inline_link_tail(s, lexer, 0, NULL, NULL)) break;
+          advance(s, lexer);
+        }
+        previous = 'x';
+        ++characters;
+        continue;
+      }
+      if (current == '{') {
+        if (!plain_prefix_end_column) plain_prefix_end_column = line_column(s, lexer);
+        unsigned depth = 1;
+        advance(s, lexer);
+        uint32_t brace_restart = decision_probe.position;
+        uint32_t brace_base = s->col_base;
+        // `{*` and `{/` are braced children too (CARVE-P9-043).
+        if (lexer->lookahead != '*' && lexer->lookahead != '/' && lexer->lookahead != '_' &&
+            lexer->lookahead != '~' && lexer->lookahead != '=' && lexer->lookahead != '^' &&
+            lexer->lookahead != ',' && lexer->lookahead != '+' && lexer->lookahead != '-' &&
+            lexer->lookahead != '%' && lexer->lookahead != '#') {
+          previous = '{';
+          ++characters;
+          continue;
+        }
+        if (lexer->lookahead != '%' && lexer->lookahead != '#') {
+          char marker = (char)lexer->lookahead;
+          advance(s, lexer);
+          if (braced_closer_ahead(s, lexer, marker)) {
+            advance(s, lexer);
+            previous = 'x';
+            ++characters;
+            continue;
+          }
+          bracket_probe_rewind(&decision_probe, brace_restart);
+          s->col_base = brace_base;
+          previous = '{';
+          ++characters;
+          continue;
+        }
+        int32_t brace_previous = '{';
+        bool brace_emphasis_closer = false;
+        while (!lexer->eof(lexer) && depth > 0) {
+          if (at_line_end(lexer)) {
+            consume_line_end(s, lexer);
+            uint8_t indent = consume_whitespace(s, lexer);
+            if (at_line_end(lexer) || lexer->eof(lexer) || caption_line_ends_block(s, &decision_probe, indent)) break;
+          }
+          if (lexer->lookahead == '\\') {
+            advance(s, lexer);
+            if (!lexer->eof(lexer)) advance(s, lexer);
+            continue;
+          }
+          if (lexer->lookahead == '{') ++depth;
+          if (lexer->lookahead == '}') --depth;
+          int32_t brace_current = lexer->lookahead;
+          advance(s, lexer);
+          if (brace_current == '/' && brace_previous != ' ' && brace_previous != '\t' &&
+              brace_previous != '\n' && !carve_is_alnum_ascii(lexer->lookahead))
+            brace_emphasis_closer = true;
+          brace_previous = brace_current;
+        }
+        if (depth > 0) {
+          bracket_probe_rewind(&decision_probe, brace_restart);
+          s->col_base = brace_base;
+          previous = '{';
+          ++characters;
+          continue;
+        }
+        emphasis_closer |= brace_emphasis_closer;
+        previous = 'x';
+        ++characters;
+        continue;
+      }
+      ++characters;
+      advance(s, lexer);
+      if (characters == 1 && scope && scope_type == STRONG && scope_braced &&
+          current == '*' && lexer->lookahead == '}') {
+        array_delete(&decision_probe.characters);
+        return false;
+      }
+      if (characters == 1 && lexer->lookahead == '*') strong_opener_has_content = false;
+      if (characters == 1 && (lexer->lookahead == ' ' || lexer->lookahead == '\t' ||
+                              at_line_end(lexer) || lexer->eof(lexer) ||
+                              carve_is_grapheme_extender(lexer->lookahead))) opener_has_content = false;
+      if (scope && scope_type != BOLD_ITALIC && characters > 1 && current == scope_marker &&
+          ((scope_braced && lexer->lookahead == '}') ||
+           (!scope_braced && previous != ' ' && previous != '\t' && previous != '\n' &&
+            previous != 0 && !carve_is_alnum_ascii(lexer->lookahead)))) {
+        enclosing_closer = true;
+        break;
+      }
+      if (current == '*' && !emphasis_closer && characters > 2 && previous != ' ' &&
+          previous != '\t' && previous != '\n' && previous != 0 &&
+          !carve_is_alnum_ascii(lexer->lookahead)) strong_closer = true;
+      if (current == '*' && lexer->lookahead == '/') {
+        bool invalid_pair = characters <= 2 || previous == 0 || previous == ' ' ||
+                            previous == '\t' || previous == '\n';
+        advance(s, lexer);
+        bool right_boundary = !carve_is_alnum_ascii(lexer->lookahead) &&
+                              !carve_is_grapheme_extender(lexer->lookahead);
+        if (!invalid_pair && opener_has_content && right_boundary) {
+          combined_pair = true;
+          break;
+        }
+        if (right_boundary) emphasis_closer = true;
+        previous = '/';
+        ++characters;
+        continue;
+      }
+      if (current == '/' && previous != ' ' && previous != '\t' && previous != '\n' &&
+          previous != 0 && !carve_is_alnum_ascii(lexer->lookahead)) emphasis_closer = true;
+      previous = current;
+    }
+    s->combined_probe = false;
+    bool fallback_emphasis = false;
+    if (!combined_pair && emphasis_closer && !emphasis_forbidden &&
+        !find_inline_in_scope(s, EMPHASIS)) {
+      bracket_probe_rewind(&decision_probe, 0);
+      s->col_base = decision_base;
+      fallback_emphasis = probe_bare_closer_skips_brackets(s, &decision_probe, '/', NULL);
+    }
+    array_delete(&decision_probe.characters);
+    lexer = decision_lexer;
+    Inline *enclosing_emphasis = find_inline_in_scope(s, EMPHASIS);
+    if ((combined_pair && enclosing_emphasis && !(enclosing_emphasis->flags & INLINE_BRACED)) ||
+        (!combined_pair && strong_closer && (!emphasis_closer || !fallback_emphasis) && opener_has_content && strong_opener_has_content)) {
+      s->after_closer_char = 0;
+      s->after_closer_col = 0;
+      return false;
+    }
+    if (!combined_pair && emphasis_closer && fallback_emphasis &&
+        (valid_symbols[EMPHASIS_MARK_BEGIN] || valid_symbols[EMPHASIS_COMBINED_MARK_BEGIN]) &&
+        !find_inline_in_scope(s, EMPHASIS)) {
+      s->after_closer_char = strong_closer ? 0 : '*';
+      s->after_closer_col = opener_at_zero ? 0 : deferred_column(s, lexer);
+      if (valid_symbols[EMPHASIS_COMBINED_MARK_BEGIN]) {
+        push_inline_flagged(s, EMPHASIS, strong_closer ? 0 : 1,
+                            strong_closer ? 0 : INLINE_COMBINED_FALLBACK);
+        s->state &= ~STATE_BARE_SPAN_OPENER;
+        lexer->result_symbol = EMPHASIS_COMBINED_MARK_BEGIN;
+      } else lexer->result_symbol = EMPHASIS_MARK_BEGIN;
+      return true;
+    }
+    if (!combined_pair && !emphasis_closer) {
+      bool first_line_complete = first_line_end_column != 0 ||
+                                 (lexer->eof(lexer) && !s->combined_raw_line_end);
+      uint32_t through = plain_prefix_end_column;
+      if (!s->combined_raw_closer && first_line_complete) through = first_line_end_column;
+      if (!through) through = line_column(s, lexer);
+      if (through > (opener_at_zero ? 0 : deferred_column(s, lexer))) {
+        bool whole_line = !scope && !disallow_newline(peek_block(s)) &&
+                          first_line_complete && !s->combined_raw_closer &&
+                          (first_line_end_column ? first_line_cache_safe :
+                           !s->combined_raw_line_end);
+        s->after_closer_char = whole_line ? NO_COMBINED_CLOSER_LINE : NO_COMBINED_CLOSER;
+        s->after_closer_col = through;
+      }
+    }
+    // Cache rejected candidates before leaving the star to nested strong.
+    if (!combined_pair && find_inline_in_scope(s, EMPHASIS)) {
+      if (scope && scope_type == EMPHASIS && !scope_braced && !strong_closer &&
+          HAS_NO_COMBINED_CLOSER(s)) s->after_closer_char = NO_STRONG_IN_EMPHASIS;
+    }
+    bool scoped = valid_symbols[BOLD_ITALIC_SCOPED_OPEN_CHECK] && scope &&
+                  scope_type == STRONG && enclosing_closer && !combined_pair && !emphasis_closer &&
+                  !find_inline_in_scope(s, EMPHASIS);
+    bool real = combined_pair && !find_inline_in_scope(s, BOLD_ITALIC);
+    TokenType decision = real ? BOLD_ITALIC_OPEN_CHECK :
+        scoped ? BOLD_ITALIC_SCOPED_OPEN_CHECK : BOLD_ITALIC_LITERAL_OPEN_CHECK;
+    if (!valid_symbols[decision]) return false;
+    if (scoped) scope->flags |= INLINE_SCOPED_COMBINED_LITERAL;
+    lexer->result_symbol = decision;
+    return true;
+  }
+
+  bool bi_trailing_space = lexer->lookahead == ' ' || lexer->lookahead == '\t';
+
+  // A malformed angle run cannot swallow the combined span's closer.
+  Inline *bi = peek_inline(s);
+  if (valid_symbols[BOLD_ITALIC_LITERAL_LT] && !valid_symbols[ERROR] && bi &&
+      bi->type == BOLD_ITALIC && lexer->lookahead == '<') {
+    advance(s, lexer);
+    mark_end(s, lexer);
+    while (!lexer->eof(lexer) && !at_line_end(lexer)) {
+      if (lexer->lookahead == '>') return false;
+      if (lexer->lookahead == '*') {
+        advance(s, lexer);
+        if (lexer->lookahead == '/') {
+          lexer->result_symbol = BOLD_ITALIC_LITERAL_LT;
+          return true;
+        }
+      } else {
+        advance(s, lexer);
+      }
+    }
+    return false;
+  }
+
+  if (valid_symbols[LABEL_MARK_BEGIN] && !valid_symbols[ERROR]) {
+    mark_end(s, lexer);
+    push_inline_flagged(s, SQUARE_BRACKET_SPAN, 0, INLINE_LABEL);
+    lexer->result_symbol = LABEL_MARK_BEGIN;
+    return true;
+  }
+
+
+  Inline *label = peek_inline(s);
+  if (valid_symbols[LITERAL_RUN] && !valid_symbols[ERROR] && label &&
+      label->type == SQUARE_BRACKET_SPAN && ((label->flags & (INLINE_LABEL | INLINE_BRACED)) == INLINE_LABEL) &&
+      lexer->lookahead == '[') {
+    // A literal bracket nest whose closes are consecutive cannot form a
+    // link or attributed span. Consume its openers together so markup in
+    // the body does not compete with a branch for every literal bracket.
+    uint32_t opens = 0;
+    while (lexer->lookahead == '[') {
+      advance(s, lexer); ++opens; mark_end(s, lexer);
+    }
+    if (opens < 2) return false;
+    bool plain = true;
+    while (!lexer->eof(lexer) && !at_line_end(lexer) && lexer->lookahead != ']') {
+      if (lexer->lookahead == '[') return false;
+      if (!carve_is_alnum_ascii(lexer->lookahead) && lexer->lookahead < 128 &&
+          lexer->lookahead != ' ' && lexer->lookahead != '\t') plain = false;
+      advance(s, lexer);
+    }
+    uint32_t closes = 0;
+    while (closes < opens && lexer->lookahead == ']') {
+      advance(s, lexer); ++closes;
+    }
+    if (closes != opens || lexer->lookahead != ']') return false;
+    if (plain) mark_end(s, lexer);
+    advance(s, lexer);
+    consume_whitespace(s, lexer);
+    if (!at_line_end(lexer) && !lexer->eof(lexer)) return false;
+    if (!plain) label->literal_closes += opens;
+    lexer->result_symbol = LITERAL_RUN;
+    return true;
+  }
+  if (valid_symbols[TERM_COMMENT] && !valid_symbols[ERROR] &&
+      (lexer->lookahead == '%' || lexer->lookahead == ' ' ||
+       lexer->lookahead == '\t')) return parse_term_comment(s, lexer);
+
+
+  // FIRST, and it answers for the whole call: the reader it runs moves the
+  // lexer to the end of the run, so nothing below could read from where it
+  // started. See `parse_substitution_or_strikethrough`.
+  // Not in error recovery, where every symbol reads as valid: this branch
+  // pushes an inline entry and emits a zero-width token, so taking it there
+  // repeats at the same position without consuming input, the stack growing
+  // each time, and the parse never ends (#321). The ERROR branch below is what
+  // recovery must reach.
+  if (valid_symbols[SUBSTITUTION_BEGIN] && !valid_symbols[ERROR]) {
+    return parse_substitution_or_strikethrough(s, lexer, valid_symbols);
+  }
+
+  // A BRACED marker opener, asked from the branch that would read it as text.
+  // `braced_closer_ahead` moves the lexer, so this answers for the whole call,
+  // the same way the substitution reader above does.
+  // A dash run inside a braced delete, directly before its closer. Longest
+  // match would take `--` or `---` and leave the `-}` without its `-`, so the
+  // scanner places the token end itself: the run minus the closer's dash, as
+  // an em dash, an en dash or one literal dash. The mark is placed while the
+  // NEXT character is still a dash, which is the only way to end the token
+  // one short of a run whose length is known only once it is read. Skipped
+  // wherever block parsing owns a `-`.
+  if (lexer->lookahead == '-' && !valid_symbols[ERROR] &&
+      (valid_symbols[EM_DASH_IN_DELETE] || valid_symbols[EN_DASH_IN_DELETE] ||
+       valid_symbols[DELETE_DASH] || valid_symbols[DELETE_END]) &&
+      !valid_symbols[LIST_MARKER_DASH] &&
+      !valid_symbols[LIST_MARKER_TASK_BEGIN] &&
+      !valid_symbols[THEMATIC_BREAK_DASH] &&
+      !valid_symbols[FRONTMATTER_MARKER]) {
+    Inline *top = peek_inline(s);
+    if (top != NULL && top->type == DELETE && (top->flags & INLINE_BRACED)) {
+      mark_end(s, lexer);
+      uint8_t run = 0;
+      while (lexer->lookahead == '-') {
+        advance(s, lexer);
+        run++;
+        if (lexer->lookahead == '-' && run <= 3) {
+          mark_end(s, lexer);
+        }
+      }
+      if (lexer->lookahead == '}') {
+        uint8_t available = (uint8_t)(run - 1);
+        if (available == 0) {
+          if (valid_symbols[DELETE_END] && top->data == 0) {
+            advance(s, lexer);
+            mark_end(s, lexer);
+            remove_inline(s);
+            lexer->result_symbol = DELETE_END;
+            return true;
+          }
+          return false;
+        }
+        if (available >= 3 && valid_symbols[EM_DASH_IN_DELETE]) {
+          lexer->result_symbol = EM_DASH_IN_DELETE;
+          return true;
+        }
+        if (available == 2 && valid_symbols[EN_DASH_IN_DELETE]) {
+          lexer->result_symbol = EN_DASH_IN_DELETE;
+          return true;
+        }
+        if (available == 1 && valid_symbols[DELETE_DASH]) {
+          lexer->result_symbol = DELETE_DASH;
+          return true;
+        }
+      }
+      return false;
+    }
+  }
+
+  if (valid_symbols[BRACED_FALLBACK] && !valid_symbols[ERROR]) {
+    static const InlineType braced_kinds[] = {
+        EMPHASIS, STRONG, STRIKETHROUGH, UNDERLINE, HIGHLIGHTED,
+        SUPERSCRIPT, SUBSCRIPT, INSERT,   DELETE,
+    };
+    for (size_t i = 0; i < sizeof(braced_kinds) / sizeof(braced_kinds[0]);
+         ++i) {
+      InlineType kind = braced_kinds[i];
+      TokenType token = inline_begin_token(kind);
+      if (!valid_symbols[token]) {
+        continue;
+      }
+      // The two readings take different tokens (see `symbolFallback` in
+      // grammar.js), so exactly one is emitted: the span where it can open
+      // and its closer is there, the literal reading otherwise. Both tokens
+      // are zero-width; the reader below only looks.
+      mark_end(s, lexer);
+      s->state &= ~STATE_BARE_SPAN_OPENER;
+      int32_t first_content = lexer->lookahead;
+      defer_column(s);
+      bool opens = !carve_is_grapheme_extender(first_content) &&
+                   !braced_same_kind_blocked(s, kind) &&
+                   braced_closer_ahead(s, lexer, inline_marker(kind));
+      if (opens) {
+        push_inline_flagged(s, kind, 0, INLINE_BRACED);
+        if (kind == EMPHASIS && first_content == '/') {
+          s->after_closer_char = '/';
+          s->after_closer_col = deferred_column(s, lexer);
+        }
+        lexer->result_symbol = token;
+      } else {
+        lexer->result_symbol = BRACED_FALLBACK;
+      }
+      return true;
+    }
+    // No span of this kind can open here, so the literal reading is the only
+    // one left.
+    mark_end(s, lexer);
+    lexer->result_symbol = BRACED_FALLBACK;
+    return true;
+  }
+
+  if (valid_symbols[ATTRIBUTED_SPAN_MARK_BEGIN] && !valid_symbols[ERROR]) {
+    return parse_attributed_span_mark_begin(s, lexer, valid_symbols);
+  }
+
+  // text and bare delimiters that open and close nothing. It reads
+  // forward from the word or the run's first character, so it answers for the
+  // whole call the way the two readers above do.
+  InlineType literal_run_kind;
+  // Where the reader stands aside for a word only because a block reading may
+  // start here; the word's second chance below is for exactly this position.
+  // That is not only the line start: a word right after a block marker
+  // (`> a*b*`, `- a*b*`) or a cell's pipe (`| a*b* |`) is one too (#434).
+  bool deferred_word = false;
+  uint32_t deferred_at = s->advances;
+  if (valid_symbols[LITERAL_RUN] && !valid_symbols[ERROR] &&
+      carve_is_alnum_ascii(lexer->lookahead) &&
+      block_reading_ahead(lexer->lookahead, valid_symbols) &&
+      !zero_width_mark_pending(valid_symbols)) {
+    deferred_word = true;
+  }
+  if (valid_symbols[LITERAL_RUN] && !valid_symbols[ERROR] &&
+      (is_bare_delim_kind(lexer->lookahead, &literal_run_kind) ||
+       carve_is_alnum_ascii(lexer->lookahead)) &&
+      !block_reading_ahead(lexer->lookahead, valid_symbols) &&
+      !zero_width_mark_pending(valid_symbols)) {
+    int read = parse_literal_run(s, lexer, valid_symbols, 0, 0, 0);
+    if (read > 0) {
+      return true;
+    }
+    if (read < 0) {
+      return false;
+    }
+  }
+
+#ifdef DEBUG
+  printf("SCAN\n");
+  dump(s, lexer);
+  dump_some_valid_symbols(valid_symbols);
+#endif
+
+  // Mark end right from the start and then when outputting results
+  // we mark it again to make it consume.
+  // I found it easier to opt-in to consume tokens.
+  mark_end(s, lexer);
+  // Comment bodies and alignment cells are the internal tokens that can end
+  // on a line terminator; where one may be in progress the column is read.
+  bool comment_body = valid_symbols[COMMENT_BODY_PERCENT] || valid_symbols[COMMENT_BODY_HASH] ||
+                      valid_symbols[COMMENT_END_MARKER] || valid_symbols[COMMENT_HASH_END_MARKER];
+  // Error recovery offers every symbol, so its valid set says nothing about a
+  // pending comment body; a column read there would rescan the line from a
+  // cold cache once per dead parse version, which makes long lines quadratic.
+  bool known_mid_line = s->mid_line && s->col_base == 0 &&
+                        (valid_symbols[ERROR] ||
+                         ((!comment_body || s->comment_one_line) &&
+                          !valid_symbols[COMMENT_CLOSE] && !valid_symbols[TABLE_CELL_END] &&
+                          !valid_symbols[TABLE_ESCAPED_CELL_END])) &&
+                        !lexer->is_at_included_range_start(lexer);
+  // A whole-line negative proof starts after a combined opener and admits no
+  // nested token that crosses the line end. Its remaining tokens are midline.
+  // A row opens after its leading pipe. Its end and continuation tokens
+  // consume the line boundary before ordinary inline scanning resumes.
+  bool at_line_start = s->after_closer_char != NO_COMBINED_CLOSER_LINE &&
+                       (valid_symbols[ERROR] || !find_block(s, TABLE_ROW)) &&
+                       !known_mid_line && !(s->read_mid_line = line_column(s, lexer) != 0);
+  if (at_line_start) {
+    s->indent = consume_whitespace(s, lexer);
+    // A new line starts a new marker chain (see `marker_end_col`).
+    s->marker_end_col = 0;
+    s->chain_col = UINT8_MAX;
+    // A new line also starts a fresh block-quote marker count. Normally a
+    // trailing NEWLINE token clears `block_quote_level` (below) before the
+    // next line is scanned, but a construct whose own token swallows its
+    // trailing newline in one lexer match - `comment_line`, an empty
+    // `fenced_comment_block` with no closer - never yields control back to
+    // the scanner at that boundary, so the count from the quote's opening
+    // marker line survives into the next line untouched. On a dedent with
+    // no open paragraph to absorb it (tree-sitter-carve#77), that stale
+    // count reads as "still at the quote's own depth" and blocks the
+    // BLOCK_CLOSE branch in `parse_block_quote`. Clearing it here, at every
+    // line's first character, makes the reset unconditional on reaching a
+    // new line rather than on how the previous line's last token happened
+    // to be shaped.
+    s->block_quote_level = 0;
+  } else if (lexer->lookahead == ' ' && s->block_quote_level > 0 &&
+             s->block_quote_level == count_blocks(s, BLOCK_QUOTE)) {
+    // Indentation right after the quote's markers, before a list marker, is
+    // the line's indent, as it is outside a quote: `>  - a` opens a list.
+    Block *quote = find_block(s, BLOCK_QUOTE);
+    Block *quoted_list = peek_block(s);
+    uint32_t column = quote && quote->content_col != 0 ? line_column(s, lexer) : 0;
+    if (quote && quote->content_col != 0 && column > quote->content_col) s->read_past_quote = true;
+    if (quote && quote == peek_block(s) && quote->content_col != 0 &&
+        column == quote->content_col) {
+      consume_whitespace(s, lexer);
+      s->indent = (uint8_t)line_column(s, lexer);
+    } else if (quote && quote->content_col != 0 && quoted_list &&
+               is_list(quoted_list->type) &&
+               list_opened_in_quote(s, quoted_list) &&
+               column == quote->content_col) {
+      // A sibling short of a quoted item's content column (PART 0 S4) counts
+      // its indent from the quote's prefix, as the list's own marker did.
+      consume_whitespace(s, lexer);
+      uint32_t column = line_column(s, lexer);
+      if (column < quoted_list->content_col) {
+        s->indent = (uint8_t)(column - quote->content_col);
+      }
+    }
+  }
+  Block *pending_list = find_list(s);
+  Block *pending_top = peek_block(s);
+  if (at_line_start) {
+    for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
+      Block *b = *array_get(s->open_blocks, i);
+      if (is_list(b->type) && b->type != LIST_DEFINITION) {
+        b->flags &= (uint8_t)~BLOCK_FLAG_LIST_TEXT_LINE;
+      }
+    }
+    if (!at_line_end(lexer)) s->blank_line_taken = false;
+  }
+  if (at_line_start && pending_list && pending_top &&
+      pending_top->type != COMMENT_FENCE && pending_top->type != CODE_BLOCK &&
+      lexer->lookahead != '%' && lexer->lookahead != '`' &&
+      lexer->lookahead != '~' && !at_line_end(lexer)) {
+    pending_list->flags &= ~BLOCK_FLAG_COMMENT_RESTORES_LAZY;
+  }
+  bool is_newline = at_line_end(lexer);
+  if (at_line_start) s->line_blank = is_newline;
+  if (at_line_start && !is_newline && lexer->lookahead != '+') {
+    Block *note = find_block(s, FOOTNOTE);
+    if (note) note->flags &= (uint8_t)~BLOCK_FLAG_FOOTNOTE_BLANK_BEFORE_PLUS;
+  }
+  // End-of-input, recorded HERE and not where it is read. The read is at the
+  // very bottom of this function, after every probe has had its turn, and a
+  // probe that advanced and then declined leaves the lexer wherever it stopped
+  // - it cannot rewind. In a document that does not end in a newline, any probe
+  // that scans to the end of its line lands on end-of-input, so a live
+  // `lexer->eof` down there answers for the probe's position rather than for
+  // this call's own. It then emits a zero-width EOF_OR_NEWLINE in the middle of
+  // a line, which closes the paragraph there and restarts the run on the next
+  // character: `abcdef` with no trailing newline parsed as six paragraphs
+  // (tree-sitter-carve#124). Taken after the carriage-return skip and the
+  // line-start whitespace consumption above, so a line holding only whitespace
+  // before end-of-input still counts as end-of-input, exactly as before.
+  bool at_eof = lexer->eof(lexer);
+
+  if (is_newline) {
+    s->block_quote_level = 0;
+  }
+
+  // A line holding nothing but its newline (leading whitespace was consumed
+  // above, so a whitespace-only line counts) ends any open block quote. Recorded
+  // here, at the line's own start, because the `>` that the rule is about is on
+  // the NEXT line - see STATE_AFTER_BLANK_LINE. Setting it is idempotent, so the
+  // repeated scanner calls tree-sitter makes at one position agree.
+  if (at_line_start && is_newline) {
+    s->state |= STATE_AFTER_BLANK_LINE;
+    Block *note = find_block(s, FOOTNOTE);
+    if (note) note->flags |= BLOCK_FLAG_FOOTNOTE_BLANK_BEFORE_PLUS;
+    // A `+` CONTINUATION ATTACHES EXACTLY ONE BLOCK (PART 9 section 17), and a
+    // blank line ends that block whatever it is. The flag has to go with it.
+    //
+    // `parse_list_item_end` keeps the item open for an indent-0 `|` line while
+    // the flag is set, because a `+`-attached TABLE has no terminator and its
+    // later rows would otherwise detach. That rule is right for the row AFTER
+    // a row; it was reached for any `|` line at all, because nothing cleared
+    // the flag when the attached block was a PARAGRAPH - a paragraph is not on
+    // the open-block stack, so `remove_block` never fires for it. A table one
+    // blank line below such a paragraph was read as the attached table's next
+    // row and the whole item landed in ERROR (markup-carve/tree-sitter-carve#279).
+    //
+    // Clearing here rather than in `remove_block` covers every attached block
+    // kind at once, and leaves the multi-row case alone: rows of one table
+    // carry no blank line between them. A blank line inside an attached open
+    // FENCE is fence body, not the end of the block, so the flag stays.
+    Block *open_top = peek_block(s);
+    if (!open_top || open_top->type != CODE_BLOCK) {
+      s->state &= ~STATE_LIST_CONTINUATION;
+      for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
+        Block *b = *array_get(s->open_blocks, i);
+        if (b->type == FOOTNOTE) b->flags &= (uint8_t)~BLOCK_FLAG_FOOTNOTE_ATTACHED;
+      }
+    }
+  }
+
+#ifdef DEBUG
+  printf("Setup whitespace\n");
+  printf("  block_quote_level: %u\n", s->block_quote_level);
+  printf("  indent: %u\n", s->indent);
+  printf("  is_newline: %b\n", is_newline);
+  printf("---\n");
+#endif
+
+  if (valid_symbols[ERROR]) {
+    lexer->result_symbol = ERROR;
+    return true;
+  }
+
+  // A NUL byte is CONTENT. PART 3 replaces it with U+FFFD BEFORE the document
+  // is read, so no engine ever sees the byte and the corpus pins `a<NUL>b` as
+  // the text `a<U+FFFD>b`. This grammar is handed the raw bytes instead, and
+  // tree-sitter's internal lexer reserves the value 0 for end-of-input - a
+  // character class can never match one, which is why widening the text token
+  // fixed the vertical tab beside it and left the NUL an ERROR. Here the
+  // distinction is available: `lexer->eof` answers whether the 0 is a byte in
+  // the document or the end of it.
+  //
+  // Placed after the ERROR branch above so error recovery, where every symbol
+  // reads as valid, keeps returning ERROR exactly as it did.
+  if (valid_symbols[NUL_BYTE] && lexer->lookahead == 0 && !at_eof) {
+    advance(s, lexer);
+    mark_end(s, lexer);
+    lexer->result_symbol = NUL_BYTE;
+    return true;
+  }
+
+  // The reserved `figure` kind word, asked before any probe below can consume
+  // it. Narrow by construction: the symbol is valid only at the colon fence's
+  // type-word position, which is mid-line and inside an opener the scanner has
+  // already committed to, and the lookahead has to be the word's first letter.
+  //
+  // A DECLINE RETURNS rather than falling through. The word has been read by
+  // then, and a probe below would run from the moved position - the hazard the
+  // note above `at_eof` is about. Returning false hands the position to the
+  // internal lexer, which takes the same characters as `admonition_type`.
+  if (valid_symbols[EMPTY_TABLE_CELL] && !valid_symbols[ERROR] &&
+      lexer->lookahead == '|') {
+    Block *row = peek_block(s);
+    if (row && row->type == TABLE_ROW) {
+      lexer->result_symbol = EMPTY_TABLE_CELL;
+      return true;
+    }
+  }
+
+  if (valid_symbols[FIGURE_GROUP_MARKER] && lexer->lookahead == 'f') {
+    return parse_figure_group_marker(s, lexer);
+  }
+
+  // Closing a quote can also end its nested note or list. Emit the token
+  // that each container requires before the remaining generic block closes.
+  if (s->blocks_to_close > 0) {
+    Block *closing = peek_block(s);
+    if (closing && closing->type == FOOTNOTE) {
+      if (valid_symbols[INDENTED_CONTENT_SPACER]) {
+        lexer->result_symbol = INDENTED_CONTENT_SPACER;
+        return true;
+      }
+      if (valid_symbols[FOOTNOTE_END]) {
+        remove_block(s);
+        lexer->result_symbol = FOOTNOTE_END;
+        return true;
+      }
+    }
+    if (closing && is_list(closing->type)) {
+      if (valid_symbols[INDENTED_CONTENT_SPACER]) {
+        lexer->result_symbol = INDENTED_CONTENT_SPACER;
+        return true;
+      }
+      if (valid_symbols[LIST_ITEM_END]) {
+        lexer->result_symbol = LIST_ITEM_END;
+        return true;
+      }
+    }
+  }
+  if (valid_symbols[BLOCK_CLOSE] && handle_blocks_to_close(s, lexer)) {
+    return true;
+  }
+  // The above shouldn't allow us to continue past this point,
+  // but it may happen if we've encountered a bug somewhere.
+#ifdef DEBUG
+  assert(s->blocks_to_close == 0);
+#else
+  if (s->blocks_to_close > 0) {
+    return ERROR;
+  }
+#endif
+
+  if (lexer->lookahead != '>') s->state &= ~STATE_LITERAL_QUOTE_BAND;
+  Block *band_quote = find_block(s, BLOCK_QUOTE);
+  Block *band_list = find_list(s);
+  bool literal_band = at_line_start && band_quote && band_list && !list_opened_in_quote(s, band_list) &&
+      !(s->state & STATE_AFTER_BLANK_LINE) && s->block_quote_level == 0 &&
+      lexer->lookahead == '>' && s->indent > band_list->content_col &&
+      (band_quote->flags & BLOCK_FLAG_OPAQUE_QUOTE_TAIL);
+  if (literal_band || (s->state & STATE_LITERAL_QUOTE_BAND)) {
+    s->state |= STATE_LITERAL_QUOTE_BAND;
+    if (band_quote && valid_symbols[BLOCK_CLOSE] && !valid_symbols[ERROR]) {
+      lexer->result_symbol = BLOCK_CLOSE;
+      remove_block(s);
+      return true;
+    }
+    if (!band_quote && valid_symbols[INDENTED_CONTENT_SPACER] &&
+        !valid_symbols[ERROR]) {
+      lexer->result_symbol = INDENTED_CONTENT_SPACER;
+      return true;
+    }
+    if (!band_quote && valid_symbols[LIST_ITEM_CONTINUATION] && !valid_symbols[ERROR]) {
+      lexer->result_symbol = LIST_ITEM_CONTINUATION;
+      return true;
+    }
+    if (!band_quote && valid_symbols[LITERAL_RUN] && !valid_symbols[ERROR]) {
+      advance(s, lexer);
+      if (lexer->lookahead == ' ') advance(s, lexer);
+      mark_end(s, lexer);
+      s->state &= ~STATE_LITERAL_QUOTE_BAND;
+      lexer->result_symbol = LITERAL_RUN;
+      return true;
+    }
+    return false;
+  }
+
+  // Please note that the parse ordering here is quite messy and there's
+  // a lot of order dependencies implicit in the implementation.
+  // One day we should clean it up but for now just be aware that
+  // it's not possible to simply reorder these however we want.
+
+  // A code fence in a description body keeps a line short of the body as its
+  // own content, unless the line would interrupt a paragraph there. Deciding
+  // that reads the line, so a content line ends the scan: the internal lexer
+  // takes it as a code line from the scan's start.
+  if (valid_symbols[BLOCK_CLOSE] && !is_newline) {
+    int keeps = description_fence_keeps_line(s, lexer);
+    if (keeps > 0) {
+      return false;
+    }
+    if (keeps == 0) {
+      // Zero width: the token end still stands at the scan's start.
+      lexer->result_symbol = BLOCK_CLOSE;
+      remove_block(s);
+      return true;
+    }
+  }
+  if (valid_symbols[BLOCK_CLOSE] &&
+      close_list_nested_block_if_needed(s, lexer, !is_newline)) {
+    return true;
+  }
+
+  // BETWEEN TWO LINES OF AN UNCLOSED RUN. The content token ends at each line
+  // end, so this is where the run's next line is decided, and where the run
+  // ends at end of input.
+  if ((valid_symbols[VERBATIM_CONTINUE] || valid_symbols[VERBATIM_END]) &&
+      (is_newline || lexer->eof(lexer)) && find_block(s, TABLE_ROW) == NULL) {
+    Inline *run = peek_inline(s);
+    if (run != NULL && run->type == VERBATIM) {
+      if (valid_symbols[VERBATIM_CONTINUE] && !lexer->eof(lexer) &&
+          verbatim_line_continues(s, lexer)) {
+        lexer->result_symbol = VERBATIM_CONTINUE;
+        return true;
+      }
+      remove_inline(s);
+      lexer->result_symbol = VERBATIM_END;
+      return true;
+    }
+  }
+
+  if (is_newline && parse_newline(s, lexer, valid_symbols)) {
+    return true;
+  }
+
+  // A row attribute block glued to a row's closing pipe (`| a | b |{.head}`)
+  // is consumed by the row-end-newline token even though it does not start on
+  // a newline. The end of input reaches it here for the same reason: `is_newline`
+  // is false there, so the branch above never asks (#458).
+  bool row_padding = lexer->lookahead == ' ' || lexer->lookahead == '\t';
+  if ((lexer->lookahead == '{' || row_padding || at_eof) &&
+      valid_symbols[TABLE_ROW_END_NEWLINE]) {
+    if (parse_table_end_newline(s, lexer)) {
+      return true;
+    }
+    // A declined padding probe consumed whitespace. Let the internal lexer
+    // retry at the original position rather than widening the next marker.
+    if (row_padding) {
+      return false;
+    }
+  }
+
+  // Needs to be done before indented content spacer and list item continuation
+  // Before the block-quote scan: inside an open comment fence the `> ` on a
+  // body or closer line belongs to the comment, not to the quote's own
+  // structure, and only this function knows a fence is open.
+  if (parse_comment_fence(s, lexer, valid_symbols)) {
+    return true;
+  }
+  if ((lexer->lookahead == '>' || lexer->lookahead == ' ' ||
+       lexer->lookahead == '\t') &&
+      parse_quoted_code_fence_closer(s, lexer, valid_symbols)) {
+    return true;
+  }
+  if (lexer->lookahead == '`') {
+    uint32_t before = s->advances;
+    if (parse_code_fence(s, lexer, valid_symbols, (char)lexer->lookahead)) return true;
+    if (s->advances != before) return false;
+  }
+  // A colon line that ENDS the open paragraph is decided before the colon
+  // scanner runs, because that scanner consumes as it classifies: when it gets
+  // as far as `:: ` and the term marker is not valid in this state, the lexer
+  // has already moved past the marker and the close-paragraph probe below sees
+  // the middle of a line. A sibling `:: term` was swallowed by the term above
+  // it for exactly that reason (tree-sitter-carve#48). Both probes start at the
+  // same character, and only one of them can go first.
+  if (valid_symbols[CLOSE_PARAGRAPH] && lexer->lookahead == ':' &&
+      parse_close_paragraph(s, lexer)) {
+    return true;
+  }
+  if (lexer->lookahead == ':' && parse_colon(s, lexer, valid_symbols)) {
+    return true;
+  }
+
+  // A quoted closer's line keeps its `>` markers for the fence: a spacer here
+  // would end the fence's item first and leave the end marker nowhere to go.
+  bool quoted_closer_line = (s->state & STATE_QUOTED_FENCE_CLOSER) &&
+                            valid_symbols[CODE_BLOCK_END] &&
+                            lexer->lookahead == '>';
+  Block *row_host = peek_block(s);
+  bool footnote_row = row_host && row_host->type == FOOTNOTE &&
+                      s->indent >= row_host->data;
+  if (valid_symbols[TABLE_LIST_ROW_CHECK] &&
+      (lexer->lookahead == '|' ||
+       (lexer->lookahead == '+' && !s->after_separator_row &&
+        count_blocks(s, BLOCK_QUOTE) == s->block_quote_level)) &&
+      (footnote_row ||
+       (find_list(s) && quoted_line_reaches_list(s, lexer, find_list(s))))) {
+    uint8_t indent = s->indent;
+    uint8_t level = s->block_quote_level;
+    uint16_t state = s->state;
+    uint32_t col_base = s->col_base;
+    bool valid_row;
+    if (lexer->lookahead == '+') {
+      valid_row = scan_continuation_row(s, lexer);
+    } else {
+      advance(s, lexer);
+      TokenType row_type;
+      bool continues = false;
+      valid_row = scan_table_row(s, lexer, &row_type, &continues);
+    }
+    s->indent = indent;
+    s->block_quote_level = level;
+    s->state = state;
+    s->col_base = col_base;
+    if (valid_row || valid_symbols[TABLE_LIST_END]) {
+      lexer->result_symbol = valid_row ? TABLE_LIST_ROW_CHECK : TABLE_LIST_END;
+      return true;
+    }
+    return false;
+  }
+  if (valid_symbols[INDENTED_CONTENT_SPACER] && !quoted_closer_line &&
+      parse_indented_content_spacer(s, lexer, is_newline)) {
+    return true;
+  }
+
+  Block *comment_list = find_list(s);
+  if (lexer->lookahead == '%' && comment_list &&
+      !(comment_list->type == LIST_DEFINITION &&
+        (comment_list->flags & BLOCK_FLAG_DEFINITION_TERM)) &&
+      peek_block(s) == comment_list && count_blocks(s, BLOCK_QUOTE) == 0 &&
+      s->indent < list_item_margin(s, comment_list) &&
+      valid_symbols[LIST_ITEM_CONTINUATION]) {
+    uint8_t indent = s->indent;
+    uint8_t level = s->block_quote_level;
+    uint16_t state = s->state;
+    uint32_t col_base = s->col_base;
+    uint16_t width = consume_percents(s, lexer);
+    bool closed = false;
+    if (width >= 3 && width < COMMENT_FENCE_CAP) {
+      scan_to_line_end(s, lexer);
+      while (!lexer->eof(lexer)) {
+        consume_line_end(s, lexer);
+        if (scan_comment_fence_line_width(s, lexer) == width) {
+          closed = true;
+          break;
+        }
+        scan_to_line_end(s, lexer);
+      }
+    }
+    s->indent = indent;
+    s->block_quote_level = level;
+    s->state = state;
+    s->col_base = col_base;
+    // A comment below the content column stays in the item while a claim or
+    // a retention admits it, except a closed fence at the column the enclosing
+    // context opens blocks at (PART 9 section 24 C3).
+    uint8_t flags = comment_list->flags;
+    bool at_base = indent < comment_list->data;
+    bool admitted = width >= 2 &&
+        (flags & (BLOCK_FLAG_LIST_COMMENT_CLAIM |
+                  BLOCK_FLAG_LIST_COMMENT_RETAINS));
+    uint32_t opener_col = 0;
+    for (int i = (int)s->open_blocks->size - 2; i >= 0; --i) {
+      Block *b = *array_get(s->open_blocks, i);
+      if (is_list(b->type)) {
+        opener_col = list_item_margin(s, b);
+        break;
+      }
+    }
+    comment_list->flags &= (uint8_t)~LIST_COMMENT_FLAGS;
+    if (closed && indent == opener_col) {
+      admitted = false;
+    } else if (closed && !at_base) {
+      admitted = true;
+    }
+    if (admitted) {
+      // A closed fence leaves no paragraph open, so the line after it is
+      // measured against the item as usual (PART 9 section 24 C3, P9-051).
+      if (!closed) comment_list->flags |= BLOCK_FLAG_LIST_COMMENT_RETAINS;
+      lexer->result_symbol = LIST_ITEM_CONTINUATION;
+      return true;
+    }
+    if (valid_symbols[LIST_ITEM_END]) {
+      lexer->result_symbol = LIST_ITEM_END;
+      s->blocks_to_close = 1;
+      return true;
+    }
+    return false;
+  }
+  if (valid_symbols[LIST_ITEM_CONTINUATION] &&
+      parse_list_item_continuation(s, lexer, at_eof)) {
+    return true;
+  }
+  if (valid_symbols[FOOTNOTE_CONTINUATION] &&
+      parse_footnote_continuation(s, lexer, at_eof)) {
+    return true;
+  }
+
+  // The line `verbatim_line_continues` just flagged as comment-only claims
+  // its own token ahead of ordinary content, so the choice in `_verbatim_body`
+  // resolves without either side re-deciding what the other already did.
+  if (valid_symbols[VERBATIM_COMMENT_LINE] &&
+      parse_verbatim_comment_line(s, lexer)) {
+    return true;
+  }
+
+  // Verbatim content parsing is responsible for setting VERBATIM_END
+  // for normal instances as well.
+  if (valid_symbols[VERBATIM_CONTENT] &&
+      parse_verbatim_content(s, lexer, valid_symbols[VERBATIM_END],
+                             at_eof)) {
+    return true;
+  }
+
+  if (valid_symbols[CLOSE_PARAGRAPH] && parse_close_paragraph(s, lexer)) {
+    return true;
+  }
+  if (lexer->lookahead == '>' && find_block(s, FOOTNOTE) &&
+      scan_quoted_plus_owner(s, lexer, valid_symbols)) {
+    return true;
+  }
+  if (s->plus_scan_spent) {
+    s->plus_scan_spent = false;
+    return false;
+  }
+  if (valid_symbols[FOOTNOTE_END] &&
+      parse_footnote_end(s, lexer, valid_symbols, at_eof)) {
+    return true;
+  }
+  if (valid_symbols[LINK_REF_DEF_LABEL_END] &&
+      parse_link_ref_def_label_end(s, lexer)) {
+    return true;
+  }
+
+  // A second continuation marker in a list-attached run starts a sibling
+  // block. Close the attached quote before consuming the marker, otherwise the
+  // quote's own continuation production absorbs it and the following `>` is
+  // reduced as paragraph content inside the first quote.
+  if (CARVE2_PLUS_ATTACHMENT && lexer->lookahead == '+' && valid_symbols[BLOCK_CLOSE] &&
+      (s->state & STATE_LIST_CONTINUATION) &&
+      find_list(s) != NULL &&
+      find_block(s, BLOCK_QUOTE) != NULL &&
+      scan_continuation_marker_at_paragraph_end(s, lexer, s->block_quote_level)) {
+    lexer->result_symbol = BLOCK_CLOSE;
+    remove_block(s);
+    return true;
+  }
+
+  // An accepted `+` must run before list closing so its block reaches the
+  // owner selected above.
+  if (CARVE2_PLUS_ATTACHMENT && lexer->lookahead == '+' && valid_symbols[PLUS_OWNER_CHECK] &&
+      scan_plus_owner_check(s, lexer)) {
+    return true;
+  }
+  if (CARVE2_PLUS_ATTACHMENT && lexer->lookahead == '+' && valid_symbols[REFUSED_PLUS_LINE] &&
+      parse_refused_plus_line(s, lexer)) {
+    return true;
+  }
+  if (CARVE2_PLUS_ATTACHMENT && lexer->lookahead == '+' &&
+      (valid_symbols[LIST_CONTINUATION_MARKER] ||
+       valid_symbols[EMPTY_LIST_CONTINUATION_MARKER] ||
+       valid_symbols[TABLE_CONTINUATION_ROW]) &&
+      parse_plus_line(s, lexer, valid_symbols)) {
+    return true;
+  }
+  if (s->plus_scan_spent) {
+    s->plus_scan_spent = false;
+    return false;
+  }
+
+  if (CARVE2_PLUS_ATTACHMENT && lexer->lookahead == '>' &&
+      scan_quoted_plus_owner(s, lexer, valid_symbols)) {
+    return true;
+  }
+  if (s->plus_scan_spent) {
+    s->plus_scan_spent = false;
+    return false;
+  }
+
+  if (lexer->lookahead == '>' && valid_symbols[ATTACHED_QUOTE_PREFIX]) {
+    uint32_t before = s->advances;
+    if (parse_attached_quote_prefix(s, lexer, valid_symbols)) return true;
+    if (s->advances != before) return false;
+  }
+
+  // End previous list item before opening new ones.
+  if (valid_symbols[LIST_ITEM_END] &&
+      parse_list_item_end(s, lexer, valid_symbols, at_eof)) {
+    return true;
+  }
+
+  if (valid_symbols[TABLE_QUOTE_CONTINUATION] && !valid_symbols[ERROR] &&
+      lexer->lookahead == '>') {
+    return parse_table_quote_continuation(s, lexer, valid_symbols);
+  }
+
+  uint32_t before_quote = s->advances;
+  bool quote_after_spaces = lexer->lookahead == ' ';
+  if (parse_block_quote(s, lexer, valid_symbols)) {
+    return true;
+  }
+  if (quote_after_spaces && s->advances != before_quote) return false;
+  if (parse_editorial_comment_hash(s, lexer, valid_symbols)) {
+    return true;
+  }
+  if (parse_heading(s, lexer, valid_symbols)) {
+    return true;
+  }
+  if (parse_comment_end(s, lexer, valid_symbols)) {
+    return true;
+  }
+  // EARLY, and BOUNDED only - see `parse_trailing_comment`'s own comment for
+  // why the two readings of `%%` need opposite positions in this call.
+  if (parse_trailing_comment(s, lexer, valid_symbols, advances_at_entry,
+                             /*require_bounded=*/true)) {
+    return true;
+  }
+
+  // A braced inline closer at the start of a line belongs to its open span,
+  // even when its first character could begin a list or another block marker.
+  Inline *closing_span = peek_inline(s);
+  if (closing_span && (closing_span->flags & INLINE_BRACED) &&
+      closing_span->type >= EMPHASIS && closing_span->type <= DELETE) {
+    TokenType closing_token = inline_end_token(closing_span->type);
+    if (valid_symbols[closing_token] &&
+        parse_span_end(s, lexer, closing_span->type, closing_token)) return true;
+  }
+
+  // Set by a block probe that declines after consuming a pure marker run; see
+  // the contract on `parse_list_marker_or_thematic_break`.
+  uint8_t declined_run = 0;
+  int32_t declined_marker = 0;
+  switch (lexer->lookahead) {
+  case '[':
+    if (valid_symbols[LITERAL_RUN] && !valid_symbols[ERROR] &&
+        !zero_width_mark_pending(valid_symbols) &&
+        !valid_symbols[LINK_REF_DEF_MARK_BEGIN] &&
+        !valid_symbols[FOOTNOTE_MARK_BEGIN]) {
+      return parse_plain_bracket_run(s, lexer);
+    }
+    if (parse_open_bracket(s, lexer, valid_symbols)) {
+      return true;
+    }
+    break;
+  case '-':
+    declined_marker = '-';
+    if (parse_dash(s, lexer, valid_symbols, &declined_run)) {
+      return true;
+    }
+    break;
+  case '*': {
+    uint32_t before = s->advances;
+    declined_marker = '*';
+    if (parse_star(s, lexer, valid_symbols, &declined_run)) {
+      return true;
+    }
+    if (s->advances != before && declined_run == 0) return false;
+    break;
+  }
+  case '|':
+    if (parse_table_begin(s, lexer, valid_symbols)) {
+      return true;
+    }
+    break;
+  case '{': {
+    uint32_t before = s->advances;
+    bool literal_curly = false;
+    if (parse_open_curly_bracket(s, lexer, valid_symbols, &literal_curly)) return true;
+    if (s->advances != before) {
+      if (!literal_curly || !valid_symbols[LITERAL_RUN]) return false;
+      lexer->result_symbol = LITERAL_RUN;
+      return true;
+    }
+    break;
+  }
+  default:
+    break;
+  }
+
+  // THE READER'S SECOND CHANCE. It runs first in this call and stands aside
+  // wherever a block reading may start on the same character, which at a line
+  // start is every delimiter run. The probe above has now declined, and by the
+  // contract it reports a pure marker run when it consumed one, so the reader
+  // can decide those characters after all - with the one behind each of them
+  // known, which is the whole point of it.
+  if (declined_run > 0 && valid_symbols[LITERAL_RUN] && !valid_symbols[ERROR] &&
+      !zero_width_mark_pending(valid_symbols)) {
+    int read = parse_literal_run(s, lexer, valid_symbols, declined_marker,
+                                 declined_run, 0);
+    if (read > 0) {
+      return true;
+    }
+  }
+
+  if (valid_symbols[HIGHLIGHTED_OPEN_CHECK] &&
+      check_highlighted_open(s, lexer)) {
+    return true;
+  }
+
+  if (valid_symbols[LANGUAGE_ATTRIBUTE] && parse_language_attribute(s, lexer)) {
+    return true;
+  }
+
+  // Before the spans: while a substitution is the innermost open run, its own
+  // `~>` and `~}` are its marks and not a strikethrough's.
+  if (valid_symbols[SUBSTITUTION_ARROW] &&
+      parse_substitution_mark(s, lexer, '>', SUBSTITUTION_ARROW)) {
+    return true;
+  }
+  if (valid_symbols[SUBSTITUTION_END] &&
+      parse_substitution_mark(s, lexer, '}', SUBSTITUTION_END)) {
+    return true;
+  }
+
+  // The bold-italic opener's `*`, BEFORE the zero-width checks and marks that
+  // share its position: both are zero-width, and either would win the lexing
+  // and take the reading with it.
+  if (valid_symbols[BOLD_ITALIC_STAR] && parse_bold_italic_star(s, lexer)) {
+    return true;
+  }
+
+  if (valid_symbols[NON_WHITESPACE_CHECK] && check_non_whitespace(s, lexer)) {
+    return true;
+  }
+
+  // Span scanning for inline elements, implemented
+  // in the same way to have consistent precedence handling.
+  // Before STRONG: an open bold-italic must be offered the `*/` closer before
+  // the `*` in it can be read as a strong delimiter.
+  if (!bi_trailing_space && parse_span(s, lexer, valid_symbols, BOLD_ITALIC)) {
+    return true;
+  }
+  if (parse_span(s, lexer, valid_symbols, EMPHASIS)) {
+    return true;
+  }
+  if (parse_span(s, lexer, valid_symbols, STRONG)) {
+    return true;
+  }
+  if (parse_span(s, lexer, valid_symbols, UNDERLINE)) {
+    return true;
+  }
+  if (parse_span(s, lexer, valid_symbols, STRIKETHROUGH)) {
+    return true;
+  }
+  if (parse_span(s, lexer, valid_symbols, SUPERSCRIPT)) {
+    return true;
+  }
+  if (parse_span(s, lexer, valid_symbols, SUBSCRIPT)) {
+    return true;
+  }
+  if (parse_span(s, lexer, valid_symbols, HIGHLIGHTED)) {
+    return true;
+  }
+  if (parse_span(s, lexer, valid_symbols, INSERT)) {
+    return true;
+  }
+  if (parse_span(s, lexer, valid_symbols, DELETE)) {
+    return true;
+  }
+  if (parse_span(s, lexer, valid_symbols, PARENS_SPAN)) {
+    return true;
+  }
+  if (valid_symbols[ATTRIBUTE_MARK_BEGIN]) {
+    return parse_attribute_mark_begin(s, lexer, valid_symbols);
+  }
+  if (parse_span(s, lexer, valid_symbols, CURLY_BRACKET_SPAN)) {
+    return true;
+  }
+  if (valid_symbols[INLINE_NOTE_MARK_BEGIN] &&
+      parse_inline_note_mark_begin(s, lexer, valid_symbols)) {
+    return true;
+  }
+  // The square-bracket span's END, read here rather than through `parse_span`
+  // below, because a REFUSAL has to end the scan. `parse_span_end` reads past
+  // the `]` to ask whether the identifier behind it stays on one line, and a
+  // probe that read and then declined would leave every probe after this one in
+  // the same call starting from where it stopped. Under these three conditions
+  // `parse_span_end` decides both ways and never falls through: the marker
+  // scan for this span is `lookahead == ']'`, which is already established.
+  // Returning false hands the `]` to the internal lexer, which takes it as
+  // text - the fallback reading, and the one the other two spellings of
+  // `newline` already produce.
+  if (lexer->lookahead == ']' && valid_symbols[LITERAL_RUN] &&
+      peek_inline(s) && peek_inline(s)->type == LITERAL_BRACKET && !extension_closes_here(s, lexer)) {
+    Inline *literal = peek_inline(s);
+    unsigned remaining = literal->literal_closes ? literal->literal_closes : 1;
+    do {
+      advance(s, lexer);
+      --remaining;
+      mark_end(s, lexer);
+      if (remaining > 0) {
+        while (lexer->lookahead == ' ' || lexer->lookahead == '\t') advance(s, lexer);
+      }
+    } while (remaining > 0 && lexer->lookahead == ']' && !extension_closes_here(s, lexer));
+    if (remaining == 0) remove_inline(s);
+    else literal->literal_closes = remaining;
+    lexer->result_symbol = LITERAL_RUN;
+    return true;
+  }
+  if (valid_symbols[SQUARE_BRACKET_SPAN_END] && lexer->lookahead == ']') {
+    Inline *bracket = peek_inline(s);
+    // The `]` of a balanced literal pair inside the span is text (#422).
+    if (bracket && bracket->type == SQUARE_BRACKET_SPAN &&
+        square_literal_closes(bracket) > 0) {
+      if (!valid_symbols[LITERAL_RUN]) {
+        return false;
+      }
+      advance(s, lexer);
+      mark_end(s, lexer);
+      --bracket->literal_closes;
+      if (!square_literal_closes(bracket)) {
+        bracket->literal_closes = 0;
+        if (bracket->flags & INLINE_BRACED) bracket->flags &= ~INLINE_EXTENSION_CUT;
+      }
+      lexer->result_symbol = LITERAL_RUN;
+      return true;
+    }
+    if (bracket && bracket->type == SQUARE_BRACKET_SPAN && bracket->data == 0) {
+      return parse_span_end(s, lexer, SQUARE_BRACKET_SPAN,
+                            SQUARE_BRACKET_SPAN_END);
+    }
+  }
+  if (parse_span(s, lexer, valid_symbols, SQUARE_BRACKET_SPAN)) {
+    return true;
+  }
+  // AFTER the square-bracket span, so a `]` closes an inner bracket before it
+  // closes the note. Offered first, the note took the first `]` it saw and
+  // `^[a [^1]{.k} c]` closed after `[^1`, leaving the rest of the note as
+  // ordinary text - no ERROR, and the wrong tree.
+  if (parse_span(s, lexer, valid_symbols, INLINE_NOTE)) {
+    return true;
+  }
+
+  // Scan ordered list markers outside because the parsing may conflict with
+  // closing of lists (both may try to parse the same characters).
+  bool from_word = deferred_word && s->advances == deferred_at;
+  uint32_t word_at = s->advances;
+  // Only a marker after another marker on this line needs its column, read
+  // once a marker is found: a read per token is quadratic on a long line.
+  bool ordered_after_marker = !list_text_line(s) && s->marker_end_col != 0;
+  uint32_t ordered_at = s->host_advances;
+  TokenType ordered_list_marker =
+      list_text_line(s) ? IGNORED : scan_ordered_list_marker_token(s, lexer);
+  if (ordered_list_marker != IGNORED &&
+      handle_ordered_list_marker(s, lexer, valid_symbols, ordered_list_marker,
+                                 ordered_after_marker, ordered_at)) {
+    return true;
+  }
+  // THE READER'S SECOND CHANCE FOR A WORD. At a line start the reader stands
+  // aside for a word, which could be an ordered marker (`a)`, `iv.`). The probe
+  // above has read that word and found no marker, so a delimiter right behind
+  // it is glued to a word and the reader can decide it: `a/_y_` and `a*b*` at
+  // the start of a paragraph open nothing, as they do anywhere else (#320).
+  // Only with nothing inline open: then the delimiter can neither open nor
+  // close, and the reader takes it rather than declining past it.
+  InlineType after_word;
+  if (ordered_list_marker == IGNORED && from_word && s->ordered_word_end &&
+      s->advances > word_at &&
+      is_bare_delim_kind(lexer->lookahead, &after_word) &&
+      s->open_inline->size == 0) {
+    int read = parse_literal_run(s, lexer, valid_symbols, 0, 0, 'a');
+    if (read > 0) {
+      return true;
+    }
+    if (read < 0) {
+      return false;
+    }
+  }
+
+  if (valid_symbols[TABLE_CAPTION_END] && parse_table_caption_end(s, lexer)) {
+    return true;
+  }
+  if (valid_symbols[TABLE_CAPTION_BEGIN] &&
+      parse_table_caption_begin(s, lexer)) {
+    return true;
+  }
+
+  // A STANDALONE caption's `^`, AFTER the table caption's. Both read a caret
+  // at a block's start, and a caret that follows a table is the TABLE's
+  // caption: offered first, this took it and the official lists-and-tables
+  // corpus case built a bare `caption` where a `table_caption` belongs. It sits
+  // after the span parsers for the same reason `_inline_note_begin` does - a
+  // refusal here has already advanced past the caret, so it must not run before
+  // a reader that needs that position. Nothing above it can claim this shape
+  // anyway: a braced superscript closes on `^}` and a note opens on `^[`,
+  // neither of which is the `^` plus SPACE this reads.
+  if (valid_symbols[CAPTION_BEGIN] && parse_caption_begin(s, lexer, valid_symbols)) {
+    return true;
+  }
+
+  // An open verbatim-family run inside a table ROW is closed by the row's
+  // closing pipe and has no closer of its own - the same implicit close a
+  // blank line performs for a paragraph, taken at the position the row ends
+  // the cell instead. `parse_verbatim_content` has already stopped the content
+  // here; without a token that can follow it the `|` has nothing to reduce
+  // against and the row is abandoned, which is the shape
+  // `an-unclosed-verbatim-run-abandons-the-row` recorded. Before
+  // TABLE_CELL_END, because the cell's end may only be taken once the run
+  // inside it is closed.
+  if (valid_symbols[VERBATIM_END] && lexer->lookahead == '|' &&
+      find_block(s, TABLE_ROW) != NULL &&
+      try_implicit_close_verbatim(s, lexer)) {
+    return true;
+  }
+  // The content stopped before the cell's trailing space padding (#647): the
+  // end stays zero width here, in front of the spaces.
+  if (valid_symbols[VERBATIM_END] && lexer->lookahead == ' ' &&
+      find_block(s, TABLE_ROW) != NULL) {
+    mark_end(s, lexer);
+    while (lexer->lookahead == ' ') advance(s, lexer);
+    if (lexer->lookahead == '|' && try_implicit_close_verbatim(s, lexer)) {
+      return true;
+    }
+  }
+
+  // The same implicit close at the closer of the BRACED span an open run sits
+  // in (corpus 472). One character is enough to recognize it: the content
+  // token ate every lone marker it passed, so a run whose end was decided at
+  // the opening ticks can only be standing here.
+  char run_stop_marker = open_verbatim_stop_marker(s);
+  Inline *run_parent = s->open_inline->size >= 2 ? *array_get(s->open_inline, s->open_inline->size - 2) : NULL;
+  char run_end = run_stop_marker == 1 ? '*' : run_stop_marker == 2 ? ']' :
+      run_stop_marker == 3 && run_parent ? inline_marker(run_parent->type) : run_stop_marker;
+  if (valid_symbols[VERBATIM_END] && run_stop_marker != 0 &&
+      lexer->lookahead == run_end &&
+      try_implicit_close_verbatim(s, lexer)) {
+    return true;
+  }
+
+  if (parse_table_row_continuation_seam(s, lexer, valid_symbols) ||
+      parse_table_row_continuation_line(s, lexer, valid_symbols) ||
+      parse_table_row_continuation_plus(s, lexer, valid_symbols)) {
+    return true;
+  }
+  if ((valid_symbols[TABLE_CELL_END] || valid_symbols[TABLE_ESCAPED_CELL_END]) &&
+      parse_table_cell_end(s, lexer)) {
+    return true;
+  }
+
+  // A note's `^[`, LAST among everything that can read a caret.
+  //
+  // The check needs two characters and the lexer offers one, so it has to
+  // advance past the caret before it can tell whether a `[` follows - and a
+  // check that runs after it would then be reading a moved lexer. Rather than
+  // guess which of those matter, it goes after all of them and a refusal ends
+  // the scan, which puts the position back.
+  //
+  // Ordering it earlier is not a style question. Before the span parsers it
+  // swallowed the `^` that closes a braced superscript; before the table
+  // caption it turned `^ Fruit prices` into a document-level caption instead
+  // of the table's own, because the caption scanner never got the character.
+  if (valid_symbols[INLINE_NOTE_BEGIN] && lexer->lookahead == '^') {
+    return parse_inline_note_begin(s, lexer);
+  }
+
+  if (valid_symbols[HARD_LINE_BREAK] && parse_hard_line_break(s, lexer)) {
+    return true;
+  }
+
+  // May scan a complete list marker, which we can't do before checking if
+  // we should output the list marker itself.
+  // Yeah, the order dependencies aren't very nice.
+  if (valid_symbols[BLOCK_CLOSE] &&
+      try_close_different_typed_list(s, lexer, ordered_list_marker)) {
+    return true;
+  }
+
+  // `at_eof`, not `lexer->eof(lexer)`: see where it is recorded, at the top of
+  // this function. Everything between there and here may have advanced.
+  if (valid_symbols[EOF_OR_NEWLINE] && at_eof) {
+    s->state &= ~STATE_SINGLE_LINE_CAPTION;
+    clear_literal_brackets(s);
+    lexer->result_symbol = EOF_OR_NEWLINE;
+    return true;
+  }
+
+  // LAST: the opener's own probe reads forward to the end of the document
+  // looking for a closer, and a probe that consumes and then declines leaves
+  // every later probe in the same call reading from where it stopped. Nothing
+  // runs after this one, so there is nothing left to poison.
+  if (lexer->lookahead == '%' &&
+      parse_comment_fence_begin(s, lexer, valid_symbols)) {
+    return true;
+  }
+
+  // LAST, and UNBOUNDED only - see `parse_trailing_comment`'s own comment.
+  // A `%%` that turns out not to be a comment (`a, {~~>b~}` - a bare comma
+  // glued to a space, not `%%`) still consumes the space speculatively before
+  // finding out, and every check between here and the top of `scan`
+  // (`check_non_whitespace`, `parse_open_curly_bracket`, ...) would otherwise
+  // read from where that failed probe left off instead of the position it
+  // was actually offered at (tree-sitter-carve#449).
+  if (parse_trailing_comment(s, lexer, valid_symbols, advances_at_entry,
+                             /*require_bounded=*/false)) {
+    return true;
+  }
+
+  return false;
+}
+
+/// The scalar half of a fresh scanner. Split out because the two stacks need
+/// different treatment depending on who is asking: `create` gets raw
+/// `ts_malloc` memory that must be initialized, `deserialize` gets live state
+/// that must be released first.
+static void init_scalars(Scanner *s) {
+  s->blocks_to_close = 0;
+  s->block_quote_level = 0;
+  s->indent = 0;
+  s->marker_end_col = 0;
+  s->chain_col = UINT8_MAX;
+  s->lazy_drop_markers = 0;
+  s->drop_close_markers = 0;
+  s->glued_quote_marker = false;
+  s->probe_first_marker_col = 0;
+  s->paragraph_plus_probe = false;
+  s->erasable_line = false;
+  s->folded_plus_paragraph = false;
+  s->band_prefix = false;
+  s->band_sticky = false;
+  s->continuation_col = 0;
+  s->attached_row_prefix = UINT8_MAX;
+  s->plus_decision = 0;
+  s->refused_plus_column = 0;
+  s->table_attribute_pending = 0;
+  s->attribute_saw_table = false;
+  s->col_base = 0;
+  s->col_base_at_mark = 0;
+  s->col_base_marked = false;
+  s->mid_line = false;
+  s->comment_one_line = false;
+  s->host_advances = 0;
+  s->deferred_column_pending = false;
+  s->deferred_column_known = false;
+  s->host_jumped = false;
+  s->no_closer_kinds = 0;
+  s->no_closer_scope = 0;
+  s->closer_ahead_kinds = 0;
+  s->link_tail_open_line = false;
+  s->host_previous = -1;
+  s->host_previous_at_mark = -1;
+  s->host_marked = false;
+  s->host_crossed_line = false;
+  s->host_crossed_line_at_mark = false;
+  s->probe_reached_end = false;
+  s->probe_skipped_opaque = false;
+  s->combined_probe = false;
+  s->plus_scan_spent = false;
+  s->row_capture = false;
+  s->state = 0;
+  s->after_literal_star = false;
+  s->after_separator_row = false;
+  s->blank_line_taken = false;
+  s->missing_closers = 0;
+  s->caption_gap = 0;
+  s->line_blank = false;
+  s->citation_label_tail = false;
+  s->attribute_block_line = false;
+  s->braced_probe_marker = 0;
+  s->braced_probe_raw_closer = false;
+  s->braced_probe_capped = false;
+  s->braced_probe_closer_in_code = false;
+  s->after_closer_char = 0;
+  s->after_closer_col = 0;
+  s->marker_attribute_width = 0;
+  s->ordered_word_end = false;
+  s->advances = 0;
+}
+
+static void init(Scanner *s) {
+  array_init(s->open_inline);
+  array_init(s->open_blocks);
+  init_scalars(s);
+}
+
+/// Return the scanner to an empty state that a serialized one can be read into.
+///
+/// `init` cannot do this job. It calls `array_init`, which drops the `contents`
+/// pointer on the floor without freeing it OR the `Block`s and `Inline`s it
+/// holds, and tree-sitter calls `deserialize` on nearly every lexer step - so a
+/// twelve-line document leaked several kilobytes and a real file leaks in
+/// proportion to how hard the parser backtracks. Freeing the elements and
+/// keeping the allocation also spares the next `deserialize` its first two
+/// growths.
+static void reset(Scanner *s) {
+  for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
+    ts_free(s->open_blocks->contents[i]);
+  }
+  s->open_blocks->size = 0;
+  for (uint32_t i = 0; i < s->open_inline->size; ++i) {
+    ts_free(s->open_inline->contents[i]);
+  }
+  s->open_inline->size = 0;
+  init_scalars(s);
+}
+
+void *tree_sitter_carve2_external_scanner_create() {
+  Scanner *s = (Scanner *)ts_malloc(sizeof(Scanner));
+  s->open_blocks = ts_malloc(sizeof(Array(Block *)));
+  s->open_inline = ts_malloc(sizeof(Array(Inline *)));
+  s->entry_length = 0;
+  s->parse_generation = 0;
+  init(s);
+  s->entry_initial = true;
+  s->initial_mid_line = false;
+  return s;
+}
+
+void tree_sitter_carve2_external_scanner_destroy(void *payload) {
+  Scanner *s = (Scanner *)payload;
+  reset(s);
+  // Not `array_delete`: that reaches the object through `struct Array`, which
+  // is the type mix `stack_push` exists to keep out of these two stacks.
+  ts_free(s->open_blocks->contents);
+  ts_free(s->open_blocks);
+  ts_free(s->open_inline->contents);
+  ts_free(s->open_inline);
+  ts_free(s);
+}
+
+unsigned tree_sitter_carve2_external_scanner_serialize(void *payload,
+                                                     char *buffer) {
+  Scanner *s = (Scanner *)payload;
+  if (s->initial_mid_line) {
+    buffer[0] = INITIAL_MID_LINE;
+    return 1;
+  }
+  // The wire format stores the block count in one byte.  Do not let 256 wrap
+  // to zero and turn the following block payload into invented inline state on
+  // deserialize (#269).  Returning zero is tree-sitter's documented way for
+  // an external scanner to decline caching a state that it cannot represent.
+  // Keep the complete-state size check beside it so this function never writes
+  // past tree-sitter's fixed serialization buffer either.
+  bool plus_extension = s->continuation_col || s->plus_decision ||
+                        s->refused_plus_column;
+  bool row_extension = s->attached_row_prefix != UINT8_MAX;
+  bool chain_extension = s->chain_col != UINT8_MAX;
+  const size_t scalar_bytes = 19 + (plus_extension ? 3 : 0) +
+                              (row_extension ? 1 : 0) + (chain_extension ? 1 : 0);
+  const size_t block_count_bytes = 1;
+  const size_t block_bytes = 4;
+  const size_t inline_bytes = 3;
+  size_t block_extra_bytes = 0;
+  for (size_t i = 0; i < s->open_blocks->size; ++i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (b->type == TABLE_ROW) block_extra_bytes += 12;
+    if (b->type == BLOCK_QUOTE) block_extra_bytes += 1;
+    // A data value of 255 or more is the escape byte plus two.
+    if (b->data >= UINT8_MAX) block_extra_bytes += 2;
+  }
+  size_t label_bytes = 0;
+  for (size_t i = 0; i < s->open_inline->size; ++i) {
+    Inline *e = *array_get(s->open_inline, i);
+    if ((e->type == SQUARE_BRACKET_SPAN && (e->flags & INLINE_LABEL)) || e->type == LITERAL_BRACKET || e->type == EXTENSION) label_bytes += 3;
+    else if (e->type >= EMPHASIS && e->type <= BOLD_ITALIC && e->literal_closes >= UINT8_MAX) label_bytes += 4;
+  }
+  if (s->open_blocks->size > UINT8_MAX ||
+      s->open_blocks->size >
+          (SIZE_MAX - scalar_bytes - block_count_bytes) / block_bytes ||
+      s->open_inline->size >
+          (SIZE_MAX - scalar_bytes - block_count_bytes -
+           s->open_blocks->size * block_bytes) /
+              inline_bytes ||
+      scalar_bytes + block_count_bytes +
+              s->open_blocks->size * block_bytes +
+              s->open_inline->size * inline_bytes + label_bytes + block_extra_bytes >
+          TREE_SITTER_SERIALIZATION_BUFFER_SIZE) {
+    return 0;
+  }
+  unsigned size = 0;
+  buffer[size++] = (char)s->blocks_to_close;
+  buffer[size++] = (char)s->block_quote_level;
+  buffer[size++] = (char)s->indent;
+  buffer[size++] = (char)s->marker_end_col;
+  buffer[size++] = (char)s->table_attribute_pending;
+  buffer[size++] = (char)(s->state & 0xff);
+  buffer[size++] = (char)((s->state >> 8) & 0xff);
+  buffer[size++] = (char)(s->col_base & 0xff);
+  buffer[size++] = (char)((s->col_base >> 8) & 0xff);
+  buffer[size++] = (char)((s->col_base >> 16) & 0xff);
+  buffer[size++] = (char)((s->col_base >> 24) & 0xff);
+  buffer[size++] = (char)s->after_closer_char;
+  buffer[size++] = (char)(s->after_closer_col & 0xff);
+  buffer[size++] = (char)((s->after_closer_col >> 8) & 0xff);
+  buffer[size++] = (char)((s->after_closer_col >> 16) & 0xff);
+  buffer[size++] = (char)((s->after_closer_col >> 24) & 0xff);
+
+  buffer[size++] = (char)s->open_blocks->size;
+  for (size_t i = 0; i < s->open_blocks->size; ++i) {
+    Block *b = *array_get(s->open_blocks, i);
+    buffer[size++] = (char)b->type;
+    buffer[size++] = (char)(b->data >= UINT8_MAX ? UINT8_MAX : b->data);
+    buffer[size++] = (char)b->content_col;
+    buffer[size++] = (char)b->flags;
+    if (b->data >= UINT8_MAX) {
+      buffer[size++] = (char)(b->data & 0xff);
+      buffer[size++] = (char)(b->data >> 8);
+    }
+    if (b->type == BLOCK_QUOTE) buffer[size++] = (char)b->box_shift;
+    if (b->type == TABLE_ROW) {
+      for (unsigned shift = 0; shift < 32; shift += 8)
+        buffer[size++] = (char)(b->cell_boundary_col >> shift);
+      for (unsigned shift = 0; shift < 32; shift += 8)
+        buffer[size++] = (char)(b->cell_carry_ticks >> shift);
+      for (unsigned shift = 0; shift < 32; shift += 8)
+        buffer[size++] = (char)(b->bracket_cell_col >> shift);
+    }
+  }
+
+  for (size_t i = 0; i < s->open_inline->size; ++i) {
+    Inline *x = *array_get(s->open_inline, i);
+    // Inline types fit in the low six bits; the top two carry the flags.
+    buffer[size++] = (char)((uint8_t)x->type | (uint8_t)(x->flags << 6));
+    buffer[size++] = (char)x->data;
+    bool wide_format = x->type >= EMPHASIS && x->type <= BOLD_ITALIC && x->literal_closes >= UINT8_MAX;
+    buffer[size++] = wide_format ? (char)UINT8_MAX : (char)x->literal_closes;
+    if ((x->type == SQUARE_BRACKET_SPAN && (x->flags & INLINE_LABEL)) || x->type == LITERAL_BRACKET || x->type == EXTENSION) {
+      buffer[size++] = (char)(x->literal_closes >> 8);
+      buffer[size++] = (char)(x->literal_closes >> 16);
+      buffer[size++] = (char)(x->literal_closes >> 24);
+    } else if (wide_format) {
+      for (unsigned shift = 0; shift < 32; shift += 8)
+        buffer[size++] = (char)(x->literal_closes >> shift);
+    }
+  }
+
+  // The inline notes are an optimization: drop them rather than the state
+  // when the buffer cannot hold them.
+  bool ahead = s->closer_ahead_kinds != 0;
+  bool notes = (s->no_closer_kinds || ahead || s->link_tail_open_line) &&
+               size + 4 + (ahead ? 2 : 0) + (plus_extension ? 3 : 0) +
+                   (row_extension ? 1 : 0) + (chain_extension ? 1 : 0) + 3 <=
+                   TREE_SITTER_SERIALIZATION_BUFFER_SIZE;
+  if (notes) {
+    uint16_t kinds = s->no_closer_kinds | (ahead ? 1u << 15 : 0);
+    if (ahead) {
+      buffer[size++] = (char)(s->closer_ahead_kinds & 0xff);
+      buffer[size++] = (char)(s->closer_ahead_kinds >> 8);
+    }
+    buffer[size++] = (char)(kinds & 0xff);
+    buffer[size++] = (char)(kinds >> 8);
+    buffer[size++] = (char)(s->no_closer_scope & 0xff);
+    buffer[size++] = (char)(s->no_closer_scope >> 8);
+  }
+  if (plus_extension) {
+    buffer[size++] = (char)s->continuation_col;
+    buffer[size++] = (char)s->plus_decision;
+    buffer[size++] = (char)s->refused_plus_column;
+  }
+  if (row_extension) buffer[size++] = (char)s->attached_row_prefix;
+  if (chain_extension) buffer[size++] = (char)s->chain_col;
+  buffer[size++] = (char)((s->mid_line ? 1 : 0) | (notes ? 2 : 0) |
+                          (notes && s->link_tail_open_line ? 4 : 0) |
+                          (plus_extension ? 8 : 0) | (row_extension ? 16 : 0) |
+                          (chain_extension ? 32 : 0) |
+                          (s->band_prefix ? 64 : 0) |
+                          (s->band_sticky ? 128 : 0));
+  // Bits 9..10 carry the caption gap, bit 12 the folded plus paragraph, bit
+  // 13 the one-line comment;
+  // missing closers use 0..8.
+  uint16_t tail = s->missing_closers | (uint16_t)((s->caption_gap & 3) << 9) |
+                  (s->after_literal_star ? 1 << 14 : 0) |
+                  (s->after_separator_row ? 1 << 15 : 0) |
+                  (s->blank_line_taken ? 1 << 11 : 0) |
+                  (s->folded_plus_paragraph ? 1 << 12 : 0) |
+                  (s->comment_one_line ? 1 << 13 : 0);
+  buffer[size++] = (char)tail;
+  buffer[size++] = (char)(tail >> 8);
+  return size;
+}
+
+void tree_sitter_carve2_external_scanner_deserialize(void *payload, char *buffer,
+                                                   unsigned length) {
+  Scanner *s = (Scanner *)payload;
+  if (length > sizeof(s->entry_state)) length = 0;
+  if (buffer != s->entry_state && length) memcpy(s->entry_state, buffer, length);
+  if (!length) ++s->parse_generation;
+  s->entry_length = length;
+  s->entry_initial = !length || (length == 1 && buffer[0] == INITIAL_MID_LINE);
+  reset(s);
+  if (length == 1) {
+    s->mid_line = buffer[0] == INITIAL_MID_LINE;
+    return;
+  }
+  if (length >= 20) {
+    uint16_t tail = (uint8_t)buffer[length - 2] | (uint16_t)(uint8_t)buffer[length - 1] << 8;
+    s->after_literal_star = (tail & (1 << 14)) != 0;
+    s->after_separator_row = (tail & (1 << 15)) != 0;
+    s->blank_line_taken = (tail & (1 << 11)) != 0;
+    s->folded_plus_paragraph = (tail & (1 << 12)) != 0;
+    s->comment_one_line = (tail & (1 << 13)) != 0;
+    uint8_t notes = (uint8_t)buffer[length - 3];
+    length -= 3;
+    s->mid_line = (notes & 1) != 0;
+    s->band_prefix = (notes & 64) != 0;
+    s->band_sticky = (notes & 128) != 0;
+    if (notes & 32) {
+      if (length < 18) return;
+      s->chain_col = (uint8_t)buffer[--length];
+    }
+    if (notes & 16) {
+      if (length < 18) return;
+      s->attached_row_prefix = (uint8_t)buffer[--length];
+    }
+    if ((notes & 8) && length < 20) return;
+    if ((notes & 8) && length >= 20) {
+      s->continuation_col = (uint8_t)buffer[length - 3];
+      s->plus_decision = (uint8_t)buffer[length - 2];
+      s->refused_plus_column = (uint8_t)buffer[length - 1];
+      length -= 3;
+    }
+    if ((notes & 2) && length >= 20) {
+      s->no_closer_kinds = (uint16_t)((uint8_t)buffer[length - 4] | (uint8_t)buffer[length - 3] << 8);
+      s->no_closer_scope = (uint16_t)((uint8_t)buffer[length - 2] | (uint8_t)buffer[length - 1] << 8);
+      s->link_tail_open_line = (notes & 4) != 0;
+      length -= 4;
+      if (s->no_closer_kinds & 1u << 15) {
+        s->no_closer_kinds &= ~(1u << 15);
+        if (length < 2) return;
+        s->closer_ahead_kinds = (uint16_t)((uint8_t)buffer[length - 2] | (uint8_t)buffer[length - 1] << 8);
+        length -= 2;
+      }
+    }
+    size_t size = 0;
+    s->blocks_to_close = (uint8_t)buffer[size++];
+    s->block_quote_level = (uint8_t)buffer[size++];
+    s->indent = (uint8_t)buffer[size++];
+    s->marker_end_col = (uint8_t)buffer[size++];
+    s->table_attribute_pending = (uint8_t)buffer[size++];
+    s->state = (uint16_t)(uint8_t)buffer[size++];
+    s->state |= (uint16_t)(uint8_t)buffer[size++] << 8;
+    s->col_base = (uint32_t)(uint8_t)buffer[size++];
+    s->col_base |= (uint32_t)(uint8_t)buffer[size++] << 8;
+    s->col_base |= (uint32_t)(uint8_t)buffer[size++] << 16;
+    s->col_base |= (uint32_t)(uint8_t)buffer[size++] << 24;
+    s->after_closer_char = (uint8_t)buffer[size++];
+    s->after_closer_col = (uint32_t)(uint8_t)buffer[size++];
+    s->after_closer_col |= (uint32_t)(uint8_t)buffer[size++] << 8;
+    s->after_closer_col |= (uint32_t)(uint8_t)buffer[size++] << 16;
+    s->after_closer_col |= (uint32_t)(uint8_t)buffer[size++] << 24;
+
+    uint8_t open_blocks = (uint8_t)buffer[size++];
+    while (open_blocks-- > 0) {
+      BlockType type = (BlockType)buffer[size++];
+      uint16_t level = (uint8_t)buffer[size++];
+      uint8_t content_col = (uint8_t)buffer[size++];
+      uint8_t flags = (uint8_t)buffer[size++];
+      if (level == UINT8_MAX) {
+        if (size + 2 > length) return;
+        level = (uint16_t)((uint8_t)buffer[size] | (uint8_t)buffer[size + 1] << 8);
+        size += 2;
+      }
+      Block *b = create_block(type, level);
+      b->content_col = content_col;
+      b->flags = flags;
+      if (type == BLOCK_QUOTE) {
+        if (size + 1 > length) { ts_free(b); return; }
+        b->box_shift = (uint8_t)buffer[size++];
+      }
+      if (type == TABLE_ROW) {
+        if (size + 12 > length) { ts_free(b); return; }
+        for (unsigned shift = 0; shift < 32; shift += 8)
+          b->cell_boundary_col |= (uint32_t)(uint8_t)buffer[size++] << shift;
+        for (unsigned shift = 0; shift < 32; shift += 8)
+          b->cell_carry_ticks |= (uint32_t)(uint8_t)buffer[size++] << shift;
+        b->bracket_cell_col = 0;
+        for (unsigned shift = 0; shift < 32; shift += 8)
+          b->bracket_cell_col |= (uint32_t)(uint8_t)buffer[size++] << shift;
+      }
+      stack_push(s->open_blocks, b);
+    }
+    while (size + 3 <= length) {
+      uint8_t packed = (uint8_t)buffer[size++];
+      uint8_t data = (uint8_t)buffer[size++];
+      uint32_t literal_closes = (uint8_t)buffer[size++];
+      InlineType inline_type = (InlineType)(packed & 0x3f);
+      if (((packed & 0x3f) == SQUARE_BRACKET_SPAN && (packed >> 6 & INLINE_LABEL)) || (packed & 0x3f) == LITERAL_BRACKET ||
+          (packed & 0x3f) == EXTENSION) {
+        if (size + 3 > length) break;
+        literal_closes |= (uint32_t)(uint8_t)buffer[size++] << 8;
+        literal_closes |= (uint32_t)(uint8_t)buffer[size++] << 16;
+        literal_closes |= (uint32_t)(uint8_t)buffer[size++] << 24;
+      }
+      else if (inline_type >= EMPHASIS && inline_type <= BOLD_ITALIC && literal_closes == UINT8_MAX) {
+        if (size + 4 > length) break;
+        literal_closes = 0;
+        for (unsigned shift = 0; shift < 32; shift += 8)
+          literal_closes |= (uint32_t)(uint8_t)buffer[size++] << shift;
+      }
+      push_inline_flagged(s, inline_type, data,
+                          (uint8_t)(packed >> 6));
+      (*array_back(s->open_inline))->literal_closes = literal_closes;
+    }
+    s->missing_closers = tail & ((1 << 14) - 1) & ~(3 << 9);
+    s->caption_gap = (uint8_t)((tail >> 9) & 3);
+  }
+}
+
+#ifdef DEBUG
+
+static char *token_type_s(TokenType t) {
+  switch (t) {
+  case IGNORED:
+    return "IGNORED";
+
+  case BLOCK_CLOSE:
+    return "BLOCK_CLOSE";
+  case EOF_OR_NEWLINE:
+    return "EOF_OR_NEWLINE";
+  case NEWLINE:
+    return "NEWLINE";
+  case NEWLINE_INLINE:
+    return "NEWLINE_INLINE";
+  case NON_WHITESPACE_CHECK:
+    return "NON_WHITESPACE_CHECK";
+  case HIGHLIGHTED_OPEN_CHECK:
+    return "HIGHLIGHTED_OPEN_CHECK";
+
+  case FRONTMATTER_MARKER:
+    return "FRONTMATTER_MARKER";
+
+  case HEADING_BEGIN:
+    return "HEADING";
+  case DIV_BEGIN:
+    return "DIV_BEGIN";
+  case DIV_END:
+    return "DIV_END";
+  case CODE_BLOCK_BEGIN:
+    return "CODE_BLOCK_BEGIN";
+  case CODE_BLOCK_END:
+    return "CODE_BLOCK_END";
+  case COMMENT_FENCE_BEGIN:
+    return "COMMENT_FENCE_BEGIN";
+  case COMMENT_FENCE_CONTENT:
+    return "COMMENT_FENCE_CONTENT";
+  case COMMENT_FENCE_END:
+    return "COMMENT_FENCE_END";
+  case NOT_A_CONTAINER_OPENER:
+    return "NOT_A_CONTAINER_OPENER";
+  case LIST_MARKER_DASH:
+    return "LIST_MARKER_DASH";
+  case LIST_MARKER_STAR:
+    return "LIST_MARKER_STAR";
+  case LIST_MARKER_TASK_BEGIN:
+    return "LIST_MARKER_TASK_BEGIN";
+  case LIST_MARKER_DEFINITION:
+    return "LIST_MARKER_DEFINITION";
+  case LIST_MARKER_DESCRIPTION:
+    return "LIST_MARKER_DESCRIPTION";
+  case LIST_MARKER_DECIMAL_PERIOD:
+    return "LIST_MARKER_DECIMAL_PERIOD";
+  case LIST_MARKER_LOWER_ALPHA_PERIOD:
+    return "LIST_MARKER_LOWER_ALPHA_PERIOD";
+  case LIST_MARKER_UPPER_ALPHA_PERIOD:
+    return "LIST_MARKER_UPPER_ALPHA_PERIOD";
+  case LIST_MARKER_LOWER_ROMAN_PERIOD:
+    return "LIST_MARKER_LOWER_ROMAN_PERIOD";
+  case LIST_MARKER_UPPER_ROMAN_PERIOD:
+    return "LIST_MARKER_UPPER_ROMAN_PERIOD";
+  case LIST_MARKER_DECIMAL_PAREN:
+    return "LIST_MARKER_DECIMAL_PAREN";
+  case LIST_MARKER_LOWER_ALPHA_PAREN:
+    return "LIST_MARKER_LOWER_ALPHA_PAREN";
+  case LIST_MARKER_UPPER_ALPHA_PAREN:
+    return "LIST_MARKER_UPPER_ALPHA_PAREN";
+  case LIST_MARKER_LOWER_ROMAN_PAREN:
+    return "LIST_MARKER_LOWER_ROMAN_PAREN";
+  case LIST_MARKER_UPPER_ROMAN_PAREN:
+    return "LIST_MARKER_UPPER_ROMAN_PAREN";
+  case LIST_MARKER_DECIMAL_PARENS:
+    return "LIST_MARKER_DECIMAL_PARENS";
+  case LIST_MARKER_LOWER_ALPHA_PARENS:
+    return "LIST_MARKER_LOWER_ALPHA_PARENS";
+  case LIST_MARKER_UPPER_ALPHA_PARENS:
+    return "LIST_MARKER_UPPER_ALPHA_PARENS";
+  case LIST_MARKER_LOWER_ROMAN_PARENS:
+    return "LIST_MARKER_LOWER_ROMAN_PARENS";
+  case LIST_MARKER_UPPER_ROMAN_PARENS:
+    return "LIST_MARKER_UPPER_ROMAN_PARENS";
+  case LIST_ITEM_CONTINUATION:
+    return "LIST_ITEM_CONTINUATION";
+  case LIST_ITEM_END:
+    return "LIST_ITEM_END";
+  case INDENTED_CONTENT_SPACER:
+    return "INDENTED_CONTENT_SPACER";
+  case CLOSE_PARAGRAPH:
+    return "CLOSE_PARAGRAPH";
+  case BLOCK_QUOTE_BEGIN:
+    return "BLOCK_QUOTE_BEGIN";
+  case BLOCK_QUOTE_CONTINUATION:
+    return "BLOCK_QUOTE_CONTINUATION";
+  case THEMATIC_BREAK_DASH:
+    return "THEMATIC_BREAK_DASH";
+  case THEMATIC_BREAK_STAR:
+    return "THEMATIC_BREAK_STAR";
+  case FOOTNOTE_MARK_BEGIN:
+    return "FOOTNOTE_MARK_BEGIN";
+  case FOOTNOTE_CONTINUATION:
+    return "FOOTNOTE_CONTINUATION";
+  case FOOTNOTE_END:
+    return "FOOTNOTE_END";
+  case LINK_REF_DEF_MARK_BEGIN:
+    return "LINK_REF_DEF_MARK_BEGIN";
+  case LINK_REF_DEF_LABEL_END:
+    return "LINK_REF_DEF_LABEL_END";
+  case TABLE_HEADER_BEGIN:
+    return "TABLE_HEADER_BEGIN";
+  case TABLE_SEPARATOR_BEGIN:
+    return "TABLE_SEPARATOR_BEGIN";
+  case TABLE_ROW_BEGIN:
+    return "TABLE_ROW_BEGIN";
+  case TABLE_ROW_END_NEWLINE:
+    return "TABLE_ROW_END_NEWLINE";
+  case TABLE_CELL_END:
+    return "TABLE_CELL_END";
+  case TABLE_CAPTION_BEGIN:
+    return "TABLE_CAPTION_BEGIN";
+  case TABLE_CAPTION_END:
+    return "TABLE_CAPTION_END";
+  case BLOCK_ATTRIBUTE_BEGIN:
+    return "BLOCK_ATTRIBUTE_BEGIN";
+  case COMMENT_BODY_PERCENT:
+    return "COMMENT_BODY_PERCENT";
+  case EDITORIAL_COMMENT_BEGIN:
+    return "EDITORIAL_COMMENT_BEGIN";
+  case COMMENT_BODY_HASH:
+    return "COMMENT_BODY_HASH";
+  case COMMENT_HASH_END_MARKER:
+    return "COMMENT_HASH_END_MARKER";
+  case CAPTION_BEGIN:
+    return "CAPTION_BEGIN";
+  case COMMENT_END_MARKER:
+    return "COMMENT_END_MARKER";
+  case COMMENT_CLOSE:
+    return "COMMENT_CLOSE";
+
+  case VERBATIM_BEGIN:
+    return "VERBATIM_BEGIN";
+  case VERBATIM_END:
+    return "VERBATIM_END";
+  case VERBATIM_CONTINUE:
+    return "VERBATIM_CONTINUE";
+  case VERBATIM_COMMENT_LINE:
+    return "VERBATIM_COMMENT_LINE";
+  case TABLE_ROW_CONTINUATION_SEAM:
+    return "TABLE_ROW_CONTINUATION_SEAM";
+  case TABLE_ROW_CONTINUATION_PLUS:
+    return "TABLE_ROW_CONTINUATION_PLUS";
+  case TABLE_ROW_CONTINUATION_LINE:
+    return "TABLE_ROW_CONTINUATION_LINE";
+  case CELL_MARKER_BEGIN:
+    return "CELL_MARKER_BEGIN";
+  case TRAILING_COMMENT:
+    return "TRAILING_COMMENT";
+  case VERBATIM_CONTENT:
+    return "VERBATIM_CONTENT";
+
+  case EMPHASIS_MARK_BEGIN:
+    return "EMPHASIS_MARK_BEGIN";
+  case EMPHASIS_END:
+    return "EMPHASIS_END";
+  case STRONG_MARK_BEGIN:
+    return "STRONG_MARK_BEGIN";
+  case STRONG_END:
+    return "STRONG_END";
+  case UNDERLINE_MARK_BEGIN:
+    return "UNDERLINE_MARK_BEGIN";
+  case UNDERLINE_END:
+    return "UNDERLINE_END";
+  case STRIKETHROUGH_MARK_BEGIN:
+    return "STRIKETHROUGH_MARK_BEGIN";
+  case STRIKETHROUGH_END:
+    return "STRIKETHROUGH_END";
+  case SUPERSCRIPT_MARK_BEGIN:
+    return "SUPERSCRIPT_MARK_BEGIN";
+  case SUPERSCRIPT_END:
+    return "SUPERSCRIPT_END";
+  case SUBSCRIPT_MARK_BEGIN:
+    return "SUBSCRIPT_MARK_BEGIN";
+  case SUBSCRIPT_END:
+    return "SUBSCRIPT_END";
+  case HIGHLIGHTED_MARK_BEGIN:
+    return "HIGHLIGHTED_MARK_BEGIN";
+  case HIGHLIGHTED_END:
+    return "HIGHLIGHTED_END";
+  case INSERT_MARK_BEGIN:
+    return "INSERT_MARK_BEGIN";
+  case INSERT_END:
+    return "INSERT_END";
+  case DELETE_MARK_BEGIN:
+    return "DELETE_MARK_BEGIN";
+  case DELETE_END:
+    return "DELETE_END";
+
+  case PARENS_SPAN_MARK_BEGIN:
+    return "PARENS_SPAN_MARK_BEGIN";
+  case PARENS_SPAN_END:
+    return "PARENS_SPAN_END";
+  case CURLY_BRACKET_SPAN_MARK_BEGIN:
+    return "CURLY_BRACKET_SPAN_MARK_BEGIN";
+  case CURLY_BRACKET_SPAN_END:
+    return "CURLY_BRACKET_SPAN_END";
+  case SQUARE_BRACKET_SPAN_MARK_BEGIN:
+    return "SQUARE_BRACKET_SPAN_MARK_BEGIN";
+  case SQUARE_BRACKET_SPAN_END:
+    return "SQUARE_BRACKET_SPAN_END";
+
+  case LANGUAGE_ATTRIBUTE:
+    return "LANGUAGE_ATTRIBUTE";
+  case INLINE_NOTE_MARK_BEGIN:
+    return "INLINE_NOTE_MARK_BEGIN";
+  case INLINE_NOTE_BEGIN:
+    return "INLINE_NOTE_BEGIN";
+  case INLINE_NOTE_END:
+    return "INLINE_NOTE_END";
+  case IN_FALLBACK:
+    return "IN_FALLBACK";
+
+  case ERROR:
+    return "ERROR";
+
+  case BOLD_ITALIC_MARK_BEGIN:
+    return "BOLD_ITALIC_MARK_BEGIN";
+  case BOLD_ITALIC_END:
+    return "BOLD_ITALIC_END";
+  case LIST_CONTINUATION_MARKER:
+    return "LIST_CONTINUATION_MARKER";
+  case FIGURE_GROUP_MARKER:
+    return "FIGURE_GROUP_MARKER";
+    // default:
+    //   return "NOT IMPLEMENTED";
+  }
+}
+
+static char *block_type_s(BlockType t) {
+  switch (t) {
+  case SECTION:
+    return "SECTION";
+  case HEADING:
+    return "HEADING";
+  case DIV:
+    return "DIV";
+  case FIGURE_GROUP:
+    return "FIGURE_GROUP";
+  case BLOCK_QUOTE:
+    return "BLOCK_QUOTE";
+  case CODE_BLOCK:
+    return "CODE_BLOCK";
+  case FOOTNOTE:
+    return "FOOTNOTE";
+  case LINK_REF_DEF:
+    return "LINK_REF_DEF";
+  case TABLE_ROW:
+    return "TABLE_ROW";
+  case TABLE_CAPTION:
+    return "TABLE_CAPTION";
+  case LIST_DASH:
+    return "LIST_DASH";
+  case LIST_STAR:
+    return "LIST_STAR";
+  case LIST_TASK:
+    return "LIST_TASK";
+  case LIST_DEFINITION:
+    return "LIST_DEFINITION";
+  case LIST_DECIMAL_PERIOD:
+    return "LIST_DECIMAL_PERIOD";
+  case LIST_LOWER_ALPHA_PERIOD:
+    return "LIST_LOWER_ALPHA_PERIOD";
+  case LIST_UPPER_ALPHA_PERIOD:
+    return "LIST_UPPER_ALPHA_PERIOD";
+  case LIST_LOWER_ROMAN_PERIOD:
+    return "LIST_LOWER_ROMAN_PERIOD";
+  case LIST_UPPER_ROMAN_PERIOD:
+    return "LIST_UPPER_ROMAN_PERIOD";
+  case LIST_DECIMAL_PAREN:
+    return "LIST_DECIMAL_PAREN";
+  case LIST_LOWER_ALPHA_PAREN:
+    return "LIST_LOWER_ALPHA_PAREN";
+  case LIST_UPPER_ALPHA_PAREN:
+    return "LIST_UPPER_ALPHA_PAREN";
+  case LIST_LOWER_ROMAN_PAREN:
+    return "LIST_LOWER_ROMAN_PAREN";
+  case LIST_UPPER_ROMAN_PAREN:
+    return "LIST_UPPER_ROMAN_PAREN";
+  case LIST_DECIMAL_PARENS:
+    return "LIST_DECIMAL_PARENS";
+  case LIST_LOWER_ALPHA_PARENS:
+    return "LIST_LOWER_ALPHA_PARENS";
+  case LIST_UPPER_ALPHA_PARENS:
+    return "LIST_UPPER_ALPHA_PARENS";
+  case LIST_LOWER_ROMAN_PARENS:
+    return "LIST_LOWER_ROMAN_PARENS";
+  case LIST_UPPER_ROMAN_PARENS:
+    return "LIST_UPPER_ROMAN_PARENS";
+    // default:
+    //   return "NOT IMPLEMENTED";
+  }
+}
+
+static char *inline_type_s(InlineType t) {
+  switch (t) {
+  case VERBATIM:
+    return "VERBATIM";
+  case BOLD_ITALIC:
+    return "BOLD_ITALIC";
+  case EMPHASIS:
+    return "EMPHASIS";
+  case STRONG:
+    return "STRONG";
+  case UNDERLINE:
+    return "UNDERLINE";
+  case STRIKETHROUGH:
+    return "STRIKETHROUGH";
+  case SUPERSCRIPT:
+    return "SUPERSCRIPT";
+  case SUBSCRIPT:
+    return "SUBSCRIPT";
+  case HIGHLIGHTED:
+    return "HIGHLIGHTED";
+  case INSERT:
+    return "INSERT";
+  case DELETE:
+    return "DELETE";
+  case PARENS_SPAN:
+    return "PARENS_SPAN";
+  case CURLY_BRACKET_SPAN:
+    return "CURLY_BRACKET_SPAN";
+  case SQUARE_BRACKET_SPAN:
+    return "SQUARE_BRACKET_SPAN";
+  default:
+    return "NOT IMPLEMENTED";
+  }
+}
+
+static void dump_scanner(Scanner *s) {
+  if (s->open_blocks->size == 0) {
+    printf("0 open blocks\n");
+  } else {
+
+    printf("--- Open blocks: %u (last -> first)\n", s->open_blocks->size);
+    for (size_t i = 0; i < s->open_blocks->size; ++i) {
+      Block *b = *array_get(s->open_blocks, i);
+      printf("  %d %s\n", b->data, block_type_s(b->type));
+    }
+    printf("---\n");
+  }
+  if (s->open_inline->size == 0) {
+    printf("0 open inline\n");
+  } else {
+    printf("--- Open inline: %u (last -> first)\n", s->open_inline->size);
+    for (size_t i = 0; i < s->open_inline->size; ++i) {
+      Inline *x = *array_get(s->open_inline, i);
+      printf("  %d %s\n", x->data, inline_type_s(x->type));
+    }
+    printf("---\n");
+  }
+  printf("  blocks_to_close: %d\n", s->blocks_to_close);
+  printf("  block_quote_level: %u\n", s->block_quote_level);
+  printf("  indent: %u\n", s->indent);
+  printf("  state: %u\n", s->state);
+  if (s->state & STATE_BRACKET_STARTS_SPAN) {
+    printf("    STATE_BRACKET_STARTS_SPAN\n");
+  }
+  if (s->state & STATE_BRACKET_STARTS_INLINE_LINK) {
+    printf("    STATE_BRACKET_STARTS_INLINE_LINK\n");
+  }
+  printf("===\n");
+}
+
+static void dump(Scanner *s, TSLexer *lexer) {
+  printf("=== Lookahead: ");
+  if (lexer->eof(lexer)) {
+    printf("eof\n");
+  } else {
+    printf("`%c`\n", lexer->lookahead);
+  }
+  dump_scanner(s);
+}
+
+static void dump_some_valid_symbols(const bool *valid_symbols) {
+  if (valid_symbols[ERROR]) {
+    printf("# In error recovery ALL SYMBOLS ARE VALID\n");
+    return;
+  }
+  printf("# valid_symbols (shortened):\n");
+  for (int i = 0; i <= ERROR; ++i) {
+    switch (i) {
+    case BLOCK_CLOSE:
+    // case BLOCK_QUOTE_BEGIN:
+    // case BLOCK_QUOTE_CONTINUATION:
+    // case CLOSE_PARAGRAPH:
+    case FOOTNOTE_MARK_BEGIN:
+    case FOOTNOTE_END:
+    case EOF_OR_NEWLINE:
+    case NEWLINE:
+    case NEWLINE_INLINE:
+    case LINK_REF_DEF_MARK_BEGIN:
+    case LINK_REF_DEF_LABEL_END:
+    case SQUARE_BRACKET_SPAN_MARK_BEGIN:
+    case SQUARE_BRACKET_SPAN_END:
+      // case TABLE_HEADER_BEGIN:
+      // case TABLE_SEPARATOR_BEGIN:
+      // case TABLE_ROW_BEGIN:
+      // case TABLE_ROW_END_NEWLINE:
+      // case TABLE_CELL_END:
+      // case TABLE_CAPTION_BEGIN:
+      // case TABLE_CAPTION_END:
+      // case LIST_MARKER_TASK_BEGIN:
+      // case LIST_MARKER_DASH:
+      // case LIST_MARKER_STAR:
+      // case LIST_MARKER_PLUS:
+      // case LIST_ITEM_CONTINUATION:
+      // case LIST_ITEM_END:
+      // case DIV_BEGIN:
+      // case DIV_END:
+      // case TABLE_CAPTION_BEGIN:
+      // case TABLE_CAPTION_END:
+      if (valid_symbols[i]) {
+        printf("%s\n", token_type_s(i));
+      }
+      break;
+    default:
+      continue;
+    }
+  }
+  printf("#\n");
+}
+
+static void dump_all_valid_symbols(const bool *valid_symbols) {
+  if (valid_symbols[ERROR]) {
+    printf("# In error recovery ALL SYMBOLS ARE VALID\n");
+    return;
+  }
+  printf("# all valid_symbols:\n");
+  for (int i = 0; i <= ERROR; ++i) {
+    if (valid_symbols[i]) {
+      printf("%s\n", token_type_s(i));
+    }
+  }
+  printf("#\n");
+}
+
+#endif
