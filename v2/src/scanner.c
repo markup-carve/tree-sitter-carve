@@ -11536,6 +11536,21 @@ static bool abbreviation_definition_follows(Scanner *s, TSLexer *lexer) {
 /// in a list item: the line folds in lazily unless it is a sibling marker of
 /// an enclosing list (corpus 448, 507).
 static bool marker_folds_into_nested_paragraph(Scanner *s, uint32_t column) {
+  // A list marker interrupts only on a line that carries the quote mark of
+  // every quote its list sits in (C2-B-020); otherwise it is a lazy line.
+  if (find_list(s) != NULL) {
+    int seen = s->lazy_drop_markers > 0 ? s->lazy_drop_markers
+               : s->paragraph_markers_seen < 0 ? 0 : s->paragraph_markers_seen;
+    bool reachable = false;
+    for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
+      Block *b = *array_get(s->open_blocks, i);
+      if (is_list(b->type) && b->type != LIST_DEFINITION &&
+          quotes_below(s, b) <= seen) {
+        reachable = true;
+      }
+    }
+    if (!reachable) return true;
+  }
   // A line inside every open quote, with no item or note body open in the
   // innermost one, continues that quote's paragraph, which no list marker
   // interrupts (PART 9 section 10 I2).
@@ -11557,7 +11572,9 @@ static bool marker_folds_into_nested_paragraph(Scanner *s, uint32_t column) {
     for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
       Block *b = *array_get(s->open_blocks, i);
       if (b == missing) break;
-      if (is_list(b->type) && column < b->content_col) reachable = true;
+      // Any list the line's marks reach takes the marker: as a sibling, a
+      // nested list past an item's marker, or a new list (C2-B-015, C2-B-021).
+      if (is_list(b->type) && b->type != LIST_DEFINITION) reachable = true;
     }
     if (missing && !reachable) return true;
   }
@@ -11585,7 +11602,8 @@ static bool marker_folds_into_nested_paragraph(Scanner *s, uint32_t column) {
       if (is_list(b->type) && b->type != LIST_DEFINITION) return false;
       continue;
     }
-    if (is_list(b->type) && b->data == column + 1) return false;
+    // At an item's list column or indented past its marker (C2-B-021).
+    if (is_list(b->type) && b->data <= column + 1) return false;
   }
   return true;
 }
