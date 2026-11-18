@@ -436,7 +436,7 @@ static const uint8_t BLOCK_FLAG_LIST_FULL_QUOTE_PLUS = 1 << 6;
 // A literal, not the two names above: C (and MSVC) rejects a static const
 // initialized from other const objects.
 static const uint8_t LIST_COMMENT_FLAGS = (1 << 3) | (1 << 4);
-static const uint8_t BLOCK_FLAG_TABLE_ROW_BOUNDARY_SAFE = 1 << 2;
+static const uint8_t BLOCK_FLAG_TABLE_ROW_BOUNDARY_SAFE = 1 << 3;
 // Definition terms and description bodies use the same block type. Keep the
 // current item kind so nested terms and folded continuation lines stay scoped.
 static const uint8_t BLOCK_FLAG_DEFINITION_TERM = 1 << 2;

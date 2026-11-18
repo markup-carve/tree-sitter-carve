@@ -439,7 +439,9 @@ static const uint8_t BLOCK_FLAG_LIST_FULL_QUOTE_PLUS = 1 << 6;
 // A literal, not the two names above: C (and MSVC) rejects a static const
 // initialized from other const objects.
 static const uint8_t LIST_COMMENT_FLAGS = (1 << 3) | (1 << 4);
-static const uint8_t BLOCK_FLAG_TABLE_ROW_BOUNDARY_SAFE = 1 << 2;
+// TABLE_ROW only: raw cell capture may clear this after a later cell boundary.
+// Keep it separate from ATTACHED, which must survive until the row ends.
+static const uint8_t BLOCK_FLAG_TABLE_ROW_BOUNDARY_SAFE = 1 << 3;
 // Definition terms and description bodies use the same block type. Keep the
 // current item kind so nested terms and folded continuation lines stay scoped.
 static const uint8_t BLOCK_FLAG_DEFINITION_TERM = 1 << 2;
@@ -5442,6 +5444,30 @@ static bool is_upper_roman(char c) {
   }
 }
 
+// C2-B-036 admits only the standard spelling of a value from 1 to 3999.
+// Validate the spelling before classifying a multi-letter marker as roman.
+static bool standard_roman(const char *word, uint8_t length) {
+  if (length == 0 || length > 9) return false;
+  char upper[10];
+  for (uint8_t i = 0; i < length; ++i) {
+    upper[i] = word[i] >= 'a' && word[i] <= 'z' ? word[i] - 'a' + 'A' : word[i];
+  }
+  uint8_t i = 0;
+  for (uint8_t n = 0; n < 3 && i < length && upper[i] == 'M'; ++n) ++i;
+  const char *places[] = {"CDM", "XLC", "IVX"};
+  for (uint8_t p = 0; p < 3; ++p) {
+    char one = places[p][0], five = places[p][1], ten = places[p][2];
+    if (i + 1 < length && upper[i] == one &&
+        (upper[i + 1] == ten || upper[i + 1] == five)) {
+      i += 2;
+      continue;
+    }
+    if (i < length && upper[i] == five) ++i;
+    for (uint8_t n = 0; n < 3 && i < length && upper[i] == one; ++n) ++i;
+  }
+  return i == length;
+}
+
 static bool matches_ordered_list(OrderedListType type, char c) {
   switch (type) {
   case DECIMAL:
@@ -5461,6 +5487,8 @@ static bool matches_ordered_list(OrderedListType type, char c) {
 
 static bool scan_ordered_list_type(Scanner *s, TSLexer *lexer,
                                    OrderedListType *res) {
+  char word[9];
+  uint8_t word_len = 0;
   bool can_be_decimal = true;
   uint8_t scanned_decimal = 0;
   bool can_be_lower_roman = true;
@@ -5477,35 +5505,35 @@ static bool scan_ordered_list_type(Scanner *s, TSLexer *lexer,
 
     if (can_be_decimal) {
       if (matches_ordered_list(DECIMAL, c)) {
-        ++scanned_decimal;
+        if (scanned_decimal < 10) ++scanned_decimal;
       } else {
         can_be_decimal = false;
       }
     }
     if (can_be_lower_roman) {
       if (matches_ordered_list(LOWER_ROMAN, c)) {
-        ++scanned_lower_roman;
+        if (scanned_lower_roman < 10) ++scanned_lower_roman;
       } else {
         can_be_lower_roman = false;
       }
     }
     if (can_be_upper_roman) {
       if (matches_ordered_list(UPPER_ROMAN, c)) {
-        ++scanned_upper_roman;
+        if (scanned_upper_roman < 10) ++scanned_upper_roman;
       } else {
         can_be_upper_roman = false;
       }
     }
     if (can_be_lower_alpha) {
       if (matches_ordered_list(LOWER_ALPHA, c)) {
-        ++scanned_lower_alpha;
+        if (scanned_lower_alpha < 10) ++scanned_lower_alpha;
       } else {
         can_be_lower_alpha = false;
       }
     }
     if (can_be_upper_alpha) {
       if (matches_ordered_list(UPPER_ALPHA, c)) {
-        ++scanned_upper_alpha;
+        if (scanned_upper_alpha < 10) ++scanned_upper_alpha;
       } else {
         can_be_upper_alpha = false;
       }
@@ -5515,11 +5543,13 @@ static bool scan_ordered_list_type(Scanner *s, TSLexer *lexer,
       break;
     }
 
+    if (word_len < sizeof(word)) word[word_len] = c;
+    if (word_len < 10) ++word_len;
     advance(s, lexer);
   }
 
   // A ten-digit value is prose in 0.2 (C2-B-036).
-  if (scanned_decimal > 0 && scanned_decimal <= 9) {
+  if (scanned_decimal > 0 && scanned_decimal <= 9 && scanned_decimal == word_len) {
     *res = DECIMAL;
     return true;
   }
@@ -5532,31 +5562,30 @@ static bool scan_ordered_list_type(Scanner *s, TSLexer *lexer,
 
   if (inside_alpha_list) {
     // Alpha lists are only a single letter wide.
-    if (scanned_lower_alpha == 1) {
+    if (scanned_lower_alpha == 1 && word_len == 1) {
       *res = LOWER_ALPHA;
       return true;
     }
-    if (scanned_upper_alpha == 1) {
+    if (scanned_upper_alpha == 1 && word_len == 1) {
       *res = UPPER_ALPHA;
       return true;
     }
   }
 
-  // Note that we don't check if marker is a valid roman numeral.
-  if (scanned_lower_roman > 0) {
+  if (scanned_lower_roman == word_len && standard_roman(word, word_len)) {
     *res = LOWER_ROMAN;
     return true;
   }
-  if (scanned_upper_roman > 0) {
+  if (scanned_upper_roman == word_len && standard_roman(word, word_len)) {
     *res = UPPER_ROMAN;
     return true;
   }
 
-  if (scanned_lower_alpha == 1) {
+  if (scanned_lower_alpha == 1 && word_len == 1) {
     *res = LOWER_ALPHA;
     return true;
   }
-  if (scanned_upper_alpha == 1) {
+  if (scanned_upper_alpha == 1 && word_len == 1) {
     *res = UPPER_ALPHA;
     return true;
   }
@@ -8478,22 +8507,18 @@ static uint32_t cell_marker_alignment(const char *b, uint32_t n, uint32_t i) {
 static bool cell_marker_run(const char *b, uint32_t n) {
   uint32_t i = 0;
   if (i < n && b[i] == '=') ++i;
-  uint32_t inner = i + 1 < n && b[i] == '{' ? cell_marker_alignment(b, n, i + 1) : 0;
-  bool list_needs_space = inner > 0;
-  if (inner) {
-    i += 1 + inner;
-  } else {
-    i += cell_marker_alignment(b, n, i);
-    if (i >= n || b[i] != '{') return false;
-    ++i;
-  }
+  if (i >= n || b[i] != '{') return false;
+  ++i;
+  uint32_t alignment = cell_marker_alignment(b, n, i);
+  i += alignment;
   uint32_t spaces = 0;
   while (i < n && b[i] == ' ') { ++i; ++spaces; }
+  bool has_item = false;
   if (i < n && b[i] != '}') {
-    if (list_needs_space && !spaces) return false;
     while (true) {
       uint32_t next = cell_marker_item(b, n, i);
       if (!next) return false;
+      has_item = true;
       i = next;
       uint32_t gap = i;
       while (gap < n && b[gap] == ' ') ++gap;
@@ -8501,6 +8526,7 @@ static bool cell_marker_run(const char *b, uint32_t n) {
       i = gap;
     }
   }
+  if (!alignment && !has_item) return false;
   return i + 1 < n && b[i] == '}' && b[i + 1] == ' ';
 }
 
