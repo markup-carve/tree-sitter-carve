@@ -417,6 +417,29 @@ function codeBlock($, beginToken) {
   );
 }
 
+function includeDirective($, open) {
+  return seq(
+    open,
+    $._include_pad,
+    field("path", $.include_path),
+    // The section is NOT a slot of its own here. It was, and with the pad
+    // between parts no longer mandatory that spelling is ambiguous with the
+    // `section` arm of `_include_part`: after `path include_section`
+    // nothing decides which of the two produced it, and `tree-sitter
+    // generate` refuses the grammar. One arm carries it, and it keeps the
+    // same `section` field, so `src/node-types.json` does not move.
+    //
+    // SPELLED AS AN EXPLICIT CHOICE, not `optional($._include_pad)`. Under
+    // the pinned tree-sitter-cli 0.22.6 the `optional` form generates a
+    // parser that rejects `{{ c.crv@shift:1 }}` outright, with `generate`
+    // exiting 0 and warning nothing; 0.26.8 accepts the same grammar. Do
+    // not fold this back while 0.22.6 is the pin.
+    repeat(choice(seq($._include_pad, $._include_part), $._include_part)),
+    $._include_pad,
+    alias("}}", $.include_close),
+  );
+}
+
 module.exports = grammar({
   name: "carve2",
 
@@ -566,6 +589,16 @@ module.exports = grammar({
         $.caption,
         $.block_attribute,
         $.callout_list,
+        $._include_block,
+      ),
+
+    // A directive alone on its line is a block of one line (C2-B-156); the
+    // scanner checks the shape of C2-B-201 to C2-B-204 before it opens one.
+    _include_block: ($) =>
+      seq(
+        alias($._include_block_directive, $.include_directive),
+        optional($._whitespace1),
+        choice($._newline, $._eof_or_newline),
       ),
 
     // A heading ends at its newline and nothing folds into it (SINGLE-LINE
@@ -2581,27 +2614,11 @@ module.exports = grammar({
     // this rule `{{ ch.crv #intro }}` highlights `#intro` as a tag.
     //
     // One token, so it cannot span a line break and cannot nest.
-    include_directive: ($) =>
-      seq(
-        alias("{{", $.include_open),
-        $._include_pad,
-        field("path", $.include_path),
-        // The section is NOT a slot of its own here. It was, and with the pad
-        // between parts no longer mandatory that spelling is ambiguous with the
-        // `section` arm of `_include_part`: after `path include_section`
-        // nothing decides which of the two produced it, and `tree-sitter
-        // generate` refuses the grammar. One arm carries it, and it keeps the
-        // same `section` field, so `src/node-types.json` does not move.
-        //
-        // SPELLED AS AN EXPLICIT CHOICE, not `optional($._include_pad)`. Under
-        // the pinned tree-sitter-cli 0.22.6 the `optional` form generates a
-        // parser that rejects `{{ c.crv@shift:1 }}` outright, with `generate`
-        // exiting 0 and warning nothing; 0.26.8 accepts the same grammar. Do
-        // not fold this back while 0.22.6 is the pin.
-        repeat(choice(seq($._include_pad, $._include_part), $._include_part)),
-        $._include_pad,
-        alias("}}", $.include_close),
-      ),
+    include_directive: ($) => includeDirective($, alias("{{", $.include_open)),
+    // The same directive in block position: its `{{` is the scanner's token,
+    // emitted only where the whole line has the directive's shape.
+    _include_block_directive: ($) =>
+      includeDirective($, alias($._include_line_begin, $.include_open)),
 
     // TOLERANT after the path, deliberately. The one-token rule this replaces
     // matched anything between the braces, and a grammar that ERRORS on a
@@ -3576,5 +3593,7 @@ module.exports = grammar({
     // `* [ ]`; `_list_marker_task_begin` is the `-` spelling. Two tokens so a
     // boxed item joins the list of its own bullet character (C2-B-049).
     $._list_marker_task_star_begin,
+    // The `{{` of a line that holds one include directive and nothing else.
+    $._include_line_begin,
   ],
 });

@@ -314,10 +314,12 @@ typedef enum {
   CELL_MARKER_BEGIN,
   // `* [ ]`; LIST_MARKER_TASK_BEGIN is the `-` spelling (C2-B-049).
   LIST_MARKER_TASK_STAR_BEGIN,
+  // Zero width, at a line that holds one include directive (C2-B-156).
+  INCLUDE_LINE_BEGIN,
 } TokenType;
 
 // The size of `valid_symbols`, for the copies that edit one entry.
-#define EXTERNAL_TOKEN_COUNT (LIST_MARKER_TASK_STAR_BEGIN + 1)
+#define EXTERNAL_TOKEN_COUNT (INCLUDE_LINE_BEGIN + 1)
 
 // The different blocks in Carve that we track,
 // in order to match or close them properly.
@@ -7832,6 +7834,87 @@ static bool parse_colon(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   return false;
 }
 
+static bool include_name_char(int32_t c) {
+  return carve_is_alnum_ascii(c) || c == '_' || c == '-';
+}
+
+/// Is the rest of the line, past `{{`, one include directive (C2-B-201 to
+/// C2-B-204)? The lexer is scratch: the caller has marked the token end.
+static bool include_line_ahead(TSLexer *lexer) {
+#define AT_END (at_line_end(lexer) || lexer->eof(lexer))
+  if (lexer->lookahead != ' ') return false;
+  while (lexer->lookahead == ' ') lexer->advance(lexer, false);
+  uint32_t length = 0;
+  if (lexer->lookahead == '"') {
+    lexer->advance(lexer, false);
+    while (lexer->lookahead != '"') {
+      if (AT_END) return false;
+      if (lexer->lookahead == '\\') {
+        lexer->advance(lexer, false);
+        if (AT_END) return false;
+      }
+      lexer->advance(lexer, false);
+      ++length;
+    }
+    lexer->advance(lexer, false);
+  } else {
+    // A path in curly quotes is left to the paragraph: the directive's path
+    // token has no spelling for it.
+    while (!AT_END && lexer->lookahead != ' ' && lexer->lookahead != '\t' &&
+           lexer->lookahead != '#' && lexer->lookahead != '@' &&
+           lexer->lookahead != '}' && lexer->lookahead != '"' &&
+           lexer->lookahead != 0x201C) {
+      lexer->advance(lexer, false);
+      ++length;
+    }
+  }
+  if (length == 0) return false;
+  uint32_t spaces = 0;
+  while (lexer->lookahead == ' ') { lexer->advance(lexer, false); ++spaces; }
+  if (lexer->lookahead == '#') {
+    lexer->advance(lexer, false);
+    if (!carve_is_alnum_ascii(lexer->lookahead) && lexer->lookahead != '_') return false;
+    while (include_name_char(lexer->lookahead)) lexer->advance(lexer, false);
+    spaces = 0;
+    while (lexer->lookahead == ' ') { lexer->advance(lexer, false); ++spaces; }
+  }
+  while (lexer->lookahead == '@') {
+    lexer->advance(lexer, false);
+    if (!(carve_is_alnum_ascii(lexer->lookahead) && !(lexer->lookahead >= '0' && lexer->lookahead <= '9')) && lexer->lookahead != '_') return false;
+    while (include_name_char(lexer->lookahead)) lexer->advance(lexer, false);
+    if (lexer->lookahead == ':') {
+      lexer->advance(lexer, false);
+      int32_t quote = lexer->lookahead;
+      if (quote == '"' || quote == '\'') {
+        lexer->advance(lexer, false);
+        while (lexer->lookahead != quote) {
+          if (AT_END) return false;
+          if (lexer->lookahead == '\\') {
+            lexer->advance(lexer, false);
+            if (AT_END) return false;
+          }
+          lexer->advance(lexer, false);
+        }
+        lexer->advance(lexer, false);
+      } else {
+        while (!AT_END && lexer->lookahead != '@' && lexer->lookahead != '}' &&
+               lexer->lookahead != ' ' && lexer->lookahead != '\t') {
+          lexer->advance(lexer, false);
+        }
+      }
+    }
+    spaces = 0;
+    while (lexer->lookahead == ' ') { lexer->advance(lexer, false); ++spaces; }
+  }
+  if (spaces == 0 || lexer->lookahead != '}') return false;
+  lexer->advance(lexer, false);
+  if (lexer->lookahead != '}') return false;
+  lexer->advance(lexer, false);
+  while (lexer->lookahead == ' ' || lexer->lookahead == '\t') lexer->advance(lexer, false);
+  return AT_END;
+#undef AT_END
+}
+
 static bool parse_heading(Scanner *s, TSLexer *lexer,
                           const bool *valid_symbols) {
   // Note that headings don't contain other blocks, only inline.
@@ -10055,6 +10138,14 @@ static bool parse_open_curly_bracket(Scanner *s, TSLexer *lexer,
     if (lexer->lookahead != ' ' && lexer->lookahead != '\t' && valid_symbols[LITERAL_RUN]) {
       lexer->result_symbol = LITERAL_RUN;
       return true;
+    }
+    // A directive alone on its line is a block (C2-B-156).
+    if (valid_symbols[INCLUDE_LINE_BEGIN] && !valid_symbols[ERROR]) {
+      mark_end(s, lexer);
+      if (include_line_ahead(lexer)) {
+        lexer->result_symbol = INCLUDE_LINE_BEGIN;
+        return true;
+      }
     }
     return false;
   }
@@ -18434,6 +18525,8 @@ static char *token_type_s(TokenType t) {
     return "LIST_MARKER_TASK_BEGIN";
   case LIST_MARKER_TASK_STAR_BEGIN:
     return "LIST_MARKER_TASK_STAR_BEGIN";
+  case INCLUDE_LINE_BEGIN:
+    return "INCLUDE_LINE_BEGIN";
   case LIST_MARKER_DEFINITION:
     return "LIST_MARKER_DEFINITION";
   case LIST_MARKER_DESCRIPTION:
