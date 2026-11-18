@@ -312,7 +312,12 @@ typedef enum {
   TABLE_ROW_CONTINUATION_LINE,
   // Zero width, at a cell whose head is a marker run. See `cell_marker_run`.
   CELL_MARKER_BEGIN,
+  // `* [ ]`; LIST_MARKER_TASK_BEGIN is the `-` spelling (C2-B-049).
+  LIST_MARKER_TASK_STAR_BEGIN,
 } TokenType;
+
+// The size of `valid_symbols`, for the copies that edit one entry.
+#define EXTERNAL_TOKEN_COUNT (LIST_MARKER_TASK_STAR_BEGIN + 1)
 
 // The different blocks in Carve that we track,
 // in order to match or close them properly.
@@ -1010,8 +1015,11 @@ static BlockType list_marker_to_block(TokenType type) {
     return LIST_DASH;
   case LIST_MARKER_STAR:
     return LIST_STAR;
+  // A task box is a fact of the item, not of the list (C2-B-049).
   case LIST_MARKER_TASK_BEGIN:
-    return LIST_TASK;
+    return LIST_DASH;
+  case LIST_MARKER_TASK_STAR_BEGIN:
+    return LIST_STAR;
   case LIST_MARKER_DEFINITION:
   case LIST_MARKER_DESCRIPTION:
     return LIST_DEFINITION;
@@ -1970,11 +1978,11 @@ static bool parse_indented_content_spacer(Scanner *s, TSLexer *lexer,
 /// the recorded content column, so `-   a` / blank / `  b` leaves the item.
 /// Inside a quote the line's indent counts from after the `>` prefix while
 /// `content_col` counts from the line start, so `data` stays the test there.
+// An item owns a line indented past its marker (C2-B-025), so the margin is
+// the marker column plus one, not the content column.
 static uint8_t list_item_margin(Scanner *s, Block *list) {
-  if (list->content_col == 0 || count_blocks(s, BLOCK_QUOTE) > 0) {
-    return list->data;
-  }
-  return list->content_col;
+  (void)s;
+  return list->data;
 }
 
 /// Is `list` opened inside a quote's margin? Then `indent` counts from after
@@ -4773,7 +4781,8 @@ static uint8_t task_box_before_quote(Scanner *s, uint32_t marker_start_col) {
       marker_start_col == top->content_col)
     return top->box_shift;
   if (s->marker_end_col == 0 || marker_start_col != s->marker_end_col) return 0;
-  if (top->type == LIST_TASK && top->content_col != 0 && s->marker_end_col > top->content_col)
+  if ((top->type == LIST_DASH || top->type == LIST_STAR) && top->content_col != 0 &&
+      s->marker_end_col > top->content_col)
     return (uint8_t)(s->marker_end_col - top->content_col);
   return 0;
 }
@@ -5740,7 +5749,7 @@ static TokenType scan_unordered_list_marker_token(Scanner *s, TSLexer *lexer) {
   }
   if (scan_bullet_list_marker(s, lexer, '*')) {
     if (scan_task_list_marker(s, lexer)) {
-      return LIST_MARKER_TASK_BEGIN;
+      return LIST_MARKER_TASK_STAR_BEGIN;
     } else {
       return LIST_MARKER_STAR;
     }
@@ -6403,6 +6412,8 @@ static bool parse_list_marker_or_thematic_break(
   if (declined_run != NULL) {
     *declined_run = 0;
   }
+  const TokenType task_type =
+      marker == '*' ? LIST_MARKER_TASK_STAR_BEGIN : LIST_MARKER_TASK_BEGIN;
   // This is a bit ugly to do here, but eh, refactoring will look very ugly.
   bool check_frontmatter = (valid_symbols[FRONTMATTER_MARKER] ||
       valid_symbols[FRONTMATTER_UNCLOSED_MARKER]) && marker == '-';
@@ -6412,7 +6423,7 @@ static bool parse_list_marker_or_thematic_break(
 
   if (!check_frontmatter && !valid_symbols[marker_type] &&
       !valid_symbols[thematic_break_type] &&
-      !valid_symbols[LIST_MARKER_TASK_BEGIN]) {
+      !valid_symbols[task_type]) {
     return false;
   }
 
@@ -6462,7 +6473,7 @@ static bool parse_list_marker_or_thematic_break(
   bool marker_attribute = false;
   uint32_t attribute_width = 0;
   if (lexer->lookahead == '{' &&
-      (valid_symbols[marker_type] || valid_symbols[LIST_MARKER_TASK_BEGIN])) {
+      (valid_symbols[marker_type] || valid_symbols[task_type])) {
     // No rewind on failure, which is the same contract the ordered path uses:
     // an invalid payload (`-{not!} item`) refuses the token and the line parses
     // as a paragraph, which is what the attribute grammar says it is.
@@ -6477,7 +6488,7 @@ static bool parse_list_marker_or_thematic_break(
   // We should prioritize a thematic break over lists.
   // We need to remember if a '- ' is found, which means we can open a list.
   bool can_be_list_marker =
-      (valid_symbols[marker_type] || valid_symbols[LIST_MARKER_TASK_BEGIN]) &&
+      (valid_symbols[marker_type] || valid_symbols[task_type]) &&
       lexer->lookahead == ' ';
 
   // We have now checked the two first characters.
@@ -6628,13 +6639,13 @@ static bool parse_list_marker_or_thematic_break(
   }
 
   if (can_be_list_marker) {
-    if (valid_symbols[LIST_MARKER_TASK_BEGIN] && !spaced_probe_refused) {
+    if (valid_symbols[task_type] && !spaced_probe_refused) {
       if (scan_task_list_marker(s, lexer)) {
-        if (!ensure_list_open(s, LIST_TASK, list_indent + 1, start_col)) return false;
+        if (!ensure_list_open(s, list_type, list_indent + 1, start_col)) return false;
         record_list_marker_margin(s, marker_content_col, false);
         while (lexer->lookahead == ' ') advance(s, lexer);
         s->marker_end_col = list_column_u8(line_column(s, lexer) + column_offset);
-        lexer->result_symbol = LIST_MARKER_TASK_BEGIN;
+        lexer->result_symbol = task_type;
         return true;
       }
     }
@@ -10689,8 +10700,10 @@ keep_reading:
   // than beside the depth-0 case below, because this function has already
   // consumed the markers the check needs.
   //
-  if (marker_count > count_blocks(s, BLOCK_QUOTE) && !at_nesting_cap(s)) {
-    return true;
+  // In 0.2 a quote is no interrupter (C2-B-024): the extra `>` is text of a
+  // lazy line.
+  if (marker_count > count_blocks(s, BLOCK_QUOTE)) {
+    return false;
   }
 
   if (marker_count == count_blocks(s, BLOCK_QUOTE) &&
@@ -15168,7 +15181,7 @@ static bool block_reading_ahead(int32_t c, const bool *valid_symbols) {
   switch (c) {
   case '*':
     return valid_symbols[LIST_MARKER_STAR] ||
-           valid_symbols[LIST_MARKER_TASK_BEGIN] ||
+           valid_symbols[LIST_MARKER_TASK_STAR_BEGIN] ||
            valid_symbols[THEMATIC_BREAK_STAR];
   case '~':
     return valid_symbols[CODE_BLOCK_BEGIN] || valid_symbols[CODE_BLOCK_END] ||
@@ -15649,7 +15662,7 @@ static bool parse_attribute_mark_begin(Scanner *s, TSLexer *lexer,
   }
   // The attribute's own path: the fallback is not taken here, so its marker
   // must not steer the bookkeeping to the fallback's branch.
-  bool attribute_only[CELL_MARKER_BEGIN + 1];
+  bool attribute_only[EXTERNAL_TOKEN_COUNT];
   memcpy(attribute_only, valid_symbols, sizeof(attribute_only));
   attribute_only[IN_FALLBACK] = false;
   if (!mark_span_begin(s, lexer, attribute_only, CURLY_BRACKET_SPAN, shared)) {
@@ -15883,7 +15896,7 @@ bool tree_sitter_carve2_external_scanner_scan(void *payload, TSLexer *lexer,
   // the `=` is reduced, which offers the highlight check; after node reuse the
   // goto state does not. A check its lookahead already fails is not pending,
   // so both states read the spot the same way.
-  bool without_check[CELL_MARKER_BEGIN + 1];
+  bool without_check[EXTERNAL_TOKEN_COUNT];
   const bool *symbols = valid_symbols;
   if (valid_symbols[HIGHLIGHTED_OPEN_CHECK] && !valid_symbols[ERROR] &&
       highlighted_open_declines(lexer->lookahead)) {
@@ -16261,7 +16274,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       (s->state & STATE_BARE_SPAN_OPENER)) {
     defer_column(s);
     mark_end(s, lexer);
-    bool real_symbols[CELL_MARKER_BEGIN + 1];
+    bool real_symbols[EXTERNAL_TOKEN_COUNT];
     memcpy(real_symbols, valid_symbols, sizeof(real_symbols));
     real_symbols[IN_FALLBACK] = false;
     bool same_marker_before = (s->after_closer_char == '=' || s->after_closer_char == '_') &&
@@ -16279,7 +16292,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       (s->state & STATE_BARE_SPAN_OPENER) && lexer->lookahead != '*') {
     defer_column(s);
     mark_end(s, lexer);
-    bool real_symbols[CELL_MARKER_BEGIN + 1];
+    bool real_symbols[EXTERNAL_TOKEN_COUNT];
     memcpy(real_symbols, valid_symbols, sizeof(real_symbols));
     real_symbols[IN_FALLBACK] = false;
     if (lexer->lookahead != '/' && mark_span_begin(s, lexer, real_symbols, EMPHASIS, EMPHASIS_QUALIFIED_MARK_BEGIN))
@@ -16294,7 +16307,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       (s->state & STATE_BARE_SPAN_OPENER)) {
     defer_column(s);
     mark_end(s, lexer);
-    bool real_symbols[CELL_MARKER_BEGIN + 1];
+    bool real_symbols[EXTERNAL_TOKEN_COUNT];
     memcpy(real_symbols, valid_symbols, sizeof(real_symbols));
     real_symbols[IN_FALLBACK] = false;
     if (lexer->lookahead != '*' &&
@@ -18388,6 +18401,8 @@ static char *token_type_s(TokenType t) {
     return "LIST_MARKER_STAR";
   case LIST_MARKER_TASK_BEGIN:
     return "LIST_MARKER_TASK_BEGIN";
+  case LIST_MARKER_TASK_STAR_BEGIN:
+    return "LIST_MARKER_TASK_STAR_BEGIN";
   case LIST_MARKER_DEFINITION:
     return "LIST_MARKER_DEFINITION";
   case LIST_MARKER_DESCRIPTION:

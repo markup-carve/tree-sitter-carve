@@ -601,7 +601,6 @@ module.exports = grammar({
         choice(
           $._list_dash,
           $._list_star,
-          $._list_task,
           $._list_decimal_period,
           $._list_decimal_paren,
           $._list_decimal_parens,
@@ -619,8 +618,13 @@ module.exports = grammar({
           $._list_upper_roman_parens,
         ),
       ),
+    // A task box is a fact of its item, so boxed and plain items with one
+    // bullet character are siblings in one list (C2-B-049).
     _list_dash: ($) =>
-      seq(repeat1(alias($._list_item_dash, $.list_item)), $._block_close),
+      seq(
+        repeat1(alias(choice($._list_item_dash, $._list_item_task), $.list_item)),
+        $._block_close,
+      ),
     _list_item_dash: ($) =>
       seq(
         optional($._block_quote_prefix),
@@ -629,7 +633,12 @@ module.exports = grammar({
       ),
 
     _list_star: ($) =>
-      seq(repeat1(alias($._list_item_star, $.list_item)), $._block_close),
+      seq(
+        repeat1(
+          alias(choice($._list_item_star, $._list_item_task_star), $.list_item),
+        ),
+        $._block_close,
+      ),
     _list_item_star: ($) =>
       seq(
         optional($._block_quote_prefix),
@@ -637,8 +646,19 @@ module.exports = grammar({
         field("content", $.list_item_content),
       ),
 
-    _list_task: ($) =>
-      seq(repeat1(alias($._list_item_task, $.list_item)), $._block_close),
+    _list_item_task_star: ($) =>
+      seq(
+        optional($._block_quote_prefix),
+        field("marker", alias($._list_marker_task_star, $.list_marker_task)),
+        field("content", $.list_item_content),
+      ),
+    _list_marker_task_star: ($) =>
+      seq(
+        $._list_marker_task_star_begin,
+        optional($._whitespace1),
+        field("checkmark", choice($.checked, $.unchecked)),
+        $._whitespace1,
+      ),
     _list_item_task: ($) =>
       seq(
         optional($._block_quote_prefix),
@@ -3553,5 +3573,8 @@ module.exports = grammar({
     $._table_row_continuation_plus,
     $._table_row_continuation_line,
     $._cell_marker_begin,
+    // `* [ ]`; `_list_marker_task_begin` is the `-` spelling. Two tokens so a
+    // boxed item joins the list of its own bullet character (C2-B-049).
+    $._list_marker_task_star_begin,
   ],
 });
