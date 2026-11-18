@@ -3960,6 +3960,22 @@
                           }
                         },
                         {
+                          "type": "FIELD",
+                          "name": "invalid_metadata",
+                          "content": {
+                            "type": "ALIAS",
+                            "content": {
+                              "type": "IMMEDIATE_TOKEN",
+                              "content": {
+                                "type": "PATTERN",
+                                "value": "\\[[^\\r\\n]*"
+                              }
+                            },
+                            "named": true,
+                            "value": "invalid_metadata"
+                          }
+                        },
+                        {
                           "type": "SEQ",
                           "members": [
                             {

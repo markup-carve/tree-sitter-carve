@@ -1349,6 +1349,10 @@ module.exports = grammar({
                   "invalid_metadata",
                   alias($._container_invalid_metadata, $.invalid_metadata),
                 ),
+                field(
+                  "invalid_metadata",
+                  alias(token.immediate(/\[[^\r\n]*/), $.invalid_metadata),
+                ),
                 seq(
                   optional(seq($._padding_spaces, field("title", $.div_title))),
                   optional(

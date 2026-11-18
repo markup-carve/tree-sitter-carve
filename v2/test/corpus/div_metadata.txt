@@ -103,3 +103,18 @@ C2-B-127: figure with glued invalid tail stays group
           (image_description)
           (inline_link_destination))))
     (div_marker_end)))
+
+===============================================================================
+C2-B-225: unclosed glued bracket is invalid div metadata
+===============================================================================
+::: e[
+:::
+
+-------------------------------------------------------------------------------
+
+(document
+  (div
+    (div_marker_begin)
+    (admonition_type)
+    (invalid_metadata)
+    (div_marker_end)))
