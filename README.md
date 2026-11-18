@@ -3,6 +3,12 @@
 Tree-sitter grammar for [Carve](https://markup-carve.github.io/carve/), a
 lightweight markup language for readable source and structured documents.
 
+The `next2` branch also contains a Carve 0.2 grammar in `v2/`. The root
+grammar and queries continue to describe Carve 0.1. To check the 0.2 parser,
+run `cd v2 && ../node_modules/.bin/tree-sitter generate --no-bindings &&
+../node_modules/.bin/tree-sitter test`. Editor queries for 0.2 are in
+`v2/queries/`.
+
 It provides editor-facing parsing, highlighting, and structural navigation for
 Carve syntax, including:
 

@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, next2]
   pull_request:
-    branches: [main]
+    branches: [main, next2]
 
 # A new push to a pull request makes its running checks moot. Pushes to main
 # each keep their own run.
@@ -16,6 +16,28 @@ concurrency:
 # default, roughly 900x the median job in this org, so a hung step burns hours
 # of runner time before anything stops it.
 jobs:
+  tree-sitter-v2:
+    if: github.base_ref == 'next2' || github.ref == 'refs/heads/next2'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install dependencies
+        uses: ./.github/actions/npm-install
+      - name: Generate Carve 0.2 parser
+        run: cd v2 && ../node_modules/.bin/tree-sitter generate --no-bindings
+      - name: Check generated Carve 0.2 parser
+        run: git diff --exit-code -- v2/src/parser.c v2/src/grammar.json v2/src/node-types.json
+      - name: Run Carve 0.2 corpus
+        run: cd v2 && ../node_modules/.bin/tree-sitter test
+      - name: Compile Carve 0.2 editor queries
+        run: |
+          printf '= Heading\n' > /tmp/carve02-query.crv
+          cd v2
+          for query in queries/*.scm; do
+            ../node_modules/.bin/tree-sitter query -q "$query" /tmp/carve02-query.crv
+          done
+
   tree-sitter:
     runs-on: ubuntu-latest
     timeout-minutes: 20
