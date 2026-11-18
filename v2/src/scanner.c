@@ -5549,7 +5549,7 @@ static bool scan_ordered_list_type(Scanner *s, TSLexer *lexer,
   }
 
   // A ten-digit value is prose in 0.2 (C2-B-036).
-  if (scanned_decimal > 0 && scanned_decimal <= 9) {
+  if (scanned_decimal > 0 && scanned_decimal <= 9 && scanned_decimal == word_len) {
     *res = DECIMAL;
     return true;
   }
@@ -5562,30 +5562,30 @@ static bool scan_ordered_list_type(Scanner *s, TSLexer *lexer,
 
   if (inside_alpha_list) {
     // Alpha lists are only a single letter wide.
-    if (scanned_lower_alpha == 1) {
+    if (scanned_lower_alpha == 1 && word_len == 1) {
       *res = LOWER_ALPHA;
       return true;
     }
-    if (scanned_upper_alpha == 1) {
+    if (scanned_upper_alpha == 1 && word_len == 1) {
       *res = UPPER_ALPHA;
       return true;
     }
   }
 
-  if (scanned_lower_roman > 0 && standard_roman(word, word_len)) {
+  if (scanned_lower_roman == word_len && standard_roman(word, word_len)) {
     *res = LOWER_ROMAN;
     return true;
   }
-  if (scanned_upper_roman > 0 && standard_roman(word, word_len)) {
+  if (scanned_upper_roman == word_len && standard_roman(word, word_len)) {
     *res = UPPER_ROMAN;
     return true;
   }
 
-  if (scanned_lower_alpha == 1) {
+  if (scanned_lower_alpha == 1 && word_len == 1) {
     *res = LOWER_ALPHA;
     return true;
   }
-  if (scanned_upper_alpha == 1) {
+  if (scanned_upper_alpha == 1 && word_len == 1) {
     *res = UPPER_ALPHA;
     return true;
   }
