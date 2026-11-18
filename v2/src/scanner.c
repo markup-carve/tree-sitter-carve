@@ -39,6 +39,9 @@ static bool carve_is_grapheme_extender(int32_t c) {
 
 // Carve 0.2 keeps plus only as a table continuation row (C2-B-059).
 #define CARVE2_PLUS_ATTACHMENT 0
+// In Carve 0.2 a spaced run (`- - -`, `* * *`) is nested markers, not a
+// thematic break (C2-B-160).
+#define CARVE2_SPACED_BREAK 0
 
 #ifdef DEBUG
 #include <assert.h>
@@ -312,7 +315,14 @@ typedef enum {
   TABLE_ROW_CONTINUATION_LINE,
   // Zero width, at a cell whose head is a marker run. See `cell_marker_run`.
   CELL_MARKER_BEGIN,
+  // `* [ ]`; LIST_MARKER_TASK_BEGIN is the `-` spelling (C2-B-049).
+  LIST_MARKER_TASK_STAR_BEGIN,
+  // Zero width, at a line that holds one include directive (C2-B-156).
+  INCLUDE_LINE_BEGIN,
 } TokenType;
+
+// The size of `valid_symbols`, for the copies that edit one entry.
+#define EXTERNAL_TOKEN_COUNT (INCLUDE_LINE_BEGIN + 1)
 
 // The different blocks in Carve that we track,
 // in order to match or close them properly.
@@ -1010,8 +1020,11 @@ static BlockType list_marker_to_block(TokenType type) {
     return LIST_DASH;
   case LIST_MARKER_STAR:
     return LIST_STAR;
+  // A task box is a fact of the item, not of the list (C2-B-049).
   case LIST_MARKER_TASK_BEGIN:
-    return LIST_TASK;
+    return LIST_DASH;
+  case LIST_MARKER_TASK_STAR_BEGIN:
+    return LIST_STAR;
   case LIST_MARKER_DEFINITION:
   case LIST_MARKER_DESCRIPTION:
     return LIST_DEFINITION;
@@ -1970,11 +1983,15 @@ static bool parse_indented_content_spacer(Scanner *s, TSLexer *lexer,
 /// the recorded content column, so `-   a` / blank / `  b` leaves the item.
 /// Inside a quote the line's indent counts from after the `>` prefix while
 /// `content_col` counts from the line start, so `data` stays the test there.
+// An item owns a line indented past its marker (C2-B-025), so the margin is
+// the marker column plus one, not the content column.
 static uint8_t list_item_margin(Scanner *s, Block *list) {
-  if (list->content_col == 0 || count_blocks(s, BLOCK_QUOTE) > 0) {
-    return list->data;
+  // A term owns no body, so a definition list keeps its content column.
+  if (list->type == LIST_DEFINITION && list->content_col != 0 &&
+      count_blocks(s, BLOCK_QUOTE) == 0) {
+    return list->content_col;
   }
-  return list->content_col;
+  return list->data;
 }
 
 /// Is `list` opened inside a quote's margin? Then `indent` counts from after
@@ -4565,7 +4582,8 @@ static bool quote_chain_from(Scanner *s, uint8_t number) {
     Block *b = *array_get(s->open_blocks, i);
     if (b->type != BLOCK_QUOTE) {
       if (b->type == SECTION || b->type == HEADING) continue;
-      if (seen >= number) return false;
+      // Blocks inside the quote do not move its marker.
+      if (seen >= number) return true;
       frame_between = true;
       continue;
     }
@@ -4609,8 +4627,10 @@ static bool quote_marker_at_column_gap(Scanner *s, uint8_t number,
           !outer_list_reached && column > enclosing_list->data &&
           column < enclosing_list->content_col;
       // Marker-line quotes in an outer list retain their existing band rule.
+      // The item owns only a `>` indented past its marker (C2-B-025).
       return b->content_col == 0 ||
           (seen == 1 && enclosing_list && !lazy_gap &&
+           column >= enclosing_list->data &&
            (column <= enclosing_list->content_col ||
             (!in_paragraph && column == b->content_col))) ||
           (s->state & STATE_LIST_CONTINUATION) ||
@@ -4773,7 +4793,8 @@ static uint8_t task_box_before_quote(Scanner *s, uint32_t marker_start_col) {
       marker_start_col == top->content_col)
     return top->box_shift;
   if (s->marker_end_col == 0 || marker_start_col != s->marker_end_col) return 0;
-  if (top->type == LIST_TASK && top->content_col != 0 && s->marker_end_col > top->content_col)
+  if ((top->type == LIST_DASH || top->type == LIST_STAR) && top->content_col != 0 &&
+      s->marker_end_col > top->content_col)
     return (uint8_t)(s->marker_end_col - top->content_col);
   return 0;
 }
@@ -5740,7 +5761,7 @@ static TokenType scan_unordered_list_marker_token(Scanner *s, TSLexer *lexer) {
   }
   if (scan_bullet_list_marker(s, lexer, '*')) {
     if (scan_task_list_marker(s, lexer)) {
-      return LIST_MARKER_TASK_BEGIN;
+      return LIST_MARKER_TASK_STAR_BEGIN;
     } else {
       return LIST_MARKER_STAR;
     }
@@ -6189,6 +6210,9 @@ static uint8_t enclosing_item_content_col(Scanner *s, Block *list) {
     Block *b = *array_get(s->open_blocks, i);
     if (b == list) {
       below = true;
+    } else if (below && is_list(b->type) && b->type != LIST_DEFINITION) {
+      // An item owns a line indented past its marker (C2-B-025, C2-B-055).
+      return b->data;
     } else if (below && (is_list(b->type) || b->type == BLOCK_QUOTE)) {
       return b->content_col;
     } else if (below && b->type == FOOTNOTE) {
@@ -6403,6 +6427,8 @@ static bool parse_list_marker_or_thematic_break(
   if (declined_run != NULL) {
     *declined_run = 0;
   }
+  const TokenType task_type =
+      marker == '*' ? LIST_MARKER_TASK_STAR_BEGIN : LIST_MARKER_TASK_BEGIN;
   // This is a bit ugly to do here, but eh, refactoring will look very ugly.
   bool check_frontmatter = (valid_symbols[FRONTMATTER_MARKER] ||
       valid_symbols[FRONTMATTER_UNCLOSED_MARKER]) && marker == '-';
@@ -6412,7 +6438,7 @@ static bool parse_list_marker_or_thematic_break(
 
   if (!check_frontmatter && !valid_symbols[marker_type] &&
       !valid_symbols[thematic_break_type] &&
-      !valid_symbols[LIST_MARKER_TASK_BEGIN]) {
+      !valid_symbols[task_type]) {
     return false;
   }
 
@@ -6462,7 +6488,7 @@ static bool parse_list_marker_or_thematic_break(
   bool marker_attribute = false;
   uint32_t attribute_width = 0;
   if (lexer->lookahead == '{' &&
-      (valid_symbols[marker_type] || valid_symbols[LIST_MARKER_TASK_BEGIN])) {
+      (valid_symbols[marker_type] || valid_symbols[task_type])) {
     // No rewind on failure, which is the same contract the ordered path uses:
     // an invalid payload (`-{not!} item`) refuses the token and the line parses
     // as a paragraph, which is what the attribute grammar says it is.
@@ -6477,7 +6503,7 @@ static bool parse_list_marker_or_thematic_break(
   // We should prioritize a thematic break over lists.
   // We need to remember if a '- ' is found, which means we can open a list.
   bool can_be_list_marker =
-      (valid_symbols[marker_type] || valid_symbols[LIST_MARKER_TASK_BEGIN]) &&
+      (valid_symbols[marker_type] || valid_symbols[task_type]) &&
       lexer->lookahead == ' ';
 
   // We have now checked the two first characters.
@@ -6566,7 +6592,7 @@ static bool parse_list_marker_or_thematic_break(
         break;
       }
     }
-    if (spaced_ok && spaced >= 3) {
+    if (CARVE2_SPACED_BREAK && spaced_ok && spaced >= 3) {
       lexer->result_symbol = thematic_break_type;
       mark_end(s, lexer);
       return true;
@@ -6628,13 +6654,13 @@ static bool parse_list_marker_or_thematic_break(
   }
 
   if (can_be_list_marker) {
-    if (valid_symbols[LIST_MARKER_TASK_BEGIN] && !spaced_probe_refused) {
+    if (valid_symbols[task_type] && !spaced_probe_refused) {
       if (scan_task_list_marker(s, lexer)) {
-        if (!ensure_list_open(s, LIST_TASK, list_indent + 1, start_col)) return false;
+        if (!ensure_list_open(s, list_type, list_indent + 1, start_col)) return false;
         record_list_marker_margin(s, marker_content_col, false);
         while (lexer->lookahead == ' ') advance(s, lexer);
         s->marker_end_col = list_column_u8(line_column(s, lexer) + column_offset);
-        lexer->result_symbol = LIST_MARKER_TASK_BEGIN;
+        lexer->result_symbol = task_type;
         return true;
       }
     }
@@ -7431,7 +7457,7 @@ static bool parse_list_item_end(Scanner *s, TSLexer *lexer,
         break;
       }
     }
-    if (spaced_ok && spaced >= 3) next_marker = IGNORED;
+    if (CARVE2_SPACED_BREAK && spaced_ok && spaced >= 3) next_marker = IGNORED;
   }
 
   bool hard_boundary = (list->flags & BLOCK_FLAG_LIST_HARD_BOUNDARY) != 0;
@@ -7809,6 +7835,93 @@ static bool parse_colon(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     return true;
   }
   return false;
+}
+
+static bool include_name_char(int32_t c) {
+  return carve_is_alnum_ascii(c) || c == '_' || c == '-';
+}
+
+/// Is the rest of the line, past `{{`, one include directive (C2-B-201 to
+/// C2-B-204)? The lexer is scratch: the caller has marked the token end.
+static bool include_line_ahead(TSLexer *lexer) {
+#define AT_END (at_line_end(lexer) || lexer->eof(lexer))
+  if (lexer->lookahead != ' ') return false;
+  while (lexer->lookahead == ' ') lexer->advance(lexer, false);
+  uint32_t length = 0;
+  if (lexer->lookahead == '"') {
+    lexer->advance(lexer, false);
+    while (lexer->lookahead != '"') {
+      if (AT_END) return false;
+      if (lexer->lookahead == '\\') {
+        lexer->advance(lexer, false);
+        if (AT_END) return false;
+      }
+      lexer->advance(lexer, false);
+      ++length;
+    }
+    lexer->advance(lexer, false);
+  } else if (lexer->lookahead == 0x201C) {
+    lexer->advance(lexer, false);
+    while (lexer->lookahead != 0x201D) {
+      if (AT_END) return false;
+      lexer->advance(lexer, false);
+      ++length;
+    }
+    lexer->advance(lexer, false);
+  } else {
+    while (!AT_END && lexer->lookahead != ' ' && lexer->lookahead != '\t' &&
+           lexer->lookahead != '#' && lexer->lookahead != '@' &&
+           lexer->lookahead != '}' && lexer->lookahead != '"' &&
+           lexer->lookahead != 0x201C) {
+      lexer->advance(lexer, false);
+      ++length;
+    }
+  }
+  if (length == 0) return false;
+  uint32_t spaces = 0;
+  while (lexer->lookahead == ' ') { lexer->advance(lexer, false); ++spaces; }
+  if (lexer->lookahead == '#') {
+    lexer->advance(lexer, false);
+    if (!carve_is_alnum_ascii(lexer->lookahead) && lexer->lookahead != '_') return false;
+    while (include_name_char(lexer->lookahead)) lexer->advance(lexer, false);
+    spaces = 0;
+    while (lexer->lookahead == ' ') { lexer->advance(lexer, false); ++spaces; }
+  }
+  while (lexer->lookahead == '@') {
+    lexer->advance(lexer, false);
+    if (!(carve_is_alnum_ascii(lexer->lookahead) && !(lexer->lookahead >= '0' && lexer->lookahead <= '9')) && lexer->lookahead != '_') return false;
+    while (include_name_char(lexer->lookahead)) lexer->advance(lexer, false);
+    if (lexer->lookahead == ':') {
+      lexer->advance(lexer, false);
+      int32_t quote = lexer->lookahead;
+      if (quote == '"' || quote == '\'') {
+        lexer->advance(lexer, false);
+        while (lexer->lookahead != quote) {
+          if (AT_END) return false;
+          if (lexer->lookahead == '\\') {
+            lexer->advance(lexer, false);
+            if (AT_END) return false;
+          }
+          lexer->advance(lexer, false);
+        }
+        lexer->advance(lexer, false);
+      } else {
+        while (!AT_END && lexer->lookahead != '@' && lexer->lookahead != '}' &&
+               lexer->lookahead != ' ' && lexer->lookahead != '\t') {
+          lexer->advance(lexer, false);
+        }
+      }
+    }
+    spaces = 0;
+    while (lexer->lookahead == ' ') { lexer->advance(lexer, false); ++spaces; }
+  }
+  if (spaces == 0 || lexer->lookahead != '}') return false;
+  lexer->advance(lexer, false);
+  if (lexer->lookahead != '}') return false;
+  lexer->advance(lexer, false);
+  while (lexer->lookahead == ' ' || lexer->lookahead == '\t') lexer->advance(lexer, false);
+  return AT_END;
+#undef AT_END
 }
 
 static bool parse_heading(Scanner *s, TSLexer *lexer,
@@ -10035,6 +10148,14 @@ static bool parse_open_curly_bracket(Scanner *s, TSLexer *lexer,
       lexer->result_symbol = LITERAL_RUN;
       return true;
     }
+    // A directive alone on its line is a block (C2-B-156).
+    if (valid_symbols[INCLUDE_LINE_BEGIN] && !valid_symbols[ERROR]) {
+      mark_end(s, lexer);
+      if (include_line_ahead(lexer)) {
+        lexer->result_symbol = INCLUDE_LINE_BEGIN;
+        return true;
+      }
+    }
     return false;
   }
   if (lexer->lookahead == '=' && !kind_open_in_scope(s, HIGHLIGHTED)) {
@@ -10509,7 +10630,8 @@ static bool end_paragraph_in_block_quote(Scanner *s, TSLexer *lexer,
     return false;
   }
   // A first `>` left of the content column of the item holding the outermost
-  // quote opens a new quote outside the item: `- > q` / `> r`.
+  // quote is no mark of that quote. It would open a new quote, which is no
+  // interrupter, so the line is lazy (C2-B-024): `- > q` / `> r`.
   Block *outer = find_block_from_bottom(s, BLOCK_QUOTE);
   Block *holder = NULL;
   for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
@@ -10519,7 +10641,9 @@ static bool end_paragraph_in_block_quote(Scanner *s, TSLexer *lexer,
   }
   if (holder && first_marker_col < holder->content_col &&
       !(s->state & STATE_LIST_CONTINUATION)) {
-    return true;
+    *markers_seen = 0;
+    s->glued_quote_marker = true;
+    return false;
   }
 
   if (marker_count < block->data && !ending_newline && find_list(s) &&
@@ -10689,8 +10813,10 @@ keep_reading:
   // than beside the depth-0 case below, because this function has already
   // consumed the markers the check needs.
   //
-  if (marker_count > count_blocks(s, BLOCK_QUOTE) && !at_nesting_cap(s)) {
-    return true;
+  // In 0.2 a quote is no interrupter (C2-B-024): the extra `>` is text of a
+  // lazy line.
+  if (marker_count > count_blocks(s, BLOCK_QUOTE)) {
+    return false;
   }
 
   if (marker_count == count_blocks(s, BLOCK_QUOTE) &&
@@ -11523,6 +11649,21 @@ static bool abbreviation_definition_follows(Scanner *s, TSLexer *lexer) {
 /// in a list item: the line folds in lazily unless it is a sibling marker of
 /// an enclosing list (corpus 448, 507).
 static bool marker_folds_into_nested_paragraph(Scanner *s, uint32_t column) {
+  // A list marker interrupts only on a line that carries the quote mark of
+  // every quote its list sits in (C2-B-020); otherwise it is a lazy line.
+  if (find_list(s) != NULL) {
+    int seen = s->lazy_drop_markers > 0 ? s->lazy_drop_markers
+               : s->paragraph_markers_seen < 0 ? 0 : s->paragraph_markers_seen;
+    bool reachable = false;
+    for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
+      Block *b = *array_get(s->open_blocks, i);
+      if (is_list(b->type) && b->type != LIST_DEFINITION &&
+          quotes_below(s, b) <= seen) {
+        reachable = true;
+      }
+    }
+    if (!reachable) return true;
+  }
   // A line inside every open quote, with no item or note body open in the
   // innermost one, continues that quote's paragraph, which no list marker
   // interrupts (PART 9 section 10 I2).
@@ -11544,7 +11685,9 @@ static bool marker_folds_into_nested_paragraph(Scanner *s, uint32_t column) {
     for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
       Block *b = *array_get(s->open_blocks, i);
       if (b == missing) break;
-      if (is_list(b->type) && column < b->content_col) reachable = true;
+      // Any list the line's marks reach takes the marker: as a sibling, a
+      // nested list past an item's marker, or a new list (C2-B-015, C2-B-021).
+      if (is_list(b->type) && b->type != LIST_DEFINITION) reachable = true;
     }
     if (missing && !reachable) return true;
   }
@@ -11572,7 +11715,8 @@ static bool marker_folds_into_nested_paragraph(Scanner *s, uint32_t column) {
       if (is_list(b->type) && b->type != LIST_DEFINITION) return false;
       continue;
     }
-    if (is_list(b->type) && b->data == column + 1) return false;
+    // At an item's list column or indented past its marker (C2-B-021).
+    if (is_list(b->type) && b->data <= column + 1) return false;
   }
   return true;
 }
@@ -11635,7 +11779,7 @@ static bool scan_row_or_break_at_paragraph_end(Scanner *s, TSLexer *lexer) {
           break;
         }
       }
-      if (at_margin && spaced_ok && spaced >= 3) {
+      if (CARVE2_SPACED_BREAK && at_margin && spaced_ok && spaced >= 3) {
         return true;
       }
     }
@@ -11683,6 +11827,11 @@ static bool paragraph_block_opener_ahead(Scanner *s, TSLexer *lexer, int markers
   // C2-B-014 to C2-B-024: only an accepted interrupter closes prose.
   if (scan_code_fence_at_paragraph_end(s, lexer, markers_seen)) return true;
   if (lexer->lookahead == '|') return scan_row_or_break_at_paragraph_end(s, lexer);
+  // In a list a `*` line may be a sibling marker as well as a break, and the
+  // run cannot be read twice: the shared probe answers both.
+  if (lexer->lookahead == '*' && find_list(s)) {
+    return scan_row_or_break_at_paragraph_end(s, lexer);
+  }
   if (lexer->lookahead == '*') {
     uint8_t stars = consume_chars(s, lexer, '*');
     consume_whitespace(s, lexer);
@@ -15168,7 +15317,7 @@ static bool block_reading_ahead(int32_t c, const bool *valid_symbols) {
   switch (c) {
   case '*':
     return valid_symbols[LIST_MARKER_STAR] ||
-           valid_symbols[LIST_MARKER_TASK_BEGIN] ||
+           valid_symbols[LIST_MARKER_TASK_STAR_BEGIN] ||
            valid_symbols[THEMATIC_BREAK_STAR];
   case '~':
     return valid_symbols[CODE_BLOCK_BEGIN] || valid_symbols[CODE_BLOCK_END] ||
@@ -15649,7 +15798,7 @@ static bool parse_attribute_mark_begin(Scanner *s, TSLexer *lexer,
   }
   // The attribute's own path: the fallback is not taken here, so its marker
   // must not steer the bookkeeping to the fallback's branch.
-  bool attribute_only[CELL_MARKER_BEGIN + 1];
+  bool attribute_only[EXTERNAL_TOKEN_COUNT];
   memcpy(attribute_only, valid_symbols, sizeof(attribute_only));
   attribute_only[IN_FALLBACK] = false;
   if (!mark_span_begin(s, lexer, attribute_only, CURLY_BRACKET_SPAN, shared)) {
@@ -15883,7 +16032,7 @@ bool tree_sitter_carve2_external_scanner_scan(void *payload, TSLexer *lexer,
   // the `=` is reduced, which offers the highlight check; after node reuse the
   // goto state does not. A check its lookahead already fails is not pending,
   // so both states read the spot the same way.
-  bool without_check[CELL_MARKER_BEGIN + 1];
+  bool without_check[EXTERNAL_TOKEN_COUNT];
   const bool *symbols = valid_symbols;
   if (valid_symbols[HIGHLIGHTED_OPEN_CHECK] && !valid_symbols[ERROR] &&
       highlighted_open_declines(lexer->lookahead)) {
@@ -16261,7 +16410,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       (s->state & STATE_BARE_SPAN_OPENER)) {
     defer_column(s);
     mark_end(s, lexer);
-    bool real_symbols[CELL_MARKER_BEGIN + 1];
+    bool real_symbols[EXTERNAL_TOKEN_COUNT];
     memcpy(real_symbols, valid_symbols, sizeof(real_symbols));
     real_symbols[IN_FALLBACK] = false;
     bool same_marker_before = (s->after_closer_char == '=' || s->after_closer_char == '_') &&
@@ -16279,7 +16428,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       (s->state & STATE_BARE_SPAN_OPENER) && lexer->lookahead != '*') {
     defer_column(s);
     mark_end(s, lexer);
-    bool real_symbols[CELL_MARKER_BEGIN + 1];
+    bool real_symbols[EXTERNAL_TOKEN_COUNT];
     memcpy(real_symbols, valid_symbols, sizeof(real_symbols));
     real_symbols[IN_FALLBACK] = false;
     if (lexer->lookahead != '/' && mark_span_begin(s, lexer, real_symbols, EMPHASIS, EMPHASIS_QUALIFIED_MARK_BEGIN))
@@ -16294,7 +16443,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       (s->state & STATE_BARE_SPAN_OPENER)) {
     defer_column(s);
     mark_end(s, lexer);
-    bool real_symbols[CELL_MARKER_BEGIN + 1];
+    bool real_symbols[EXTERNAL_TOKEN_COUNT];
     memcpy(real_symbols, valid_symbols, sizeof(real_symbols));
     real_symbols[IN_FALLBACK] = false;
     if (lexer->lookahead != '*' &&
@@ -18388,6 +18537,10 @@ static char *token_type_s(TokenType t) {
     return "LIST_MARKER_STAR";
   case LIST_MARKER_TASK_BEGIN:
     return "LIST_MARKER_TASK_BEGIN";
+  case LIST_MARKER_TASK_STAR_BEGIN:
+    return "LIST_MARKER_TASK_STAR_BEGIN";
+  case INCLUDE_LINE_BEGIN:
+    return "INCLUDE_LINE_BEGIN";
   case LIST_MARKER_DEFINITION:
     return "LIST_MARKER_DEFINITION";
   case LIST_MARKER_DESCRIPTION:

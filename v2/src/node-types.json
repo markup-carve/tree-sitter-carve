@@ -1601,6 +1601,10 @@
           "named": true
         },
         {
+          "type": "include_directive",
+          "named": true
+        },
+        {
           "type": "link_reference_definition",
           "named": true
         },
@@ -1870,6 +1874,10 @@
         },
         {
           "type": "heading",
+          "named": true
+        },
+        {
+          "type": "include_directive",
           "named": true
         },
         {
@@ -3085,6 +3093,10 @@
           "named": true
         },
         {
+          "type": "include_directive",
+          "named": true
+        },
+        {
           "type": "link_reference_definition",
           "named": true
         },
@@ -3181,6 +3193,10 @@
         },
         {
           "type": "heading",
+          "named": true
+        },
+        {
+          "type": "include_directive",
           "named": true
         },
         {
@@ -3724,6 +3740,10 @@
         },
         {
           "type": "footnote",
+          "named": true
+        },
+        {
+          "type": "include_directive",
           "named": true
         },
         {

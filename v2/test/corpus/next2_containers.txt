@@ -1,0 +1,253 @@
+===============================================================================
+C2-B-049: boxed and plain items with one bullet share a list
+===============================================================================
+- [ ] a
+- b
+- [x] c
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_task
+        checkmark: (unchecked))
+      content: (list_item_content
+        (paragraph)))
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)))
+    (list_item
+      marker: (list_marker_task
+        checkmark: (checked))
+      content: (list_item_content
+        (paragraph)))))
+
+===============================================================================
+C2-B-049: a star list takes boxed and plain items
+===============================================================================
+* [ ] a
+* b
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_task
+        checkmark: (unchecked))
+      content: (list_item_content
+        (paragraph)))
+    (list_item
+      marker: (list_marker_star)
+      content: (list_item_content
+        (paragraph)))))
+
+===============================================================================
+C2-B-049: a plain sibling after a boxed item with two lines
+===============================================================================
+- [ ] q
+  r
+- b
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_task
+        checkmark: (unchecked))
+      content: (list_item_content
+        (paragraph)))
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)))))
+
+===============================================================================
+C2-B-024: a deeper quote mark in an open paragraph is text
+===============================================================================
+> a
+> > b
+
+-------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (paragraph
+        (block_quote_marker)))))
+
+===============================================================================
+C2-B-024: a deeper quote line after a continued paragraph is text
+===============================================================================
+> a
+> b
+> > c
+
+-------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (paragraph
+        (block_quote_marker)
+        (block_quote_marker)))))
+
+===============================================================================
+C2-B-021: a marker at the list column closes the item quote
+===============================================================================
+- > q
+- r
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (block_quote
+          (block_quote_marker)
+          content: (content
+            (paragraph)))))
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)))))
+
+===============================================================================
+C2-B-025: a line past the marker after a blank stays in the item
+===============================================================================
+- a
+
+  b
+
+c
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)
+        (paragraph))))
+  (paragraph))
+
+===============================================================================
+C2-B-055: markers at the nested list column are siblings
+===============================================================================
+- a
+  - b
+  - c
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)
+        (list
+          (list_item
+            marker: (list_marker_dash)
+            content: (list_item_content
+              (paragraph)))
+          (list_item
+            marker: (list_marker_dash)
+            content: (list_item_content
+              (paragraph))))))))
+
+===============================================================================
+C2-B-156: an include directive alone on its line is a block
+===============================================================================
+{{ a.crv @shift:x @size:2 }}
+
+-------------------------------------------------------------------------------
+
+(document
+  (include_directive
+    (include_open)
+    path: (include_path)
+    option: (include_option
+      name: (include_option_name)
+      (include_option_separator)
+      value: (include_option_value))
+    option: (include_option
+      name: (include_option_name)
+      (include_option_separator)
+      value: (include_option_value))
+    (include_close)))
+
+===============================================================================
+C2-B-156: two include blocks
+===============================================================================
+{{ a.crv }}
+
+{{ b.crv }}
+
+-------------------------------------------------------------------------------
+
+(document
+  (include_directive
+    (include_open)
+    path: (include_path)
+    (include_close))
+  (include_directive
+    (include_open)
+    path: (include_path)
+    (include_close)))
+
+===============================================================================
+C2-B-156: an include line below text is a lazy line
+===============================================================================
+text
+{{ part.crv }}
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (include_directive
+      (include_open)
+      path: (include_path)
+      (include_close))))
+
+===============================================================================
+C2-B-156: an include block in a list item
+===============================================================================
+- {{ a.crv }}
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (include_directive
+          (include_open)
+          path: (include_path)
+          (include_close))))))
+
+===============================================================================
+C2-B-156: an include block in a quote
+===============================================================================
+> {{ a.crv }}
+
+-------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (include_directive
+        (include_open)
+        path: (include_path)
+        (include_close)))))

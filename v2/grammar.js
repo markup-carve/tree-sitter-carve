@@ -417,6 +417,29 @@ function codeBlock($, beginToken) {
   );
 }
 
+function includeDirective($, open) {
+  return seq(
+    open,
+    $._include_pad,
+    field("path", $.include_path),
+    // The section is NOT a slot of its own here. It was, and with the pad
+    // between parts no longer mandatory that spelling is ambiguous with the
+    // `section` arm of `_include_part`: after `path include_section`
+    // nothing decides which of the two produced it, and `tree-sitter
+    // generate` refuses the grammar. One arm carries it, and it keeps the
+    // same `section` field, so `src/node-types.json` does not move.
+    //
+    // SPELLED AS AN EXPLICIT CHOICE, not `optional($._include_pad)`. Under
+    // the pinned tree-sitter-cli 0.22.6 the `optional` form generates a
+    // parser that rejects `{{ c.crv@shift:1 }}` outright, with `generate`
+    // exiting 0 and warning nothing; 0.26.8 accepts the same grammar. Do
+    // not fold this back while 0.22.6 is the pin.
+    repeat(choice(seq($._include_pad, $._include_part), $._include_part)),
+    $._include_pad,
+    alias("}}", $.include_close),
+  );
+}
+
 module.exports = grammar({
   name: "carve2",
 
@@ -566,6 +589,16 @@ module.exports = grammar({
         $.caption,
         $.block_attribute,
         $.callout_list,
+        $._include_block,
+      ),
+
+    // A directive alone on its line is a block of one line (C2-B-156); the
+    // scanner checks the shape of C2-B-201 to C2-B-204 before it opens one.
+    _include_block: ($) =>
+      seq(
+        alias($._include_block_directive, $.include_directive),
+        optional($._whitespace1),
+        choice($._newline, $._eof_or_newline),
       ),
 
     // A heading ends at its newline and nothing folds into it (SINGLE-LINE
@@ -601,7 +634,6 @@ module.exports = grammar({
         choice(
           $._list_dash,
           $._list_star,
-          $._list_task,
           $._list_decimal_period,
           $._list_decimal_paren,
           $._list_decimal_parens,
@@ -619,8 +651,13 @@ module.exports = grammar({
           $._list_upper_roman_parens,
         ),
       ),
+    // A task box is a fact of its item, so boxed and plain items with one
+    // bullet character are siblings in one list (C2-B-049).
     _list_dash: ($) =>
-      seq(repeat1(alias($._list_item_dash, $.list_item)), $._block_close),
+      seq(
+        repeat1(alias(choice($._list_item_dash, $._list_item_task), $.list_item)),
+        $._block_close,
+      ),
     _list_item_dash: ($) =>
       seq(
         optional($._block_quote_prefix),
@@ -629,7 +666,12 @@ module.exports = grammar({
       ),
 
     _list_star: ($) =>
-      seq(repeat1(alias($._list_item_star, $.list_item)), $._block_close),
+      seq(
+        repeat1(
+          alias(choice($._list_item_star, $._list_item_task_star), $.list_item),
+        ),
+        $._block_close,
+      ),
     _list_item_star: ($) =>
       seq(
         optional($._block_quote_prefix),
@@ -637,8 +679,19 @@ module.exports = grammar({
         field("content", $.list_item_content),
       ),
 
-    _list_task: ($) =>
-      seq(repeat1(alias($._list_item_task, $.list_item)), $._block_close),
+    _list_item_task_star: ($) =>
+      seq(
+        optional($._block_quote_prefix),
+        field("marker", alias($._list_marker_task_star, $.list_marker_task)),
+        field("content", $.list_item_content),
+      ),
+    _list_marker_task_star: ($) =>
+      seq(
+        $._list_marker_task_star_begin,
+        optional($._whitespace1),
+        field("checkmark", choice($.checked, $.unchecked)),
+        $._whitespace1,
+      ),
     _list_item_task: ($) =>
       seq(
         optional($._block_quote_prefix),
@@ -2561,27 +2614,11 @@ module.exports = grammar({
     // this rule `{{ ch.crv #intro }}` highlights `#intro` as a tag.
     //
     // One token, so it cannot span a line break and cannot nest.
-    include_directive: ($) =>
-      seq(
-        alias("{{", $.include_open),
-        $._include_pad,
-        field("path", $.include_path),
-        // The section is NOT a slot of its own here. It was, and with the pad
-        // between parts no longer mandatory that spelling is ambiguous with the
-        // `section` arm of `_include_part`: after `path include_section`
-        // nothing decides which of the two produced it, and `tree-sitter
-        // generate` refuses the grammar. One arm carries it, and it keeps the
-        // same `section` field, so `src/node-types.json` does not move.
-        //
-        // SPELLED AS AN EXPLICIT CHOICE, not `optional($._include_pad)`. Under
-        // the pinned tree-sitter-cli 0.22.6 the `optional` form generates a
-        // parser that rejects `{{ c.crv@shift:1 }}` outright, with `generate`
-        // exiting 0 and warning nothing; 0.26.8 accepts the same grammar. Do
-        // not fold this back while 0.22.6 is the pin.
-        repeat(choice(seq($._include_pad, $._include_part), $._include_part)),
-        $._include_pad,
-        alias("}}", $.include_close),
-      ),
+    include_directive: ($) => includeDirective($, alias("{{", $.include_open)),
+    // The same directive in block position: its `{{` is the scanner's token,
+    // emitted only where the whole line has the directive's shape.
+    _include_block_directive: ($) =>
+      includeDirective($, alias($._include_line_begin, $.include_open)),
 
     // TOLERANT after the path, deliberately. The one-token rule this replaces
     // matched anything between the braces, and a grammar that ERRORS on a
@@ -2638,7 +2675,14 @@ module.exports = grammar({
     // Every part is a token, so the `#` and `@` inside stay part of the
     // directive rather than reaching the inline rules.
     include_path: (_) =>
-      token(choice(/[^#@}\s"][^#@}\s]*/, /"(?:\\.|[^"\\\n])*"/)),
+      token(
+        choice(
+          /[^#@}\s"“][^#@}\s]*/,
+          /"(?:\\.|[^"\\\n])*"/,
+          // A path in curly quotes is read as written (C2-B-202).
+          /“[^”\n]+”/,
+        ),
+      ),
     // Higher token precedence than `include_extra`, which matches the same
     // characters: without it the tolerant catch-all wins the tie and a valid
     // selector is reported as "something else".
@@ -3553,5 +3597,10 @@ module.exports = grammar({
     $._table_row_continuation_plus,
     $._table_row_continuation_line,
     $._cell_marker_begin,
+    // `* [ ]`; `_list_marker_task_begin` is the `-` spelling. Two tokens so a
+    // boxed item joins the list of its own bullet character (C2-B-049).
+    $._list_marker_task_star_begin,
+    // The `{{` of a line that holds one include directive and nothing else.
+    $._include_line_begin,
   ],
 });
