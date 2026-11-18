@@ -11818,6 +11818,11 @@ static bool paragraph_block_opener_ahead(Scanner *s, TSLexer *lexer, int markers
   // C2-B-014 to C2-B-024: only an accepted interrupter closes prose.
   if (scan_code_fence_at_paragraph_end(s, lexer, markers_seen)) return true;
   if (lexer->lookahead == '|') return scan_row_or_break_at_paragraph_end(s, lexer);
+  // In a list a `*` line may be a sibling marker as well as a break, and the
+  // run cannot be read twice: the shared probe answers both.
+  if (lexer->lookahead == '*' && find_list(s)) {
+    return scan_row_or_break_at_paragraph_end(s, lexer);
+  }
   if (lexer->lookahead == '*') {
     uint8_t stars = consume_chars(s, lexer, '*');
     consume_whitespace(s, lexer);
