@@ -1,19 +1,6 @@
 // A runner must know how many things it compared, and say so when that number
-// is not what it should be.
-//
-// markup-carve/carve#755 collects the recurring shape: a check that reports
-// success without having verified anything. This repository is in that catalog
-// twice already - markup-carve/tree-sitter-carve#38 and #60, both about
-// over-acceptance being invisible - and the sweep that followed found four
-// runners here that exit 0 over an empty population, measured by emptying it.
-//
-// The variant that bites hardest here is the one the ticket names fourth: a gate
-// whose ability to fail depends on there being something already wrong. Three of
-// this repository's runners decide "clean run" by reconciling against a recorded
-// ledger in test/coverage.json, so an empty population reads as a pass the
-// moment that ledger is empty - and empty is the state every one of those
-// ledgers is trying to reach. `batteryDisagreements` and
-// `invisibleOverAcceptance` are at zero today.
+// is not what it should be: a check over an empty population would otherwise
+// report success without having verified anything (markup-carve/carve#755).
 //
 // The wording is carve's scripts/spec/participants.mjs, unaltered on purpose.
 

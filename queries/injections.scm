@@ -31,8 +31,8 @@
 
 (raw_inline
   (content) @injection.content
-  (raw_inline_attribute
-    (language) @injection.language))
+  (raw_inline_attribute) @injection.language
+  (#offset! @injection.language 0 2 0 -1))
 
 (frontmatter
   (language) @injection.language

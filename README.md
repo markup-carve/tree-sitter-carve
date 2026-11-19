@@ -3,18 +3,15 @@
 Tree-sitter grammar for [Carve](https://markup-carve.github.io/carve/), a
 lightweight markup language for readable source and structured documents.
 
-The `next2` branch also contains a Carve 0.2 grammar in `v2/`. The root
-grammar and queries continue to describe Carve 0.1. To check the 0.2 parser,
-run `cd v2 && ../node_modules/.bin/tree-sitter generate --no-bindings &&
-../node_modules/.bin/tree-sitter test`. Editor queries for 0.2 are in
-`v2/queries/`.
+This grammar describes Carve 0.2. The Carve 0.1 grammar is gone; the 0.1.x
+releases of this package keep it.
 
 It provides editor-facing parsing, highlighting, and structural navigation for
 Carve syntax, including:
 
 - `/italic/`, `*bold*`, and `/*bold italic*/`
-- `=highlight=`, plus the braced-only `{^superscript^}` and `{,subscript,}`
-  (a bare `^` or `,` is literal text)
+- the braced-only `{=highlight=}`, `{^superscript^}` and `{,subscript,}`
+  (a bare `=`, `^` or `,` is literal text)
 - `$` plus backtick math spans, and `$$` plus backtick display math spans
 - `:name[content]` inline extensions, `@mentions`, `#tags`, and `:emoji:`
 - `%%` line comments, trailing inline `%%` comments, and `%%%` fenced comments
@@ -28,10 +25,6 @@ aims to produce useful, error-free syntax trees for the covered Carve corpus.
 The [Carve specification](https://markup-carve.github.io/carve/) defines the
 language; engine conformance and rendered output are checked in their
 respective implementation repositories.
-
-The grammar is intentionally explicit about unsupported corpus categories.
-`test/coverage.json` records each category as covered or skipped with a reason,
-so new syntax cannot silently fall outside the checks.
 
 ## Browser use
 
@@ -47,7 +40,7 @@ const carve = await Language.load("/parsers/tree-sitter-carve.wasm");
 const parser = new Parser();
 parser.setLanguage(carve);
 
-const tree = parser.parse("# Hello");
+const tree = parser.parse("= Hello");
 const highlights = await fetch("/queries/carve-highlights.scm").then(
   (response) => response.text(),
 );
@@ -67,6 +60,4 @@ example above uses the 0.27.0 API.
 ## Development
 
 Contributor setup, corpus checks, generated-artifact hygiene, and maintenance
-notes are in the [development guide](docs/development.md). The
-[September 30 audit](docs/spec-engine-audit-20260930.md) records remaining syntax
-gaps and the added editor queries.
+notes are in the [development guide](docs/development.md).

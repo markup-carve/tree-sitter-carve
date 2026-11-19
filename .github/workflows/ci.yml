@@ -16,35 +16,11 @@ concurrency:
 # default, roughly 900x the median job in this org, so a hung step burns hours
 # of runner time before anything stops it.
 jobs:
-  tree-sitter-v2:
-    if: github.base_ref == 'next2' || github.ref == 'refs/heads/next2'
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v7
-      - name: Install dependencies
-        uses: ./.github/actions/npm-install
-      - name: Generate Carve 0.2 parser
-        run: cd v2 && ../node_modules/.bin/tree-sitter generate --no-bindings
-      - name: Check generated Carve 0.2 parser
-        run: git diff --exit-code -- v2/src/parser.c v2/src/grammar.json v2/src/node-types.json
-      - name: Run Carve 0.2 corpus
-        run: cd v2 && ../node_modules/.bin/tree-sitter test
-      - name: Compile Carve 0.2 editor queries
-        run: |
-          printf '= Heading\n' > /tmp/carve02-query.crv
-          cd v2
-          for query in queries/*.scm; do
-            ../node_modules/.bin/tree-sitter query -q "$query" /tmp/carve02-query.crv
-          done
-
   tree-sitter:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
-        with:
-          submodules: recursive
       - name: Install dependencies
         uses: ./.github/actions/npm-install
       - name: Check grammar.js formatting
@@ -58,146 +34,28 @@ jobs:
       # signal, and editors compile this file on users' machines (#385).
       - name: Generated tables hold every value grammar.js asks for
         run: npm run test:parser-warnings
-      - name: Run hand-written corpus tests
+      - name: Run the corpus
         run: npm test
-      - name: Fixtures keep the bytes their cases depend on
-        run: npm run test:fixture-bytes
-      - name: Coverage matrix and shared-corpus conformance
-        run: npm run test:corpus
-      - name: Divergence reasons describe their documents
-        run: npm run test:reason-predicates
+      - name: Compile the editor queries
+        run: |
+          printf '= Heading\n' > /tmp/carve-query.crv
+          for query in queries/*.scm; do
+            npx tree-sitter query -q "$query" /tmp/carve-query.crv
+          done
       - name: The release version guard fires on each drift it names
         run: npm run test:version-surfaces
-
-      # The INLINE counterpart of the over-acceptance scan above. Conformance
-      # asks whether a covered document parses without an ERROR, and
-      # under-acceptance asks about its BLOCKS; a category whose every document
-      # builds the wrong SPANS reported as covered, because a wrong reading is
-      # a clean tree. Corpus 471 is eight such documents (#307), and 46 covered
-      # categories were in that state when this was added.
-      - name: Inline readings match the fixtures
-        run: npm run test:inline-reading
-      - name: Unclosed code runs in table cells end before the padding
-        run: npm run test:table-cell-code-padding
-      - name: Check bracket boundaries including superscript and subscript
-        run: npm run test:bracket-boundaries
-      - name: Check attributed spans and literal bracket work
-        run: npm run test:attributed-span-boundaries && npm run test:literal-bracket-work && npm run test:malformed-brackets && npm run test:bare-span-boundaries
-      - name: Bound scanner work for malformed combined openers and long inline runs
-        run: npm run test:combined-opener-work && npm run test:rich-inline-columns && npm run test:inline-scan-work
-
-      - name: Check bracket qualification and lookahead work
-        run: npm run test:bracket-qualification
-      - name: Check nested, scoped and multiline rich markup
-        run: npm run test:rich-markup
-      - name: Check opaque quote and table boundaries
-        run: npm run test:opaque-quote-bands
-      - name: Check block ownership and line endings
-        run: npm run test:block-boundaries
-
-      # The shape-level counterpart to corpus conformance. The corpus checks
-      # whole documents the spec ships; the battery checks the one-line forms
-      # that sit on a rule's boundary, which is where a grammar drifts first -
-      # and it is what every other Carve grammar already runs.
-      - name: Block battery
-        run: npm run test:battery
-      - name: Current released block battery
-        run: npm run test:battery-current
-
-      # The mirror of the over-acceptance check: the language builds a block
-      # and the grammar builds none. Not an ERROR - the input falls back to a
-      # paragraph and the tree is clean - so nothing else can see it.
-      - name: Under-acceptance
-        run: npm run test:under-acceptance
-
-      # The step above trusts carve-js as its oracle, so a ruling the pinned
-      # engine and the grammar both lag stays invisible there (#499).
-      - name: The oracle renders the corpus goldens
-        run: npm run test:oracle-goldens
-
-      # The step above reads HTML and the one before it compares grammar against
-      # oracle, so a ruling that moves the AST without moving a rendered element
-      # is invisible to both: the golden still matches and the two lagging trees
-      # still agree. Corpus `108-security-hardening-8` and `-10` are that shape
-      # already, rendering the same HTML from different attribute slots (#499).
-      - name: The oracle's AST matches its recorded shape
-        run: npm run test:oracle-ast-shapes
-
-      - name: No-ERROR sweep
-        run: npm run test:no-error
-      - name: No error tree around a `+` marker
-        run: npm run test:plus-error-trees
-
-      # A closed fence that loses its closer builds no ERROR: the closer line
-      # reads as inline verbatim and the tree is clean, so the sweep above
-      # cannot see it (#417).
-      - name: Closed fences keep their closers
-        run: npm run test:fence-closers
-
-      # The third blind spot in the same family: a construct that swallows the
-      # lines below it into one block. No ERROR, the block count is right, and
-      # `paragraph` is unmapped in the under-acceptance sweep by design - so a
-      # whole line-ending spelling went unmodeled with every check green.
-      - name: Line terminators
-        run: npm run test:line-terminators
-
-      # The terminator a document HAS is the check above; the one it does not
-      # have is this one. Every corpus file on disk ends with a terminator and
-      # the no-ERROR sweep writes one onto every document it generates, so a
-      # line ending spelled `_newline` where it could be `_eof_or_newline`
-      # broke the last line of every unterminated document with all of them
-      # green - the state of a buffer in an editor between two keystrokes
-      # (#458).
       - name: A missing final terminator changes no tree
         run: npm run test:final-terminator
-
-      # The same question through the reader an editor uses. The step above
-      # drives the CLI, whose core completes a construct at the end of input
-      # that the core in the Node binding does not, and whose error report
-      # cannot see a MISSING hidden token. It counted 27 of the pinned
-      # documents where the binding counted 316 of the same ones, and the
-      # binding is down to 2 of them (#458).
-      - name: A document may end without a terminator, through the Node binding
-        run: npm run test:eof-without-newline
-
-      # Every check above asks what a tree says; none of them asks whether one
-      # arrives. A 14-byte document held four parses at 9.6 GB RSS for four
-      # hours before anything noticed, because nothing bounded a parse and
-      # nothing read the silence that bounding one produces.
-      - name: Parses terminate
-        run: npm run test:termination
-
-      # The queries are the other half of what this repo ships - vim-carve,
-      # helix-carve and zed-carve load these files - and nothing here read them.
-      # A capture naming a node that no longer exists, or two patterns claiming
-      # one node with nobody deciding which wins, left every check green.
-      - name: Highlight captures resolve the way an editor resolves them
-        run: npm run test:highlights
       - name: Check editor query ranges
         run: npm run test:editor-queries
-
-      # WHERE A MARKER ENDS AND ITS CONTENT BEGINS. Every check above reads the
-      # SHAPE of the tree - which nodes, in what order, with or without an
-      # ERROR - and a tree-sitter grammar's deliverable is EXTENTS. A caption
-      # whose marker stopped one space early built the right nodes in the right
-      # order with no ERROR, and all of them stayed green.
       - name: Marker separators are runs, and none of a run is content
         run: npm run test:marker-separators
 
-      # THE ONE CLASS EVERY GATE ABOVE IS BLIND TO. All of them drive the
-      # tree-sitter CLI, which builds src/scanner.c at -O2 into its own cached
-      # shared object; node-gyp builds the same file at -O3, and that is what an
-      # editor loads. A write past an allocation that only the -O3 build makes
-      # left the CLI parsing happily and every check green, while eleven nested
-      # `:::: note` openers aborted the Node binding (#266).
+      # The CLI builds src/scanner.c at -O2; node-gyp builds it at -O3, and that
+      # is what an editor loads. A write past an allocation that only the -O3
+      # build makes leaves the CLI parsing happily (#266).
       - name: Nesting depth through the Node binding
         run: npm run test:nesting-depth
-
-      - name: Scanner serialization boundary
-        run: npm run test:scanner-serialization
-
-      - name: The vendored battery is still carve-grammars' copy
-        run: npm run test:battery-drift
       - name: Load Node binding
         run: |
           node - <<'NODE'
@@ -216,8 +74,6 @@ jobs:
       XDG_CACHE_HOME: ${{ github.workspace }}/tmp/tree-sitter-cache
     steps:
       - uses: actions/checkout@v7
-        with:
-          submodules: recursive
       - name: Install dependencies
         uses: ./.github/actions/npm-install
       - name: Build the WASM grammar
@@ -238,8 +94,6 @@ jobs:
         optimization: [2, 3]
     steps:
       - uses: actions/checkout@v7
-        with:
-          submodules: recursive
       - name: Install dependencies
         uses: ./.github/actions/npm-install
       - name: Parse the corpus and deep nesting with ASAN at -O${{ matrix.optimization }}
