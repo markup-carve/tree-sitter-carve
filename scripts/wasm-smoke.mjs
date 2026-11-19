@@ -17,9 +17,9 @@ const querySources = new Map(
     ]),
   ),
 );
-const sample = `# Heading
+const sample = `= Heading
 
-Text *strong* and _under_.
+Text *strong* and /emphasis/.
 
 ::: note
 Inside

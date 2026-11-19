@@ -409,10 +409,6 @@
           "named": true
         },
         {
-          "type": "substitution",
-          "named": true
-        },
-        {
           "type": "superscript",
           "named": true
         },
@@ -514,6 +510,16 @@
         "types": [
           {
             "type": "code_block_header",
+            "named": true
+          }
+        ]
+      },
+      "invalid_metadata": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "invalid_metadata",
             "named": true
           }
         ]
@@ -719,10 +725,6 @@
         },
         {
           "type": "subscript",
-          "named": true
-        },
-        {
-          "type": "substitution",
           "named": true
         },
         {
@@ -1017,6 +1019,10 @@
           "named": true
         },
         {
+          "type": "region_marker",
+          "named": true
+        },
+        {
           "type": "span",
           "named": true
         },
@@ -1030,10 +1036,6 @@
         },
         {
           "type": "subscript",
-          "named": true
-        },
-        {
-          "type": "substitution",
           "named": true
         },
         {
@@ -1295,6 +1297,10 @@
           "named": true
         },
         {
+          "type": "region_marker",
+          "named": true
+        },
+        {
           "type": "span",
           "named": true
         },
@@ -1308,10 +1314,6 @@
         },
         {
           "type": "subscript",
-          "named": true
-        },
-        {
-          "type": "substitution",
           "named": true
         },
         {
@@ -1599,6 +1601,10 @@
           "named": true
         },
         {
+          "type": "include_directive",
+          "named": true
+        },
+        {
           "type": "link_reference_definition",
           "named": true
         },
@@ -1616,6 +1622,10 @@
         },
         {
           "type": "raw_block",
+          "named": true
+        },
+        {
+          "type": "region_marker",
           "named": true
         },
         {
@@ -1867,6 +1877,10 @@
           "named": true
         },
         {
+          "type": "include_directive",
+          "named": true
+        },
+        {
           "type": "link_reference_definition",
           "named": true
         },
@@ -1888,6 +1902,10 @@
         },
         {
           "type": "raw_block",
+          "named": true
+        },
+        {
+          "type": "region_marker",
           "named": true
         },
         {
@@ -2266,10 +2284,6 @@
         },
         {
           "type": "subscript",
-          "named": true
-        },
-        {
-          "type": "substitution",
           "named": true
         },
         {
@@ -2841,10 +2855,6 @@
           "named": true
         },
         {
-          "type": "substitution",
-          "named": true
-        },
-        {
           "type": "superscript",
           "named": true
         },
@@ -2909,6 +2919,20 @@
     "type": "list_item",
     "named": true,
     "fields": {
+      "checkmark": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "checked",
+            "named": true
+          },
+          {
+            "type": "unchecked",
+            "named": true
+          }
+        ]
+      },
       "content": {
         "multiple": false,
         "required": false,
@@ -3083,6 +3107,10 @@
           "named": true
         },
         {
+          "type": "include_directive",
+          "named": true
+        },
+        {
           "type": "link_reference_definition",
           "named": true
         },
@@ -3104,6 +3132,10 @@
         },
         {
           "type": "raw_block",
+          "named": true
+        },
+        {
+          "type": "region_marker",
           "named": true
         },
         {
@@ -3178,6 +3210,10 @@
           "named": true
         },
         {
+          "type": "include_directive",
+          "named": true
+        },
+        {
           "type": "link_reference_definition",
           "named": true
         },
@@ -3199,6 +3235,10 @@
         },
         {
           "type": "raw_block",
+          "named": true
+        },
+        {
+          "type": "region_marker",
           "named": true
         },
         {
@@ -3468,10 +3508,6 @@
           "named": true
         },
         {
-          "type": "substitution",
-          "named": true
-        },
-        {
           "type": "superscript",
           "named": true
         },
@@ -3522,6 +3558,16 @@
         "types": [
           {
             "type": "raw_block_info",
+            "named": true
+          }
+        ]
+      },
+      "invalid_metadata": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "invalid_metadata",
             "named": true
           }
         ]
@@ -3619,23 +3665,12 @@
     }
   },
   {
-    "type": "raw_inline_attribute",
+    "type": "reference_label",
     "named": true,
-    "fields": {
-      "language": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "language",
-            "named": true
-          }
-        ]
-      }
-    }
+    "fields": {}
   },
   {
-    "type": "reference_label",
+    "type": "region_marker",
     "named": true,
     "fields": {}
   },
@@ -3722,6 +3757,10 @@
           "named": true
         },
         {
+          "type": "include_directive",
+          "named": true
+        },
+        {
           "type": "link_reference_definition",
           "named": true
         },
@@ -3739,6 +3778,10 @@
         },
         {
           "type": "raw_block",
+          "named": true
+        },
+        {
+          "type": "region_marker",
           "named": true
         },
         {
@@ -3906,32 +3949,6 @@
     "fields": {}
   },
   {
-    "type": "substitution",
-    "named": true,
-    "fields": {
-      "from": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "content",
-            "named": true
-          }
-        ]
-      },
-      "to": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "content",
-            "named": true
-          }
-        ]
-      }
-    }
-  },
-  {
     "type": "superscript",
     "named": true,
     "fields": {
@@ -3996,6 +4013,16 @@
           }
         ]
       },
+      "invalid_metadata": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "invalid_metadata",
+            "named": true
+          }
+        ]
+      },
       "label": {
         "multiple": false,
         "required": false,
@@ -4031,6 +4058,10 @@
         },
         {
           "type": "code_block_marker_end",
+          "named": true
+        },
+        {
+          "type": "comment_line",
           "named": true
         },
         {
@@ -4246,10 +4277,6 @@
           "named": true
         },
         {
-          "type": "substitution",
-          "named": true
-        },
-        {
           "type": "superscript",
           "named": true
         },
@@ -4329,6 +4356,10 @@
         {
           "type": "table_cell",
           "named": true
+        },
+        {
+          "type": "trailing_comment",
+          "named": true
         }
       ]
     }
@@ -4343,6 +4374,10 @@
       "types": [
         {
           "type": "table_cell",
+          "named": true
+        },
+        {
+          "type": "trailing_comment",
           "named": true
         }
       ]
@@ -4553,10 +4588,6 @@
         },
         {
           "type": "subscript",
-          "named": true
-        },
-        {
-          "type": "substitution",
           "named": true
         },
         {
@@ -5145,6 +5176,10 @@
   },
   {
     "type": "raw_block_marker_end",
+    "named": true
+  },
+  {
+    "type": "raw_inline_attribute",
     "named": true
   },
   {

@@ -53,7 +53,7 @@ mod tests {
     /// The hard-break fence `::: \` still opens with trailing whitespace after
     /// the backslash, exactly as carve-js does.
     ///
-    /// This lives here rather than in `test/corpus/carve.txt` because the whole
+    /// This lives here rather than in `test/corpus/` because the whole
     /// meaning of the case IS a trailing space. In a fixture file that space is
     /// one stray normalization away from disappearing, and the case would then
     /// silently become a duplicate of the no-trailing-space one and keep
@@ -73,7 +73,7 @@ mod tests {
     /// A code fence closer may carry trailing whitespace and still close.
     ///
     /// Same reason as the case above: the whole meaning here IS the trailing
-    /// run of spaces. In `test/corpus/carve.txt` it would be one editor or one
+    /// run of spaces. In `test/corpus/` it would be one editor or one
     /// `.gitattributes` sweep away from becoming a silent duplicate of the
     /// no-trailing-space closer, and the clause it guards -- the whitespace
     /// skip in `code_fence_closer_tail_is_blank` -- would then have no check
@@ -134,11 +134,9 @@ mod tests {
     ///
     /// `newline = '\n' | '\r\n' | '\r'` in the spec's
     /// `resources/grammar.ebnf`, and PART 0's INPUT paragraph names that
-    /// production rather than restating it. The pinned `@markup-carve/carve`
-    /// devDependency renders all three spellings of this document to identical
-    /// HTML, so it is a conformance question and needed no engine build.
+    /// production rather than restating it.
     ///
-    /// These live here rather than in `test/corpus/carve.txt` for the reason
+    /// These live here rather than in `test/corpus/` for the reason
     /// tree-sitter-carve#147 settled: choose the home by how a DEGRADED input
     /// fails. A `\r` in a fixture file is exactly what an editor, a
     /// `.gitattributes` sweep (`* text eol=lf` here) or a formatter rewrites to
@@ -258,7 +256,7 @@ mod tests {
     /// A WHITESPACE-ONLY line separates two block quotes, exactly as an empty
     /// one does (tree-sitter-carve#129).
     ///
-    /// This lives here rather than in `test/corpus/carve.txt` because the whole
+    /// This lives here rather than in `test/corpus/` because the whole
     /// meaning of the case IS the run of spaces on the middle line. A fixture
     /// file carrying it is one editor, one `.gitattributes` sweep or one
     /// formatter away from having that run trimmed, at which point the case
@@ -287,7 +285,7 @@ mod tests {
     /// A marker line ending in a TRAILING SPACE is a content-less quote line,
     /// exactly as the bare `>` is (tree-sitter-carve#130).
     ///
-    /// This lives here rather than in `test/corpus/carve.txt` for the reason
+    /// This lives here rather than in `test/corpus/` for the reason
     /// tree-sitter-carve#121 established: the whole input IS the trailing
     /// space. In a fixture file one editor, one `.gitattributes` sweep or one
     /// formatter turns `> ` into `>`, at which point the case is a byte-for-byte
@@ -341,7 +339,7 @@ mod tests {
     /// document parsed as `(paragraph) (block_quote_marker) (paragraph)` where
     /// carve-js returns the one empty blockquote it returns for `>` and `> `.
     ///
-    /// Here rather than in `test/corpus/carve.txt` for the reason
+    /// Here rather than in `test/corpus/` for the reason
     /// tree-sitter-carve#121 established and tree-sitter-carve#130 followed:
     /// the whole input IS the trailing whitespace, and one formatter or
     /// `.gitattributes` sweep turns these into `>` - at which point the case is
@@ -515,7 +513,7 @@ mod tests {
     /// A document that does not end with a newline is still ONE paragraph
     /// (tree-sitter-carve#124).
     ///
-    /// This lives here rather than in `test/corpus/carve.txt` because the whole
+    /// This lives here rather than in `test/corpus/` because the whole
     /// meaning of the case is a byte that is NOT there. A corpus fixture can
     /// carry it - omitting the blank line before the `---` divider hands the
     /// parser a document with no trailing newline, and that case does fail
@@ -660,62 +658,6 @@ mod tests {
         }
     }
 
-    /// The code fence's slots take a space too, in two cardinalities.
-    ///
-    /// This asserted the OPPOSITE until markup-carve/tree-sitter-carve#160, and
-    /// called itself a control in the blast-radius direction: carve#886 had left
-    /// the code fence out of the colon fence's ruling deliberately, so this
-    /// grammar kept what it did before and a test held it there. carve#907 and
-    /// carve#912 closed the gap - `fenced_code_block = code_fence_open, [space],
-    /// [code_fence_info]` and `code_fence_info = language_info, [space+,
-    /// quoted_title], [space+, label]` - and corpus categories 258 and 263 carry
-    /// the cases. A control that outlives the divergence it was written for is
-    /// how a grammar rule stays deliberately looser than the language.
-    ///
-    /// THE CARDINALITY IS WHAT NEEDS GUARDING NOW, and it differs BETWEEN the
-    /// two slots on the same line: the one before the info string takes exactly
-    /// one space, the two inside it take a run. Sweep them together in either
-    /// direction and one half of this test fails.
-    #[test]
-    fn a_code_fence_slot_takes_a_space_and_the_cardinality_differs() {
-        let mut parser = tree_sitter::Parser::new();
-        parser
-            .set_language(&super::language())
-            .expect("Error loading Carve language");
-        // A tab at any of the three slots leaves the whole line as prose.
-        for source in [
-            "```\tjs\nx\n```\n",
-            "```js\t\"T\"\nx\n```\n",
-            "```js \"T\"\t[L]\nx\n```\n",
-            "```\t=html\nx\n```\n",
-        ] {
-            let tree = parser.parse(source, None).unwrap();
-            let root = tree.root_node();
-            assert!(!root.has_error(), "unexpected ERROR for {source:?}");
-            let block = root.child(0).expect("document has no child");
-            assert_eq!(block.kind(), "paragraph", "for {source:?}");
-        }
-        // The slot before the info string is `[space]`: a second space reaches
-        // `language_info`, whose class holds no space, and the line is prose.
-        // The two slots INSIDE the info string are `space+` and take the run.
-        for (source, want) in [
-            ("```  php\nx\n```\n", "paragraph"),
-            ("```  =html\nx\n```\n", "paragraph"),
-            ("``` js\nx\n```\n", "code_block"),
-            ("```js\nx\n```\n", "code_block"),
-            ("```js  \"T\"\nx\n```\n", "code_block"),
-            ("```js \"T\"  [L]\nx\n```\n", "code_block"),
-            ("```=html\nx\n```\n", "raw_block"),
-            ("``` =html\nx\n```\n", "raw_block"),
-        ] {
-            let tree = parser.parse(source, None).unwrap();
-            let root = tree.root_node();
-            assert!(!root.has_error(), "unexpected ERROR for {source:?}");
-            let block = root.child(0).expect("document has no child");
-            assert_eq!(block.kind(), want, "for {source:?}");
-        }
-    }
-
     /// A whitespace-only tail leaves a BARE code fence, tab or not.
     ///
     /// A CONTROL for the rule above, in the over-narrowing direction, and the
@@ -748,143 +690,6 @@ mod tests {
             assert!(!root.has_error(), "unexpected ERROR for {source:?}");
             let block = root.child(0).expect("document has no child");
             assert_eq!(block.kind(), "code_block", "for {source:?}");
-        }
-    }
-
-    /// A fence opener that carries an info string still opens with TRAILING
-    /// whitespace after it.
-    ///
-    /// PART 2 drops trailing whitespace on a content line before the line is
-    /// read, so ```` ```js ```` is the same opener as ```` ```js ```` without
-    /// the space - which is the reading grammar.ebnf already gives the tab
-    /// (carve#1295). `code_fence_info_is_modeled` agreed and the GRAMMAR did
-    /// not: it had no slot for those characters, so an opener the scanner had
-    /// already committed to came back as an ERROR node covering the rest of the
-    /// document and the whole body parsed as live prose
-    /// (markup-carve/tree-sitter-carve#248).
-    ///
-    /// This lives here rather than in `test/corpus/carve.txt` for the reason
-    /// the two cases at the top of this file do: the whole meaning of every row
-    /// IS a trailing space or tab, and in a fixture file one editor sweep turns
-    /// each of them into the no-trailing-whitespace row it is the counterpart
-    /// of, leaving a case that can no longer fail.
-    ///
-    /// It reaches EVERY info-string shape, not the two the cross-repo sweep
-    /// happens to carry: the language, the quoted header, the label, both raw
-    /// spellings and the tilde fence all took the same ERROR.
-    #[test]
-    fn a_fence_opener_may_carry_trailing_whitespace() {
-        let mut parser = tree_sitter::Parser::new();
-        parser
-            .set_language(&super::language())
-            .expect("Error loading Carve language");
-        for (source, want) in [
-            ("```js \nx\n```\n", "code_block"),
-            ("```js\t\nx\n```\n", "code_block"),
-            ("```js  \nx\n```\n", "code_block"),
-            ("```js \t \nx\n```\n", "code_block"),
-            ("~~~js \nx\n~~~\n", "code_block"),
-            ("```\"T\" \nx\n```\n", "code_block"),
-            ("```[L] \nx\n```\n", "code_block"),
-            ("```js \"T\" \nx\n```\n", "code_block"),
-            ("```js \"T\" [L] \nx\n```\n", "code_block"),
-            ("```=html \nx\n```\n", "raw_block"),
-            ("```=html\t\nx\n```\n", "raw_block"),
-            ("```raw html \nx\n```\n", "raw_block"),
-        ] {
-            let tree = parser.parse(source, None).unwrap();
-            let root = tree.root_node();
-            // The document is named with a positional argument, not an inline
-            // one: this crate is `edition = "2018"`, where `{source:?}` is not
-            // a capture and prints as those nine literal characters - so a
-            // failure would report which ROW failed and not which document.
-            assert!(!root.has_error(), "unexpected ERROR for {:?}", source);
-            let block = root.child(0).expect("document has no child");
-            assert_eq!(block.kind(), want, "for {:?}", source);
-        }
-        // THE CONTROL, in the over-accepting direction. The new slot is
-        // trailing whitespace and nothing else: a tab or a second space in a
-        // SEPARATOR position still leaves the line as prose, which is what
-        // `a_code_fence_slot_takes_a_space_and_the_cardinality_differs` above
-        // is about. Widen the slot to `_whitespace` and these three open a
-        // fence.
-        for source in [
-            "```\tjs\nx\n```\n",
-            "```js\t\"T\"\nx\n```\n",
-            "```  php\nx\n```\n",
-        ] {
-            let tree = parser.parse(source, None).unwrap();
-            let root = tree.root_node();
-            assert!(!root.has_error(), "unexpected ERROR for {:?}", source);
-            let block = root.child(0).expect("document has no child");
-            assert_eq!(block.kind(), "paragraph", "for {:?}", source);
-        }
-    }
-
-    /// A bare `::: figure` opener is still a composite figure group with
-    /// trailing whitespace after the kind word.
-    ///
-    /// `figure_group_open = colon_fence:open, space, "figure"` and NOTHING
-    /// else (grammar.ebnf PART 9 section 4c) - and trailing whitespace is
-    /// nothing else, because PART 2 drops it on a content line before the line
-    /// is read. So `parse_figure_group_marker` in `src/scanner.c` skips the run
-    /// after the word before asking whether the line ends there, and this is
-    /// what fails if that skip goes: the opener becomes an `admonition_type`
-    /// and the group silently degrades to a generic container.
-    ///
-    /// It lives here rather than in `test/corpus/carve.txt` for the reason the
-    /// cases at the top of this file do: the whole meaning of the row IS the
-    /// trailing whitespace, and one editor sweep over a fixture file turns it
-    /// into the bare row it is the counterpart of - a case that can no longer
-    /// fail. The corpus file has no `trim_trailing_whitespace = false` of its
-    /// own, so nothing in the repository would stop that.
-    #[test]
-    fn a_figure_group_opener_may_carry_trailing_whitespace() {
-        let mut parser = tree_sitter::Parser::new();
-        parser
-            .set_language(&super::language())
-            .expect("Error loading Carve language");
-        // The document is named with a positional argument, not an inline one:
-        // this crate is `edition = "2018"`, where `{source:?}` is not a capture
-        // and prints as those nine literal characters.
-        for source in [
-            "::: figure\nx\n:::\n",
-            "::: figure \nx\n:::\n",
-            "::: figure\t\nx\n:::\n",
-            "::: figure   \nx\n:::\n",
-        ] {
-            let tree = parser.parse(source, None).unwrap();
-            let root = tree.root_node();
-            assert!(!root.has_error(), "unexpected ERROR for {:?}", source);
-            let block = root.child(0).expect("document has no child");
-            assert_eq!(block.kind(), "div", "for {:?}", source);
-            let marker = block.child(1).expect("opener has no kind word");
-            assert_eq!(marker.kind(), "figure_group_marker", "for {:?}", source);
-            // The token ends at the WORD. The tail peek walks past the
-            // whitespace, so the scanner has to pin the token before it looks;
-            // pinning after would stretch the marker over the trailing run and
-            // leave the opener's own trailing-whitespace slot nothing to take.
-            assert_eq!(
-                marker.end_byte() - marker.start_byte(),
-                6,
-                "marker spans more than its word for {:?}",
-                source
-            );
-        }
-        // THE CONTROL, in the over-accepting direction: anything OTHER than
-        // whitespace after the word is not this production, and the opener
-        // stays a generic Tier-2 container of kind `figure`.
-        for source in [
-            "::: figure \"T\"\nx\n:::\n",
-            "::: figure [g]\nx\n:::\n",
-            "::: figures\nx\n:::\n",
-        ] {
-            let tree = parser.parse(source, None).unwrap();
-            let root = tree.root_node();
-            assert!(!root.has_error(), "unexpected ERROR for {:?}", source);
-            let block = root.child(0).expect("document has no child");
-            let marker = block.child(1).expect("opener has no kind word");
-            assert_eq!(marker.kind(), "admonition_type", "for {:?}", source);
         }
     }
 

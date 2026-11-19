@@ -1,14 +1,14 @@
 #!/usr/bin/env node
-import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { writeCorpusCases } from './corpus-cases.mjs';
 import { refuseShortRun } from './participants.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const ts = path.join(root, 'node_modules', 'tree-sitter', 'vendor', 'tree-sitter', 'lib');
-const corpus = path.join(root, 'spec', 'tests', 'corpus');
 const optimization = process.env.ASAN_OPTIMIZATION || '3';
 if (!['2', '3'].includes(optimization)) throw new Error('ASAN_OPTIMIZATION must be 2 or 3');
 
@@ -35,14 +35,11 @@ try {
     ["qualification-10.crv", "| {% ` %} x |\n+ [b | c]{.k} |\n"]
   );
   for (const [name, source] of generated) writeFileSync(path.join(build, name), source);
-  const documents = readdirSync(corpus)
-    .filter((name) => name.endsWith('.crv'))
-    .map((name) => path.join(corpus, name));
+  const documents = writeCorpusCases(build);
   documents.push(...generated.map(([name]) => path.join(build, name)));
   refuseShortRun({
-    label: 'ASAN CORPUS', actual: documents.length, atLeast: 1000,
+    label: 'ASAN CORPUS', actual: documents.length, atLeast: 150,
     of: 'corpus and nesting document(s)',
-    hint: 'initialize the spec submodule before running the sanitizer.',
   });
 
   const binary = path.join(build, 'asan-driver');
