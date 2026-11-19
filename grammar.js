@@ -1266,7 +1266,9 @@ module.exports = grammar({
     table_caption: ($) =>
       seq(
         field("marker", alias($._table_caption_begin, $.marker)),
-        field("content", alias(repeat1($._inline_line), $.content)),
+        // Paragraph-like, as a standalone caption is (C2-B-148).
+        field("content", alias($._caption_content, $.content)),
+        $._eof_or_newline,
         choice($._table_caption_end, "\0"),
       ),
 

@@ -12754,12 +12754,6 @@ static bool emit_newline_inline(Scanner *s, TSLexer *lexer,
   if (top && top->type == HEADING &&
       next_line_whitespace <= top->content_col) return false;
 
-  // Need an extra check so we don't emit a NEWLINE_INLINE at the end
-  // of a table caption if there's a mismatched indent.
-  if (top && top->type == TABLE_CAPTION && !has_open_span(s) && next_line_whitespace < top->data) {
-    return false;
-  }
-
   // Caption continuations use the same margin checks as opener lookahead.
   bool ends;
   if (in_caption(s)) {

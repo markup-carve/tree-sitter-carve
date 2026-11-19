@@ -4024,15 +4024,16 @@
           "content": {
             "type": "ALIAS",
             "content": {
-              "type": "REPEAT1",
-              "content": {
-                "type": "SYMBOL",
-                "name": "_inline_line"
-              }
+              "type": "SYMBOL",
+              "name": "_caption_content"
             },
             "named": true,
             "value": "content"
           }
+        },
+        {
+          "type": "SYMBOL",
+          "name": "_eof_or_newline"
         },
         {
           "type": "CHOICE",

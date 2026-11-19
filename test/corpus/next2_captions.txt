@@ -269,3 +269,42 @@ C2-B-148: a blank line ends a table caption
     content: (footnote_content
       (paragraph))))
 
+
+================================================================================
+C2-B-148: a second caret line continues a table caption
+================================================================================
+
+| a |
+^ one
+^ two
+
+--------------------------------------------------------------------------------
+
+(document
+  (table
+    (table_row
+      (table_cell))
+    (table_caption
+      marker: (marker)
+      content: (content))))
+
+================================================================================
+C2-B-148: a table caption takes an unindented lazy line
+================================================================================
+
+| a |
+^ one
+more
+
+p
+
+--------------------------------------------------------------------------------
+
+(document
+  (table
+    (table_row
+      (table_cell))
+    (table_caption
+      marker: (marker)
+      content: (content)))
+  (paragraph))
