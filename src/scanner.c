@@ -16489,6 +16489,12 @@ static bool parse_figure_group_marker(Scanner *s, TSLexer *lexer) {
     }
     advance(s, lexer);
   }
+  // A name runs over ASCII letters, digits, `_` and `-` (C2-B-225), so
+  // `figures` or `figure-a` is another name and a plain div (C2-B-127).
+  if (carve_is_alnum_ascii(lexer->lookahead) || lexer->lookahead == '_' ||
+      lexer->lookahead == '-') {
+    return false;
+  }
   mark_end(s, lexer);
   bool glued_tail = lexer->lookahead != ' ' && lexer->lookahead != '\t' &&
                     !at_line_end(lexer) && !lexer->eof(lexer);
