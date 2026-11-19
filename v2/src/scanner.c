@@ -12411,6 +12411,25 @@ static bool close_paragraph_after_quote(Scanner *s, TSLexer *lexer,
         if (b == note) break;
         if (is_list(b->type)) list_in_note = true;
       }
+      // A definition line at column 0 while a definition is open interrupts
+      // (C2-B-016). Probed on a scratch lexer.
+      if ((lead == '[' || lead == '*') && column == 0 &&
+          quotes_below(s, note) == 0 && count_blocks(s, BLOCK_QUOTE) == 0) {
+        BracketProbe probe = bracket_probe_new(s, lexer);
+        TSLexer *p = &probe.lexer;
+        bool definition = false;
+        p->advance(p, false);
+        if (lead == '*') {
+          definition = p->lookahead == '[' && abbreviation_definition_follows(s, p);
+        } else if (p->lookahead == '^') {
+          p->advance(p, false);
+          definition = scan_footnote_after_caret(s, p);
+        } else {
+          definition = p->lookahead != '@' && scan_ref_def(s, p);
+        }
+        array_delete(&probe.characters);
+        if (definition) return true;
+      }
       // At column 0, with no list or quote around the paragraph, the line is
       // asked what a root paragraph asks: a quote and a list marker
       // interrupter (b) does not take are lazy lines (C2-B-015, C2-B-024).
