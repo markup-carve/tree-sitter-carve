@@ -2212,6 +2212,11 @@ static bool close_list_nested_block_if_needed(Scanner *s, TSLexer *lexer,
     }
     s->state &= ~STATE_FENCE_OWNS_BODY;
   }
+  // A comment block's closer stands at any indent, so its own line test
+  // decides where it ends (C2-B-109).
+  if (top->type == COMMENT_FENCE) {
+    return false;
+  }
   if (non_newline && list && list != top) {
     // A fence body line short of the item's content column is not fence body:
     // the item's prefix is not supplied, so the fence and the item both end
@@ -3645,6 +3650,68 @@ static void scan_to_line_end(Scanner *s, TSLexer *lexer) {
   }
 }
 
+typedef enum {
+  COMMENT_LINE_BODY,
+  COMMENT_LINE_CLOSER,
+  COMMENT_LINE_UNOWNED,
+} CommentFenceLine;
+
+static bool line_leaves_container(Scanner *s, TSLexer *lexer, uint8_t indent);
+
+/// Reads a line below an open comment block. The closer is a bare run at
+/// least the opener's width, at any indent, with all of the quote marks or
+/// none (C2-B-109, C2-B-110). Otherwise a line the block's container does not
+/// own ends the block with that container (C2-B-111).
+static CommentFenceLine comment_fence_line(Scanner *s, TSLexer *lexer,
+                                           uint16_t width) {
+  uint8_t saved_indent = s->indent;
+  uint8_t saved_level = s->block_quote_level;
+  uint16_t saved_state = s->state;
+  uint32_t saved_col_base = s->col_base;
+  CommentFenceLine line = COMMENT_LINE_BODY;
+  uint8_t depth = count_blocks(s, BLOCK_QUOTE);
+  // The caller may already stand past the line's leading whitespace.
+  uint8_t start = (uint8_t)line_column(s, lexer);
+  uint8_t indent = start + consume_whitespace(s, lexer);
+  bool ending = false;
+  uint8_t markers = 0;
+  // With no quote open, a `>` is body text.
+  if (depth > 0 && lexer->lookahead == '>') {
+    markers = scan_block_quote_markers(s, lexer, &ending);
+    indent = 0;
+  }
+  if (!ending) indent += consume_whitespace(s, lexer);
+  bool blank = ending || at_line_end(lexer) || lexer->eof(lexer);
+  bool owned = markers >= depth;
+  if (owned && !blank) {
+    s->block_quote_level = markers;
+    // A div closer is body text here: the block is opaque (C2-B-112).
+    for (int i = (int)s->open_blocks->size - 1; i >= 0; --i) {
+      BlockType type = (*array_get(s->open_blocks, i))->type;
+      if (type == DIV || type == FIGURE_GROUP || type == BLOCK_QUOTE) break;
+      if (is_list(type) || type == FOOTNOTE) {
+        owned = !line_leaves_container(s, lexer, indent);
+        break;
+      }
+    }
+  }
+  if (!blank && lexer->lookahead == '%' && (markers == 0 || markers == depth)) {
+    uint16_t run = consume_percents(s, lexer);
+    while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+      advance(s, lexer);
+    }
+    if (run >= width && (at_line_end(lexer) || lexer->eof(lexer))) {
+      line = COMMENT_LINE_CLOSER;
+    }
+  }
+  if (line == COMMENT_LINE_BODY && !owned) line = COMMENT_LINE_UNOWNED;
+  s->indent = saved_indent;
+  s->block_quote_level = saved_level;
+  s->state = saved_state;
+  s->col_base = saved_col_base;
+  return line;
+}
+
 static bool parse_comment_fence(Scanner *s, TSLexer *lexer,
                                 const bool *valid_symbols) {
   // Nothing to say unless one of this construct's tokens is wanted here: the
@@ -3664,8 +3731,15 @@ static bool parse_comment_fence(Scanner *s, TSLexer *lexer,
   // Is the line the lexer sits on this fence's closer? Asked once, because
   // asking twice would leave the second question looking at the middle of the
   // first answer.
-  uint16_t percents = scan_comment_fence_line_width(s, lexer);
-  bool closes = percents == width;
+  mark_end(s, lexer);
+  CommentFenceLine line = comment_fence_line(s, lexer, width);
+  bool closes = line == COMMENT_LINE_CLOSER;
+  if (line == COMMENT_LINE_UNOWNED) {
+    if (!valid_symbols[BLOCK_CLOSE]) return false;
+    remove_block(s);
+    lexer->result_symbol = BLOCK_CLOSE;
+    return true;
+  }
 
   if (closes) {
     // The end marker is asked for FIRST where both are valid, the order the
@@ -3673,9 +3747,6 @@ static bool parse_comment_fence(Scanner *s, TSLexer *lexer,
     // answered here too it would answer forever and the marker would never be
     // reached.
     if (valid_symbols[COMMENT_FENCE_END]) {
-      // Trailing text on a closer is allowed and discarded (`%%% end`), so the
-      // marker runs to the end of its line.
-      scan_to_line_end(s, lexer);
       remove_block(s);
       mark_end(s, lexer);
       lexer->result_symbol = COMMENT_FENCE_END;
@@ -3699,6 +3770,9 @@ static bool parse_comment_fence(Scanner *s, TSLexer *lexer,
   while (!lexer->eof(lexer)) {
     scan_to_line_end(s, lexer);
     if (lexer->eof(lexer)) {
+      // A last body line with no line end is body too (C2-B-111).
+      mark_end(s, lexer);
+      consumed = true;
       break;
     }
     consume_line_end(s, lexer);
@@ -3707,7 +3781,7 @@ static bool parse_comment_fence(Scanner *s, TSLexer *lexer,
     if (lexer->eof(lexer)) {
       break;
     }
-    if (scan_comment_fence_line_width(s, lexer) == width) {
+    if (comment_fence_line(s, lexer, width) != COMMENT_LINE_BODY) {
       break;
     }
   }
@@ -3731,58 +3805,31 @@ static bool parse_comment_fence_begin(Scanner *s, TSLexer *lexer,
   bool below_content = host_list && host_list->type != LIST_DEFINITION &&
       s->indent >= host_list->data &&
       s->indent < list_item_margin(s, host_list);
-  // A list item holding the fence directly keeps no body line below its
-  // content column: that line ends the item, and a closer past it closes
-  // nothing (spec 583). Measured only where no quote or container intervenes.
-  uint8_t item_margin = 0;
-  Block *innermost = peek_block(s);
-  if (host_list && innermost == host_list && !below_content &&
-      count_blocks(s, BLOCK_QUOTE) == 0) {
-    item_margin = list_item_margin(s, host_list);
-    // An opener short of the margin is the comment-retention case; it keeps
-    // its own reading.
-    if (line_column(s, lexer) < item_margin) item_margin = 0;
-  }
   uint16_t percents = consume_percents(s, lexer);
   if (percents < 3 || percents == COMMENT_FENCE_CAP) {
     return false;
   }
   mark_end(s, lexer);
 
-  // An UNTERMINATED `%%%` is not a fence: the engines degrade it to a
-  // single-line comment rather than swallowing the rest of the document, and
-  // the regex this replaces required a closer too. Look for one before
-  // committing - the lookahead is scratch, since the token end is already
-  // pinned at the opener.
-  scan_to_line_end(s, lexer);
-  while (!lexer->eof(lexer)) {
-    consume_line_end(s, lexer);
-    if (lexer->eof(lexer)) {
-      return false;
-    }
-    bool leaves_item = false;
-    if (item_margin > 0) {
-      while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
-        advance(s, lexer);
-      }
-      leaves_item = !at_line_end(lexer) && !lexer->eof(lexer) &&
-                    line_column(s, lexer) < item_margin;
-    }
-    uint16_t run = scan_comment_fence_line_width(s, lexer);
-    if (leaves_item && run != percents) {
-      return false;
-    }
-    if (run == percents) {
-      if (below_content) {
-        host_list->flags |= BLOCK_FLAG_COMMENT_RESTORES_LAZY;
-      }
-      push_block(s, COMMENT_FENCE, percents);
-      lexer->result_symbol = COMMENT_FENCE_BEGIN;
-      return true;
-    }
+  // An unclosed comment block ends with its container and never turns back
+  // into text (C2-B-111). The lookahead only asks whether a closer follows.
+  if (below_content) {
     scan_to_line_end(s, lexer);
+    while (!lexer->eof(lexer)) {
+      consume_line_end(s, lexer);
+      if (lexer->eof(lexer)) break;
+      CommentFenceLine line = comment_fence_line(s, lexer, percents);
+      if (line == COMMENT_LINE_UNOWNED) break;
+      if (line == COMMENT_LINE_CLOSER) {
+        host_list->flags |= BLOCK_FLAG_COMMENT_RESTORES_LAZY;
+        break;
+      }
+      scan_to_line_end(s, lexer);
+    }
   }
-  return false;
+  push_block(s, COMMENT_FENCE, percents);
+  lexer->result_symbol = COMMENT_FENCE_BEGIN;
+  return true;
 }
 
 // A closed comment fence is opaque inside the inline run of a term.
