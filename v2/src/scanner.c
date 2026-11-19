@@ -640,6 +640,8 @@ typedef struct {
   // Did the last list marker scan read a bullet or an ordered value of 1?
   // Read in the same scan call only, so it is not serialized.
   bool marker_value_one;
+  // Are all cells after an unclosed tick run header cells? Transient.
+  bool open_run_rest_header;
 
   // Where the CURRENT line starts, in tree-sitter's column units.
   //
@@ -3973,7 +3975,8 @@ static VerbatimRunEnd probe_verbatim_run(Scanner *s, TSLexer *lexer,
       if (host && (host->type == HEADING || disallow_newline(host))) break;
       // Buffered caption lookahead can reset lone-CR columns without moving
       // the host lexer's marked end. Other callers retain raw lookahead.
-      if (in_table_row && row_closing_pipe_candidate) {
+      // A cell or a continuation fragment is its own content (C2-B-223).
+      if (in_table_row) {
         break;
       }
       if (probe) {
@@ -3992,6 +3995,11 @@ static VerbatimRunEnd probe_verbatim_run(Scanner *s, TSLexer *lexer,
         break;
       }
       if (probe && caption_line_ends_block(s, probe, indent)) break;
+      // A comment-only line ends the content for the closer test (C2-I-017).
+      if (lexer->lookahead == '%') {
+        advance(s, lexer);
+        if (lexer->lookahead == '%') break;
+      }
       previous = '\n';
       row_closing_pipe_candidate = false;
       continue;
@@ -4297,10 +4305,14 @@ static bool parse_code_fence(Scanner *s, TSLexer *lexer,
       char marker = span_verbatim_stop_marker(peek_inline(s));
       bool in_table_row = valid_symbols[TABLE_CELL_END] ||
                           find_block(s, TABLE_ROW) != NULL;
-      if (marker != 0 && read_verbatim_run(s, lexer, width, marker,
-                                           in_table_row) ==
-                             VerbatimRunReachesSpanCloser) {
+      VerbatimRunEnd end = read_verbatim_run(s, lexer, width, marker, in_table_row);
+      if (marker != 0 && end == VerbatimRunReachesSpanCloser) {
         flags = INLINE_STOPS_AT_SPAN_CLOSER;
+      }
+      // A run with no closing run in its content is text (C2-I-017).
+      if (end == VerbatimRunReachesBlockEnd && valid_symbols[LITERAL_RUN]) {
+        lexer->result_symbol = LITERAL_RUN;
+        return true;
       }
     }
     lexer->result_symbol = VERBATIM_BEGIN;
@@ -6818,6 +6830,10 @@ static bool scan_verbatim_run_in_cell(Scanner *s, TSLexer *lexer,
   // "The mark stands at a pipe": set by a `|`, kept across the whitespace that
   // may trail it, cleared by any other content.
   bool after_pipe = false;
+  // An unclosed run is text (C2-B-223), so the pipes after it still split
+  // cells; whether those are header cells is collected on the way.
+  bool segment = false, segment_header = false;
+  s->open_run_rest_header = true;
   while (!lexer->eof(lexer)) {
     switch (lexer->lookahead) {
     case '\\':
@@ -6841,8 +6857,11 @@ static bool scan_verbatim_run_in_cell(Scanner *s, TSLexer *lexer,
       after_pipe = false;
       break;
     case '|':
+      if (segment && !segment_header) s->open_run_rest_header = false;
       after_pipe = true;
       advance(s, lexer);
+      segment = true;
+      segment_header = lexer->lookahead == '=';
       break;
     case ' ':
     case '\t':
@@ -8568,6 +8587,7 @@ static bool scan_table_row(Scanner *s, TSLexer *lexer, TokenType *row_type,
     if (!scan_table_cell(s, lexer, &curr_separator, &curr_empty,
                          &curr_meaningful, &unterminated,
                          &closed_by_open_run)) {
+      if (closed_by_open_run && !header_cell) all_header_cells = false;
       break;
     }
     if (!header_cell) all_header_cells = false;
@@ -8590,6 +8610,7 @@ static bool scan_table_row(Scanner *s, TSLexer *lexer, TokenType *row_type,
     // scan is already past end of line and the checks below cannot re-read it.
     // Everything they ask has been answered on the way: the cell has content,
     // it is not a separator, and its closing pipe is there.
+    if (!s->open_run_rest_header) all_header_cells = false;
     all_separators = false;
     any_content = true;
     unterminated = false;
