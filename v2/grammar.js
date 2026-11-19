@@ -1080,7 +1080,7 @@ module.exports = grammar({
     table_continuation_row: ($) =>
       seq(
         alias($._table_continuation_row, "+"),
-        repeat($._table_cell),
+        repeat($._table_fragment),
         $._table_row_end_newline,
       ),
     table_header: ($) =>
@@ -1113,6 +1113,24 @@ module.exports = grammar({
           alias($._table_cell_end, "|"),
         ),
         alias($._table_escaped_cell_body, $.table_cell),
+      ),
+    // A continuation row's fragment reads no cell prefix (C2-B-185).
+    _table_fragment: ($) =>
+      choice(
+        seq(
+          alias($._cell_inline, $.table_cell),
+          alias($._table_cell_end, "|"),
+        ),
+        seq(
+          alias($._empty_table_cell, $.table_cell),
+          alias($._table_cell_end, "|"),
+        ),
+        alias($._table_escaped_fragment, $.table_cell),
+      ),
+    _table_escaped_fragment: ($) =>
+      seq(
+        $._cell_inline,
+        alias($._table_escaped_cell_end, $.backslash_escape),
       ),
     _table_escaped_cell_body: ($) =>
       seq(
@@ -1874,24 +1892,24 @@ module.exports = grammar({
     // ending never reaches it. After a comment line ended by a LONE '\r' the
     // base was stale and an indented construct on the next line was misread,
     // which is what nine of the lone-CR documents on #341 came down to.
+    // No token precedence: lexical precedence outranks match length, so a
+    // prec here cut `%% #region a b` short of the longer comment line
+    // (C2-B-217). On an equal match the earlier rule, this one, wins.
     region_marker: ($) =>
       seq(
         token(
-          prec(
-            2,
-            seq(
-              /[ \t]*/,
-              "%%",
-              /[ \t]*/,
-              choice(
-                seq("#region", /[ \t]+/, /[A-Za-z_][A-Za-z0-9_-]*/),
-                seq(
-                  "#endregion",
-                  optional(seq(/[ \t]+/, /[A-Za-z_][A-Za-z0-9_-]*/)),
-                ),
+          seq(
+            /[ \t]*/,
+            "%%",
+            /[ \t]*/,
+            choice(
+              seq("#region", /[ \t]+/, /[A-Za-z_][A-Za-z0-9_-]*/),
+              seq(
+                "#endregion",
+                optional(seq(/[ \t]+/, /[A-Za-z_][A-Za-z0-9_-]*/)),
               ),
-              /[ \t]*/,
             ),
+            /[ \t]*/,
           ),
         ),
         choice($._newline, $._eof_or_newline),
@@ -2179,7 +2197,12 @@ module.exports = grammar({
     _whitespace: (_) => token.immediate(/[ \t]*/),
     // The scanner hands a space over as `_mid_line_space` to note that its
     // line has passed its start (#669).
-    _whitespace1: ($) => choice(token.immediate(/[ \t]+/), $._mid_line_space),
+    _whitespace1: ($) =>
+      choice($._space_run, token.immediate(/[ \t]+/), $._mid_line_space),
+    // A run of spaces alone, for the slots that take no tab (C2-B-201). Plain
+    // whitespace takes it too, so where a slot and text both stay open the
+    // lexer's pick of this token leaves the text reading alive.
+    _space_run: (_) => token.immediate(/ +/),
 
     // A SLOT SPELLED `space`, in its two cardinalities. grammar.ebnf PART 7
     // (MARKER SEPARATORS AND PADDING SLOTS) spells every separator and every
@@ -2664,7 +2687,8 @@ module.exports = grammar({
     // parts it is optional, because `include_path` stops at `#` and `@` and
     // neither identifier class holds one, so `{{ c.crv@shift:1 }}` is well
     // formed (grammar PART 6 `include_options`).
-    _include_pad: ($) => choice(token.immediate(/[ \t]+/), $._mid_line_space),
+    // Spaces only: `{{` followed by a tab is text (C2-B-201).
+    _include_pad: ($) => choice($._space_run, $._mid_line_space),
 
     // The PARTS, not one opaque run. Highlighting only needs the directive not
     // to be shredded into `tag` and `mention`, which the context already

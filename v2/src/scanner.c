@@ -3305,6 +3305,8 @@ typedef struct {
   Scanner *scanner;
 } BracketProbe;
 
+static void bracket_probe_rewind(BracketProbe *probe, uint32_t position);
+
 static uint32_t bracket_probe_column(TSLexer *lexer);
 static uint32_t bracket_probe_column_at(BracketProbe *probe, uint32_t position);
 
@@ -3444,15 +3446,26 @@ static BracketProbe bracket_probe_new(Scanner *s, TSLexer *host) {
   return probe;
 }
 
-static bool fence_info_has_backtick(Scanner *s, TSLexer *lexer) {
+// The probe moves the host lexer past the info string, so a caller that needs
+// the delimited kind gets it here, read from the rewound probe.
+static bool fence_info_has_backtick_kind(Scanner *s, TSLexer *lexer,
+                                         uint8_t *delimited_kind) {
   BracketProbe probe = bracket_probe_new(s, lexer);
   bool found = false;
   while (!probe.lexer.eof(&probe.lexer) && !at_line_end(&probe.lexer)) {
     if (probe.lexer.lookahead == '`') { found = true; break; }
     probe.lexer.advance(&probe.lexer, false);
   }
+  if (!found && delimited_kind) {
+    bracket_probe_rewind(&probe, 0);
+    code_fence_info_is_modeled_kind(s, &probe.lexer, delimited_kind);
+  }
   array_delete(&probe.characters);
   return found;
+}
+
+static bool fence_info_has_backtick(Scanner *s, TSLexer *lexer) {
+  return fence_info_has_backtick_kind(s, lexer, NULL);
 }
 
 static void bracket_probe_rewind(BracketProbe *probe, uint32_t position) {
@@ -3461,97 +3474,6 @@ static void bracket_probe_rewind(BracketProbe *probe, uint32_t position) {
   probe->lexer.lookahead = bracket_probe_cut_at(probe, position) ? 0 : character;
 }
 
-
-static bool delimited_body_valid(Scanner *s, TSLexer *lexer,
-                                 uint16_t width, char fence_char,
-                                 uint8_t separator, uint32_t column,
-                                 uint8_t quote_depth, uint32_t list_margin,
-                                 bool in_div) {
-  if (lexer->lookahead == '\r') {
-    advance(s, lexer);
-    if (lexer->lookahead == '\n') advance(s, lexer);
-  } else if (lexer->lookahead == '\n') {
-    advance(s, lexer);
-  } else {
-    return false;
-  }
-  enum { FIELD_START, UNQUOTED, QUOTED, AFTER_QUOTE } field = FIELD_START;
-  bool line_start = true;
-  while (!lexer->eof(lexer)) {
-    if (line_start) {
-      for (uint8_t quote = 0; quote < quote_depth; ++quote) {
-        while (lexer->lookahead == ' ' || lexer->lookahead == '\t')
-          advance(s, lexer);
-        if (lexer->lookahead != '>') return field != QUOTED;
-        advance(s, lexer);
-        if (lexer->lookahead == ' ' || lexer->lookahead == '\t')
-          advance(s, lexer);
-      }
-      while ((lexer->lookahead == ' ' || lexer->lookahead == '\t') &&
-             line_column(s, lexer) < column)
-        advance(s, lexer);
-      if (list_margin && line_column(s, lexer) < list_margin &&
-          !at_line_end(lexer)) return field != QUOTED;
-      if (in_div && lexer->lookahead == ':') {
-        BracketProbe *probe = (BracketProbe *)lexer;
-        uint32_t start = probe->position;
-        uint16_t colons = 0;
-        while (lexer->lookahead == ':') {
-          ++colons;
-          advance(s, lexer);
-        }
-        if (colons >= 3) {
-          while (lexer->lookahead == ' ' || lexer->lookahead == '\t')
-            advance(s, lexer);
-          if (at_line_end(lexer) || lexer->eof(lexer))
-            return field != QUOTED;
-        }
-        bracket_probe_rewind(probe, start);
-      }
-    }
-    if (line_start && lexer->lookahead == fence_char) {
-      uint16_t run = 0;
-      while (lexer->lookahead == fence_char) {
-        ++run;
-        advance(s, lexer);
-      }
-      if (run >= width) {
-        while (lexer->lookahead == ' ' || lexer->lookahead == '\t')
-          advance(s, lexer);
-        if (at_line_end(lexer) || lexer->eof(lexer))
-          return field != QUOTED;
-      }
-      if (field == AFTER_QUOTE) return false;
-      if (field == FIELD_START) field = UNQUOTED;
-      line_start = false;
-      continue;
-    }
-    int32_t c = lexer->lookahead;
-    if (at_line_end(lexer)) {
-      if (field != QUOTED) field = FIELD_START;
-      if (c == '\r') advance(s, lexer);
-      if (lexer->lookahead == '\n') advance(s, lexer);
-      line_start = true;
-      continue;
-    }
-    if (field == FIELD_START) {
-      if (c == '"') field = QUOTED;
-      else if (c != separator) field = UNQUOTED;
-    } else if (field == UNQUOTED) {
-      if (c == '"') return false;
-      if (c == separator) field = FIELD_START;
-    } else if (field == QUOTED) {
-      if (c == '"') field = AFTER_QUOTE;
-    } else {
-      if (c == '"') field = QUOTED;
-      else if (c == separator) field = FIELD_START;
-      else return false;
-    }
-    advance(s, lexer);
-    line_start = false;
-  }
-  return field != QUOTED;
-}
 
 static bool try_begin_code_block(Scanner *s, TSLexer *lexer, uint16_t width,
                                  char fence_char, uint32_t column,
@@ -3564,10 +3486,9 @@ static bool try_begin_code_block(Scanner *s, TSLexer *lexer, uint16_t width,
   // info string, so the lookahead is not folded into CODE_BLOCK_BEGIN.
   mark_end(s, lexer);
   uint8_t delimited_kind = 0;
-  if (fence_info_has_backtick(s, lexer)) {
+  if (fence_info_has_backtick_kind(s, lexer, &delimited_kind)) {
     return false;
   }
-  code_fence_info_is_modeled_kind(s, lexer, &delimited_kind);
   Block *host_list = find_list(s);
   bool comment_restored = host_list &&
       (host_list->flags & BLOCK_FLAG_COMMENT_RESTORES_LAZY);
@@ -3605,17 +3526,9 @@ static bool try_begin_code_block(Scanner *s, TSLexer *lexer, uint16_t width,
   }
   if (comment_restored) host_list->flags &= ~BLOCK_FLAG_COMMENT_RESTORES_LAZY;
   bracket_probe_rewind(&probe, 0);
-  uint8_t table_quotes = 0;
-  for (int i = 0; i < s->open_blocks->size; ++i) {
-    Block *b = *array_get(s->open_blocks, i);
-    if (b->type == BLOCK_QUOTE && b->content_col <= column) ++table_quotes;
-  }
-  bool as_delimited_table =
-      table_candidate && delimited_body_valid(s, &probe.lexer, width,
-                                             fence_char, delimited_kind,
-                                             column, table_quotes,
-                                             host_list ? host_list->content_col : 0,
-                                             find_block(s, DIV) != NULL);
+  // A marked csv or tsv fence is always a table (C2-B-180); malformed
+  // quoting is a diagnostic, not a reason to refuse it (C2-B-181).
+  bool as_delimited_table = table_candidate;
   array_delete(&probe.characters);
   s->table_attribute_pending = 0;
   if (!as_delimited_table && !valid_symbols[CODE_BLOCK_BEGIN]) return false;
@@ -9542,7 +9455,8 @@ static bool parse_plus_line(Scanner *s, TSLexer *lexer,
   // resets the marked token end. A continuation row is not gated on the column -
   // it is a table row, and the table's own rule places it.
   uint32_t plus_column = line_column(s, lexer);
-  bool marker_column = continuation_marker_column(s, plus_column);
+  bool marker_column = CARVE2_PLUS_ATTACHMENT &&
+      continuation_marker_column(s, plus_column);
   advance(s, lexer);
   // A continuation row's token is the `+` alone; `emit_plus_line` marks its own end.
   mark_end(s, lexer);
@@ -9554,10 +9468,10 @@ static bool parse_plus_line(Scanner *s, TSLexer *lexer,
   // A continuation row joins its cells to the row above, so a tab is cell
   // content there rather than a padding error (corpus 256).
   bool tab_after_plus = lexer->lookahead == '\t';
-  if (lexer->lookahead != ' ' && !tab_after_plus) {
+  // A 0.2 continuation row needs no space after the `+` (C2-B-175).
+  if (CARVE2_PLUS_ATTACHMENT && lexer->lookahead != ' ' && !tab_after_plus) {
     return false;
   }
-  advance(s, lexer);
   while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
     advance(s, lexer);
   }
@@ -17651,9 +17565,11 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       parse_refused_plus_line(s, lexer)) {
     return true;
   }
-  if (CARVE2_PLUS_ATTACHMENT && lexer->lookahead == '+' &&
-      (valid_symbols[LIST_CONTINUATION_MARKER] ||
-       valid_symbols[EMPTY_LIST_CONTINUATION_MARKER] ||
+  // A table continuation row survives the dropped attachment (C2-B-059).
+  if (lexer->lookahead == '+' &&
+      ((CARVE2_PLUS_ATTACHMENT &&
+        (valid_symbols[LIST_CONTINUATION_MARKER] ||
+         valid_symbols[EMPTY_LIST_CONTINUATION_MARKER])) ||
        valid_symbols[TABLE_CONTINUATION_ROW]) &&
       parse_plus_line(s, lexer, valid_symbols)) {
     return true;
