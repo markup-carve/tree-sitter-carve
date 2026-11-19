@@ -4047,6 +4047,10 @@
           "named": true
         },
         {
+          "type": "comment_line",
+          "named": true
+        },
+        {
           "type": "table_caption",
           "named": true
         },
