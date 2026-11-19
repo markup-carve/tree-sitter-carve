@@ -68,3 +68,204 @@ C2-B-182: aligned cell attributes use the same brace block
           (args))))
     (table_row
       (table_cell))))
+
+================================================================================
+C2-B-025: a nested ordered item short of the content column
+================================================================================
+
+1. a
+  1. b
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_decimal_period)
+      content: (list_item_content
+        (paragraph)
+        (list
+          (list_item
+            marker: (list_marker_decimal_period)
+            content: (list_item_content
+              (paragraph))))))))
+
+================================================================================
+C2-B-015: a nested marker of another value is a lazy line
+================================================================================
+
+1. a
+  2. b
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_decimal_period)
+      content: (list_item_content
+        (paragraph)))))
+
+================================================================================
+C2-B-223: an unclosed backtick run in a cell is text
+================================================================================
+
+| `a | x |
+
+--------------------------------------------------------------------------------
+
+(document
+  (table
+    (table_row
+      (table_cell)
+      (table_cell))))
+
+================================================================================
+C2-B-184: an unclosed run in a continuation fragment is text
+================================================================================
+
+| `a | 1 |
++ b` | 2 |
+
+--------------------------------------------------------------------------------
+
+(document
+  (table
+    (table_row
+      (table_cell)
+      (table_cell))
+    (table_continuation_row
+      (table_cell)
+      (table_cell))))
+
+================================================================================
+C2-I-017: a backtick run with no closing run is text
+================================================================================
+
+see `unclosed *x*
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (strong
+      (strong_begin)
+      (content)
+      (strong_end))))
+
+================================================================================
+C2-B-137: no continuation row reaches across a region marker in a nested quote
+================================================================================
+
+> > | a |
+> > %% #region r
+> > + c |
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (block_quote
+        (block_quote_marker)
+        content: (content
+          (table
+            (table_row
+              (table_cell)))
+          (block_quote_marker)
+          (block_quote_marker)
+          (region_marker)
+          (block_quote_marker)
+          (block_quote_marker)
+          (paragraph))))))
+
+================================================================================
+C2-B-166: an escaped last pipe is no closing pipe
+================================================================================
+
+| a \|
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (backslash_escape)))
+
+================================================================================
+C2-B-192: an attribute line that ends its quote is a closed paragraph
+================================================================================
+
+> {.x}
+para
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (paragraph)))
+  (paragraph))
+
+================================================================================
+C2-B-192: an attribute line that ends its item is a closed paragraph
+================================================================================
+
+- {.x}
+para
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph))))
+  (paragraph))
+
+================================================================================
+C2-B-137: a column-0 comment line between rows keeps the item's table
+================================================================================
+
+- | a |
+%% x
+  | b |
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (table
+          (table_row
+            (table_cell))
+          (comment_line)
+          (table_row
+            (table_cell)))))))
+
+================================================================================
+C2-B-137: a row short of the item after a comment line ends the item
+================================================================================
+
+- | a |
+%% x
+| b |
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (table
+          (table_row
+            (table_cell))))))
+  (comment_line)
+  (table
+    (table_row
+      (table_cell))))

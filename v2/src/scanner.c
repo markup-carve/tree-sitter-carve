@@ -637,6 +637,11 @@ typedef struct {
   // Marker column plus one while a refused one-line paragraph is pending.
   uint8_t refused_plus_column;
   uint8_t table_attribute_pending;
+  // Did the last list marker scan read a bullet or an ordered value of 1?
+  // Read in the same scan call only, so it is not serialized.
+  bool marker_value_one;
+  // Are all cells after an unclosed tick run header cells? Transient.
+  bool open_run_rest_header;
 
   // Where the CURRENT line starts, in tree-sitter's column units.
   //
@@ -753,6 +758,9 @@ typedef struct {
   // inline one is space-only (CARVE-P4-001) and stays on its line. Transient,
   // set around the block reads.
   bool attribute_block_line;
+  // Set by `attribute_line_taken` when the run ends with its container.
+  // Read in the same scan call only.
+  bool attribute_run_ends;
   bool attribute_saw_table;
   char braced_probe_marker;
   bool braced_probe_raw_closer;
@@ -927,6 +935,9 @@ static const uint16_t STATE_FENCE_OWNS_BODY = 1 << 11;
 // The look-ahead of a table comment run or an attribute run already proved
 // how the run ends, so the next line of that run skips it. Keeps both linear.
 static const uint16_t STATE_PROVEN_RUN = 1 << 12;
+// The same bit inside a paragraph: it is a run of refused attribute lines
+// that ends with its container, so it closes after the run (C2-B-092).
+static const uint16_t STATE_CLOSED_ATTRIBUTE_RUN = 1 << 12;
 // Set by `verbatim_line_continues` when the line it just decided to continue
 // into is a comment-only line inside a line block, so `VERBATIM_COMMENT_LINE`
 // - the very next token requested - knows to claim it instead of
@@ -3970,7 +3981,8 @@ static VerbatimRunEnd probe_verbatim_run(Scanner *s, TSLexer *lexer,
       if (host && (host->type == HEADING || disallow_newline(host))) break;
       // Buffered caption lookahead can reset lone-CR columns without moving
       // the host lexer's marked end. Other callers retain raw lookahead.
-      if (in_table_row && row_closing_pipe_candidate) {
+      // A cell or a continuation fragment is its own content (C2-B-223).
+      if (in_table_row) {
         break;
       }
       if (probe) {
@@ -3989,6 +4001,11 @@ static VerbatimRunEnd probe_verbatim_run(Scanner *s, TSLexer *lexer,
         break;
       }
       if (probe && caption_line_ends_block(s, probe, indent)) break;
+      // A comment-only line ends the content for the closer test (C2-I-017).
+      if (lexer->lookahead == '%') {
+        advance(s, lexer);
+        if (lexer->lookahead == '%') break;
+      }
       previous = '\n';
       row_closing_pipe_candidate = false;
       continue;
@@ -4294,10 +4311,14 @@ static bool parse_code_fence(Scanner *s, TSLexer *lexer,
       char marker = span_verbatim_stop_marker(peek_inline(s));
       bool in_table_row = valid_symbols[TABLE_CELL_END] ||
                           find_block(s, TABLE_ROW) != NULL;
-      if (marker != 0 && read_verbatim_run(s, lexer, width, marker,
-                                           in_table_row) ==
-                             VerbatimRunReachesSpanCloser) {
+      VerbatimRunEnd end = read_verbatim_run(s, lexer, width, marker, in_table_row);
+      if (marker != 0 && end == VerbatimRunReachesSpanCloser) {
         flags = INLINE_STOPS_AT_SPAN_CLOSER;
+      }
+      // A run with no closing run in its content is text (C2-I-017).
+      if (end == VerbatimRunReachesBlockEnd && valid_symbols[LITERAL_RUN]) {
+        lexer->result_symbol = LITERAL_RUN;
+        return true;
       }
     }
     lexer->result_symbol = VERBATIM_BEGIN;
@@ -5338,11 +5359,12 @@ static bool scan_comment_only_line(Scanner *s, TSLexer *lexer) {
 /// row or a continuation row of this table follow? Reads ahead only.
 static bool table_row_after_comments(Scanner *s, TSLexer *lexer) {
   uint16_t state = s->state;
+  uint8_t saved_indent = s->indent;
   bool row = false;
   for (;;) {
     bool ending = false;
     uint8_t quotes = scan_block_quote_markers(s, lexer, &ending);
-    consume_whitespace(s, lexer);
+    uint8_t indent = consume_whitespace(s, lexer);
     if (lexer->lookahead == '%') {
       if (quotes > count_blocks(s, BLOCK_QUOTE) ||
           !scan_comment_only_line(s, lexer)) {
@@ -5354,6 +5376,10 @@ static bool table_row_after_comments(Scanner *s, TSLexer *lexer) {
     if (ending || quotes != count_blocks(s, BLOCK_QUOTE)) {
       break;
     }
+    // The comment lines close no item, but the row must reach it.
+    Block *list = find_list(s);
+    s->indent = indent;
+    if (list && !quoted_line_reaches_list(s, lexer, list)) break;
     if (lexer->lookahead == '|') {
       advance(s, lexer);
       TokenType row_type;
@@ -5365,6 +5391,7 @@ static bool table_row_after_comments(Scanner *s, TSLexer *lexer) {
     break;
   }
   s->state = state;
+  s->indent = saved_indent;
   return row;
 }
 
@@ -5393,9 +5420,74 @@ static bool parse_table_comment_line(Scanner *s, TSLexer *lexer,
 /// leaves the run as a paragraph (C2-B-192, C2-B-137). The end of a container
 /// is not read here: the paragraph would take the next line lazily.
 /// Reads ahead only.
+typedef enum {
+  RUN_LINE_BLANK,
+  RUN_LINE_ATTRIBUTE,
+  RUN_LINE_COMMENT,
+  RUN_LINE_ENDS_CONTAINER,
+  RUN_LINE_OTHER,
+} AttributeRunLine;
+
+static bool line_misses_note(Scanner *s, uint32_t column);
+
+/// Does a line at `column` leave the innermost open item, note or div?
+static bool line_leaves_container(Scanner *s, TSLexer *lexer, uint8_t indent) {
+  for (int i = (int)s->open_blocks->size - 1; i >= 0; --i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (b->type == BLOCK_QUOTE) return false;
+    if (is_list(b->type)) {
+      s->indent = indent;
+      return !quoted_line_reaches_list(s, lexer, b);
+    }
+    if (b->type == FOOTNOTE) return line_misses_note(s, line_column(s, lexer));
+    if (b->type == DIV || b->type == FIGURE_GROUP) {
+      if (lexer->lookahead != ':') return false;
+      uint16_t colons = consume_colons(s, lexer);
+      if (colons < 3 || number_of_colon_fence_blocks_from_top(s, colons) == 0) return false;
+      consume_whitespace(s, lexer);
+      return at_line_end(lexer) || lexer->eof(lexer);
+    }
+  }
+  return false;
+}
+
+/// Reads the line at the lexer as a line after an attribute line: whether it
+/// continues the run, ends it, or ends its container (C2-B-092, C2-B-192).
+static AttributeRunLine attribute_run_line(Scanner *s, TSLexer *lexer) {
+  bool ending = false;
+  uint8_t quotes = 0;
+  uint8_t indent = 0;
+  // A quote in an item stands behind the item's indentation.
+  if (count_blocks(s, BLOCK_QUOTE) > 0) indent = consume_whitespace(s, lexer);
+  if (lexer->lookahead == '>') {
+    quotes = scan_block_quote_markers(s, lexer, &ending);
+    indent = 0;
+  }
+  if (!ending) indent += consume_whitespace(s, lexer);
+  if (ending || lexer->eof(lexer) || at_line_end(lexer)) return RUN_LINE_BLANK;
+  if (quotes < count_blocks(s, BLOCK_QUOTE)) return RUN_LINE_ENDS_CONTAINER;
+  if (lexer->lookahead == '%') {
+    return scan_comment_only_line(s, lexer) ? RUN_LINE_COMMENT : RUN_LINE_OTHER;
+  }
+  if (line_leaves_container(s, lexer, indent)) return RUN_LINE_ENDS_CONTAINER;
+  if (lexer->lookahead != '{') return RUN_LINE_OTHER;
+  s->attribute_block_line = true;
+  bool attribute = true;
+  while (attribute && lexer->lookahead == '{') {
+    attribute = scan_valid_inline_attribute(s, lexer);
+  }
+  s->attribute_block_line = false;
+  while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+    advance(s, lexer);
+  }
+  if (!attribute || !(at_line_end(lexer) || lexer->eof(lexer))) return RUN_LINE_OTHER;
+  return RUN_LINE_ATTRIBUTE;
+}
+
 static bool attribute_line_taken(Scanner *s, TSLexer *lexer) {
   bool proven = (s->state & STATE_PROVEN_RUN) != 0;
   s->state &= (uint16_t)~STATE_PROVEN_RUN;
+  s->attribute_run_ends = false;
   bool next_attribute = false;
   uint8_t indent = s->indent;
   uint8_t level = s->block_quote_level;
@@ -5406,35 +5498,14 @@ static bool attribute_line_taken(Scanner *s, TSLexer *lexer) {
   for (;;) {
     if (lexer->eof(lexer)) break;
     consume_line_end(s, lexer);
-    bool ending = false;
-    uint8_t quotes = scan_block_quote_markers(s, lexer, &ending);
-    consume_whitespace(s, lexer);
-    if (ending || lexer->eof(lexer) || at_line_end(lexer)) break;
-    if (quotes < count_blocks(s, BLOCK_QUOTE)) {
-      taken = true;
+    AttributeRunLine line = attribute_run_line(s, lexer);
+    if (line == RUN_LINE_BLANK) break;
+    if (line == RUN_LINE_ENDS_CONTAINER) {
+      s->attribute_run_ends = !proven;
       break;
     }
-    if (lexer->lookahead == '%') {
-      if (!scan_comment_only_line(s, lexer)) {
-        taken = true;
-        break;
-      }
-      continue;
-    }
-    if (lexer->lookahead != '{') {
-      taken = true;
-      break;
-    }
-    s->attribute_block_line = true;
-    bool attribute = true;
-    while (attribute && lexer->lookahead == '{') {
-      attribute = scan_valid_inline_attribute(s, lexer);
-    }
-    s->attribute_block_line = false;
-    while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
-      advance(s, lexer);
-    }
-    if (!attribute || !(at_line_end(lexer) || lexer->eof(lexer))) {
+    if (line == RUN_LINE_COMMENT) continue;
+    if (line == RUN_LINE_OTHER) {
       taken = true;
       break;
     }
@@ -5634,6 +5705,14 @@ static bool scan_ordered_list_type(Scanner *s, TSLexer *lexer,
     advance(s, lexer);
   }
 
+  s->marker_value_one = false;
+  if (scanned_decimal == word_len) {
+    uint8_t zeros = 0;
+    while (zeros + 1 < word_len && zeros < sizeof(word) && word[zeros] == '0') ++zeros;
+    s->marker_value_one = zeros < sizeof(word) && word[zeros] == '1' && zeros + 1 == word_len;
+  } else if (word_len == 1) {
+    s->marker_value_one = word[0] == 'a' || word[0] == 'A' || word[0] == 'i' || word[0] == 'I';
+  }
   // A ten-digit value is prose in 0.2 (C2-B-036).
   if (scanned_decimal > 0 && scanned_decimal <= 9 && scanned_decimal == word_len) {
     *res = DECIMAL;
@@ -5711,6 +5790,7 @@ static TokenType scan_ordered_list_marker_token_type(Scanner *s,
     // so `.x` and a bare `.` on its own line are unaffected.
     if (value_omitted) {
       advance(s, lexer);
+      s->marker_value_one = true;
       return LIST_MARKER_DECIMAL_PERIOD;
     }
     s->ordered_word_end = true;
@@ -5837,8 +5917,10 @@ static TokenType scan_unordered_list_marker_token(Scanner *s, TSLexer *lexer) {
 static TokenType scan_list_marker_token(Scanner *s, TSLexer *lexer) {
   TokenType unordered = scan_unordered_list_marker_token(s, lexer);
   if (unordered != IGNORED) {
+    s->marker_value_one = true;
     return unordered;
   }
+  s->marker_value_one = false;
   return scan_ordered_list_marker_token(s, lexer);
 }
 
@@ -6231,7 +6313,15 @@ static bool scan_paragraph_closing_marker(Scanner *s, TSLexer *lexer) {
       marker_folds_into_nested_paragraph(s, line_column(s, lexer))) {
     return false;
   }
+  // Past the innermost list's marker the line would open a nested list,
+  // which only a bullet or a value of 1 does without a blank line (C2-B-015).
+  bool nests = list->type != LIST_DEFINITION &&
+               count_blocks(s, BLOCK_QUOTE) == 0 &&
+               line_column(s, lexer) + 1u > list->data;
   if (!scan_list_marker(s, lexer)) {
+    return false;
+  }
+  if (nests && !s->marker_value_one) {
     return false;
   }
   return marker_line_has_content(s, lexer);
@@ -6307,10 +6397,11 @@ static bool ensure_list_open(Scanner *s, BlockType type, uint8_t indent,
     // types, but that's handled by BLOCK_CLOSE in `close_list_if_needed` and
     // we shouldn't see that state here.
   }
-  // A sibling short of the last item's content column moves the list to its
-  // own columns (PART 0 S4).
+  // A marker left of the list's column, short of the last item's content
+  // column, moves the list to its own columns (C2-B-055); one past the
+  // item's marker opens a nested list (C2-B-015, C2-B-025).
   if (top && top->type == type && type != LIST_DEFINITION &&
-      top->content_col != 0 && indent > 0) {
+      top->content_col != 0 && indent > 0 && indent < top->data) {
     uint32_t content = top->content_col;
     Block *quote = find_block(s, BLOCK_QUOTE);
     if (quote && list_opened_in_quote(s, top)) {
@@ -6795,6 +6886,10 @@ static bool scan_verbatim_run_in_cell(Scanner *s, TSLexer *lexer,
   // "The mark stands at a pipe": set by a `|`, kept across the whitespace that
   // may trail it, cleared by any other content.
   bool after_pipe = false;
+  // An unclosed run is text (C2-B-223), so the pipes after it still split
+  // cells; whether those are header cells is collected on the way.
+  bool segment = false, segment_header = false;
+  s->open_run_rest_header = true;
   while (!lexer->eof(lexer)) {
     switch (lexer->lookahead) {
     case '\\':
@@ -6818,8 +6913,11 @@ static bool scan_verbatim_run_in_cell(Scanner *s, TSLexer *lexer,
       after_pipe = false;
       break;
     case '|':
+      if (segment && !segment_header) s->open_run_rest_header = false;
       after_pipe = true;
       advance(s, lexer);
+      segment = true;
+      segment_header = lexer->lookahead == '=';
       break;
     case ' ':
     case '\t':
@@ -8332,10 +8430,9 @@ static bool scan_table_cell(Scanner *s, TSLexer *lexer, bool *separator,
       if (lexer->lookahead == '|') {
         advance(s, lexer);
         consume_whitespace(s, lexer);
+        // An escaped last pipe is no closing pipe (C2-B-166).
         if (at_line_end(lexer) || lexer->eof(lexer)) {
-          if (closed_by_open_run) {
-            *closed_by_open_run = true;
-          }
+          *unterminated = true;
           return false;
         }
       } else if (!at_line_end(lexer) && !lexer->eof(lexer)) {
@@ -8545,6 +8642,7 @@ static bool scan_table_row(Scanner *s, TSLexer *lexer, TokenType *row_type,
     if (!scan_table_cell(s, lexer, &curr_separator, &curr_empty,
                          &curr_meaningful, &unterminated,
                          &closed_by_open_run)) {
+      if (closed_by_open_run && !header_cell) all_header_cells = false;
       break;
     }
     if (!header_cell) all_header_cells = false;
@@ -8567,6 +8665,7 @@ static bool scan_table_row(Scanner *s, TSLexer *lexer, TokenType *row_type,
     // scan is already past end of line and the checks below cannot re-read it.
     // Everything they ask has been answered on the way: the cell has content,
     // it is not a separator, and its closing pipe is there.
+    if (!s->open_run_rest_header) all_header_cells = false;
     all_separators = false;
     any_content = true;
     unterminated = false;
@@ -10423,6 +10522,13 @@ static bool parse_open_curly_bracket(Scanner *s, TSLexer *lexer,
           if (has_table_flag) s->table_attribute_pending = 1;
           return true;
         }
+        // Refused at the end of its container, the run is a paragraph that
+        // takes no lazy line (C2-B-192, C2-B-092). The brace is its first text.
+        if (s->attribute_run_ends && valid_symbols[LITERAL_RUN]) {
+          s->state |= STATE_CLOSED_ATTRIBUTE_RUN;
+          lexer->result_symbol = LITERAL_RUN;
+          return true;
+        }
         goto no_attribute;
       } else {
         goto no_attribute;
@@ -12174,7 +12280,9 @@ static bool parse_close_paragraph(Scanner *s, TSLexer *lexer) {
     return false;
   }
   s->drop_close_markers = 0;
-  if (!close_paragraph(s, lexer)) {
+  bool run_ends = (s->state & STATE_CLOSED_ATTRIBUTE_RUN) != 0;
+  s->state &= (uint16_t)~STATE_CLOSED_ATTRIBUTE_RUN;
+  if (!run_ends && !close_paragraph(s, lexer)) {
     return false;
   }
   s->folded_plus_paragraph = false;
@@ -12226,6 +12334,21 @@ static bool emit_newline_inline(Scanner *s, TSLexer *lexer,
   Block *top = peek_block(s);
   if (disallow_newline(top)) {
     return false;
+  }
+
+  // The bit stays set for the paragraph's close on the next line.
+  if (s->state & STATE_CLOSED_ATTRIBUTE_RUN) {
+    uint8_t indent = s->indent;
+    uint8_t level = s->block_quote_level;
+    uint32_t col_base = s->col_base;
+    AttributeRunLine line = attribute_run_line(s, lexer);
+    s->indent = indent;
+    s->block_quote_level = level;
+    s->col_base = col_base;
+    if (line != RUN_LINE_ATTRIBUTE && line != RUN_LINE_COMMENT) return false;
+    if (line == RUN_LINE_COMMENT) s->erasable_line = true;
+    lexer->result_symbol = NEWLINE_INLINE;
+    return true;
   }
 
   // This is a lookahead for the next line, to check if
@@ -17549,7 +17672,8 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
        (lexer->lookahead == '+' && !s->after_separator_row &&
         count_blocks(s, BLOCK_QUOTE) == s->block_quote_level)) &&
       (footnote_row ||
-       (find_list(s) && quoted_line_reaches_list(s, lexer, find_list(s))))) {
+       (find_list(s) && (lexer->lookahead == '%' ||
+                         quoted_line_reaches_list(s, lexer, find_list(s)))))) {
     uint8_t indent = s->indent;
     uint8_t level = s->block_quote_level;
     uint16_t state = s->state;
@@ -17762,8 +17886,13 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     return true;
   }
 
+  // A table's prefix is table quote continuations from the line's first
+  // marker on; after a plain quote continuation the line opens no table row,
+  // so a region marker or a closed block above leaves no row to continue
+  // (C2-B-137, C2-B-175).
   if (valid_symbols[TABLE_QUOTE_CONTINUATION] && !valid_symbols[ERROR] &&
-      lexer->lookahead == '>') {
+      lexer->lookahead == '>' &&
+      !(s->block_quote_level > 0 && valid_symbols[BLOCK_QUOTE_CONTINUATION])) {
     return parse_table_quote_continuation(s, lexer, valid_symbols);
   }
 
