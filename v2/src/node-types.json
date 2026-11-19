@@ -2919,6 +2919,20 @@
     "type": "list_item",
     "named": true,
     "fields": {
+      "checkmark": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "checked",
+            "named": true
+          },
+          {
+            "type": "unchecked",
+            "named": true
+          }
+        ]
+      },
       "content": {
         "multiple": false,
         "required": false,
@@ -4342,6 +4356,10 @@
         {
           "type": "table_cell",
           "named": true
+        },
+        {
+          "type": "trailing_comment",
+          "named": true
         }
       ]
     }
@@ -4356,6 +4374,10 @@
       "types": [
         {
           "type": "table_cell",
+          "named": true
+        },
+        {
+          "type": "trailing_comment",
           "named": true
         }
       ]

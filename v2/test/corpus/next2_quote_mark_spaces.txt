@@ -1,0 +1,162 @@
+================================================================================
+C2-B-025: after a quote mark with two spaces a bullet one column past the item's marker nests
+================================================================================
+
+>  - a
+>   - b
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (paragraph)
+            (block_quote_marker)
+            (list
+              (list_item
+                marker: (list_marker_dash)
+                content: (list_item_content
+                  (paragraph))))))))))
+
+================================================================================
+C2-B-025: after a quote mark with two spaces a bullet at the item's marker column is a sibling
+================================================================================
+
+>  - a
+>  - b
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (paragraph)))
+        (list_item
+          (block_quote_marker)
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (paragraph)))))))
+
+================================================================================
+C2-B-015: after a quote mark with two spaces an ordered marker of value 1 past the item's marker nests
+================================================================================
+
+>  - a
+>   1. b
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (paragraph)
+            (block_quote_marker)
+            (list
+              (list_item
+                marker: (list_marker_decimal_period)
+                content: (list_item_content
+                  (paragraph))))))))))
+
+================================================================================
+C2-B-025: after a quote mark with two spaces a row past the item's marker is the item's
+================================================================================
+
+>  - a
+>   | b |
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (paragraph)
+            (block_quote_marker)
+            (table
+              (table_row
+                (table_cell)))))))))
+
+================================================================================
+C2-B-024: after a quote mark with two spaces a text line past the item's marker is lazy
+================================================================================
+
+>  - a
+>    b
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (paragraph
+              (block_quote_marker))))))))
+
+================================================================================
+C2-B-024: a quote short of a quoted item's marker column is a lazy line
+================================================================================
+
+>  - a
+>  > b
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (paragraph
+              (block_quote_marker))))))))
+
+================================================================================
+C2-B-025: after a quote mark with three spaces a bullet one column past the item's marker nests
+================================================================================
+
+>   - a
+>    - b
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (paragraph)
+            (block_quote_marker)
+            (list
+              (list_item
+                marker: (list_marker_dash)
+                content: (list_item_content
+                  (paragraph))))))))))
+
