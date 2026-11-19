@@ -7300,9 +7300,10 @@ static bool parse_footnote_after_caret(Scanner *s, TSLexer *lexer,
   if (!valid_symbols[IN_FALLBACK]) {
     Block *quote = find_block(s, BLOCK_QUOTE);
     uint32_t quote_prefix = quote ? quote->content_col : 0;
+    // The body owns every line indented past the marker (C2-B-025).
     uint32_t margin = marker_col >= quote_prefix
-                          ? marker_col - quote_prefix + 2
-                          : s->indent + 2;
+                          ? marker_col - quote_prefix + 1
+                          : s->indent + 1;
     push_block(s, FOOTNOTE, (uint8_t)margin);
     // The body can begin with a fence on the definition's marker line.
     s->marker_end_col = (uint8_t)line_column(s, lexer);
