@@ -506,9 +506,6 @@
 (abbreviation_definition
   (abbreviation_expansion) @string)
 
-; Citations (§22 / Tier-2 extension)
-(citation_group) @string.special
-
 ; Callout list (§10 / Tier-2 extension)
 (callout_list) @markup.list
 
