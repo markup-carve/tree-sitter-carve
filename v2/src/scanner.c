@@ -11095,11 +11095,9 @@ keep_reading:
         Block *item = *array_get(s->open_blocks, i);
         if (is_list(item->type) && item->content_col == column) return true;
       }
-      // Short of a quoted item, a `>` opens a quote in the item's owner
-      // (PART 0 S3/S4).
-      if (quoted && list_inside_quotes(s) && list_opened_in_quote(s, quoted) &&
-          column < quoted->content_col && !at_nesting_cap(s)) {
-        return true;
+      // Short of a quoted item the quote is a lazy line too (C2-B-228).
+      if (quoted && list_inside_quotes(s) && list_opened_in_quote(s, quoted)) {
+        return false;
       }
     }
   }
@@ -17442,7 +17440,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     if (quote && quote == peek_block(s) && quote->content_col != 0 &&
         column == quote->content_col) {
       consume_whitespace(s, lexer);
-      s->indent = (uint8_t)line_column(s, lexer);
+      s->indent = (uint8_t)(line_column(s, lexer) - quote->content_col);
     } else if (quote && quote->content_col != 0 && quoted_list &&
                is_list(quoted_list->type) &&
                list_opened_in_quote(s, quoted_list) &&
