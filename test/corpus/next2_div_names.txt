@@ -1,0 +1,35 @@
+================================================================================
+C2-B-127: a longer name starting with figure is a plain div
+================================================================================
+
+::: figures
+x
+:::
+
+--------------------------------------------------------------------------------
+
+(document
+  (div
+    (div_marker_begin)
+    type: (admonition_type)
+    content: (content
+      (paragraph))
+    (div_marker_end)))
+
+================================================================================
+C2-B-225: a name character after figure continues the name
+================================================================================
+
+::: figure-a
+x
+:::
+
+--------------------------------------------------------------------------------
+
+(document
+  (div
+    (div_marker_begin)
+    type: (admonition_type)
+    content: (content
+      (paragraph))
+    (div_marker_end)))

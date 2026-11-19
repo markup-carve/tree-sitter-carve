@@ -5579,6 +5579,7 @@ typedef enum {
   RUN_LINE_ATTRIBUTE,
   RUN_LINE_COMMENT,
   RUN_LINE_ENDS_CONTAINER,
+  RUN_LINE_CAPTION,
   RUN_LINE_OTHER,
 } AttributeRunLine;
 
@@ -5624,6 +5625,13 @@ static AttributeRunLine attribute_run_line(Scanner *s, TSLexer *lexer) {
     return scan_comment_only_line(s, lexer) ? RUN_LINE_COMMENT : RUN_LINE_OTHER;
   }
   if (line_leaves_container(s, lexer, indent)) return RUN_LINE_ENDS_CONTAINER;
+  if (lexer->lookahead == '^') {
+    advance(s, lexer);
+    if (lexer->lookahead != ' ') return RUN_LINE_OTHER;
+    consume_whitespace(s, lexer);
+    bool content = !at_line_end(lexer) && !lexer->eof(lexer);
+    return content ? RUN_LINE_CAPTION : RUN_LINE_OTHER;
+  }
   if (lexer->lookahead != '{') return RUN_LINE_OTHER;
   s->attribute_block_line = true;
   bool attribute = true;
@@ -5654,7 +5662,9 @@ static bool attribute_line_taken(Scanner *s, TSLexer *lexer) {
     consume_line_end(s, lexer);
     AttributeRunLine line = attribute_run_line(s, lexer);
     if (line == RUN_LINE_BLANK) break;
-    if (line == RUN_LINE_ENDS_CONTAINER) {
+    // A caption takes no attribute line (C2-B-096), so the run is a closed
+    // paragraph above it, as at the end of its container.
+    if (line == RUN_LINE_ENDS_CONTAINER || line == RUN_LINE_CAPTION) {
       s->attribute_run_ends = !proven;
       break;
     }
@@ -12226,8 +12236,11 @@ static bool marker_folds_into_nested_paragraph(Scanner *s, uint32_t column) {
     return false;
   }
   bool past_quote = false;
+  Block *outer = NULL;
   for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
     Block *b = *array_get(s->open_blocks, i);
+    Block *holder = outer;
+    outer = b;
     if (lazy_quote && b->type == BLOCK_QUOTE) past_quote = true;
     // Missing a quote and an item body inside it closes them (PART 0 family
     // guards): `> - q` / `- x` opens a list outside the quote.
@@ -12237,6 +12250,11 @@ static bool marker_folds_into_nested_paragraph(Scanner *s, uint32_t column) {
     }
     // At an item's list column or indented past its marker (C2-B-021).
     if (is_list(b->type) && b->data <= column + 1) return false;
+    // Left of a note's list, a line the note owns continues it (C2-B-015).
+    if (is_list(b->type) && b->type != LIST_DEFINITION && holder &&
+        holder->type == FOOTNOTE && column >= holder->data) {
+      return false;
+    }
   }
   return true;
 }
@@ -12518,9 +12536,14 @@ static bool close_paragraph_after_quote(Scanner *s, TSLexer *lexer,
       }
       // A definition line at column 0 while a definition is open interrupts
       // (C2-B-016). Probed on a scratch lexer.
+      // The probe moves the host lexer, so a later read goes through it.
+      BracketProbe probe;
+      bool probed = false;
+      TSLexer *line = lexer;
       if ((lead == '[' || lead == '*') && column == 0 &&
-          quotes_below(s, note) == 0 && count_blocks(s, BLOCK_QUOTE) == 0) {
-        BracketProbe probe = bracket_probe_new(s, lexer);
+          quotes_below(s, note) == 0) {
+        probe = bracket_probe_new(s, lexer);
+        probed = true;
         TSLexer *p = &probe.lexer;
         bool definition = false;
         p->advance(p, false);
@@ -12532,19 +12555,44 @@ static bool close_paragraph_after_quote(Scanner *s, TSLexer *lexer,
         } else {
           definition = scan_ref_def(s, p);
         }
-        array_delete(&probe.characters);
-        if (definition) return true;
+        if (definition) {
+          array_delete(&probe.characters);
+          return true;
+        }
+        bracket_probe_rewind(&probe, 0);
+        line = p;
       }
-      // At column 0, with no list or quote around the paragraph, the line is
-      // asked what a root paragraph asks: a quote and a list marker
-      // interrupter (b) does not take are lazy lines (C2-B-015, C2-B-024).
-      if ((carve_is_alnum_ascii(lead) || lead == '(' || lead == '.' ||
-           lead == '>') && column == 0 &&
-          !list_in_note && quotes_below(s, note) == 0 &&
-          count_blocks(s, BLOCK_QUOTE) == 0 && markers_seen <= 0) {
-        s->paragraph_markers_seen = markers_seen;
-        return paragraph_block_opener_ahead(s, lexer, markers_seen);
+      // At column 0 the note does not own the line, so it is asked what a
+      // root paragraph asks: a quote, a heading, an attribute line, a caret
+      // line and a list marker interrupter (b) does not take are lazy lines
+      // (C2-B-015, C2-B-017, C2-B-024). A marker
+      // closes the lists the note holds and opens a root list.
+      bool marker_lead = carve_is_alnum_ascii(lead) || lead == '(' ||
+                         lead == '.' || lead == '-' || lead == '*';
+      if ((marker_lead || lead == '>' || lead == '#' || lead == '{' ||
+           lead == '^') && column == 0 &&
+          quotes_below(s, note) == 0 && markers_seen <= 0) {
+        bool ends;
+        if (list_in_note && marker_lead) {
+          // A break of three or more stars interrupts wherever it stands
+          // (C2-B-200); a star lead always went through the probe.
+          bool star_break = false;
+          if (probed && lead == '*') {
+            uint8_t stars = consume_chars(s, line, '*');
+            consume_whitespace(s, line);
+            star_break = stars >= 3 && (at_line_end(line) || line->eof(line));
+            bracket_probe_rewind(&probe, 0);
+          }
+          ends = star_break ||
+                 (scan_list_marker(s, line) && marker_line_has_content(s, line));
+        } else {
+          s->paragraph_markers_seen = markers_seen;
+          ends = paragraph_block_opener_ahead(s, line, markers_seen);
+        }
+        if (probed) array_delete(&probe.characters);
+        return ends;
       }
+      if (probed) array_delete(&probe.characters);
       if (carve_is_alnum_ascii(lead) || lead == '(' || lead == '.') {
         return scan_list_marker(s, lexer) && marker_line_has_content(s, lexer);
       }
@@ -12650,17 +12698,37 @@ static bool close_paragraph_after_quote(Scanner *s, TSLexer *lexer,
   if (s->glued_quote_marker) return false;
 
   // Past a note's marker, a bullet, a bare dot or a value of 1 opens a nested
-  // list in the note's paragraph (C2-B-015). Probed on a scratch lexer, so a
-  // line that is no such marker is read on below.
-  Block *body = peek_block(s);
-  if (body && body->type == FOOTNOTE && count_blocks(s, BLOCK_QUOTE) == 0 &&
-      line_column(s, lexer) >= body->data && !at_line_end(lexer) &&
+  // list in the note's paragraph (C2-B-015). A line short of the marks of the
+  // quotes inside the note is a line of the note's body too, and the marker
+  // closes those quotes (C2-B-021). Probed on a scratch lexer, so a line that
+  // is no such marker is read on below.
+  Block *body = find_block(s, FOOTNOTE);
+  uint8_t inner_quotes = 0;
+  for (int i = s->open_blocks->size - 1; body && i >= 0; --i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (b == body) break;
+    if (b->type != BLOCK_QUOTE) {
+      body = NULL;
+      break;
+    }
+    ++inner_quotes;
+  }
+  bool body_line = body && quotes_below(s, body) == 0 &&
+      (inner_quotes == 0 || markers_seen < inner_quotes);
+  if (body_line && line_column(s, lexer) >= body->data && !at_line_end(lexer) &&
       !lexer->eof(lexer)) {
     BracketProbe probe = bracket_probe_new(s, lexer);
     bool nests = scan_list_marker(s, &probe.lexer) && s->marker_value_one &&
                  marker_line_has_content(s, &probe.lexer);
+    bool ends = nests;
+    if (!nests) {
+      // The probe moved the host lexer: the line is read on through it.
+      bracket_probe_rewind(&probe, 0);
+      s->paragraph_markers_seen = markers_seen;
+      ends = paragraph_block_opener_ahead(s, &probe.lexer, markers_seen);
+    }
     array_delete(&probe.characters);
-    if (nests) return true;
+    return ends;
   }
 
   s->paragraph_markers_seen = markers_seen;
@@ -12753,12 +12821,6 @@ static bool emit_newline_inline(Scanner *s, TSLexer *lexer,
   }
   if (top && top->type == HEADING &&
       next_line_whitespace <= top->content_col) return false;
-
-  // Need an extra check so we don't emit a NEWLINE_INLINE at the end
-  // of a table caption if there's a mismatched indent.
-  if (top && top->type == TABLE_CAPTION && !has_open_span(s) && next_line_whitespace < top->data) {
-    return false;
-  }
 
   // Caption continuations use the same margin checks as opener lookahead.
   bool ends;
@@ -16494,6 +16556,12 @@ static bool parse_figure_group_marker(Scanner *s, TSLexer *lexer) {
       return false;
     }
     advance(s, lexer);
+  }
+  // A name runs over ASCII letters, digits, `_` and `-` (C2-B-225), so
+  // `figures` or `figure-a` is another name and a plain div (C2-B-127).
+  if (carve_is_alnum_ascii(lexer->lookahead) || lexer->lookahead == '_' ||
+      lexer->lookahead == '-') {
+    return false;
   }
   mark_end(s, lexer);
   bool glued_tail = lexer->lookahead != ' ' && lexer->lookahead != '\t' &&

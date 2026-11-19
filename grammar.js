@@ -151,7 +151,6 @@ function inlineElement($, options) {
             seq($.mention, repeat($._glued_marker)),
           ),
           prec.dynamic(ELEMENT_PRECEDENCE, seq($.tag, repeat($._glued_marker))),
-          prec.dynamic(ELEMENT_PRECEDENCE, $.citation_group),
           $.auto_text_link,
           $.autolink,
           $.verbatim,
@@ -1267,7 +1266,9 @@ module.exports = grammar({
     table_caption: ($) =>
       seq(
         field("marker", alias($._table_caption_begin, $.marker)),
-        field("content", alias(repeat1($._inline_line), $.content)),
+        // Paragraph-like, as a standalone caption is (C2-B-148).
+        field("content", alias($._caption_content, $.content)),
+        $._eof_or_newline,
         choice($._table_caption_end, "\0"),
       ),
 
@@ -2039,68 +2040,6 @@ module.exports = grammar({
         $._abbreviation_head,
         optional($._whitespace1),
         choice($._newline, $._eof_or_newline),
-      ),
-
-    // Citation group inline: `[@key]`, `[+@key]`, `[-@key]`, `[@a; see @b, p.4]`
-    // (Carve §22, Tier-2 extension; Pandoc-compatible citation syntax.)
-    //
-    // The token is a single regex that matches the whole `[...]` construct so it
-    // wins over `_bracketed_text_begin` in the lexer without needing the external
-    // scanner.  Key charset follows Pandoc: first char \w, subsequent chars
-    // \w or any of  :  .  #  $  %  &  +  ?  <  >  ~  /  -
-    //
-    // TAIL-LOOKAHEAD LIMITATION (tree-sitter 0.22 regex has no lookahead). The
-    // spec / carve-js reference rule is: a `[...]` with a `@key` is a citation
-    // ONLY when it has NO `(url)` / `[ref]` / `{attrs}` tail; with a tail it is a
-    // link or span. A single lexer token cannot look past its own `]` to test the
-    // following char, and a structural rule that reuses the bracket-span scanner
-    // tokens collides irreconcilably with `link_text` / `span` over the inline
-    // body. So two deliberate trade-offs keep this a clean lexer token:
-    //
-    //   1. CONSERVATIVE FIRST ITEM (no leading prefix text). `[see @a]` and a
-    //      real link `[contact @support](url)` are lexically identical up to the
-    //      `]`; matching arbitrary first-item prefix would steal such links. The
-    //      first item therefore begins with `@` straight after `[`, `[+`, or
-    //      `[-`. Prefix text IS supported on SECOND and later `;`-items
-    //      (`[@a; see @b]`) where no link tail can follow a `;`. The dropped
-    //      `[prefix @key]` single-item form falls back to text + a `mention`.
-    //
-    //   2. RESIDUAL `[@key](url)` / `[@key][ref]` OVERLAP. A bracket that is
-    //      EXACTLY `[@key]` followed by a `(url)` or `[ref]` link tail is matched
-    //      here as a citation, leaving the tail as separate text. This narrow
-    //      mention-only-link form is the one case that still diverges; it is rare
-    //      (a profile link is normally written `[@user]` then a separate link, or
-    //      `[user](url)`), and the cost is cosmetic highlighting, not a parse
-    //      failure. A `{attrs}` tail still attaches as an `inline_attribute`
-    //      after the citation token (so `[@k]{.x}` stays citation + attribute).
-    citation_group: (_) =>
-      token(
-        prec(
-          1,
-          seq(
-            "[",
-            optional("+"),
-            // First item: `@key` immediately (optional `-` suppress-author).
-            optional("-"),
-            "@",
-            /[\w][\w:.#$%&+?<>~\/-]*/,
-            // optional locator text after the key
-            /[^\[\]@\r\n]*/,
-            // zero or more additional citation items separated by `;`; these MAY
-            // carry prefix text since no link tail can follow a `;`.
-            repeat(
-              seq(
-                ";",
-                /[^\[\]@\r\n]*/,
-                optional("-"),
-                "@",
-                /[\w][\w:.#$%&+?<>~\/-]*/,
-                /[^\[\]@\r\n]*/,
-              ),
-            ),
-            "]",
-          ),
-        ),
       ),
 
     // Callout list block (§10 / Tier-2 extension).

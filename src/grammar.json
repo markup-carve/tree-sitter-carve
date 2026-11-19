@@ -3668,14 +3668,6 @@
                     }
                   },
                   {
-                    "type": "PREC_DYNAMIC",
-                    "value": 100,
-                    "content": {
-                      "type": "SYMBOL",
-                      "name": "citation_group"
-                    }
-                  },
-                  {
                     "type": "SYMBOL",
                     "name": "auto_text_link"
                   },
@@ -4032,15 +4024,16 @@
           "content": {
             "type": "ALIAS",
             "content": {
-              "type": "REPEAT1",
-              "content": {
-                "type": "SYMBOL",
-                "name": "_inline_line"
-              }
+              "type": "SYMBOL",
+              "name": "_caption_content"
             },
             "named": true,
             "value": "content"
           }
+        },
+        {
+          "type": "SYMBOL",
+          "name": "_eof_or_newline"
         },
         {
           "type": "CHOICE",
@@ -5039,14 +5032,6 @@
                           }
                         }
                       ]
-                    }
-                  },
-                  {
-                    "type": "PREC_DYNAMIC",
-                    "value": 100,
-                    "content": {
-                      "type": "SYMBOL",
-                      "name": "citation_group"
                     }
                   },
                   {
@@ -6824,102 +6809,6 @@
         }
       ]
     },
-    "citation_group": {
-      "type": "TOKEN",
-      "content": {
-        "type": "PREC",
-        "value": 1,
-        "content": {
-          "type": "SEQ",
-          "members": [
-            {
-              "type": "STRING",
-              "value": "["
-            },
-            {
-              "type": "CHOICE",
-              "members": [
-                {
-                  "type": "STRING",
-                  "value": "+"
-                },
-                {
-                  "type": "BLANK"
-                }
-              ]
-            },
-            {
-              "type": "CHOICE",
-              "members": [
-                {
-                  "type": "STRING",
-                  "value": "-"
-                },
-                {
-                  "type": "BLANK"
-                }
-              ]
-            },
-            {
-              "type": "STRING",
-              "value": "@"
-            },
-            {
-              "type": "PATTERN",
-              "value": "[\\w][\\w:.#$%&+?<>~\\/-]*"
-            },
-            {
-              "type": "PATTERN",
-              "value": "[^\\[\\]@\\r\\n]*"
-            },
-            {
-              "type": "REPEAT",
-              "content": {
-                "type": "SEQ",
-                "members": [
-                  {
-                    "type": "STRING",
-                    "value": ";"
-                  },
-                  {
-                    "type": "PATTERN",
-                    "value": "[^\\[\\]@\\r\\n]*"
-                  },
-                  {
-                    "type": "CHOICE",
-                    "members": [
-                      {
-                        "type": "STRING",
-                        "value": "-"
-                      },
-                      {
-                        "type": "BLANK"
-                      }
-                    ]
-                  },
-                  {
-                    "type": "STRING",
-                    "value": "@"
-                  },
-                  {
-                    "type": "PATTERN",
-                    "value": "[\\w][\\w:.#$%&+?<>~\\/-]*"
-                  },
-                  {
-                    "type": "PATTERN",
-                    "value": "[^\\[\\]@\\r\\n]*"
-                  }
-                ]
-              }
-            },
-            {
-              "type": "STRING",
-              "value": "]"
-            }
-          ]
-        }
-      }
-    },
     "callout_list": {
       "type": "PREC_RIGHT",
       "value": 0,
@@ -7947,14 +7836,6 @@
                     }
                   },
                   {
-                    "type": "PREC_DYNAMIC",
-                    "value": 100,
-                    "content": {
-                      "type": "SYMBOL",
-                      "name": "citation_group"
-                    }
-                  },
-                  {
                     "type": "SYMBOL",
                     "name": "auto_text_link"
                   },
@@ -8337,14 +8218,6 @@
                           }
                         }
                       ]
-                    }
-                  },
-                  {
-                    "type": "PREC_DYNAMIC",
-                    "value": 100,
-                    "content": {
-                      "type": "SYMBOL",
-                      "name": "citation_group"
                     }
                   },
                   {

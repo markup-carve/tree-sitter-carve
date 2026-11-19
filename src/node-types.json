@@ -293,10 +293,6 @@
           "named": true
         },
         {
-          "type": "citation_group",
-          "named": true
-        },
-        {
           "type": "collapsed_reference_image",
           "named": true
         },
@@ -594,10 +590,6 @@
           "named": true
         },
         {
-          "type": "citation_group",
-          "named": true
-        },
-        {
           "type": "collapsed_reference_image",
           "named": true
         },
@@ -846,10 +838,6 @@
         },
         {
           "type": "caption",
-          "named": true
-        },
-        {
-          "type": "citation_group",
           "named": true
         },
         {
@@ -1124,10 +1112,6 @@
         },
         {
           "type": "caption",
-          "named": true
-        },
-        {
-          "type": "citation_group",
           "named": true
         },
         {
@@ -2129,10 +2113,6 @@
           "named": true
         },
         {
-          "type": "citation_group",
-          "named": true
-        },
-        {
           "type": "collapsed_reference_image",
           "named": true
         },
@@ -2694,10 +2674,6 @@
         },
         {
           "type": "braced_comment",
-          "named": true
-        },
-        {
-          "type": "citation_group",
           "named": true
         },
         {
@@ -3339,10 +3315,6 @@
         },
         {
           "type": "braced_comment",
-          "named": true
-        },
-        {
-          "type": "citation_group",
           "named": true
         },
         {
@@ -4115,10 +4087,6 @@
           "named": true
         },
         {
-          "type": "citation_group",
-          "named": true
-        },
-        {
           "type": "collapsed_reference_image",
           "named": true
         },
@@ -4414,10 +4382,6 @@
         },
         {
           "type": "braced_comment",
-          "named": true
-        },
-        {
-          "type": "citation_group",
           "named": true
         },
         {
@@ -4862,10 +4826,6 @@
   },
   {
     "type": "caption_marker",
-    "named": true
-  },
-  {
-    "type": "citation_group",
     "named": true
   },
   {
