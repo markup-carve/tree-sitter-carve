@@ -1,0 +1,106 @@
+================================================================================
+C2-B-122: a quoted title after a raw fence's format is further words
+================================================================================
+
+```=html "T"
+x
+```
+
+--------------------------------------------------------------------------------
+
+(document
+  (raw_block
+    (raw_block_marker_begin)
+    info: (raw_block_info
+      marker: (language_marker)
+      language: (language))
+    invalid_metadata: (invalid_metadata)
+    content: (content)
+    (raw_block_marker_end)))
+
+================================================================================
+C2-B-122: a label after a raw fence's format is further words
+================================================================================
+
+```=html [L]
+x
+```
+
+--------------------------------------------------------------------------------
+
+(document
+  (raw_block
+    (raw_block_marker_begin)
+    info: (raw_block_info
+      marker: (language_marker)
+      language: (language))
+    invalid_metadata: (invalid_metadata)
+    content: (content)
+    (raw_block_marker_end)))
+
+================================================================================
+C2-B-116: the 0.1 raw spelling is a code block with further words
+================================================================================
+
+```raw html
+x
+```
+
+--------------------------------------------------------------------------------
+
+(document
+  (code_block
+    (code_block_marker_begin)
+    language: (language)
+    invalid_metadata: (invalid_metadata)
+    code: (code)
+    (code_block_marker_end)))
+
+================================================================================
+C2-B-084: an abbreviation with only spaces after the separator is text
+================================================================================
+
+*[A]:   
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph))
+
+================================================================================
+C2-B-084: an abbreviation with nothing after the separator is text
+================================================================================
+
+*[A]: 
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph))
+
+================================================================================
+C2-B-084: an abbreviation expansion may start with a space
+================================================================================
+
+*[A]:  x
+
+--------------------------------------------------------------------------------
+
+(document
+  (abbreviation_definition
+    (abbreviation_marker)
+    expansion: (abbreviation_expansion)))
+
+================================================================================
+C2-B-083: a link definition label may start with an at-sign
+================================================================================
+
+[@k]: /u
+
+--------------------------------------------------------------------------------
+
+(document
+  (link_reference_definition
+    label: (link_label)
+    destination: (link_destination)))
+

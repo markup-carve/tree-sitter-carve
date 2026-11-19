@@ -567,6 +567,7 @@ module.exports = grammar({
         $.section,
         $._block_element,
         $.abbreviation_definition,
+        alias($._blank_abbreviation_line, $.paragraph),
         $._newline,
       ),
     _block_with_heading: ($) =>
@@ -588,7 +589,6 @@ module.exports = grammar({
         $.thematic_break,
         $.block_quote,
         alias($.block_math, $.math),
-        $.citation_definition,
         $.link_reference_definition,
         $.comment_line,
         $.region_marker,
@@ -758,6 +758,7 @@ module.exports = grammar({
         choice(
           $._list_continuation,
           seq(
+            optional($._caption_host_line),
             field("definition", alias($._paragraph_content, $.definition)),
             choice($._eof_or_newline, $._close_paragraph),
           ),
@@ -1576,8 +1577,8 @@ module.exports = grammar({
         // The same trailing-whitespace slot the code fence takes, for the same
         // reason: `code_fence_info_is_modeled` accepts ```` ```=html ```` with a
         // trailing space or tab, and without a slot here that opener was an
-        // ERROR and its body live prose. Both raw spellings reach it -
-        // ```` ```=FORMAT ```` and ```` ```raw FORMAT ````.
+        // ERROR and its body live prose. A raw fence takes no title or label,
+        // so everything after the format lands here (C2-B-122).
         optional(
           field(
             "invalid_metadata",
@@ -1601,19 +1602,11 @@ module.exports = grammar({
           ),
         ),
       ),
+    // ```=FORMAT (C2-B-116). The 0.1 spelling ```raw FORMAT is a code block.
     raw_block_info: ($) =>
-      choice(
-        // Carve form: ```raw FORMAT
-        seq(
-          field("marker", alias("raw", $.language_marker)),
-          $._whitespace1,
-          field("language", alias($.raw_format, $.language)),
-        ),
-        // Djot form: ```=FORMAT (the `=` is glued to the fence, no space)
-        seq(
-          field("marker", alias(token.immediate("="), $.language_marker)),
-          field("language", alias($.raw_format, $.language)),
-        ),
+      seq(
+        field("marker", alias(token.immediate("="), $.language_marker)),
+        field("language", alias($.raw_format, $.language)),
       ),
 
     // Excludes `"` and `[` so a glued header/label (```php"x", ```php[x]) is
@@ -1769,6 +1762,7 @@ module.exports = grammar({
       prec.dynamic(
         2 * ELEMENT_PRECEDENCE,
         seq(
+          optional($._caption_host_line),
           field("math_marker", alias("$$", $.math_marker)),
           field("begin_marker", alias($._verbatim_begin, $.math_marker_begin)),
           field("content", alias($._verbatim_body, $.content)),
@@ -1788,13 +1782,13 @@ module.exports = grammar({
         // defines a label spelled `*bold*` and builds no emphasis on a line
         // that renders nothing. `scan_ref_def` in `src/scanner.c` reads the
         // same run; where the two disagreed about where the label ends, the
-        // line came back as an ERROR. The subtracted `@` keeps `[@key]:` for
-        // `citation_definition`.
+        // line came back as an ERROR. `[@key]:` is a link definition too: a
+        // citation has no core form (C2-B-083, C2-I-101).
         // A backslash escapes the next character, a `]` included (C2-I-076).
         field(
           "label",
           alias(
-            token(/([^\]@\\\r\n]|\\[^\r\n])([^\]\\\r\n]|\\[^\r\n])*/),
+            token(/([^\]\\\r\n]|\\[^\r\n])([^\]\\\r\n]|\\[^\r\n])*/),
             $.link_label,
           ),
         ),
@@ -1853,38 +1847,6 @@ module.exports = grammar({
       ),
     link_destination: (_) => /\S+/,
 
-    // Citation definition block (Carve §22, Tier-2). `[@key]: entry text`.
-    //
-    // The spec reserves a leading `@` label here: `[@key]:` is NEVER a link
-    // reference definition, it is a bibliography entry (parallels the `[^...]:`
-    // footnote-definition precedence). The external scanner emits the same
-    // `_link_ref_def_mark_begin` / `_link_ref_def_label_end` pair as a link ref
-    // def (it matches any `[...]:`), so this rule shares that opener and is
-    // disambiguated by the `@`-prefixed citation label. Unlike a link ref def
-    // (whose destination is a single `\S+` token), the entry runs free-form to
-    // end of line, so a multi-word entry (`Smith, J. (2020). Title.`) is kept
-    // whole. The `prec(1)` makes this branch win over `link_reference_definition`
-    // (whose `_inline` label would otherwise also match the `@key`). The label
-    // is the SAME Pandoc citation-key charset that `citation_group` accepts, so
-    // a key with internal punctuation (`[@smith.2020]`, `[@doi/10.1]`) is
-    // defined consistently with the way it is cited.
-    citation_definition: ($) =>
-      prec(
-        1,
-        seq(
-          $._link_ref_def_mark_begin,
-          "[",
-          field("label", $.citation_label),
-          $._link_ref_def_label_end,
-          "]",
-          ":",
-          token.immediate(/ +/),
-          optional(field("entry", alias(/[^\r\n]+/, $.citation_entry))),
-          choice($._newline, $._eof_or_newline),
-        ),
-      ),
-    // `@` + Pandoc citation key (first char \w, then \w or internal punctuation).
-    citation_label: (_) => token(seq("@", /[\w][\w:.#$%&+?<>~\/-]*/)),
     // A backslash escapes the next character inside a title, so
     // `"a\"b\"c"` is one title (corpus 34-reference-link-7).
     link_title: (_) =>
@@ -1932,8 +1894,17 @@ module.exports = grammar({
         alias($._caption_begin, $.caption_marker),
         // A caption's content is INLINE: its text renders as a figure caption,
         // so `^ See #data` carries the tag and `^ a *# x* b` the strong.
-        field("content", alias($._inline_single_line, $.caption_content)),
-        choice($._newline, $._eof_or_newline),
+        // Paragraph-like: the text takes lazy lines (C2-B-148).
+        field("content", alias($._caption_content, $.caption_content)),
+        $._eof_or_newline,
+        optional($._close_paragraph),
+      ),
+    _caption_content: ($) =>
+      seq(
+        $._inline,
+        repeat(
+          seq($._newline_inline, optional($._block_quote_prefix), $._inline),
+        ),
       ),
 
     // THE TERMINATOR IS THE SCANNER'S. `consume_line_end` is where `col_base`
@@ -2046,17 +2017,27 @@ module.exports = grammar({
         // stay paragraph text in every engine - and a definition renders
         // NOTHING, so this highlighted a line as one that disappears from the
         // rendered document when it does not (carve#791).
-        alias(token(seq("*[", /[A-Za-z0-9]+/, "]: ")), $.abbreviation_marker),
-        optional(
-          seq(
-            optional($._whitespace1),
-            field("expansion", alias(/[^\r\n]+/, $.abbreviation_expansion)),
-          ),
+        alias($._abbreviation_head, $.abbreviation_marker),
+        optional($._whitespace1),
+        field(
+          "expansion",
+          alias(/[^ \t\r\n][^\r\n]*/, $.abbreviation_expansion),
         ),
         // A definition may be the document's last line with nothing after it.
         // The pinned CLI completes that reading on its own, so the site looks
         // inert through it; the node binding inserts `(MISSING _newline)`
         // instead, which is what a consumer of the package sees (#458).
+        choice($._newline, $._eof_or_newline),
+      ),
+
+    _abbreviation_head: (_) => token(seq("*[", /[A-Za-z0-9]+/, "]: ")),
+    // The expansion is not empty (C2-B-084). The marker token has already
+    // committed by the line end, so a blank expansion closes as a paragraph
+    // here instead of an ERROR.
+    _blank_abbreviation_line: ($) =>
+      seq(
+        $._abbreviation_head,
+        optional($._whitespace1),
         choice($._newline, $._eof_or_newline),
       ),
 
@@ -2213,6 +2194,7 @@ module.exports = grammar({
         // container opener - it hands the run back so this paragraph can take
         // it. Produces no node.
         optional($._not_a_container_opener),
+        optional($._caption_host_line),
         alias($._paragraph_content, $.paragraph),
         // Blankline is split out from paragraph to enable textobject
         // to not select newline up to following text.
@@ -3681,5 +3663,8 @@ module.exports = grammar({
     $._table_row_comment,
     // Zero-width: a task box follows an ordered marker (C2-B-046).
     $._list_task_box,
+    // Zero-width, at a block image or display math line that starts a
+    // paragraph (C2-B-017).
+    $._caption_host_line,
   ],
 });

@@ -1,0 +1,61 @@
+================================================================================
+C2-B-025: a footnote body owns a line one column past its marker
+================================================================================
+
+[^n]: note
+
+ p
+
+--------------------------------------------------------------------------------
+
+(document
+  (footnote
+    (footnote_marker_begin)
+    label: (reference_label)
+    (footnote_marker_end)
+    content: (footnote_content
+      (paragraph)
+      (paragraph))))
+
+================================================================================
+C2-B-025: a list one column past a footnote marker stays in the body
+================================================================================
+
+[^n]: note
+
+ - x
+
+--------------------------------------------------------------------------------
+
+(document
+  (footnote
+    (footnote_marker_begin)
+    label: (reference_label)
+    (footnote_marker_end)
+    content: (footnote_content
+      (paragraph)
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (paragraph)))))))
+
+================================================================================
+C2-B-025: a footnote body does not own a line at its marker column
+================================================================================
+
+[^n]: note
+
+p
+
+--------------------------------------------------------------------------------
+
+(document
+  (footnote
+    (footnote_marker_begin)
+    label: (reference_label)
+    (footnote_marker_end)
+    content: (footnote_content
+      (paragraph)))
+  (paragraph))
+
