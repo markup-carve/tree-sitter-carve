@@ -1,0 +1,106 @@
+================================================================================
+C2-B-015: a bullet past a footnote's marker opens a nested list
+================================================================================
+
+[^n]: note
+  - one
+
+--------------------------------------------------------------------------------
+
+(document
+  (footnote
+    (footnote_marker_begin)
+    label: (reference_label)
+    (footnote_marker_end)
+    content: (footnote_content
+      (paragraph)
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (paragraph)))))))
+
+================================================================================
+C2-B-015: an ordered marker of value 1 past a footnote's marker opens a nested list
+================================================================================
+
+[^n]: note
+  1. one
+
+--------------------------------------------------------------------------------
+
+(document
+  (footnote
+    (footnote_marker_begin)
+    label: (reference_label)
+    (footnote_marker_end)
+    content: (footnote_content
+      (paragraph)
+      (list
+        (list_item
+          marker: (list_marker_decimal_period)
+          content: (list_item_content
+            (paragraph)))))))
+
+================================================================================
+C2-B-015: an ordered marker of another value past a footnote's marker is lazy
+================================================================================
+
+[^n]: note
+  2. one
+
+--------------------------------------------------------------------------------
+
+(document
+  (footnote
+    (footnote_marker_begin)
+    label: (reference_label)
+    (footnote_marker_end)
+    content: (footnote_content
+      (paragraph))))
+
+================================================================================
+C2-B-228: a marker at column 0 below a note's nested list opens a list after the note
+================================================================================
+
+[^n]: note
+  - one
+- x
+
+--------------------------------------------------------------------------------
+
+(document
+  (footnote
+    (footnote_marker_begin)
+    label: (reference_label)
+    (footnote_marker_end)
+    content: (footnote_content
+      (paragraph)
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (paragraph))))))
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)))))
+
+================================================================================
+C2-B-024: an ordered marker at column 0 below a note's paragraph is lazy
+================================================================================
+
+[^n]: a
+1. b
+
+--------------------------------------------------------------------------------
+
+(document
+  (footnote
+    (footnote_marker_begin)
+    label: (reference_label)
+    (footnote_marker_end)
+    content: (footnote_content
+      (paragraph))))
+
