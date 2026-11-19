@@ -8374,10 +8374,9 @@ static bool scan_table_cell(Scanner *s, TSLexer *lexer, bool *separator,
       if (lexer->lookahead == '|') {
         advance(s, lexer);
         consume_whitespace(s, lexer);
+        // An escaped last pipe is no closing pipe (C2-B-166).
         if (at_line_end(lexer) || lexer->eof(lexer)) {
-          if (closed_by_open_run) {
-            *closed_by_open_run = true;
-          }
+          *unterminated = true;
           return false;
         }
       } else if (!at_line_end(lexer) && !lexer->eof(lexer)) {
@@ -17806,8 +17805,13 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     return true;
   }
 
+  // A table's prefix is table quote continuations from the line's first
+  // marker on; after a plain quote continuation the line opens no table row,
+  // so a region marker or a closed block above leaves no row to continue
+  // (C2-B-137, C2-B-175).
   if (valid_symbols[TABLE_QUOTE_CONTINUATION] && !valid_symbols[ERROR] &&
-      lexer->lookahead == '>') {
+      lexer->lookahead == '>' &&
+      !(s->block_quote_level > 0 && valid_symbols[BLOCK_QUOTE_CONTINUATION])) {
     return parse_table_quote_continuation(s, lexer, valid_symbols);
   }
 

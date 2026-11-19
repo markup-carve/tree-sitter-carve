@@ -152,3 +152,42 @@ see `unclosed *x*
       (strong_begin)
       (content)
       (strong_end))))
+
+================================================================================
+C2-B-137: no continuation row reaches across a region marker in a nested quote
+================================================================================
+
+> > | a |
+> > %% #region r
+> > + c |
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (block_quote
+        (block_quote_marker)
+        content: (content
+          (table
+            (table_row
+              (table_cell)))
+          (block_quote_marker)
+          (block_quote_marker)
+          (region_marker)
+          (block_quote_marker)
+          (block_quote_marker)
+          (paragraph))))))
+
+================================================================================
+C2-B-166: an escaped last pipe is no closing pipe
+================================================================================
+
+| a \|
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (backslash_escape)))
