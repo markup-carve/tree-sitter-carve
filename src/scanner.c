@@ -5579,6 +5579,7 @@ typedef enum {
   RUN_LINE_ATTRIBUTE,
   RUN_LINE_COMMENT,
   RUN_LINE_ENDS_CONTAINER,
+  RUN_LINE_CAPTION,
   RUN_LINE_OTHER,
 } AttributeRunLine;
 
@@ -5624,6 +5625,13 @@ static AttributeRunLine attribute_run_line(Scanner *s, TSLexer *lexer) {
     return scan_comment_only_line(s, lexer) ? RUN_LINE_COMMENT : RUN_LINE_OTHER;
   }
   if (line_leaves_container(s, lexer, indent)) return RUN_LINE_ENDS_CONTAINER;
+  if (lexer->lookahead == '^') {
+    advance(s, lexer);
+    if (lexer->lookahead != ' ') return RUN_LINE_OTHER;
+    consume_whitespace(s, lexer);
+    bool content = !at_line_end(lexer) && !lexer->eof(lexer);
+    return content ? RUN_LINE_CAPTION : RUN_LINE_OTHER;
+  }
   if (lexer->lookahead != '{') return RUN_LINE_OTHER;
   s->attribute_block_line = true;
   bool attribute = true;
@@ -5654,7 +5662,9 @@ static bool attribute_line_taken(Scanner *s, TSLexer *lexer) {
     consume_line_end(s, lexer);
     AttributeRunLine line = attribute_run_line(s, lexer);
     if (line == RUN_LINE_BLANK) break;
-    if (line == RUN_LINE_ENDS_CONTAINER) {
+    // A caption takes no attribute line (C2-B-096), so the run is a closed
+    // paragraph above it, as at the end of its container.
+    if (line == RUN_LINE_ENDS_CONTAINER || line == RUN_LINE_CAPTION) {
       s->attribute_run_ends = !proven;
       break;
     }
