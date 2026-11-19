@@ -7151,8 +7151,10 @@ static bool scan_ref_def(Scanner *s, TSLexer *lexer) {
   if (footnote) {
     return false;
   }
+  // A label and a colon with nothing or only spaces after it is text
+  // (C2-B-083).
   if (at_line_end(lexer) || lexer->eof(lexer)) {
-    return true;
+    return false;
   }
   int32_t first_separator = lexer->lookahead;
   if (first_separator != ' ' && first_separator != '\t') {
@@ -7161,7 +7163,7 @@ static bool scan_ref_def(Scanner *s, TSLexer *lexer) {
   bool tabbed = false;
   consume_ws_run(s, lexer, &tabbed);
   if (at_line_end(lexer) || lexer->eof(lexer)) {
-    return true;
+    return false;
   }
   if (first_separator != ' ') {
     return false;
