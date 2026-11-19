@@ -264,8 +264,8 @@ C2-B-137: a row short of the item after a comment line ends the item
       content: (list_item_content
         (table
           (table_row
-            (table_cell))))))
-  (comment_line)
+            (table_cell)))
+        (comment_line))))
   (table
     (table_row
       (table_cell))))

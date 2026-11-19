@@ -1,0 +1,462 @@
+================================================================================
+C2-B-025: a nested bullet one column past a quoted item's marker nests
+================================================================================
+
+> - a
+>  - b
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (paragraph)
+            (block_quote_marker)
+            (list
+              (list_item
+                marker: (list_marker_dash)
+                content: (list_item_content
+                  (paragraph))))))))))
+
+================================================================================
+C2-B-025: a bullet at a quoted item's marker column is a sibling
+================================================================================
+
+> - a
+> - b
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (paragraph)))
+        (list_item
+          (block_quote_marker)
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (paragraph)))))))
+
+================================================================================
+C2-B-015: a nested bullet past a quoted ordered item's marker nests
+================================================================================
+
+> 1. a
+>  - b
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_decimal_period)
+          content: (list_item_content
+            (paragraph)
+            (block_quote_marker)
+            (list
+              (list_item
+                marker: (list_marker_dash)
+                content: (list_item_content
+                  (paragraph))))))))))
+
+================================================================================
+C2-B-170: a table in a quoted item keeps its second row
+================================================================================
+
+> - | a |
+>   | b |
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (table
+              (table_row
+                (table_cell))
+              (block_quote_marker)
+              (table_row
+                (table_cell)))))))))
+
+================================================================================
+C2-B-175: a quoted comment line between rows in a quoted item
+================================================================================
+
+> - | a |
+>   %% x
+>   | b |
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (table
+              (table_row
+                (table_cell))
+              (block_quote_marker)
+              (comment_line)
+              (block_quote_marker)
+              (table_row
+                (table_cell)))))))))
+
+================================================================================
+C2-B-137: a column-0 comment line between rows in a quoted item
+================================================================================
+
+> - | a |
+%% x
+>   | b |
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (table
+              (table_row
+                (table_cell))
+              (comment_line)
+              (block_quote_marker)
+              (table_row
+                (table_cell)))))))))
+
+================================================================================
+C2-B-170: a quoted row short of the item ends the item's table
+================================================================================
+
+> - | a |
+> | b |
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (table
+              (table_row
+                (table_cell))))))
+      (block_quote_marker)
+      (table
+        (table_row
+          (table_cell))))))
+
+================================================================================
+C2-B-137: a column-0 comment line after a heading keeps the item
+================================================================================
+
+- # h
+%% x
+  para
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (heading
+          marker: (marker)
+          content: (content))
+        (comment_line)
+        (paragraph)))))
+
+================================================================================
+C2-B-137: a column-0 comment line after a closed fence keeps the item
+================================================================================
+
+- ```
+  c
+  ```
+%% x
+  para
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (code_block
+          (code_block_marker_begin)
+          code: (code)
+          (code_block_marker_end))
+        (comment_line)
+        (paragraph)))))
+
+================================================================================
+C2-B-137: a column-0 comment line after a table keeps the item
+================================================================================
+
+- | a |
+%% x
+  para
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (table
+          (table_row
+            (table_cell)))
+        (comment_line)
+        (paragraph)))))
+
+================================================================================
+C2-B-137: a line short of the item after a heading and a comment line ends the item
+================================================================================
+
+- # h
+%% x
+para
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (heading
+          marker: (marker)
+          content: (content))
+        (comment_line))))
+  (paragraph))
+
+================================================================================
+C2-B-137: a column-0 comment line closes the item of an open fence
+================================================================================
+
+- ```
+  code
+%% c
+  more
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (code_block
+          (code_block_marker_begin)
+          code: (code)))))
+  (comment_line)
+  (paragraph))
+
+================================================================================
+C2-B-137: a column-0 region marker after a heading ends the item
+================================================================================
+
+- # h
+%% #region r
+  para
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (heading
+          marker: (marker)
+          content: (content)))))
+  (region_marker)
+  (paragraph))
+
+================================================================================
+C2-B-015: a sibling bullet in a nested quote
+================================================================================
+
+> > - a
+> > - b
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (block_quote
+        (block_quote_marker)
+        content: (content
+          (list
+            (list_item
+              marker: (list_marker_dash)
+              content: (list_item_content
+                (paragraph)))
+            (list_item
+              (block_quote_marker)
+              (block_quote_marker)
+              marker: (list_marker_dash)
+              content: (list_item_content
+                (paragraph)))))))))
+
+================================================================================
+C2-B-015: a non-1 ordered marker past a quoted item's marker is lazy
+================================================================================
+
+> - a
+>  2. b
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (paragraph
+              (block_quote_marker))))))))
+
+================================================================================
+C2-B-024: a quote mark past a quoted item's marker is lazy
+================================================================================
+
+> - a
+>  > b
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (paragraph
+              (block_quote_marker))))))))
+
+================================================================================
+C2-B-042: a single roman letter other than i starts an alphabetic list
+================================================================================
+
+v.  x
+vi.  y
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_lower_alpha_period)
+      content: (list_item_content
+        (paragraph))))
+  (list
+    (list_item
+      marker: (list_marker_lower_roman_period)
+      content: (list_item_content
+        (paragraph)))))
+
+================================================================================
+C2-B-038: a single roman letter in a roman list is a sibling
+================================================================================
+
+i. a
+ii. b
+v. c
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_lower_roman_period)
+      content: (list_item_content
+        (paragraph)))
+    (list_item
+      marker: (list_marker_lower_roman_period)
+      content: (list_item_content
+        (paragraph)))
+    (list_item
+      marker: (list_marker_lower_roman_period)
+      content: (list_item_content
+        (paragraph)))))
+
+================================================================================
+C2-B-044: i then j splits a roman list from an alphabetic one
+================================================================================
+
+i. a
+j. b
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_lower_roman_period)
+      content: (list_item_content
+        (paragraph))))
+  (list
+    (list_item
+      marker: (list_marker_lower_alpha_period)
+      content: (list_item_content
+        (paragraph)))))
+
+================================================================================
+C2-B-083: a label and a colon with nothing after it is text
+================================================================================
+
+[a]:
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph))
+
+================================================================================
+C2-B-083: a label and a colon with only spaces after it is text
+================================================================================
+
+[a]:   
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph))
