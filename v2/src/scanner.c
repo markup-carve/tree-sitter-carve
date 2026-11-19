@@ -16749,7 +16749,8 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       array_delete(&probe.characters);
       if (!invalid) return false;
     }
-    if (colon_fence_metadata_tail_is_modeled(s, lexer)) return false;
+    // A sigil div takes no title and no label (C2-B-122).
+    if (!sigil_tail && colon_fence_metadata_tail_is_modeled(s, lexer)) return false;
     scan_to_line_end(s, lexer);
     mark_end(s, lexer);
     lexer->result_symbol = CONTAINER_INVALID_METADATA;
