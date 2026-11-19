@@ -758,6 +758,7 @@ module.exports = grammar({
         choice(
           $._list_continuation,
           seq(
+            optional($._caption_host_line),
             field("definition", alias($._paragraph_content, $.definition)),
             choice($._eof_or_newline, $._close_paragraph),
           ),
@@ -1761,6 +1762,7 @@ module.exports = grammar({
       prec.dynamic(
         2 * ELEMENT_PRECEDENCE,
         seq(
+          optional($._caption_host_line),
           field("math_marker", alias("$$", $.math_marker)),
           field("begin_marker", alias($._verbatim_begin, $.math_marker_begin)),
           field("content", alias($._verbatim_body, $.content)),
@@ -1892,8 +1894,17 @@ module.exports = grammar({
         alias($._caption_begin, $.caption_marker),
         // A caption's content is INLINE: its text renders as a figure caption,
         // so `^ See #data` carries the tag and `^ a *# x* b` the strong.
-        field("content", alias($._inline_single_line, $.caption_content)),
-        choice($._newline, $._eof_or_newline),
+        // Paragraph-like: the text takes lazy lines (C2-B-148).
+        field("content", alias($._caption_content, $.caption_content)),
+        $._eof_or_newline,
+        optional($._close_paragraph),
+      ),
+    _caption_content: ($) =>
+      seq(
+        $._inline,
+        repeat(
+          seq($._newline_inline, optional($._block_quote_prefix), $._inline),
+        ),
       ),
 
     // THE TERMINATOR IS THE SCANNER'S. `consume_line_end` is where `col_base`
@@ -2183,6 +2194,7 @@ module.exports = grammar({
         // container opener - it hands the run back so this paragraph can take
         // it. Produces no node.
         optional($._not_a_container_opener),
+        optional($._caption_host_line),
         alias($._paragraph_content, $.paragraph),
         // Blankline is split out from paragraph to enable textobject
         // to not select newline up to following text.
@@ -3651,5 +3663,8 @@ module.exports = grammar({
     $._table_row_comment,
     // Zero-width: a task box follows an ordered marker (C2-B-046).
     $._list_task_box,
+    // Zero-width, at a block image or display math line that starts a
+    // paragraph (C2-B-017).
+    $._caption_host_line,
   ],
 });

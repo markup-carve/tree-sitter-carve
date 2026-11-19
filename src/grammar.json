@@ -991,6 +991,18 @@
               "type": "SEQ",
               "members": [
                 {
+                  "type": "CHOICE",
+                  "members": [
+                    {
+                      "type": "SYMBOL",
+                      "name": "_caption_host_line"
+                    },
+                    {
+                      "type": "BLANK"
+                    }
+                  ]
+                },
+                {
                   "type": "FIELD",
                   "name": "definition",
                   "content": {
@@ -6133,6 +6145,18 @@
         "type": "SEQ",
         "members": [
           {
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "_caption_host_line"
+              },
+              {
+                "type": "BLANK"
+              }
+            ]
+          },
+          {
             "type": "FIELD",
             "name": "math_marker",
             "content": {
@@ -6402,24 +6426,64 @@
             "type": "ALIAS",
             "content": {
               "type": "SYMBOL",
-              "name": "_inline_single_line"
+              "name": "_caption_content"
             },
             "named": true,
             "value": "caption_content"
           }
         },
         {
+          "type": "SYMBOL",
+          "name": "_eof_or_newline"
+        },
+        {
           "type": "CHOICE",
           "members": [
             {
               "type": "SYMBOL",
-              "name": "_newline"
+              "name": "_close_paragraph"
             },
             {
-              "type": "SYMBOL",
-              "name": "_eof_or_newline"
+              "type": "BLANK"
             }
           ]
+        }
+      ]
+    },
+    "_caption_content": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "_inline"
+        },
+        {
+          "type": "REPEAT",
+          "content": {
+            "type": "SEQ",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "_newline_inline"
+              },
+              {
+                "type": "CHOICE",
+                "members": [
+                  {
+                    "type": "SYMBOL",
+                    "name": "_block_quote_prefix"
+                  },
+                  {
+                    "type": "BLANK"
+                  }
+                ]
+              },
+              {
+                "type": "SYMBOL",
+                "name": "_inline"
+              }
+            ]
+          }
         }
       ]
     },
@@ -7161,6 +7225,18 @@
             {
               "type": "SYMBOL",
               "name": "_not_a_container_opener"
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "_caption_host_line"
             },
             {
               "type": "BLANK"
@@ -13214,6 +13290,10 @@
     {
       "type": "SYMBOL",
       "name": "_list_task_box"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_caption_host_line"
     }
   ],
   "inline": [],
