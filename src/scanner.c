@@ -2195,6 +2195,17 @@ static bool close_list_nested_block_if_needed(Scanner *s, TSLexer *lexer,
   Block *top = peek_block(s);
   Block *list = find_list(s);
 
+  // An unclosed fence cannot carry a footnote body line that falls short of
+  // the note's marker. Close the fence first, then let FOOTNOTE_END read the
+  // same line in its enclosing context (C2-B-025).
+  Block *note = find_block(s, FOOTNOTE);
+  if (non_newline && top->type == CODE_BLOCK && note &&
+      s->indent < note->data && !(s->state & STATE_LIST_CONTINUATION)) {
+    lexer->result_symbol = BLOCK_CLOSE;
+    remove_block(s);
+    return true;
+  }
+
   // A `+`-attached flush-left block (e.g. fenced code) legitimately sits at
   // indent 0, below the list margin: don't tear it out of the item.
   if (s->state & STATE_LIST_CONTINUATION) {
@@ -4369,6 +4380,8 @@ static bool parse_code_fence(Scanner *s, TSLexer *lexer,
     // Same question `scan_unordered_list_marker_token` asks for `- - A`.
     bool at_marker_content_col =
         s->marker_end_col != 0 && fence_col == s->marker_end_col;
+    Block *item = find_list(s);
+    bool inside_item_marker = item && fence_col >= item->data;
     // The indent there still counts the item indentation before the prefix.
     Block *note_quote = find_block(s, BLOCK_QUOTE);
     bool attached_in_quoted_note = (s->state & STATE_LIST_CONTINUATION) &&
@@ -4377,7 +4390,7 @@ static bool parse_code_fence(Scanner *s, TSLexer *lexer,
         fence_col == note_quote->content_col + s->continuation_col;
     if ((valid_symbols[CODE_BLOCK_BEGIN] ||
          valid_symbols[DELIMITED_TABLE_BEGIN]) && !line_block_body(s) &&
-        (!has_extra_indent(s) || at_marker_content_col ||
+        (!has_extra_indent(s) || at_marker_content_col || inside_item_marker ||
          attached_in_quoted_note ||
          quoted_item_column_reached(s, fence_col)) &&
         try_begin_code_block(s, lexer, width, fence_char, fence_col,
@@ -5172,8 +5185,8 @@ static bool parse_block_quote(Scanner *s, TSLexer *lexer,
       // but the literal is what the rule means, and it stays correct if either
       // of those ever changes.
       size_t close_pos = number_of_blocks_from_top(s, BLOCK_QUOTE, 1);
-      s->state &= ~STATE_AFTER_BLANK_LINE;
       close_blocks(s, lexer, close_pos);
+      s->caption_gap = CAPTION_HOST_NONE;
       return true;
     }
   }
@@ -5284,8 +5297,8 @@ static bool parse_block_quote(Scanner *s, TSLexer *lexer,
           }
         }
       }
-      s->state &= ~STATE_AFTER_BLANK_LINE;
       close_blocks(s, lexer, close_pos);
+      if (after_blank_line) s->caption_gap = CAPTION_HOST_NONE;
       return true;
     }
   }
@@ -10359,7 +10372,7 @@ static bool parse_table_row_continuation_plus(Scanner *s, TSLexer *lexer,
 }
 
 static bool parse_table_caption_begin(Scanner *s, TSLexer *lexer) {
-  if (lexer->lookahead != '^') {
+  if (lexer->lookahead != '^' || s->caption_gap != CAPTION_HOST_HERE) {
     return false;
   }
 
@@ -11949,7 +11962,7 @@ static uint32_t paragraph_end_line_column(Scanner *s, TSLexer *lexer) {
   return column;
 }
 
-/// A FENCED CODE opener with a closer ahead interrupts an open paragraph
+/// An accepted fenced code opener interrupts an open paragraph
 /// (PART 9 §10 I1 + I4).
 ///
 /// Both fence characters: a `~~~` fence opens a code block like a backtick one.
@@ -11959,16 +11972,19 @@ static uint32_t paragraph_end_line_column(Scanner *s, TSLexer *lexer) {
 /// grammar cannot model (```` ```js title="x" ````) is not a fence at all, so
 /// ending the paragraph on it split `intro` / ```` ```js title="x" ```` /
 /// `code` / ```` ``` ```` into two paragraphs where carve-js keeps one holding
-/// an inline run. A peek that closes a paragraph no opener follows is the same
-/// defect #103 recorded four times over for the colon fence.
+/// an inline run. An accepted opener can be unclosed: the item or document
+/// boundary then ends its code block (C2-B-014).
 static bool scan_code_fence_at_paragraph_end(Scanner *s, TSLexer *lexer,
                                               int markers_seen) {
+  (void)markers_seen;
   int32_t fence_char = lexer->lookahead;
   if (fence_char != '`') {
     return false;
   }
   uint32_t column = paragraph_end_line_column(s, lexer);
-  if (!at_block_opener_margin(s, column)) {
+  Block *item = find_list(s);
+  bool inside_item_marker = item && column >= item->data;
+  if (!at_block_opener_margin(s, column) && !inside_item_marker) {
     return false;
   }
   uint16_t width = consume_fence_run(s, lexer, (char)fence_char);
@@ -11978,8 +11994,7 @@ static bool scan_code_fence_at_paragraph_end(Scanner *s, TSLexer *lexer,
   if (!code_fence_info_is_modeled(s, lexer)) {
     return false;
   }
-  return code_fence_has_closer_ahead(s, lexer, fence_char, width, column, false,
-                                     markers_seen);
+  return true;
 }
 
 /// A block quote that goes DEEPER than the one we are in interrupts an open
@@ -12707,11 +12722,11 @@ static bool close_paragraph_after_quote(Scanner *s, TSLexer *lexer,
   for (int i = s->open_blocks->size - 1; body && i >= 0; --i) {
     Block *b = *array_get(s->open_blocks, i);
     if (b == body) break;
-    if (b->type != BLOCK_QUOTE) {
+    if (b->type != BLOCK_QUOTE && !is_list(b->type)) {
       body = NULL;
       break;
     }
-    ++inner_quotes;
+    if (b->type == BLOCK_QUOTE) ++inner_quotes;
   }
   bool body_line = body && quotes_below(s, body) == 0 &&
       (inner_quotes == 0 || markers_seen < inner_quotes);
@@ -18226,6 +18241,13 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   if ((lexer->lookahead == '>' || lexer->lookahead == ' ' ||
        lexer->lookahead == '\t') &&
       parse_quoted_code_fence_closer(s, lexer, valid_symbols)) {
+    return true;
+  }
+  // A fence line interrupts a paragraph before its ticks can be read as an
+  // inline verbatim opener. This also covers an opener short of an item's
+  // content column, where the fence still belongs to the item.
+  if (lexer->lookahead == '`' && valid_symbols[CLOSE_PARAGRAPH] &&
+      parse_close_paragraph(s, lexer)) {
     return true;
   }
   if (lexer->lookahead == '`') {
