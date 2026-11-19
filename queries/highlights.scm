@@ -509,12 +509,6 @@
 ; Citations (§22 / Tier-2 extension)
 (citation_group) @string.special
 
-(citation_definition
-  (citation_label) @markup.link.label)
-
-(citation_definition
-  (citation_entry) @string)
-
 ; Callout list (§10 / Tier-2 extension)
 (callout_list) @markup.list
 

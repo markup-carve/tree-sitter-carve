@@ -445,32 +445,6 @@
     "fields": {}
   },
   {
-    "type": "citation_definition",
-    "named": true,
-    "fields": {
-      "entry": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "citation_entry",
-            "named": true
-          }
-        ]
-      },
-      "label": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "citation_label",
-            "named": true
-          }
-        ]
-      }
-    }
-  },
-  {
     "type": "class",
     "named": false,
     "fields": {}
@@ -859,10 +833,6 @@
           "named": true
         },
         {
-          "type": "citation_definition",
-          "named": true
-        },
-        {
           "type": "citation_group",
           "named": true
         },
@@ -1138,10 +1108,6 @@
         },
         {
           "type": "caption",
-          "named": true
-        },
-        {
-          "type": "citation_definition",
           "named": true
         },
         {
@@ -1569,10 +1535,6 @@
           "named": true
         },
         {
-          "type": "citation_definition",
-          "named": true
-        },
-        {
           "type": "code_block",
           "named": true
         },
@@ -1842,10 +1804,6 @@
         },
         {
           "type": "caption",
-          "named": true
-        },
-        {
-          "type": "citation_definition",
           "named": true
         },
         {
@@ -3075,10 +3033,6 @@
           "named": true
         },
         {
-          "type": "citation_definition",
-          "named": true
-        },
-        {
           "type": "code_block",
           "named": true
         },
@@ -3175,10 +3129,6 @@
         },
         {
           "type": "caption",
-          "named": true
-        },
-        {
-          "type": "citation_definition",
           "named": true
         },
         {
@@ -3726,10 +3676,6 @@
         },
         {
           "type": "caption",
-          "named": true
-        },
-        {
-          "type": "citation_definition",
           "named": true
         },
         {
@@ -4903,15 +4849,7 @@
     "named": true
   },
   {
-    "type": "citation_entry",
-    "named": true
-  },
-  {
     "type": "citation_group",
-    "named": true
-  },
-  {
-    "type": "citation_label",
     "named": true
   },
   {

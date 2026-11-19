@@ -436,6 +436,8 @@ static const uint8_t BLOCK_FLAG_FOOTNOTE_DANGLING_PLUS = 1 << 6;
 static const uint8_t BLOCK_FLAG_FOOTNOTE_BLANK_BEFORE_PLUS = 1 << 3;
 // CODE_BLOCK only: no closer follows, and the fence sits directly in a div.
 static const uint8_t BLOCK_FLAG_FENCE_UNCLOSED_IN_DIV = 1 << 1;
+// CODE_BLOCK only: a raw fence, which takes no title and no label (C2-B-122).
+static const uint8_t BLOCK_FLAG_RAW_FENCE = 1 << 2;
 // Lists only: three or more blank lines stand before the current line.
 static const uint8_t BLOCK_FLAG_LIST_HARD_BOUNDARY = 1 << 1;
 // Lists only, the comment ownership of PART 9 section 24 C3: the item's
@@ -3463,9 +3465,20 @@ static BracketProbe bracket_probe_new(Scanner *s, TSLexer *host) {
 // The probe moves the host lexer past the info string, so a caller that needs
 // the delimited kind gets it here, read from the rewound probe.
 static bool fence_info_has_backtick_kind(Scanner *s, TSLexer *lexer,
-                                         uint8_t *delimited_kind) {
+                                         uint8_t *delimited_kind,
+                                         bool *raw) {
   BracketProbe probe = bracket_probe_new(s, lexer);
   bool found = false;
+  // `=` and a format letter after at most one space make a raw fence (C2-B-116).
+  if (raw) {
+    if (probe.lexer.lookahead == ' ') probe.lexer.advance(&probe.lexer, false);
+    if (probe.lexer.lookahead == '=') {
+      probe.lexer.advance(&probe.lexer, false);
+      int32_t c = probe.lexer.lookahead;
+      *raw = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+    }
+    bracket_probe_rewind(&probe, 0);
+  }
   while (!probe.lexer.eof(&probe.lexer) && !at_line_end(&probe.lexer)) {
     if (probe.lexer.lookahead == '`') { found = true; break; }
     probe.lexer.advance(&probe.lexer, false);
@@ -3479,7 +3492,7 @@ static bool fence_info_has_backtick_kind(Scanner *s, TSLexer *lexer,
 }
 
 static bool fence_info_has_backtick(Scanner *s, TSLexer *lexer) {
-  return fence_info_has_backtick_kind(s, lexer, NULL);
+  return fence_info_has_backtick_kind(s, lexer, NULL, NULL);
 }
 
 static void bracket_probe_rewind(BracketProbe *probe, uint32_t position) {
@@ -3500,7 +3513,8 @@ static bool try_begin_code_block(Scanner *s, TSLexer *lexer, uint16_t width,
   // info string, so the lookahead is not folded into CODE_BLOCK_BEGIN.
   mark_end(s, lexer);
   uint8_t delimited_kind = 0;
-  if (fence_info_has_backtick_kind(s, lexer, &delimited_kind)) {
+  bool raw_fence = false;
+  if (fence_info_has_backtick_kind(s, lexer, &delimited_kind, &raw_fence)) {
     return false;
   }
   Block *host_list = find_list(s);
@@ -3562,6 +3576,7 @@ static bool try_begin_code_block(Scanner *s, TSLexer *lexer, uint16_t width,
              width | (fence_char == '~' ? CODE_FENCE_TILDE : 0));
   if (later) peek_block(s)->flags |= BLOCK_FLAG_LATER_OPAQUE_FENCE;
   if (unclosed_in_div) peek_block(s)->flags |= BLOCK_FLAG_FENCE_UNCLOSED_IN_DIV;
+  if (raw_fence) peek_block(s)->flags |= BLOCK_FLAG_RAW_FENCE;
   if (description_has_closer) peek_block(s)->flags |= BLOCK_FLAG_DESCRIPTION_FENCE_HAS_CLOSER;
   peek_block(s)->content_col = (uint8_t)column;
   // A fence the description body holds DIRECTLY is the body's own block, and
@@ -7122,10 +7137,8 @@ static bool ref_def_tail_is_modeled(Scanner *s, TSLexer *lexer, bool tabbed) {
 }
 
 static bool scan_ref_def(Scanner *s, TSLexer *lexer) {
-  // A CITATION definition (`[@key]: entry text`, PART 9 section 22) shares this
-  // opener and is NOT anchored: its entry runs free-form to end of line, so a
-  // multi-word entry is kept whole. Recorded before the label is consumed.
-  bool citation = lexer->lookahead == '@';
+  // `[@k]:` is a link definition: citations have no core form (C2-B-083,
+  // C2-I-101).
   bool footnote = lexer->lookahead == '^';
   // THE LABEL IS A CHARACTER RUN AND IT ENDS AT THE FIRST `]`.
   // `reference_label = (character - ']' - '@'), {character - ']'}`
@@ -7170,9 +7183,6 @@ static bool scan_ref_def(Scanner *s, TSLexer *lexer) {
   // matching a truncated `[a]:` and the rest of the line parsing as something
   // else, because the destination group is optional and the rule's tail accepts
   // trailing whitespace (tree-sitter-carve#83).
-  if (citation) {
-    return lexer->lookahead == ' ';
-  }
   if (footnote) {
     return false;
   }
@@ -11920,8 +11930,6 @@ static bool scan_definition_at_paragraph_end(Scanner *s, TSLexer *lexer) {
   advance(s, lexer);
   if (lexer->lookahead != '^') {
     // S1 erases a reference definition without a boundary (CARVE-P0-011).
-    // A citation definition (`[@k]:`) still ends the paragraph.
-    if (lexer->lookahead == '@') return scan_ref_def(s, lexer);
     if (scan_ref_def(s, lexer)) s->erasable_line = true;
     return false;
   }
@@ -12425,7 +12433,7 @@ static bool close_paragraph_after_quote(Scanner *s, TSLexer *lexer,
           p->advance(p, false);
           definition = scan_footnote_after_caret(s, p);
         } else {
-          definition = p->lookahead != '@' && scan_ref_def(s, p);
+          definition = scan_ref_def(s, p);
         }
         array_delete(&probe.characters);
         if (definition) return true;
@@ -12458,8 +12466,7 @@ static bool close_paragraph_after_quote(Scanner *s, TSLexer *lexer,
         if (lead == '%' && lexer->lookahead == '%') {
           advance(s, lexer);
           erased = comment_line_is_erased(s, lexer);
-        } else if (lead == '[' && lexer->lookahead != '^' &&
-                   lexer->lookahead != '@') {
+        } else if (lead == '[' && lexer->lookahead != '^') {
           erased = scan_ref_def(s, lexer);
         } else if (lead == '*' && lexer->lookahead == '[') {
           erased = abbreviation_definition_follows(s, lexer);
@@ -16752,8 +16759,10 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
         line_column(s, lexer) > fence->content_col + fence->data + 1;
     bool initial_div_sigil = fence && fence->type == DIV &&
         line_column(s, lexer) <= fence->content_col + fence->data + 1;
+    bool raw_tail = fence && fence->type == CODE_BLOCK &&
+        (fence->flags & BLOCK_FLAG_RAW_FENCE);
     bool closed_label = false;
-    if (lead == '[') {
+    if (lead == '[' && !raw_tail) {
       BracketProbe probe = bracket_probe_new(s, lexer);
       probe.lexer.advance(&probe.lexer, false);
       while (!probe.lexer.eof(&probe.lexer) && !at_line_end(&probe.lexer) &&
@@ -16766,7 +16775,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     if (!sigil_tail &&
         (carve_is_alnum_ascii(lead) || lead == '_' || lead == '#' ||
         lead == '+' || lead == '-' || lead == '.' ||
-        lead == '=' || lead == '"' || closed_label ||
+        lead == '=' || (lead == '"' && !raw_tail) || closed_label ||
         (initial_div_sigil && (lead == '>' || lead == '|' || lead == '\\')))) {
       return false;
     }
@@ -16785,7 +16794,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       if (!invalid) return false;
     }
     // A sigil div takes no title and no label (C2-B-122).
-    if (!sigil_tail && colon_fence_metadata_tail_is_modeled(s, lexer)) return false;
+    if (!sigil_tail && !raw_tail && colon_fence_metadata_tail_is_modeled(s, lexer)) return false;
     scan_to_line_end(s, lexer);
     mark_end(s, lexer);
     lexer->result_symbol = CONTAINER_INVALID_METADATA;
