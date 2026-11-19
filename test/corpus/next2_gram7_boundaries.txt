@@ -1,0 +1,103 @@
+================================================================================
+C2-B-149: a blank line in an item separates a code block from a caret line
+================================================================================
+
+- ```js
+  x
+  ```
+
+  ^ cap
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (code_block
+          (code_block_marker_begin)
+          language: (language)
+          code: (code)
+          (code_block_marker_end))
+        (paragraph)))))
+
+================================================================================
+C2-B-146: a footnote item owns the caption of its nested quote
+================================================================================
+
+[^n]: - > a
+       ^ c
+
+--------------------------------------------------------------------------------
+
+(document
+  (footnote
+    (footnote_marker_begin)
+    label: (reference_label)
+    (footnote_marker_end)
+    content: (footnote_content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (block_quote
+              (block_quote_marker)
+              content: (content
+                (paragraph)))
+            (caption
+              (caption_marker)
+              content: (caption_content))))))))
+
+================================================================================
+C2-B-015: a shifted quote mark in a footnote keeps the sibling list item
+================================================================================
+
+[^n]: > - a
+ > - b
+
+--------------------------------------------------------------------------------
+
+(document
+  (footnote
+    (footnote_marker_begin)
+    label: (reference_label)
+    (footnote_marker_end)
+    content: (footnote_content
+      (block_quote
+        (block_quote_marker)
+        content: (content
+          (list
+            (list_item
+              marker: (list_marker_dash)
+              content: (list_item_content
+                (paragraph)))
+            (list_item
+              (block_quote_marker)
+              marker: (list_marker_dash)
+              content: (list_item_content
+                (paragraph)))))))))
+
+================================================================================
+C2-B-024: a noninitial ordered marker is lazy in a footnote item quote
+================================================================================
+
+[^n]: - > a
+       2. b
+
+--------------------------------------------------------------------------------
+
+(document
+  (footnote
+    (footnote_marker_begin)
+    label: (reference_label)
+    (footnote_marker_end)
+    content: (footnote_content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (block_quote
+              (block_quote_marker)
+              content: (content
+                (paragraph)))))))))

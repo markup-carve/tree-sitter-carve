@@ -1832,6 +1832,29 @@ static bool escapes_open_block_quote(Scanner *s, uint32_t column) {
   return column == 0;
 }
 
+// A caption has no exact column test. It belongs to the container holding
+// the quote whenever it leaves that quote and reaches the holder's margin.
+static bool caption_escapes_open_block_quote(Scanner *s, uint32_t column) {
+  if (escapes_open_block_quote(s, column)) return true;
+  for (int i = (int)s->open_blocks->size - 1; i > 0; --i) {
+    Block *quote = *array_get(s->open_blocks, i);
+    if (quote->type != BLOCK_QUOTE) continue;
+    Block *holder = *array_get(s->open_blocks, i - 1);
+    uint32_t margin = 0;
+    if (is_list(holder->type) || holder->type == FOOTNOTE) {
+      margin = holder->data;
+    } else if (holder->type == BLOCK_QUOTE || holder->type == DIV ||
+               holder->type == FIGURE_GROUP) {
+      margin = holder->content_col;
+    } else {
+      return false;
+    }
+    return column >= margin && quote->content_col != 0 &&
+           column < quote->content_col;
+  }
+  return false;
+}
+
 
 // Mark that we should close `count` blocks.
 // This call will only emit a single BLOCK_CLOSE token,
@@ -4650,6 +4673,12 @@ static bool quote_marker_at_column_gap(Scanner *s, uint8_t number,
       // A quote nested directly in a quote or the document takes any
       // indentation before its `>` (PART 0 L2).
       if (chain) return true;
+      // A quote directly owned by a footnote can repeat its mark at a
+      // different column when the line still reaches the note.
+      Block *parent = i > 0 ? *array_get(s->open_blocks, i - 1) : NULL;
+      if (parent && parent->type == FOOTNOTE && column >= parent->data) {
+        return true;
+      }
       // In a paragraph, a `>` between the item's marker and content columns
       // is lazy text unless an outer item reaches it.
       bool lazy_gap = gap_is_lazy && in_paragraph && enclosing_list &&
@@ -6498,11 +6527,12 @@ static bool scan_paragraph_closing_marker(Scanner *s, TSLexer *lexer) {
   }
   // Past the innermost list's marker the line would open a nested list,
   // which only a bullet or a value of 1 does without a blank line (C2-B-015).
+  // A list opened outside a quote keeps its own marker column even when
+  // its paragraph now sits in a nested quote.
   bool nests = list->type != LIST_DEFINITION &&
-               (count_blocks(s, BLOCK_QUOTE) == 0
-                    ? line_column(s, lexer) + 1u > list->data
-                    : list_opened_in_quote(s, list) &&
-                          line_column(s, lexer) >= quoted_list_margin(s, list));
+               (list_opened_in_quote(s, list)
+                    ? line_column(s, lexer) >= quoted_list_margin(s, list)
+                    : line_column(s, lexer) + 1u > list->data);
   if (!scan_list_marker(s, lexer)) {
     return false;
   }
@@ -7633,9 +7663,11 @@ static bool parse_list_item_end(Scanner *s, TSLexer *lexer,
   }
   bool stray_marker = lexer->lookahead == '>' && quoted_list &&
       !quote_marker_at_column(s, 1, line_column(s, lexer), false);
+  // A quoted line's indentation precedes the mark and cannot by itself
+  // decide whether its later marker is a sibling item.
   if ((lexer->lookahead != '>' || stray_marker) && quoted_list) {
     if (quoted_line_reaches_list(s, lexer, list)) return false;
-  } else if (s->indent >= list_item_margin(s, list)) {
+  } else if (!quoted_list && s->indent >= list_item_margin(s, list)) {
     return false;
   }
   if (refused_plus) {
@@ -8512,6 +8544,23 @@ static bool emit_plus_line(Scanner *s, TSLexer *lexer,
 static bool parse_footnote_end(Scanner *s, TSLexer *lexer,
                                const bool *valid_symbols, bool at_eof) {
   Block *top = peek_block(s);
+  // The grammar has already reduced a quoted footnote body when FOOTNOTE_END
+  // is valid. A quote can remain on the external stack after the final list
+  // item, depending on the host parser's EOF lookahead order. Reconcile that
+  // finished quote before ending the footnote.
+  if (at_eof && top && top->type == BLOCK_QUOTE &&
+      !valid_symbols[BLOCK_CLOSE]) {
+    uint32_t quotes = 0;
+    int i = (int)s->open_blocks->size - 1;
+    while (i >= 0 && (*array_get(s->open_blocks, i))->type == BLOCK_QUOTE) {
+      ++quotes;
+      --i;
+    }
+    if (i >= 0 && (*array_get(s->open_blocks, i))->type == FOOTNOTE) {
+      for (; quotes > 0; --quotes) remove_block(s);
+      top = peek_block(s);
+    }
+  }
   if (!top || top->type != FOOTNOTE) {
     return false;
   }
@@ -12681,7 +12730,7 @@ static bool close_paragraph_after_quote(Scanner *s, TSLexer *lexer,
     }
     // A caption attaches only at the margin of the context holding the quote.
     if (quote && lexer->lookahead == '^' &&
-        !escapes_open_block_quote(s, column)) {
+        !caption_escapes_open_block_quote(s, column)) {
       return false;
     }
   }
@@ -18007,6 +18056,9 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   // repeated scanner calls tree-sitter makes at one position agree.
   if (at_line_start && is_newline) {
     s->state |= STATE_AFTER_BLANK_LINE;
+    // The gap belongs to the host even when the blank line emits no line-end
+    // token before the enclosing item's later close.
+    s->caption_gap = CAPTION_HOST_NONE;
     Block *note = find_block(s, FOOTNOTE);
     if (note) note->flags |= BLOCK_FLAG_FOOTNOTE_BLANK_BEFORE_PLUS;
     // A `+` CONTINUATION ATTACHES EXACTLY ONE BLOCK (PART 9 section 17), and a
@@ -18336,6 +18388,13 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       return true;
     }
     return false;
+  }
+  // The continued quote's shifted prefix must not consume a sibling list
+  // marker before the current item has had its end decision.
+  if (valid_symbols[LIST_ITEM_END] && find_block(s, FOOTNOTE) &&
+      find_block(s, BLOCK_QUOTE) && lexer->lookahead == '>' &&
+      parse_list_item_end(s, lexer, valid_symbols, at_eof)) {
+    return true;
   }
   if (valid_symbols[INDENTED_CONTENT_SPACER] && !quoted_closer_line &&
       parse_indented_content_spacer(s, lexer, is_newline)) {
