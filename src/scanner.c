@@ -331,7 +331,7 @@ typedef enum {
 } TokenType;
 
 // The size of `valid_symbols`, for the copies that edit one entry.
-#define EXTERNAL_TOKEN_COUNT (LIST_TASK_BOX + 1)
+#define EXTERNAL_TOKEN_COUNT (CAPTION_HOST_LINE + 1)
 
 // The different blocks in Carve that we track,
 // in order to match or close them properly.
