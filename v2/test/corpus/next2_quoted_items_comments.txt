@@ -371,3 +371,70 @@ C2-B-024: a quote mark past a quoted item's marker is lazy
           content: (list_item_content
             (paragraph
               (block_quote_marker))))))))
+
+================================================================================
+C2-B-042: a single roman letter other than i starts an alphabetic list
+================================================================================
+
+v.  x
+vi.  y
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_lower_alpha_period)
+      content: (list_item_content
+        (paragraph))))
+  (list
+    (list_item
+      marker: (list_marker_lower_roman_period)
+      content: (list_item_content
+        (paragraph)))))
+
+================================================================================
+C2-B-038: a single roman letter in a roman list is a sibling
+================================================================================
+
+i. a
+ii. b
+v. c
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_lower_roman_period)
+      content: (list_item_content
+        (paragraph)))
+    (list_item
+      marker: (list_marker_lower_roman_period)
+      content: (list_item_content
+        (paragraph)))
+    (list_item
+      marker: (list_marker_lower_roman_period)
+      content: (list_item_content
+        (paragraph)))))
+
+================================================================================
+C2-B-044: i then j splits a roman list from an alphabetic one
+================================================================================
+
+i. a
+j. b
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_lower_roman_period)
+      content: (list_item_content
+        (paragraph))))
+  (list
+    (list_item
+      marker: (list_marker_lower_alpha_period)
+      content: (list_item_content
+        (paragraph)))))

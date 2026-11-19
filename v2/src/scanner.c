@@ -5808,11 +5808,24 @@ static bool scan_ordered_list_type(Scanner *s, TSLexer *lexer,
     }
   }
 
-  if (scanned_lower_roman == word_len && standard_roman(word, word_len)) {
+  // A single letter is alphabetic unless it is `i` or `I`, or a roman
+  // letter in an open roman list of its case (C2-B-038, C2-B-042).
+  bool in_lower_roman = top && (top->type == LIST_LOWER_ROMAN_PERIOD ||
+                                top->type == LIST_LOWER_ROMAN_PAREN ||
+                                top->type == LIST_LOWER_ROMAN_PARENS);
+  bool in_upper_roman = top && (top->type == LIST_UPPER_ROMAN_PERIOD ||
+                                top->type == LIST_UPPER_ROMAN_PAREN ||
+                                top->type == LIST_UPPER_ROMAN_PARENS);
+  bool single_roman = word_len != 1 || word[0] == 'i' || word[0] == 'I' ||
+                      (word[0] >= 'a' && word[0] <= 'z' ? in_lower_roman
+                                                        : in_upper_roman);
+  if (single_roman && scanned_lower_roman == word_len &&
+      standard_roman(word, word_len)) {
     *res = LOWER_ROMAN;
     return true;
   }
-  if (scanned_upper_roman == word_len && standard_roman(word, word_len)) {
+  if (single_roman && scanned_upper_roman == word_len &&
+      standard_roman(word, word_len)) {
     *res = UPPER_ROMAN;
     return true;
   }
