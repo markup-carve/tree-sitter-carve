@@ -12411,9 +12411,30 @@ static bool close_paragraph_after_quote(Scanner *s, TSLexer *lexer,
         if (b == note) break;
         if (is_list(b->type)) list_in_note = true;
       }
-      // At column 0, with no list or quote around the paragraph, a quote is
-      // asked what a root paragraph asks it: it is a lazy line (C2-B-024).
-      if (lead == '>' && column == 0 &&
+      // A definition line at column 0 while a definition is open interrupts
+      // (C2-B-016). Probed on a scratch lexer.
+      if ((lead == '[' || lead == '*') && column == 0 &&
+          quotes_below(s, note) == 0 && count_blocks(s, BLOCK_QUOTE) == 0) {
+        BracketProbe probe = bracket_probe_new(s, lexer);
+        TSLexer *p = &probe.lexer;
+        bool definition = false;
+        p->advance(p, false);
+        if (lead == '*') {
+          definition = p->lookahead == '[' && abbreviation_definition_follows(s, p);
+        } else if (p->lookahead == '^') {
+          p->advance(p, false);
+          definition = scan_footnote_after_caret(s, p);
+        } else {
+          definition = p->lookahead != '@' && scan_ref_def(s, p);
+        }
+        array_delete(&probe.characters);
+        if (definition) return true;
+      }
+      // At column 0, with no list or quote around the paragraph, the line is
+      // asked what a root paragraph asks: a quote and a list marker
+      // interrupter (b) does not take are lazy lines (C2-B-015, C2-B-024).
+      if ((carve_is_alnum_ascii(lead) || lead == '(' || lead == '.' ||
+           lead == '>') && column == 0 &&
           !list_in_note && quotes_below(s, note) == 0 &&
           count_blocks(s, BLOCK_QUOTE) == 0 && markers_seen <= 0) {
         s->paragraph_markers_seen = markers_seen;
@@ -12523,6 +12544,20 @@ static bool close_paragraph_after_quote(Scanner *s, TSLexer *lexer,
   if (s->folded_plus_paragraph && markers_seen > 0 &&
       !(s->state & STATE_AFTER_BLANK_LINE)) return false;
   if (s->glued_quote_marker) return false;
+
+  // Past a note's marker, a bullet, a bare dot or a value of 1 opens a nested
+  // list in the note's paragraph (C2-B-015). Probed on a scratch lexer, so a
+  // line that is no such marker is read on below.
+  Block *body = peek_block(s);
+  if (body && body->type == FOOTNOTE && count_blocks(s, BLOCK_QUOTE) == 0 &&
+      line_column(s, lexer) >= body->data && !at_line_end(lexer) &&
+      !lexer->eof(lexer)) {
+    BracketProbe probe = bracket_probe_new(s, lexer);
+    bool nests = scan_list_marker(s, &probe.lexer) && s->marker_value_one &&
+                 marker_line_has_content(s, &probe.lexer);
+    array_delete(&probe.characters);
+    if (nests) return true;
+  }
 
   s->paragraph_markers_seen = markers_seen;
   return paragraph_block_opener_ahead(s, lexer, markers_seen);
@@ -16749,7 +16784,8 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       array_delete(&probe.characters);
       if (!invalid) return false;
     }
-    if (colon_fence_metadata_tail_is_modeled(s, lexer)) return false;
+    // A sigil div takes no title and no label (C2-B-122).
+    if (!sigil_tail && colon_fence_metadata_tail_is_modeled(s, lexer)) return false;
     scan_to_line_end(s, lexer);
     mark_end(s, lexer);
     lexer->result_symbol = CONTAINER_INVALID_METADATA;
