@@ -5299,39 +5299,39 @@ static bool scan_comment_only_line(Scanner *s, TSLexer *lexer) {
   if (lexer->lookahead != '%') return false;
   advance(s, lexer);
   if (lexer->lookahead == '%') return false;
-  char tail[64];
-  unsigned len = 0;
   while (lexer->lookahead == ' ' || lexer->lookahead == '\t') advance(s, lexer);
-  while (!lexer->eof(lexer) && !at_line_end(lexer)) {
-    if (len < sizeof(tail) - 1) tail[len++] = (char)lexer->lookahead;
-    else len = sizeof(tail);
+  char keyword[12];
+  unsigned len = 0;
+  while (len < sizeof(keyword) - 1 &&
+         (lexer->lookahead == '#' || (lexer->lookahead >= 'a' && lexer->lookahead <= 'z'))) {
+    keyword[len++] = (char)lexer->lookahead;
     advance(s, lexer);
   }
-  if (len >= sizeof(tail)) return true;
-  while (len && (tail[len - 1] == ' ' || tail[len - 1] == '\t')) --len;
-  tail[len] = 0;
-  const char *word = NULL;
-  if (strncmp(tail, "#region", 7) == 0) {
-    if (tail[7] != ' ' && tail[7] != '\t') return true;
-    word = tail + 7;
-  } else if (strncmp(tail, "#endregion", 10) == 0) {
-    if (tail[10] == 0) return false;
-    if (tail[10] != ' ' && tail[10] != '\t') return true;
-    word = tail + 10;
-  } else {
-    return true;
-  }
-  while (*word == ' ' || *word == '\t') ++word;
-  if (!(*word == '_' || (*word >= 'A' && *word <= 'Z') ||
-        (*word >= 'a' && *word <= 'z'))) {
-    return true;
-  }
-  for (++word; *word; ++word) {
-    if (!(*word == '_' || *word == '-' || carve_is_alnum_ascii(*word))) {
-      return true;
+  keyword[len] = 0;
+  bool start = strcmp(keyword, "#region") == 0;
+  bool end = strcmp(keyword, "#endregion") == 0;
+  bool region = false;
+  if (start || end) {
+    bool spaced = false;
+    while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+      advance(s, lexer);
+      spaced = true;
+    }
+    if (at_line_end(lexer) || lexer->eof(lexer)) {
+      region = end;
+    } else if (spaced && (lexer->lookahead == '_' ||
+                          (lexer->lookahead >= 'A' && lexer->lookahead <= 'Z') ||
+                          (lexer->lookahead >= 'a' && lexer->lookahead <= 'z'))) {
+      while (lexer->lookahead == '_' || lexer->lookahead == '-' ||
+             carve_is_alnum_ascii(lexer->lookahead)) {
+        advance(s, lexer);
+      }
+      while (lexer->lookahead == ' ' || lexer->lookahead == '\t') advance(s, lexer);
+      region = at_line_end(lexer) || lexer->eof(lexer);
     }
   }
-  return false;
+  while (!lexer->eof(lexer) && !at_line_end(lexer)) advance(s, lexer);
+  return !region;
 }
 
 /// Past one comment-only line and its line end: do more such lines and then a
@@ -5344,7 +5344,10 @@ static bool table_row_after_comments(Scanner *s, TSLexer *lexer) {
     uint8_t quotes = scan_block_quote_markers(s, lexer, &ending);
     consume_whitespace(s, lexer);
     if (lexer->lookahead == '%') {
-      if (!scan_comment_only_line(s, lexer)) break;
+      if (quotes > count_blocks(s, BLOCK_QUOTE) ||
+          !scan_comment_only_line(s, lexer)) {
+        break;
+      }
       consume_line_end(s, lexer);
       continue;
     }
@@ -5479,6 +5482,7 @@ static bool parse_table_quote_continuation(Scanner *s, TSLexer *lexer,
   } else if (row && lexer->lookahead == '+') {
     row = scan_continuation_row(s, lexer);
   } else if (!ending && lexer->lookahead == '%' &&
+             s->block_quote_level + rest <= count_blocks(s, BLOCK_QUOTE) &&
              valid_symbols[TABLE_COMMENT_LINE]) {
     row = scan_comment_only_line(s, lexer);
     if (row && !(state & STATE_PROVEN_RUN)) {
