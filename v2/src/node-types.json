@@ -4342,6 +4342,10 @@
         {
           "type": "table_cell",
           "named": true
+        },
+        {
+          "type": "trailing_comment",
+          "named": true
         }
       ]
     }
@@ -4356,6 +4360,10 @@
       "types": [
         {
           "type": "table_cell",
+          "named": true
+        },
+        {
+          "type": "trailing_comment",
           "named": true
         }
       ]

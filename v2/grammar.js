@@ -1098,6 +1098,7 @@ module.exports = grammar({
       seq(
         alias($._table_header_begin, "|"),
         repeat($._table_cell),
+        optional(alias($._table_row_comment, $.trailing_comment)),
         $._table_row_end_newline,
       ),
     table_separator: ($) =>
@@ -1110,6 +1111,7 @@ module.exports = grammar({
       seq(
         alias($._table_row_begin, "|"),
         repeat($._table_cell),
+        optional(alias($._table_row_comment, $.trailing_comment)),
         $._table_row_end_newline,
       ),
     _table_cell: ($) =>
@@ -3638,5 +3640,7 @@ module.exports = grammar({
     // The `{{` of a line that holds one include directive and nothing else.
     $._include_line_begin,
     $._table_comment_line,
+    // A line comment after a row's closing pipe or row attribute (C2-B-167).
+    $._table_row_comment,
   ],
 });

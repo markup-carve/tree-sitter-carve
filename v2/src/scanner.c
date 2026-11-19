@@ -323,10 +323,11 @@ typedef enum {
   INCLUDE_LINE_BEGIN,
   // A comment-only line between two rows of a table (C2-B-137, C2-B-175).
   TABLE_COMMENT_LINE,
+  TABLE_ROW_COMMENT,
 } TokenType;
 
 // The size of `valid_symbols`, for the copies that edit one entry.
-#define EXTERNAL_TOKEN_COUNT (TABLE_COMMENT_LINE + 1)
+#define EXTERNAL_TOKEN_COUNT (TABLE_ROW_COMMENT + 1)
 
 // The different blocks in Carve that we track,
 // in order to match or close them properly.
@@ -8498,10 +8499,10 @@ static bool parse_footnote_continuation(Scanner *s, TSLexer *lexer,
 /// the row's own closing pipe is what ends it. The cell is then the row's last,
 /// so there is no next cell to scan and the caller has to count this one
 /// itself. See `scan_verbatim_run_in_cell`.
-static bool scan_table_cell(Scanner *s, TSLexer *lexer, bool *separator,
-                            bool *empty, bool *meaningful, bool *unterminated,
-                            bool *closed_by_open_run) {
-  uint8_t leading_ws = consume_whitespace(s, lexer);
+static bool scan_table_cell(Scanner *s, TSLexer *lexer, uint8_t pre_ws,
+                            bool *separator, bool *empty, bool *meaningful,
+                            bool *unterminated, bool *closed_by_open_run) {
+  uint8_t leading_ws = pre_ws + consume_whitespace(s, lexer);
 
   *separator = true;
   *empty = false;
@@ -8602,6 +8603,30 @@ static bool scan_table_cell(Scanner *s, TSLexer *lexer, bool *separator,
   return false;
 }
 
+typedef enum {
+  ROW_COMMENT_NONE,
+  ROW_COMMENT_TAIL,
+  ROW_COMMENT_CELL,
+  ROW_COMMENT_TEXT,
+} RowComment;
+
+/// Reads a `%%` after a row's closing pipe to the line end: a trailing comment
+/// when it holds no pipe (C2-B-167), else a cell's comment when the line still
+/// ends with a pipe, else text (C2-B-168).
+static RowComment scan_row_comment(Scanner *s, TSLexer *lexer) {
+  if (lexer->lookahead != '%') return ROW_COMMENT_NONE;
+  advance(s, lexer);
+  if (lexer->lookahead != '%') return ROW_COMMENT_NONE;
+  bool pipe = false, last_pipe = false;
+  while (!at_line_end(lexer) && !lexer->eof(lexer)) {
+    if (lexer->lookahead == '|') pipe = last_pipe = true;
+    else if (lexer->lookahead != ' ' && lexer->lookahead != '\t') last_pipe = false;
+    advance(s, lexer);
+  }
+  if (!pipe) return ROW_COMMENT_TAIL;
+  return last_pipe ? ROW_COMMENT_CELL : ROW_COMMENT_TEXT;
+}
+
 /// Is the line at the lexer a `+` CONTINUATION ROW?
 ///
 /// The same shape `parse_plus_line` accepts for `_table_continuation_row`: a
@@ -8644,7 +8669,7 @@ static bool scan_separator_row(Scanner *s, TSLexer *lexer) {
     attr_after_pipe = lexer->lookahead == '{';
     // A cell holding a verbatim run is not a separator cell, so an unclosed
     // one cannot save a separator row: NULL.
-    if (!scan_table_cell(s, lexer, &curr_separator, &curr_empty,
+    if (!scan_table_cell(s, lexer, 0, &curr_separator, &curr_empty,
                          &curr_meaningful, &unterminated, NULL)) {
       break;
     }
@@ -8696,8 +8721,27 @@ static bool scan_table_row(Scanner *s, TSLexer *lexer, TokenType *row_type,
   // pipe. The cell scan returns FALSE there - there is no next cell after it -
   // so the row has to count it here.
   bool closed_by_open_run = false;
+  // Set when the line ends with a trailing comment or a cell holding one.
+  RowComment row_comment = ROW_COMMENT_NONE;
   while (true) {
-    attr_after_pipe = lexer->lookahead == '{';
+    // Spaces after a closing pipe: a row attribute may stand one space after
+    // it, and a trailing comment after any (C2-B-167).
+    uint8_t gap = 0;
+    bool tab_gap = false;
+    bool tail_content = false;
+    if (cell_count > 0) {
+      while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+        if (lexer->lookahead == '\t') tab_gap = true;
+        advance(s, lexer);
+        if (gap < UINT8_MAX) ++gap;
+      }
+      if (gap > 0 && lexer->lookahead == '%') {
+        row_comment = scan_row_comment(s, lexer);
+        if (row_comment != ROW_COMMENT_NONE) break;
+        tail_content = true;
+      }
+    }
+    attr_after_pipe = !tail_content && lexer->lookahead == '{' && gap <= 1 && !tab_gap;
     // A BRACE RUN HERE IS ONE OF TWO THINGS, and only the row attribute ends
     // the row: `| a |{.head}` closes it, `|{.head} a |` opens a cell that
     // carries its own. Validating here rather than leaving it to
@@ -8709,13 +8753,34 @@ static bool scan_table_row(Scanner *s, TSLexer *lexer, TokenType *row_type,
     // a malformed ROW attribute leaves an unterminated cell, so the row fails.
     if (attr_after_pipe && !scan_valid_inline_attribute(s, lexer)) {
       attr_after_pipe = false;
+      tail_content = true;
     } else if (attr_after_pipe) {
+      bool spaced = false;
       while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
         advance(s, lexer);
+        spaced = true;
       }
       if (at_line_end(lexer) || lexer->eof(lexer)) {
         break;
       }
+      if (cell_count > 0 && spaced) {
+        row_comment = scan_row_comment(s, lexer);
+        if (row_comment == ROW_COMMENT_TAIL) break;
+        if (row_comment != ROW_COMMENT_NONE) {
+          row_comment = ROW_COMMENT_TEXT;
+          break;
+        }
+      }
+      // A spaced brace block is cell text, not the cell's own attribute.
+      if (gap > 0) {
+        attr_after_pipe = false;
+        tail_content = true;
+      }
+    }
+    if (tail_content) {
+      any_content = true;
+      all_separators = false;
+    } else if (attr_after_pipe) {
       // A cell's own attribute: the rest of the cell follows it, and the block
       // is what makes the cell meaningful - `|{.x} |` is a one-cell table with
       // a classed empty cell, not a blank row (corpus
@@ -8727,10 +8792,12 @@ static bool scan_table_row(Scanner *s, TSLexer *lexer, TokenType *row_type,
       all_separators = false;
     }
     bool header_cell = lexer->lookahead == '=';
-    if (!scan_table_cell(s, lexer, &curr_separator, &curr_empty,
+    if (!scan_table_cell(s, lexer, gap, &curr_separator, &curr_empty,
                          &curr_meaningful, &unterminated,
                          &closed_by_open_run)) {
       if (closed_by_open_run && !header_cell) all_header_cells = false;
+      // Text read before the cell scan leaves the cell open at the line end.
+      if (tail_content && !closed_by_open_run) unterminated = true;
       break;
     }
     if (!header_cell) all_header_cells = false;
@@ -8745,8 +8812,17 @@ static bool scan_table_row(Scanner *s, TSLexer *lexer, TokenType *row_type,
       advance(s, lexer);
     }
   }
-  if (attr_after_pipe) {
+  if (attr_after_pipe || row_comment == ROW_COMMENT_TAIL) {
     unterminated = false;
+  }
+  if (row_comment == ROW_COMMENT_CELL) {
+    all_separators = false;
+    all_header_cells = false;
+    unterminated = false;
+    ++cell_count;
+  }
+  if (row_comment == ROW_COMMENT_TEXT) {
+    unterminated = true;
   }
   if (closed_by_open_run) {
     // The run swallowed the rest of the line, closing pipe included, so the
@@ -9889,10 +9965,21 @@ static uint8_t next_attached_row_prefix(Scanner *s, TSLexer *lexer,
       ? prefixes : UINT8_MAX;
 }
 
-static bool parse_table_end_newline(Scanner *s, TSLexer *lexer) {
+static bool parse_table_end_newline(Scanner *s, TSLexer *lexer,
+                                    const bool *valid_symbols) {
   Block *top = peek_block(s);
   if (!top || top->type != TABLE_ROW) {
     return false;
+  }
+
+  // The row attribute may also stand one space after the pipe (C2-B-167).
+  // Spaces are skipped so a trailing comment's node starts at its `%%`.
+  bool gap = false;
+  if (lexer->lookahead == ' ') {
+    ++s->host_advances;
+    s->host_previous = ' ';
+    lexer->advance(lexer, true);
+    gap = true;
   }
 
   // A row attribute block may be glued to the row's closing pipe:
@@ -9904,13 +9991,28 @@ static bool parse_table_end_newline(Scanner *s, TSLexer *lexer) {
     if (!scan_valid_inline_attribute(s, lexer)) {
       return false;
     }
-    // Only trailing whitespace may follow the attribute block.
-    while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
-      advance(s, lexer);
-    }
+    gap = false;
   }
 
-  consume_whitespace(s, lexer);
+  // A trailing line comment after whitespace is its own token (C2-B-167); a
+  // comment holding a pipe is no tail (C2-B-168).
+  while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+    ++s->host_advances;
+    s->host_previous = lexer->lookahead;
+    lexer->advance(lexer, true);
+    gap = true;
+  }
+  if (gap && lexer->lookahead == '%' && valid_symbols[TABLE_ROW_COMMENT]) {
+    advance(s, lexer);
+    if (lexer->lookahead != '%') return false;
+    while (!at_line_end(lexer) && !lexer->eof(lexer)) {
+      if (lexer->lookahead == '|') return false;
+      advance(s, lexer);
+    }
+    mark_end(s, lexer);
+    lexer->result_symbol = TABLE_ROW_COMMENT;
+    return true;
+  }
 
   // The end of input ends the row too: a row's last cell closes on its pipe and
   // the document may simply stop there. `consume_line_end` takes nothing, so the
@@ -9993,10 +10095,14 @@ static bool parse_table_cell_end(Scanner *s, TSLexer *lexer) {
          lexer->lookahead != '|' && !at_line_end(lexer) && !lexer->eof(lexer)) {
     advance(s, lexer);
   }
-  if (s->marker_probe && cell_marker_run(s->marker_head, s->marker_len)) {
-    top->flags |= BLOCK_FLAG_TABLE_ROW_CELL_MARKER;
-  }
+  bool marker_run = s->marker_probe && cell_marker_run(s->marker_head, s->marker_len);
   s->marker_probe = false;
+  // With no pipe after it the run is the row attribute (C2-B-167).
+  while (marker_run && lexer->lookahead != '|') {
+    if (at_line_end(lexer) || lexer->eof(lexer)) marker_run = false;
+    else advance(s, lexer);
+  }
+  if (marker_run) top->flags |= BLOCK_FLAG_TABLE_ROW_CELL_MARKER;
   lexer->result_symbol = escaped ? TABLE_ESCAPED_CELL_END : TABLE_CELL_END;
   return true;
 }
@@ -12502,7 +12608,7 @@ static bool emit_paragraph_newline(Scanner *s, TSLexer *lexer,
 static bool parse_newline(Scanner *s, TSLexer *lexer,
                           const bool *valid_symbols) {
   if (valid_symbols[TABLE_ROW_END_NEWLINE] &&
-      parse_table_end_newline(s, lexer)) {
+      parse_table_end_newline(s, lexer, valid_symbols)) {
     return true;
   }
   if (valid_symbols[VERBATIM_END] && try_implicit_close_verbatim(s, lexer)) {
@@ -17711,7 +17817,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   bool row_padding = lexer->lookahead == ' ' || lexer->lookahead == '\t';
   if ((lexer->lookahead == '{' || row_padding || at_eof) &&
       valid_symbols[TABLE_ROW_END_NEWLINE]) {
-    if (parse_table_end_newline(s, lexer)) {
+    if (parse_table_end_newline(s, lexer, valid_symbols)) {
       return true;
     }
     // A declined padding probe consumed whitespace. Let the internal lexer
