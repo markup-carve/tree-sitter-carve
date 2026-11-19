@@ -8519,9 +8519,7 @@ static bool parse_caption_begin(Scanner *s, TSLexer *lexer, const bool *valid_sy
   if (lexer->lookahead == '[' && valid_symbols[INLINE_NOTE_BEGIN]) {
     return parse_inline_note_after_caret(s, lexer);
   }
-  // A closing block can restore the host flag after the item's blank line.
-  if (lexer->lookahead != ' ' || s->caption_gap != CAPTION_HOST_HERE ||
-      (s->state & STATE_AFTER_BLANK_LINE)) {
+  if (lexer->lookahead != ' ' || s->caption_gap != CAPTION_HOST_HERE) {
     return false;
   }
   // ALL of the run, and only U+0020: a tab ends it and belongs to the content.
@@ -18058,6 +18056,9 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   // repeated scanner calls tree-sitter makes at one position agree.
   if (at_line_start && is_newline) {
     s->state |= STATE_AFTER_BLANK_LINE;
+    // The gap belongs to the host even when the blank line emits no line-end
+    // token before the enclosing item's later close.
+    s->caption_gap = CAPTION_HOST_NONE;
     Block *note = find_block(s, FOOTNOTE);
     if (note) note->flags |= BLOCK_FLAG_FOOTNOTE_BLANK_BEFORE_PLUS;
     // A `+` CONTINUATION ATTACHES EXACTLY ONE BLOCK (PART 9 section 17), and a
