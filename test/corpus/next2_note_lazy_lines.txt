@@ -1,0 +1,113 @@
+================================================================================
+C2-B-024: a quote below a footnote item's paragraph is a lazy line
+================================================================================
+
+[^n]: - a
+> b
+
+--------------------------------------------------------------------------------
+
+(document
+  (footnote
+    (footnote_marker_begin)
+    label: (reference_label)
+    (footnote_marker_end)
+    content: (footnote_content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (paragraph)))))))
+
+================================================================================
+C2-B-015: a list marker below a footnote quote's paragraph is a lazy line
+================================================================================
+
+[^n]: > a
+- b
+
+--------------------------------------------------------------------------------
+
+(document
+  (footnote
+    (footnote_marker_begin)
+    label: (reference_label)
+    (footnote_marker_end)
+    content: (footnote_content
+      (block_quote
+        (block_quote_marker)
+        content: (content
+          (paragraph))))))
+
+================================================================================
+C2-B-024: a heading below a footnote item's paragraph is a lazy line
+================================================================================
+
+[^n]: - a
+# h
+c
+
+--------------------------------------------------------------------------------
+
+(document
+  (footnote
+    (footnote_marker_begin)
+    label: (reference_label)
+    (footnote_marker_end)
+    content: (footnote_content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (paragraph)))))))
+
+================================================================================
+C2-B-015: a marker at column 0 closes a footnote's list
+================================================================================
+
+[^n]: - a
+* b
+
+--------------------------------------------------------------------------------
+
+(document
+  (footnote
+    (footnote_marker_begin)
+    label: (reference_label)
+    (footnote_marker_end)
+    content: (footnote_content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (paragraph))))))
+  (list
+    (list_item
+      marker: (list_marker_star)
+      content: (list_item_content
+        (paragraph)))))
+
+================================================================================
+C2-B-021: a marker the note owns closes a quote in the note
+================================================================================
+
+[^n]: > a
+  - b
+
+--------------------------------------------------------------------------------
+
+(document
+  (footnote
+    (footnote_marker_begin)
+    label: (reference_label)
+    (footnote_marker_end)
+    content: (footnote_content
+      (block_quote
+        (block_quote_marker)
+        content: (content
+          (paragraph)))
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (paragraph)))))))
