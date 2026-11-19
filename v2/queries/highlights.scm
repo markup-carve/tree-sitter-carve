@@ -155,6 +155,13 @@
 (list_marker_task
   (checked)) @markup.list.checked
 
+; The box of an ordered item (C2-B-046)
+(list_item
+  checkmark: (unchecked) @markup.list.unchecked)
+
+(list_item
+  checkmark: (checked) @markup.list.checked)
+
 ; Colorize `x` in `[x]`
 ((checked) @constant.builtin
   (#offset! @constant.builtin 0 1 0 -1))

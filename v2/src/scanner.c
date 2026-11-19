@@ -324,10 +324,11 @@ typedef enum {
   // A comment-only line between two rows of a table (C2-B-137, C2-B-175).
   TABLE_COMMENT_LINE,
   TABLE_ROW_COMMENT,
+  LIST_TASK_BOX,
 } TokenType;
 
 // The size of `valid_symbols`, for the copies that edit one entry.
-#define EXTERNAL_TOKEN_COUNT (TABLE_ROW_COMMENT + 1)
+#define EXTERNAL_TOKEN_COUNT (LIST_TASK_BOX + 1)
 
 // The different blocks in Carve that we track,
 // in order to match or close them properly.
@@ -638,6 +639,8 @@ typedef struct {
   // Marker column plus one while a refused one-line paragraph is pending.
   uint8_t refused_plus_column;
   uint8_t table_attribute_pending;
+  // An ordered marker's required space ended at a `[` (C2-B-046).
+  uint8_t task_box_next;
   // Did the last list marker scan read a bullet or an ordered value of 1?
   // Read in the same scan call only, so it is not serialized.
   bool marker_value_one;
@@ -5941,41 +5944,34 @@ static TokenType scan_ordered_list_marker_token(Scanner *s, TSLexer *lexer) {
   // Only uppercase dot markers need two spaces in 0.2 (C2-B-040).
   bool letter_dot = res == LIST_MARKER_UPPER_ALPHA_PERIOD ||
                     res == LIST_MARKER_UPPER_ROMAN_PERIOD;
-  if (letter_dot && lexer->lookahead != ' ') {
-    return IGNORED;
+  if (letter_dot) {
+    if (lexer->lookahead != ' ') return IGNORED;
+    advance(s, lexer);
   }
   return res;
 }
 
-// Scans a task marker box. `x`/`X` are the checked states; ` `, `_`, `-`,
-// `/`, `!`, `>`, `?` are the unchecked states (spec grammar.ebnf task_state;
-// every non-x state renders as an unchecked checkbox).
+static bool scan_task_list_box(Scanner *s, TSLexer *lexer);
+// The caller has consumed `<bullet> `, the required space (C2-B-046).
 static bool scan_task_list_marker(Scanner *s, TSLexer *lexer) {
-  // The caller has consumed `<bullet> `, one space. A RUN of spaces before the
-  // checkbox is still a task marker - `-   [ ] a` renders a checkbox in every
-  // engine, the same way `#   H` is a heading - and requiring exactly one put
-  // an ERROR inside the marker node (corpus 75-list-nesting-and-looseness-9).
-  // Tabs are not accepted: the separator is a space.
-  while (lexer->lookahead == ' ') {
-    advance(s, lexer);
-  }
-  if (lexer->lookahead != '[') {
+  return scan_task_list_box(s, lexer);
+}
+
+// Scans a task box and its space, with content after it. `x`/`X` are the
+// checked states; ` `, `_`, `-`, `/`, `!`, `>`, `?` are the unchecked states.
+static bool scan_task_list_box(Scanner *s, TSLexer *lexer) {
+  if (lexer->lookahead != '[') return false;
+  advance(s, lexer);
+  if (lexer->lookahead <= 0 || lexer->lookahead > 0x7f ||
+      !strchr("xX _-/!>?", (char)lexer->lookahead)) {
     return false;
   }
   advance(s, lexer);
-  if (lexer->lookahead != 'x' && lexer->lookahead != 'X' &&
-      lexer->lookahead != ' ' && lexer->lookahead != '_' &&
-      lexer->lookahead != '-' && lexer->lookahead != '/' &&
-      lexer->lookahead != '!' && lexer->lookahead != '>' &&
-      lexer->lookahead != '?') {
-    return false;
-  }
+  if (lexer->lookahead != ']') return false;
   advance(s, lexer);
-  if (lexer->lookahead != ']') {
-    return false;
-  }
-  advance(s, lexer);
-  return lexer->lookahead == ' ';
+  if (lexer->lookahead != ' ') return false;
+  while (lexer->lookahead == ' ') advance(s, lexer);
+  return !at_line_end(lexer) && !lexer->eof(lexer);
 }
 
 static TokenType scan_unordered_list_marker_token(Scanner *s, TSLexer *lexer) {
@@ -6473,6 +6469,24 @@ static uint8_t enclosing_item_content_col(Scanner *s, Block *list) {
   return 0;
 }
 
+/// `enclosing_item_content_col` as a line column for a list opened in a
+/// quote: an enclosing item's `data` counts from the quote's content column.
+static uint32_t quoted_item_owner_col(Scanner *s, Block *list) {
+  bool below = false;
+  for (int i = s->open_blocks->size - 1; i >= 0; --i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (b == list) {
+      below = true;
+    } else if (below && is_list(b->type) && b->type != LIST_DEFINITION) {
+      Block *quote = find_block(s, BLOCK_QUOTE);
+      return b->data + (quote ? quote->content_col : 0);
+    } else if (below) {
+      break;
+    }
+  }
+  return enclosing_item_content_col(s, list);
+}
+
 /// False when a new list would pass the nesting cap; the marker is then text.
 static bool ensure_list_open(Scanner *s, BlockType type, uint8_t indent,
                              uint32_t marker_column) {
@@ -6524,6 +6538,9 @@ static bool handle_ordered_list_marker(Scanner *s, TSLexer *lexer,
     // Mark the token end (after the marker's space) before the content probe,
     // so the scratch advances in `marker_line_has_content` cannot extend it.
     mark_end(s, lexer);
+    // A `[` right after the required space is content, and a task box when
+    // the box shape follows (C2-B-046); the probe is scratch.
+    bool bracket = lexer->lookahead == '[';
     // The whole space run is separator (`1.   a` has its content at 5), as for
     // a bullet; the token takes it and the column is read after it.
     while (lexer->lookahead == ' ') {
@@ -6535,8 +6552,9 @@ static bool handle_ordered_list_marker(Scanner *s, TSLexer *lexer,
     // The attribute block counts zero, as on a bullet (`1.{#k} a`, corpus 413).
     uint8_t content_col =
         (uint8_t)(line_column(s, lexer) - s->marker_attribute_width);
+    bool box = bracket && scan_task_list_box(s, lexer);
     // A content-less marker line is paragraph text, not a list.
-    if (!marker_line_has_content(s, lexer)) {
+    if (!bracket && !marker_line_has_content(s, lexer)) {
       return false;
     }
     // A marker where the previous marker on this line ended nests at its own
@@ -6549,6 +6567,7 @@ static bool handle_ordered_list_marker(Scanner *s, TSLexer *lexer,
     if (!ensure_list_open(s, list_marker_to_block(marker), list_indent + 1,
                           start_col != 0 ? start_col : UINT32_MAX)) return false;
     record_list_marker_margin(s, content_col, false);
+    s->task_box_next = box;
     lexer->result_symbol = marker;
     return true;
   } else {
@@ -6896,8 +6915,13 @@ static bool parse_list_marker_or_thematic_break(
     consumed_line_of_markers = consumed_line_of_markers || trailing > 0;
   }
 
+  // A box stands directly after the required space (C2-B-046). A declined
+  // box probe has consumed content, so the line is not content-less.
+  bool box_probed = false;
   if (can_be_list_marker) {
-    if (valid_symbols[task_type] && !spaced_probe_refused) {
+    if (valid_symbols[task_type] && !spaced_probe_refused &&
+        extra_spaces == 0 && lexer->lookahead == '[') {
+      box_probed = true;
       if (scan_task_list_marker(s, lexer)) {
         if (!ensure_list_open(s, list_type, list_indent + 1, start_col)) return false;
         record_list_marker_margin(s, marker_content_col, false);
@@ -6911,7 +6935,8 @@ static bool parse_list_marker_or_thematic_break(
     if (valid_symbols[marker_type]) {
       // A content-less marker line is paragraph text, not a list (the token end
       // is already marked above, so this lookahead is scratch).
-      if (!consumed_line_of_markers && !marker_line_has_content(s, lexer)) {
+      if (!consumed_line_of_markers && !box_probed &&
+          !marker_line_has_content(s, lexer)) {
         return false;
       }
       if (!ensure_list_open(s, list_type, list_indent + 1, start_col)) return false;
@@ -7735,7 +7760,7 @@ static bool parse_list_item_end(Scanner *s, TSLexer *lexer,
     if (different_indent && bullet_or_ordered && marker_col != 0 &&
         list->content_col != 0 &&
         marker_col < list->content_col &&
-        marker_col >= enclosing_item_content_col(s, list)) {
+        marker_col >= quoted_item_owner_col(s, list)) {
       different_indent = false;
     }
 
@@ -16391,6 +16416,21 @@ bool tree_sitter_carve2_external_scanner_scan(void *payload, TSLexer *lexer,
   s->deferred_column_pending = false;
   s->host_jumped = false;
   s->marker_probe = false;
+  if (s->task_box_next) {
+    s->task_box_next = 0;
+    // A box after an ordered marker's required space, before content
+    // (C2-B-046). The token is zero-width; the grammar reads the box.
+    if (valid_symbols[LIST_TASK_BOX] && !valid_symbols[ERROR]) {
+      lexer->mark_end(lexer);
+      if (scan_task_list_box(s, lexer)) {
+        // A marker after the box nests on the marker line, as after `- [x] `.
+        s->marker_end_col = list_column_u8(line_column(s, lexer));
+        lexer->result_symbol = LIST_TASK_BOX;
+        return true;
+      }
+      return false;  // unreachable: the marker scan proved the box
+    }
+  }
   if (valid_symbols[CELL_MARKER_BEGIN] && !valid_symbols[ERROR]) {
     Block *marker_row = peek_block(s);
     if (marker_row && marker_row->type == TABLE_ROW &&
@@ -18552,6 +18592,7 @@ static void init_scalars(Scanner *s) {
   s->plus_decision = 0;
   s->refused_plus_column = 0;
   s->table_attribute_pending = 0;
+  s->task_box_next = 0;
   s->attribute_saw_table = false;
   s->col_base = 0;
   s->col_base_at_mark = 0;
@@ -18702,6 +18743,7 @@ unsigned tree_sitter_carve2_external_scanner_serialize(void *payload,
   buffer[size++] = (char)s->indent;
   buffer[size++] = (char)s->marker_end_col;
   buffer[size++] = (char)s->table_attribute_pending;
+  buffer[size++] = (char)s->task_box_next;
   buffer[size++] = (char)(s->state & 0xff);
   buffer[size++] = (char)((s->state >> 8) & 0xff);
   buffer[size++] = (char)(s->col_base & 0xff);
@@ -18856,6 +18898,7 @@ void tree_sitter_carve2_external_scanner_deserialize(void *payload, char *buffer
     s->indent = (uint8_t)buffer[size++];
     s->marker_end_col = (uint8_t)buffer[size++];
     s->table_attribute_pending = (uint8_t)buffer[size++];
+    s->task_box_next = (uint8_t)buffer[size++];
     s->state = (uint16_t)(uint8_t)buffer[size++];
     s->state |= (uint16_t)(uint8_t)buffer[size++] << 8;
     s->col_base = (uint32_t)(uint8_t)buffer[size++];

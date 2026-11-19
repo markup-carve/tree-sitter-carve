@@ -709,6 +709,14 @@ module.exports = grammar({
         field("checkmark", choice($.checked, $.unchecked)),
         $._whitespace1,
       ),
+    // A box after an ordered marker's required space (C2-B-046); the scanner
+    // decides it, so `[` stays inline text everywhere else.
+    _ordered_task_box: ($) =>
+      seq(
+        $._list_task_box,
+        field("checkmark", choice($.checked, $.unchecked)),
+        $._whitespace1,
+      ),
     checked: (_) => seq("[", choice("x", "X"), "]"),
     // Unchecked task states per the spec's task_state rule: ` `, `_`, `-`,
     // `/`, `!`, `>`, `?` all render as an unchecked checkbox. The
@@ -810,6 +818,7 @@ module.exports = grammar({
       seq(
         optional($._block_quote_prefix),
         field("marker", $.list_marker_decimal_period),
+        optional($._ordered_task_box),
         field("content", $.list_item_content),
       ),
     _list_decimal_paren: ($) =>
@@ -821,6 +830,7 @@ module.exports = grammar({
       seq(
         optional($._block_quote_prefix),
         field("marker", $.list_marker_decimal_paren),
+        optional($._ordered_task_box),
         field("content", $.list_item_content),
       ),
     _list_decimal_parens: ($) =>
@@ -832,6 +842,7 @@ module.exports = grammar({
       seq(
         optional($._block_quote_prefix),
         field("marker", $.list_marker_decimal_parens),
+        optional($._ordered_task_box),
         field("content", $.list_item_content),
       ),
 
@@ -844,6 +855,7 @@ module.exports = grammar({
       seq(
         optional($._block_quote_prefix),
         field("marker", $.list_marker_lower_alpha_period),
+        optional($._ordered_task_box),
         field("content", $.list_item_content),
       ),
     _list_lower_alpha_paren: ($) =>
@@ -855,6 +867,7 @@ module.exports = grammar({
       seq(
         optional($._block_quote_prefix),
         field("marker", $.list_marker_lower_alpha_paren),
+        optional($._ordered_task_box),
         field("content", $.list_item_content),
       ),
     _list_lower_alpha_parens: ($) =>
@@ -866,6 +879,7 @@ module.exports = grammar({
       seq(
         optional($._block_quote_prefix),
         field("marker", $.list_marker_lower_alpha_parens),
+        optional($._ordered_task_box),
         field("content", $.list_item_content),
       ),
 
@@ -878,6 +892,7 @@ module.exports = grammar({
       seq(
         optional($._block_quote_prefix),
         field("marker", $.list_marker_upper_alpha_period),
+        optional($._ordered_task_box),
         field("content", $.list_item_content),
       ),
     _list_upper_alpha_paren: ($) =>
@@ -889,6 +904,7 @@ module.exports = grammar({
       seq(
         optional($._block_quote_prefix),
         field("marker", $.list_marker_upper_alpha_paren),
+        optional($._ordered_task_box),
         field("content", $.list_item_content),
       ),
     _list_upper_alpha_parens: ($) =>
@@ -900,6 +916,7 @@ module.exports = grammar({
       seq(
         optional($._block_quote_prefix),
         field("marker", $.list_marker_upper_alpha_parens),
+        optional($._ordered_task_box),
         field("content", $.list_item_content),
       ),
 
@@ -912,6 +929,7 @@ module.exports = grammar({
       seq(
         optional($._block_quote_prefix),
         field("marker", $.list_marker_lower_roman_period),
+        optional($._ordered_task_box),
         field("content", $.list_item_content),
       ),
     _list_lower_roman_paren: ($) =>
@@ -923,6 +941,7 @@ module.exports = grammar({
       seq(
         optional($._block_quote_prefix),
         field("marker", $.list_marker_lower_roman_paren),
+        optional($._ordered_task_box),
         field("content", $.list_item_content),
       ),
     _list_lower_roman_parens: ($) =>
@@ -934,6 +953,7 @@ module.exports = grammar({
       seq(
         optional($._block_quote_prefix),
         field("marker", $.list_marker_lower_roman_parens),
+        optional($._ordered_task_box),
         field("content", $.list_item_content),
       ),
 
@@ -946,6 +966,7 @@ module.exports = grammar({
       seq(
         optional($._block_quote_prefix),
         field("marker", $.list_marker_upper_roman_period),
+        optional($._ordered_task_box),
         field("content", $.list_item_content),
       ),
     _list_upper_roman_paren: ($) =>
@@ -957,6 +978,7 @@ module.exports = grammar({
       seq(
         optional($._block_quote_prefix),
         field("marker", $.list_marker_upper_roman_paren),
+        optional($._ordered_task_box),
         field("content", $.list_item_content),
       ),
     _list_upper_roman_parens: ($) =>
@@ -968,6 +990,7 @@ module.exports = grammar({
       seq(
         optional($._block_quote_prefix),
         field("marker", $.list_marker_upper_roman_parens),
+        optional($._ordered_task_box),
         field("content", $.list_item_content),
       ),
 
@@ -3642,5 +3665,7 @@ module.exports = grammar({
     $._table_comment_line,
     // A line comment after a row's closing pipe or row attribute (C2-B-167).
     $._table_row_comment,
+    // Zero-width: a task box follows an ordered marker (C2-B-046).
+    $._list_task_box,
   ],
 });

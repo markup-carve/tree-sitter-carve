@@ -2919,6 +2919,20 @@
     "type": "list_item",
     "named": true,
     "fields": {
+      "checkmark": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "checked",
+            "named": true
+          },
+          {
+            "type": "unchecked",
+            "named": true
+          }
+        ]
+      },
       "content": {
         "multiple": false,
         "required": false,
