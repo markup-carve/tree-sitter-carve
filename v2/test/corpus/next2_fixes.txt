@@ -224,3 +224,48 @@ para
       content: (list_item_content
         (paragraph))))
   (paragraph))
+
+================================================================================
+C2-B-137: a column-0 comment line between rows keeps the item's table
+================================================================================
+
+- | a |
+%% x
+  | b |
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (table
+          (table_row
+            (table_cell))
+          (comment_line)
+          (table_row
+            (table_cell)))))))
+
+================================================================================
+C2-B-137: a row short of the item after a comment line ends the item
+================================================================================
+
+- | a |
+%% x
+| b |
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (table
+          (table_row
+            (table_cell))))))
+  (comment_line)
+  (table
+    (table_row
+      (table_cell))))

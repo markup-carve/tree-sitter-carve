@@ -5359,11 +5359,12 @@ static bool scan_comment_only_line(Scanner *s, TSLexer *lexer) {
 /// row or a continuation row of this table follow? Reads ahead only.
 static bool table_row_after_comments(Scanner *s, TSLexer *lexer) {
   uint16_t state = s->state;
+  uint8_t saved_indent = s->indent;
   bool row = false;
   for (;;) {
     bool ending = false;
     uint8_t quotes = scan_block_quote_markers(s, lexer, &ending);
-    consume_whitespace(s, lexer);
+    uint8_t indent = consume_whitespace(s, lexer);
     if (lexer->lookahead == '%') {
       if (quotes > count_blocks(s, BLOCK_QUOTE) ||
           !scan_comment_only_line(s, lexer)) {
@@ -5375,6 +5376,10 @@ static bool table_row_after_comments(Scanner *s, TSLexer *lexer) {
     if (ending || quotes != count_blocks(s, BLOCK_QUOTE)) {
       break;
     }
+    // The comment lines close no item, but the row must reach it.
+    Block *list = find_list(s);
+    s->indent = indent;
+    if (list && !quoted_line_reaches_list(s, lexer, list)) break;
     if (lexer->lookahead == '|') {
       advance(s, lexer);
       TokenType row_type;
@@ -5386,6 +5391,7 @@ static bool table_row_after_comments(Scanner *s, TSLexer *lexer) {
     break;
   }
   s->state = state;
+  s->indent = saved_indent;
   return row;
 }
 
@@ -5449,8 +5455,15 @@ static bool line_leaves_container(Scanner *s, TSLexer *lexer, uint8_t indent) {
 /// continues the run, ends it, or ends its container (C2-B-092, C2-B-192).
 static AttributeRunLine attribute_run_line(Scanner *s, TSLexer *lexer) {
   bool ending = false;
-  uint8_t quotes = scan_block_quote_markers(s, lexer, &ending);
-  uint8_t indent = consume_whitespace(s, lexer);
+  uint8_t quotes = 0;
+  uint8_t indent = 0;
+  // A quote in an item stands behind the item's indentation.
+  if (count_blocks(s, BLOCK_QUOTE) > 0) indent = consume_whitespace(s, lexer);
+  if (lexer->lookahead == '>') {
+    quotes = scan_block_quote_markers(s, lexer, &ending);
+    indent = 0;
+  }
+  if (!ending) indent += consume_whitespace(s, lexer);
   if (ending || lexer->eof(lexer) || at_line_end(lexer)) return RUN_LINE_BLANK;
   if (quotes < count_blocks(s, BLOCK_QUOTE)) return RUN_LINE_ENDS_CONTAINER;
   if (lexer->lookahead == '%') {
@@ -17659,7 +17672,8 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
        (lexer->lookahead == '+' && !s->after_separator_row &&
         count_blocks(s, BLOCK_QUOTE) == s->block_quote_level)) &&
       (footnote_row ||
-       (find_list(s) && quoted_line_reaches_list(s, lexer, find_list(s))))) {
+       (find_list(s) && (lexer->lookahead == '%' ||
+                         quoted_line_reaches_list(s, lexer, find_list(s)))))) {
     uint8_t indent = s->indent;
     uint8_t level = s->block_quote_level;
     uint16_t state = s->state;
