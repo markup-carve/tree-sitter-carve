@@ -758,6 +758,9 @@ typedef struct {
   // inline one is space-only (CARVE-P4-001) and stays on its line. Transient,
   // set around the block reads.
   bool attribute_block_line;
+  // Set by `attribute_line_taken` when the run ends with its container.
+  // Read in the same scan call only.
+  bool attribute_run_ends;
   bool attribute_saw_table;
   char braced_probe_marker;
   bool braced_probe_raw_closer;
@@ -932,6 +935,9 @@ static const uint16_t STATE_FENCE_OWNS_BODY = 1 << 11;
 // The look-ahead of a table comment run or an attribute run already proved
 // how the run ends, so the next line of that run skips it. Keeps both linear.
 static const uint16_t STATE_PROVEN_RUN = 1 << 12;
+// The same bit inside a paragraph: it is a run of refused attribute lines
+// that ends with its container, so it closes after the run (C2-B-092).
+static const uint16_t STATE_CLOSED_ATTRIBUTE_RUN = 1 << 12;
 // Set by `verbatim_line_continues` when the line it just decided to continue
 // into is a comment-only line inside a line block, so `VERBATIM_COMMENT_LINE`
 // - the very next token requested - knows to claim it instead of
@@ -5408,9 +5414,67 @@ static bool parse_table_comment_line(Scanner *s, TSLexer *lexer,
 /// leaves the run as a paragraph (C2-B-192, C2-B-137). The end of a container
 /// is not read here: the paragraph would take the next line lazily.
 /// Reads ahead only.
+typedef enum {
+  RUN_LINE_BLANK,
+  RUN_LINE_ATTRIBUTE,
+  RUN_LINE_COMMENT,
+  RUN_LINE_ENDS_CONTAINER,
+  RUN_LINE_OTHER,
+} AttributeRunLine;
+
+static bool line_misses_note(Scanner *s, uint32_t column);
+
+/// Does a line at `column` leave the innermost open item, note or div?
+static bool line_leaves_container(Scanner *s, TSLexer *lexer, uint8_t indent) {
+  for (int i = (int)s->open_blocks->size - 1; i >= 0; --i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (b->type == BLOCK_QUOTE) return false;
+    if (is_list(b->type)) {
+      s->indent = indent;
+      return !quoted_line_reaches_list(s, lexer, b);
+    }
+    if (b->type == FOOTNOTE) return line_misses_note(s, line_column(s, lexer));
+    if (b->type == DIV || b->type == FIGURE_GROUP) {
+      if (lexer->lookahead != ':') return false;
+      uint16_t colons = consume_colons(s, lexer);
+      if (colons < 3 || number_of_colon_fence_blocks_from_top(s, colons) == 0) return false;
+      consume_whitespace(s, lexer);
+      return at_line_end(lexer) || lexer->eof(lexer);
+    }
+  }
+  return false;
+}
+
+/// Reads the line at the lexer as a line after an attribute line: whether it
+/// continues the run, ends it, or ends its container (C2-B-092, C2-B-192).
+static AttributeRunLine attribute_run_line(Scanner *s, TSLexer *lexer) {
+  bool ending = false;
+  uint8_t quotes = scan_block_quote_markers(s, lexer, &ending);
+  uint8_t indent = consume_whitespace(s, lexer);
+  if (ending || lexer->eof(lexer) || at_line_end(lexer)) return RUN_LINE_BLANK;
+  if (quotes < count_blocks(s, BLOCK_QUOTE)) return RUN_LINE_ENDS_CONTAINER;
+  if (lexer->lookahead == '%') {
+    return scan_comment_only_line(s, lexer) ? RUN_LINE_COMMENT : RUN_LINE_OTHER;
+  }
+  if (line_leaves_container(s, lexer, indent)) return RUN_LINE_ENDS_CONTAINER;
+  if (lexer->lookahead != '{') return RUN_LINE_OTHER;
+  s->attribute_block_line = true;
+  bool attribute = true;
+  while (attribute && lexer->lookahead == '{') {
+    attribute = scan_valid_inline_attribute(s, lexer);
+  }
+  s->attribute_block_line = false;
+  while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+    advance(s, lexer);
+  }
+  if (!attribute || !(at_line_end(lexer) || lexer->eof(lexer))) return RUN_LINE_OTHER;
+  return RUN_LINE_ATTRIBUTE;
+}
+
 static bool attribute_line_taken(Scanner *s, TSLexer *lexer) {
   bool proven = (s->state & STATE_PROVEN_RUN) != 0;
   s->state &= (uint16_t)~STATE_PROVEN_RUN;
+  s->attribute_run_ends = false;
   bool next_attribute = false;
   uint8_t indent = s->indent;
   uint8_t level = s->block_quote_level;
@@ -5421,35 +5485,14 @@ static bool attribute_line_taken(Scanner *s, TSLexer *lexer) {
   for (;;) {
     if (lexer->eof(lexer)) break;
     consume_line_end(s, lexer);
-    bool ending = false;
-    uint8_t quotes = scan_block_quote_markers(s, lexer, &ending);
-    consume_whitespace(s, lexer);
-    if (ending || lexer->eof(lexer) || at_line_end(lexer)) break;
-    if (quotes < count_blocks(s, BLOCK_QUOTE)) {
-      taken = true;
+    AttributeRunLine line = attribute_run_line(s, lexer);
+    if (line == RUN_LINE_BLANK) break;
+    if (line == RUN_LINE_ENDS_CONTAINER) {
+      s->attribute_run_ends = !proven;
       break;
     }
-    if (lexer->lookahead == '%') {
-      if (!scan_comment_only_line(s, lexer)) {
-        taken = true;
-        break;
-      }
-      continue;
-    }
-    if (lexer->lookahead != '{') {
-      taken = true;
-      break;
-    }
-    s->attribute_block_line = true;
-    bool attribute = true;
-    while (attribute && lexer->lookahead == '{') {
-      attribute = scan_valid_inline_attribute(s, lexer);
-    }
-    s->attribute_block_line = false;
-    while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
-      advance(s, lexer);
-    }
-    if (!attribute || !(at_line_end(lexer) || lexer->eof(lexer))) {
+    if (line == RUN_LINE_COMMENT) continue;
+    if (line == RUN_LINE_OTHER) {
       taken = true;
       break;
     }
@@ -10466,6 +10509,13 @@ static bool parse_open_curly_bracket(Scanner *s, TSLexer *lexer,
           if (has_table_flag) s->table_attribute_pending = 1;
           return true;
         }
+        // Refused at the end of its container, the run is a paragraph that
+        // takes no lazy line (C2-B-192, C2-B-092). The brace is its first text.
+        if (s->attribute_run_ends && valid_symbols[LITERAL_RUN]) {
+          s->state |= STATE_CLOSED_ATTRIBUTE_RUN;
+          lexer->result_symbol = LITERAL_RUN;
+          return true;
+        }
         goto no_attribute;
       } else {
         goto no_attribute;
@@ -12217,7 +12267,9 @@ static bool parse_close_paragraph(Scanner *s, TSLexer *lexer) {
     return false;
   }
   s->drop_close_markers = 0;
-  if (!close_paragraph(s, lexer)) {
+  bool run_ends = (s->state & STATE_CLOSED_ATTRIBUTE_RUN) != 0;
+  s->state &= (uint16_t)~STATE_CLOSED_ATTRIBUTE_RUN;
+  if (!run_ends && !close_paragraph(s, lexer)) {
     return false;
   }
   s->folded_plus_paragraph = false;
@@ -12269,6 +12321,21 @@ static bool emit_newline_inline(Scanner *s, TSLexer *lexer,
   Block *top = peek_block(s);
   if (disallow_newline(top)) {
     return false;
+  }
+
+  // The bit stays set for the paragraph's close on the next line.
+  if (s->state & STATE_CLOSED_ATTRIBUTE_RUN) {
+    uint8_t indent = s->indent;
+    uint8_t level = s->block_quote_level;
+    uint32_t col_base = s->col_base;
+    AttributeRunLine line = attribute_run_line(s, lexer);
+    s->indent = indent;
+    s->block_quote_level = level;
+    s->col_base = col_base;
+    if (line != RUN_LINE_ATTRIBUTE && line != RUN_LINE_COMMENT) return false;
+    if (line == RUN_LINE_COMMENT) s->erasable_line = true;
+    lexer->result_symbol = NEWLINE_INLINE;
+    return true;
   }
 
   // This is a lookahead for the next line, to check if

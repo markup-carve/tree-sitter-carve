@@ -191,3 +191,36 @@ C2-B-166: an escaped last pipe is no closing pipe
 (document
   (paragraph
     (backslash_escape)))
+
+================================================================================
+C2-B-192: an attribute line that ends its quote is a closed paragraph
+================================================================================
+
+> {.x}
+para
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (paragraph)))
+  (paragraph))
+
+================================================================================
+C2-B-192: an attribute line that ends its item is a closed paragraph
+================================================================================
+
+- {.x}
+para
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph))))
+  (paragraph))
