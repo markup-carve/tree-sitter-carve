@@ -2651,6 +2651,13 @@
           ]
         },
         {
+          "type": "REPEAT",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_table_comment"
+          }
+        },
+        {
           "type": "CHOICE",
           "members": [
             {
@@ -2690,6 +2697,40 @@
               "name": "table_continuation_row"
             }
           ]
+        }
+      ]
+    },
+    "_table_comment": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "REPEAT1",
+              "content": {
+                "type": "ALIAS",
+                "content": {
+                  "type": "SYMBOL",
+                  "name": "_table_quote_continuation"
+                },
+                "named": true,
+                "value": "block_quote_marker"
+              }
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_table_comment_line"
+          },
+          "named": true,
+          "value": "comment_line"
         }
       ]
     },
@@ -13013,6 +13054,10 @@
     {
       "type": "SYMBOL",
       "name": "_include_line_begin"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_table_comment_line"
     }
   ],
   "inline": [],

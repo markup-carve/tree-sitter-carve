@@ -64,6 +64,8 @@ C2-B-175: plus table continuation remains a row
 (document
   (table
     (table_row
+      (table_cell))
+    (table_continuation_row
       (table_cell))))
 
 ===============================================================================
