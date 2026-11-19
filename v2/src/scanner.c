@@ -8268,17 +8268,14 @@ static bool scan_table_cell(Scanner *s, TSLexer *lexer, bool *separator,
 /// Is the line at the lexer a `+` CONTINUATION ROW?
 ///
 /// The same shape `parse_plus_line` accepts for `_table_continuation_row`: a
-/// `+`, a space or tab, and a pipe as the line's last non-space
-/// character. Both readings have to agree, or a run would read on into a line
-/// that builds no continuation row.
+/// `+` and a pipe as the line's last non-space character (C2-B-175). Both
+/// readings have to agree, or a run would read on into a line that builds no
+/// continuation row.
 static bool scan_continuation_row(Scanner *s, TSLexer *lexer) {
   if (lexer->lookahead != '+') {
     return false;
   }
   advance(s, lexer);
-  if (lexer->lookahead != ' ' && lexer->lookahead != '\t') {
-    return false;
-  }
   bool saw_pipe = false;
   bool last_nonspace_was_pipe = false;
   while (!lexer->eof(lexer) && !at_line_end(lexer)) {
@@ -9760,7 +9757,6 @@ static bool parse_table_row_continuation_plus(Scanner *s, TSLexer *lexer,
   }
   advance(s, lexer); // The continuation row's `+`.
   mark_end(s, lexer);
-  advance(s, lexer); // Its one mandatory space.
   while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
     advance(s, lexer);
   }
@@ -12746,10 +12742,6 @@ static bool continuation_row_ahead(Scanner *s, TSLexer *lexer) {
   bool ignored_newline = false;
   scan_block_quote_markers(s, lexer, &ignored_newline);
   if (lexer->lookahead != '+') {
-    return false;
-  }
-  advance(s, lexer);
-  if (lexer->lookahead != ' ') {
     return false;
   }
   advance(s, lexer);
