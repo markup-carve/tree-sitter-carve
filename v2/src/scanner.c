@@ -18742,8 +18742,9 @@ unsigned tree_sitter_carve2_external_scanner_serialize(void *payload,
   buffer[size++] = (char)s->block_quote_level;
   buffer[size++] = (char)s->indent;
   buffer[size++] = (char)s->marker_end_col;
-  buffer[size++] = (char)s->table_attribute_pending;
-  buffer[size++] = (char)s->task_box_next;
+  // `table_attribute_pending` is 0 to 2; the high bit carries the box flag.
+  buffer[size++] = (char)(s->table_attribute_pending |
+                          (s->task_box_next ? 0x80 : 0));
   buffer[size++] = (char)(s->state & 0xff);
   buffer[size++] = (char)((s->state >> 8) & 0xff);
   buffer[size++] = (char)(s->col_base & 0xff);
@@ -18897,8 +18898,8 @@ void tree_sitter_carve2_external_scanner_deserialize(void *payload, char *buffer
     s->block_quote_level = (uint8_t)buffer[size++];
     s->indent = (uint8_t)buffer[size++];
     s->marker_end_col = (uint8_t)buffer[size++];
-    s->table_attribute_pending = (uint8_t)buffer[size++];
-    s->task_box_next = (uint8_t)buffer[size++];
+    s->table_attribute_pending = (uint8_t)buffer[size] & 0x7f;
+    s->task_box_next = ((uint8_t)buffer[size++] & 0x80) != 0;
     s->state = (uint16_t)(uint8_t)buffer[size++];
     s->state |= (uint16_t)(uint8_t)buffer[size++] << 8;
     s->col_base = (uint32_t)(uint8_t)buffer[size++];
