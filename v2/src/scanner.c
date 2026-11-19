@@ -7112,17 +7112,11 @@ static bool ref_def_tail_is_modeled(Scanner *s, TSLexer *lexer, bool tabbed) {
       return false;
     }
   }
-  // The optional trailing attribute block, and nothing after it.
-  if (lexer->lookahead != '{') {
+  // The optional trailing attribute block, valid (C2-B-089), and nothing after
+  // it.
+  if (lexer->lookahead != '{' || !scan_valid_inline_attribute(s, lexer)) {
     return false;
   }
-  while (!at_line_end(lexer) && !lexer->eof(lexer) && lexer->lookahead != '}') {
-    advance(s, lexer);
-  }
-  if (lexer->lookahead != '}') {
-    return false;
-  }
-  advance(s, lexer);
   consume_ws_run(s, lexer, &tabbed);
   return at_line_end(lexer) || lexer->eof(lexer);
 }
@@ -7138,9 +7132,14 @@ static bool scan_ref_def(Scanner *s, TSLexer *lexer) {
   // (resources/grammar.ebnf): no escape, no verbatim exception. `[a `]` c]: /u`
   // is therefore not a definition at all, and the line is a paragraph - which
   // is what carve-js renders.
+  // A backslash escapes the next character, a `]` included (C2-I-076).
   while (!lexer->eof(lexer) && lexer->lookahead != ']') {
     if (at_line_end(lexer)) {
       return false;
+    }
+    if (lexer->lookahead == '\\') {
+      advance(s, lexer);
+      if (at_line_end(lexer) || lexer->eof(lexer)) return false;
     }
     advance(s, lexer);
   }
@@ -7234,12 +7233,21 @@ static bool parse_link_ref_def_label_end(Scanner *s, TSLexer *lexer) {
 /// character past it before choosing between a footnote and a reference
 /// definition (see `parse_open_bracket`).
 static bool scan_footnote_after_caret(Scanner *s, TSLexer *lexer) {
-  // Identifier can have surrounding whitespace
-  consume_whitespace(s, lexer);
-  if (!scan_identifier(s, lexer)) {
-    return false;
+  // The label is one or more characters up to the next `]`, spaces included
+  // (C2-B-082, C2-I-087).
+  bool any = false;
+  while (lexer->lookahead != ']') {
+    if (at_line_end(lexer) || lexer->eof(lexer) || lexer->lookahead == '[') {
+      return false;
+    }
+    if (lexer->lookahead == '\\') {
+      advance(s, lexer);
+      if (at_line_end(lexer) || lexer->eof(lexer)) return false;
+    }
+    advance(s, lexer);
+    any = true;
   }
-  consume_whitespace(s, lexer);
+  if (!any) return false;
 
   // Scan `]:`
   if (lexer->lookahead != ']') {
@@ -7295,6 +7303,17 @@ static bool parse_footnote_after_caret(Scanner *s, TSLexer *lexer,
   return true;
 }
 
+/// A definition stands at column 0 outside every container (C2-B-081). An
+/// open item, note or quote does not own a column-0 line; a fence does.
+static bool definition_at_root(Scanner *s, TSLexer *lexer) {
+  if (line_column(s, lexer) != 0) return false;
+  for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
+    BlockType t = (*array_get(s->open_blocks, i))->type;
+    if (t == DIV || t == FIGURE_GROUP) return false;
+  }
+  return true;
+}
+
 static bool parse_open_bracket(Scanner *s, TSLexer *lexer,
                                const bool *valid_symbols) {
   // Needs to differentiate between:
@@ -7309,6 +7328,7 @@ static bool parse_open_bracket(Scanner *s, TSLexer *lexer,
       !valid_symbols[LINK_REF_DEF_MARK_BEGIN]) {
     return false;
   }
+  if (!definition_at_root(s, lexer)) return false;
 
   // A definition opens at or past its owner's content column (PART 0 S3); a
   // line short of the margin (`has_extra_indent`) is paragraph text.
@@ -12385,14 +12405,22 @@ static bool close_paragraph_after_quote(Scanner *s, TSLexer *lexer,
     // asked the quote's lazy rules: a line led by an opener character ends it.
     int32_t lead = lexer->lookahead;
     if (column < margin && !attached_lazy_line && lead != '+') {
-      if (carve_is_alnum_ascii(lead) || lead == '(' || lead == '.') {
-        return scan_list_marker(s, lexer) && marker_line_has_content(s, lexer);
-      }
       bool list_in_note = false;
       for (int i = s->open_blocks->size - 1; i >= 0; --i) {
         Block *b = *array_get(s->open_blocks, i);
         if (b == note) break;
         if (is_list(b->type)) list_in_note = true;
+      }
+      // At column 0, with no list or quote around the paragraph, a quote is
+      // asked what a root paragraph asks it: it is a lazy line (C2-B-024).
+      if (lead == '>' && column == 0 &&
+          !list_in_note && quotes_below(s, note) == 0 &&
+          count_blocks(s, BLOCK_QUOTE) == 0 && markers_seen <= 0) {
+        s->paragraph_markers_seen = markers_seen;
+        return paragraph_block_opener_ahead(s, lexer, markers_seen);
+      }
+      if (carve_is_alnum_ascii(lead) || lead == '(' || lead == '.') {
+        return scan_list_marker(s, lexer) && marker_line_has_content(s, lexer);
       }
       // A fence ends the note even unclosed; the probes ask for a closer.
       bool fence_lead = lead == '`' || lead == '~' || lead == '%';

@@ -4055,8 +4055,16 @@
           "type": "FIELD",
           "name": "label",
           "content": {
-            "type": "SYMBOL",
-            "name": "reference_label"
+            "type": "ALIAS",
+            "content": {
+              "type": "TOKEN",
+              "content": {
+                "type": "PATTERN",
+                "value": "([^\\]\\[\\\\\\r\\n]|\\\\[^\\r\\n])+"
+              }
+            },
+            "named": true,
+            "value": "reference_label"
           }
         },
         {
@@ -6238,7 +6246,7 @@
               "type": "TOKEN",
               "content": {
                 "type": "PATTERN",
-                "value": "[^\\]@\\r\\n][^\\]\\r\\n]*"
+                "value": "([^\\]@\\\\\\r\\n]|\\\\[^\\r\\n])([^\\]\\\\\\r\\n]|\\\\[^\\r\\n])*"
               }
             },
             "named": true,

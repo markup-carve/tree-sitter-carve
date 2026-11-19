@@ -1271,7 +1271,11 @@ module.exports = grammar({
       seq(
         $._footnote_mark_begin,
         $.footnote_marker_begin,
-        field("label", $.reference_label),
+        // Spaces may stand in a definition's label (C2-B-082).
+        field(
+          "label",
+          alias(token(/([^\]\[\\\r\n]|\\[^\r\n])+/), $.reference_label),
+        ),
         alias("]:", $.footnote_marker_end),
         $._whitespace1,
         field("content", $.footnote_content),
@@ -1783,7 +1787,14 @@ module.exports = grammar({
         // same run; where the two disagreed about where the label ends, the
         // line came back as an ERROR. The subtracted `@` keeps `[@key]:` for
         // `citation_definition`.
-        field("label", alias(token(/[^\]@\r\n][^\]\r\n]*/), $.link_label)),
+        // A backslash escapes the next character, a `]` included (C2-I-076).
+        field(
+          "label",
+          alias(
+            token(/([^\]@\\\r\n]|\\[^\r\n])([^\]\\\r\n]|\\[^\r\n])*/),
+            $.link_label,
+          ),
+        ),
         $._link_ref_def_label_end,
         "]",
         ":",
