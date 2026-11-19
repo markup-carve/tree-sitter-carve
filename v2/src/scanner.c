@@ -637,6 +637,9 @@ typedef struct {
   // Marker column plus one while a refused one-line paragraph is pending.
   uint8_t refused_plus_column;
   uint8_t table_attribute_pending;
+  // Did the last list marker scan read a bullet or an ordered value of 1?
+  // Read in the same scan call only, so it is not serialized.
+  bool marker_value_one;
 
   // Where the CURRENT line starts, in tree-sitter's column units.
   //
@@ -5634,6 +5637,14 @@ static bool scan_ordered_list_type(Scanner *s, TSLexer *lexer,
     advance(s, lexer);
   }
 
+  s->marker_value_one = false;
+  if (scanned_decimal == word_len) {
+    uint8_t zeros = 0;
+    while (zeros + 1 < word_len && zeros < sizeof(word) && word[zeros] == '0') ++zeros;
+    s->marker_value_one = zeros < sizeof(word) && word[zeros] == '1' && zeros + 1 == word_len;
+  } else if (word_len == 1) {
+    s->marker_value_one = word[0] == 'a' || word[0] == 'A' || word[0] == 'i' || word[0] == 'I';
+  }
   // A ten-digit value is prose in 0.2 (C2-B-036).
   if (scanned_decimal > 0 && scanned_decimal <= 9 && scanned_decimal == word_len) {
     *res = DECIMAL;
@@ -5711,6 +5722,7 @@ static TokenType scan_ordered_list_marker_token_type(Scanner *s,
     // so `.x` and a bare `.` on its own line are unaffected.
     if (value_omitted) {
       advance(s, lexer);
+      s->marker_value_one = true;
       return LIST_MARKER_DECIMAL_PERIOD;
     }
     s->ordered_word_end = true;
@@ -5837,8 +5849,10 @@ static TokenType scan_unordered_list_marker_token(Scanner *s, TSLexer *lexer) {
 static TokenType scan_list_marker_token(Scanner *s, TSLexer *lexer) {
   TokenType unordered = scan_unordered_list_marker_token(s, lexer);
   if (unordered != IGNORED) {
+    s->marker_value_one = true;
     return unordered;
   }
+  s->marker_value_one = false;
   return scan_ordered_list_marker_token(s, lexer);
 }
 
@@ -6231,7 +6245,15 @@ static bool scan_paragraph_closing_marker(Scanner *s, TSLexer *lexer) {
       marker_folds_into_nested_paragraph(s, line_column(s, lexer))) {
     return false;
   }
+  // Past the innermost list's marker the line would open a nested list,
+  // which only a bullet or a value of 1 does without a blank line (C2-B-015).
+  bool nests = list->type != LIST_DEFINITION &&
+               count_blocks(s, BLOCK_QUOTE) == 0 &&
+               line_column(s, lexer) + 1u > list->data;
   if (!scan_list_marker(s, lexer)) {
+    return false;
+  }
+  if (nests && !s->marker_value_one) {
     return false;
   }
   return marker_line_has_content(s, lexer);
@@ -6307,10 +6329,11 @@ static bool ensure_list_open(Scanner *s, BlockType type, uint8_t indent,
     // types, but that's handled by BLOCK_CLOSE in `close_list_if_needed` and
     // we shouldn't see that state here.
   }
-  // A sibling short of the last item's content column moves the list to its
-  // own columns (PART 0 S4).
+  // A marker left of the list's column, short of the last item's content
+  // column, moves the list to its own columns (C2-B-055); one past the
+  // item's marker opens a nested list (C2-B-015, C2-B-025).
   if (top && top->type == type && type != LIST_DEFINITION &&
-      top->content_col != 0 && indent > 0) {
+      top->content_col != 0 && indent > 0 && indent < top->data) {
     uint32_t content = top->content_col;
     Block *quote = find_block(s, BLOCK_QUOTE);
     if (quote && list_opened_in_quote(s, top)) {

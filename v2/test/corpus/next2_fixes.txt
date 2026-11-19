@@ -68,3 +68,40 @@ C2-B-182: aligned cell attributes use the same brace block
           (args))))
     (table_row
       (table_cell))))
+
+================================================================================
+C2-B-025: a nested ordered item short of the content column
+================================================================================
+
+1. a
+  1. b
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_decimal_period)
+      content: (list_item_content
+        (paragraph)
+        (list
+          (list_item
+            marker: (list_marker_decimal_period)
+            content: (list_item_content
+              (paragraph))))))))
+
+================================================================================
+C2-B-015: a nested marker of another value is a lazy line
+================================================================================
+
+1. a
+  2. b
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_decimal_period)
+      content: (list_item_content
+        (paragraph)))))
