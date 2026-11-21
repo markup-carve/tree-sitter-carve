@@ -11,6 +11,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - The grammar is Carve 0.2. The 0.2 grammar moved from `v2/` to the repository root (`grammar.js`, `src/`, `queries/`, `test/corpus/`) and replaced the Carve 0.1 grammar, its queries and its corpus. Every binding (C, Go, Node, Python, Rust, Swift, WASM) now loads the 0.2 grammar; use a 0.1.x release for Carve 0.1.
 - The grammar name is `carve` again (it was `carve2` under `v2/`), so the exported symbol is `tree_sitter_carve`. Editors that pinned `v2/` drop that path.
 
+### Improvements
+
+- `queries/tags.scm` lists headings, ids, link and footnote definitions as symbols, and link, image and footnote references as references. `tree-sitter tags` and the syntax symbol pickers of Helix and Mitos read it.
+
 ## [0.1.14] - 2026-11-12
 
 This release follows the Carve 0.1.14 readings: braced cell alignment, spaced thematic breaks, unclosed frontmatter, the inline extension closer and the PART 0 block layout (indented openers, quote reach, lazy lines).

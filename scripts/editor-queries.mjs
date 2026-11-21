@@ -11,6 +11,7 @@ const query = name => new Parser.Query(language,
   readFileSync(new URL(`../queries/${name}.scm`, import.meta.url), 'utf8')
     .replace(/\(#offset![^)]*\)/g, ''));
 const fold = query('folds'), objects = query('textobjects'), context = query('context');
+const tags = query('tags');
 
 function has(query, source, name, type, text) {
   const tree = parser.parse(source);
@@ -63,4 +64,21 @@ for (const [source, type] of [
   ['::: note\nbody\n:::\n', 'div'],
   ['> quote\n', 'block_quote'],
 ]) has(context, source, 'context', type, source);
-console.log('Editor query captures cover folds, definition bodies, comments, extensions and context.');
+function tag(source, kind, type, name) {
+  const tree = parser.parse(source);
+  assert.equal(tree.rootNode.hasError, false, source);
+  const found = tags.matches(tree.rootNode).some(m =>
+    m.captures.some(c => c.name === kind && c.node.type === type)
+    && m.captures.some(c => c.name === 'name' && c.node.text === name));
+  assert.ok(found, `${kind}/${type}: missing name ${JSON.stringify(name)}`);
+}
+tag('= Title\n', 'definition.section', 'heading', 'Title\n');
+tag('# Hash title', 'definition.section', 'heading', 'Hash title');
+tag('{#sec}\n= Title\n', 'definition.field', 'block_attribute', '#sec');
+tag('A [word]{#w} here.\n', 'definition.field', 'inline_attribute', '#w');
+tag('[ref]: https://a.b\n', 'definition.constant', 'link_reference_definition', 'ref');
+tag('[^f]: note\n', 'definition.constant', 'footnote', 'f');
+tag('A [text][ref].\n', 'reference.class', 'full_reference_link', 'ref');
+tag('A ![alt][img].\n', 'reference.class', 'full_reference_image', 'img');
+tag('A note[^f].\n', 'reference.class', 'footnote_reference', 'f');
+console.log('Editor query captures cover folds, definition bodies, comments, extensions, context and tags.');
