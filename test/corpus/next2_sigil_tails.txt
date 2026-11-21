@@ -1,0 +1,57 @@
+================================================================================
+C2-B-122: a quoted title after a quote fence sigil is further words
+================================================================================
+
+::: > "T"
+x
+:::
+
+--------------------------------------------------------------------------------
+
+(document
+  (div
+    (div_marker_begin)
+    block_quote_fence_marker: (block_quote_fence_marker)
+    invalid_metadata: (invalid_metadata)
+    content: (content
+      (paragraph))
+    (div_marker_end)))
+
+================================================================================
+C2-B-122: a quoted title after a line block sigil is further words
+================================================================================
+
+::: | "T"
+x
+:::
+
+--------------------------------------------------------------------------------
+
+(document
+  (div
+    (div_marker_begin)
+    line_block_marker: (line_block_marker)
+    invalid_metadata: (invalid_metadata)
+    content: (content
+      (paragraph))
+    (div_marker_end)))
+
+================================================================================
+C2-B-122: a label after a quote fence sigil is further words
+================================================================================
+
+::: > [L]
+x
+:::
+
+--------------------------------------------------------------------------------
+
+(document
+  (div
+    (div_marker_begin)
+    block_quote_fence_marker: (block_quote_fence_marker)
+    invalid_metadata: (invalid_metadata)
+    content: (content
+      (paragraph))
+    (div_marker_end)))
+

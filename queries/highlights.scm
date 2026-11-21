@@ -2,27 +2,27 @@
 
 ((heading
   (marker) @_heading.marker) @markup.heading.1
-  (#match? @_heading.marker "^# +$"))
+  (#match? @_heading.marker "^[#=] +$"))
 
 ((heading
   (marker) @_heading.marker) @markup.heading.2
-  (#match? @_heading.marker "^## +$"))
+  (#match? @_heading.marker "^(##|==) +$"))
 
 ((heading
   (marker) @_heading.marker) @markup.heading.3
-  (#match? @_heading.marker "^### +$"))
+  (#match? @_heading.marker "^(###|===) +$"))
 
 ((heading
   (marker) @_heading.marker) @markup.heading.4
-  (#match? @_heading.marker "^#### +$"))
+  (#match? @_heading.marker "^(####|====) +$"))
 
 ((heading
   (marker) @_heading.marker) @markup.heading.5
-  (#match? @_heading.marker "^##### +$"))
+  (#match? @_heading.marker "^(#####|=====) +$"))
 
 ((heading
   (marker) @_heading.marker) @markup.heading.6
-  (#match? @_heading.marker "^###### +$"))
+  (#match? @_heading.marker "^(######|======) +$"))
 
 (thematic_break) @string.special
 
@@ -98,11 +98,6 @@
   .
   "+" @operator)
 
-(table_separator) @punctuation.special
-
-(table_separator
-  (table_cell_alignment) @operator)
-
 ; A native header cell is spelled `|=`, with no separator row, so the grammar
 ; leaves it a plain `table_cell`. The cell starts right after the pipe.
 ((table_cell) @markup.heading
@@ -154,14 +149,18 @@
   (list_marker_upper_roman_paren)
 ] @markup.list
 
-; The `+` continuation operator attaches the next block to its container.
-(list_continuation_marker) @operator
-
 (list_marker_task
   (unchecked)) @markup.list.unchecked
 
 (list_marker_task
   (checked)) @markup.list.checked
+
+; The box of an ordered item (C2-B-046)
+(list_item
+  checkmark: (unchecked) @markup.list.unchecked)
+
+(list_item
+  checkmark: (checked) @markup.list.checked)
 
 ; Colorize `x` in `[x]`
 ((checked) @constant.builtin
@@ -229,7 +228,6 @@
 
 (delete) @markup.strikethrough
 
-(substitution) @markup.strikethrough
 (editorial_comment) @comment
 
 [
@@ -286,6 +284,7 @@
 
 [
   (comment_line)
+  (region_marker)
   (fenced_comment_block)
   (braced_comment)
   (trailing_comment)
@@ -403,19 +402,6 @@
   (#eq? @_option "@code")
   (#any-of? @_language "csv" "tsv"))
 
-((_
-  (block_attribute
-    args: (args
-      (boolean_attribute) @attribute.builtin))
-  .
-  [(block_attribute) (block_quote_marker)]*
-  .
-  [
-    (list)
-    (definition_list)
-  ])
-  (#eq? @attribute.builtin "loose"))
-
 (language_attribute) @attribute
 
 (link_text
@@ -520,15 +506,6 @@
 (abbreviation_definition
   (abbreviation_expansion) @string)
 
-; Citations (§22 / Tier-2 extension)
-(citation_group) @string.special
-
-(citation_definition
-  (citation_label) @markup.link.label)
-
-(citation_definition
-  (citation_entry) @string)
-
 ; Callout list (§10 / Tier-2 extension)
 (callout_list) @markup.list
 
@@ -608,16 +585,6 @@
     "["
     "]"
   ] @punctuation.bracket)
-
-(substitution
-  to: (content) @markup.underline)
-
-(substitution
-  [
-    "{~"
-    "~>"
-    "~}"
-  ] @punctuation.delimiter)
 
 ; The opener stays under the note's own capture: it starts where the note
 ; starts, and the whole-note capture is what shows a note that closed early.

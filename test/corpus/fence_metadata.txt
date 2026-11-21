@@ -1,0 +1,69 @@
+===============================================================================
+C2-B-122: invalid code fence title does not refuse the fence
+===============================================================================
+```js title
+body
+```
+
+-------------------------------------------------------------------------------
+
+(document
+  (code_block
+    (code_block_marker_begin)
+    (language)
+    (invalid_metadata)
+    (code)
+    (code_block_marker_end)))
+
+===============================================================================
+C2-B-122: raw format suffix is invalid metadata
+===============================================================================
+```=html~
+<b>x</b>
+```
+
+-------------------------------------------------------------------------------
+
+(document
+  (raw_block
+    (raw_block_marker_begin)
+    (raw_block_info
+      (language_marker)
+      (language))
+    (invalid_metadata)
+    (content)
+    (raw_block_marker_end)))
+
+===============================================================================
+C2-B-225: div name ends before invalid suffix
+===============================================================================
+::: glossary>
+body
+:::
+
+-------------------------------------------------------------------------------
+
+(document
+  (div
+    (div_marker_begin)
+    (admonition_type)
+    (invalid_metadata)
+    (content
+      (paragraph))
+    (div_marker_end)))
+
+===============================================================================
+C2-B-118: backtick in fence info refuses opener
+===============================================================================
+```js `
+body
+```
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (verbatim
+      (verbatim_marker_begin)
+      (content)
+      (verbatim_marker_end))))

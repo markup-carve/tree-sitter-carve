@@ -1,0 +1,212 @@
+================================================================================
+C2-B-046: an ordered item takes a task box
+================================================================================
+
+1. [x] a
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_decimal_period)
+      checkmark: (checked)
+      content: (list_item_content
+        (paragraph)))))
+
+================================================================================
+C2-B-049: boxed and plain ordered items are siblings
+================================================================================
+
+II) [x] a
+III) b
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_upper_roman_paren)
+      checkmark: (checked)
+      content: (list_item_content
+        (paragraph)))
+    (list_item
+      marker: (list_marker_upper_roman_paren)
+      content: (list_item_content
+        (paragraph)))))
+
+================================================================================
+C2-B-229: a bare dot item with a box holds a nested list
+================================================================================
+
+. [x] . x
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_decimal_period)
+      checkmark: (checked)
+      content: (list_item_content
+        (list
+          (list_item
+            marker: (list_marker_decimal_period)
+            content: (list_item_content
+              (paragraph))))))))
+
+================================================================================
+C2-B-046: an uppercase letter item takes its box after its two spaces
+================================================================================
+
+A.  [x] a
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_upper_alpha_period)
+      checkmark: (checked)
+      content: (list_item_content
+        (paragraph)))))
+
+================================================================================
+C2-B-046: an unchecked ordered box
+================================================================================
+
+1. [ ] a
+2. b
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_decimal_period)
+      checkmark: (unchecked)
+      content: (list_item_content
+        (paragraph)))
+    (list_item
+      marker: (list_marker_decimal_period)
+      content: (list_item_content
+        (paragraph)))))
+
+================================================================================
+C2-B-046: a box with no content after it is text
+================================================================================
+
+1. [x]
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_decimal_period)
+      content: (list_item_content
+        (paragraph)))))
+
+================================================================================
+C2-B-046: a box past the required space is text
+================================================================================
+
+1.  [x] a
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_decimal_period)
+      content: (list_item_content
+        (paragraph)))))
+
+================================================================================
+C2-B-046: a bullet box past the required space is text
+================================================================================
+
+-   [ ] a
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)))))
+
+================================================================================
+C2-B-046: a bullet box with no content is the item's text
+================================================================================
+
+- [x]
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)))))
+
+================================================================================
+C2-B-025: a sibling after a boxed item's marker-line list in a quote
+================================================================================
+
+> - [x] - x
+> - b
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_task
+            checkmark: (checked))
+          content: (list_item_content
+            (list
+              (list_item
+                marker: (list_marker_dash)
+                content: (list_item_content
+                  (paragraph))))))
+        (list_item
+          (block_quote_marker)
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (paragraph)))))))
+
+================================================================================
+C2-B-025: an ordered sibling after a boxed item's marker-line list in a quote
+================================================================================
+
+> 1. [x] 1. x
+> 2. b
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_decimal_period)
+          checkmark: (checked)
+          content: (list_item_content
+            (list
+              (list_item
+                marker: (list_marker_decimal_period)
+                content: (list_item_content
+                  (paragraph))))))
+        (list_item
+          (block_quote_marker)
+          marker: (list_marker_decimal_period)
+          content: (list_item_content
+            (paragraph)))))))
+

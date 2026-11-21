@@ -10,4 +10,5 @@
   (footnote)
   (frontmatter)
   (fenced_comment_block)
+  (region_marker)
 ] @fold

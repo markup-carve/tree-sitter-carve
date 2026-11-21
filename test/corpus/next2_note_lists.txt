@@ -1,0 +1,187 @@
+================================================================================
+C2-B-015: a bullet past a footnote's marker opens a nested list
+================================================================================
+
+[^n]: note
+  - one
+
+--------------------------------------------------------------------------------
+
+(document
+  (footnote
+    (footnote_marker_begin)
+    label: (reference_label)
+    (footnote_marker_end)
+    content: (footnote_content
+      (paragraph)
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (paragraph)))))))
+
+================================================================================
+C2-B-015: an ordered marker of value 1 past a footnote's marker opens a nested list
+================================================================================
+
+[^n]: note
+  1. one
+
+--------------------------------------------------------------------------------
+
+(document
+  (footnote
+    (footnote_marker_begin)
+    label: (reference_label)
+    (footnote_marker_end)
+    content: (footnote_content
+      (paragraph)
+      (list
+        (list_item
+          marker: (list_marker_decimal_period)
+          content: (list_item_content
+            (paragraph)))))))
+
+================================================================================
+C2-B-015: an ordered marker of another value past a footnote's marker is lazy
+================================================================================
+
+[^n]: note
+  2. one
+
+--------------------------------------------------------------------------------
+
+(document
+  (footnote
+    (footnote_marker_begin)
+    label: (reference_label)
+    (footnote_marker_end)
+    content: (footnote_content
+      (paragraph))))
+
+================================================================================
+C2-B-228: a marker at column 0 below a note's nested list opens a list after the note
+================================================================================
+
+[^n]: note
+  - one
+- x
+
+--------------------------------------------------------------------------------
+
+(document
+  (footnote
+    (footnote_marker_begin)
+    label: (reference_label)
+    (footnote_marker_end)
+    content: (footnote_content
+      (paragraph)
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (paragraph))))))
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)))))
+
+================================================================================
+C2-B-024: an ordered marker at column 0 below a note's paragraph is lazy
+================================================================================
+
+[^n]: a
+1. b
+
+--------------------------------------------------------------------------------
+
+(document
+  (footnote
+    (footnote_marker_begin)
+    label: (reference_label)
+    (footnote_marker_end)
+    content: (footnote_content
+      (paragraph))))
+
+================================================================================
+C2-B-016: a footnote definition at column 0 ends an open note
+================================================================================
+
+[^a]: x
+[^b]: y
+
+--------------------------------------------------------------------------------
+
+(document
+  (footnote
+    (footnote_marker_begin)
+    label: (reference_label)
+    (footnote_marker_end)
+    content: (footnote_content
+      (paragraph)))
+  (footnote
+    (footnote_marker_begin)
+    label: (reference_label)
+    (footnote_marker_end)
+    content: (footnote_content
+      (paragraph))))
+
+================================================================================
+C2-B-016: a link definition at column 0 ends an open note
+================================================================================
+
+[^n]: note
+[a]: /u
+  more
+
+--------------------------------------------------------------------------------
+
+(document
+  (footnote
+    (footnote_marker_begin)
+    label: (reference_label)
+    (footnote_marker_end)
+    content: (footnote_content
+      (paragraph)))
+  (link_reference_definition
+    label: (link_label)
+    destination: (link_destination))
+  (paragraph))
+
+================================================================================
+C2-B-016: an abbreviation definition at column 0 ends an open note
+================================================================================
+
+[^n]: note
+*[A]: x
+
+--------------------------------------------------------------------------------
+
+(document
+  (footnote
+    (footnote_marker_begin)
+    label: (reference_label)
+    (footnote_marker_end)
+    content: (footnote_content
+      (paragraph)))
+  (abbreviation_definition
+    (abbreviation_marker)
+    expansion: (abbreviation_expansion)))
+
+================================================================================
+C2-B-024: a definition below a root paragraph is a lazy line
+================================================================================
+
+a
+[^b]: y
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (footnote_reference
+      (footnote_marker_begin)
+      (reference_label)
+      (footnote_marker_end))))
+

@@ -3,66 +3,30 @@
 ## Setup and maintenance
 
 ```bash
-git clone --recurse-submodules https://github.com/markup-carve/tree-sitter-carve
+git clone https://github.com/markup-carve/tree-sitter-carve
 npm install
 npm run generate
 npm test
 ```
 
-If you cloned without `--recurse-submodules`, fetch the shared spec corpus with
-`git submodule update --init`.
+The grammar describes Carve 0.2. `npm test` runs the hand-written corpus in
+`test/corpus/`; carve-js on its `next2` branch is the reference for what a case
+should parse to.
 
-### Shared-corpus conformance
-
-The canonical Carve spec corpus is vendored as a git submodule at `spec/`
-(`spec/tests/corpus/NN-slug.crv`). Two checks run it against this grammar:
+## Checks
 
 ```bash
-npm run test:coverage    # every spec category is classified (covered or skip)
-npm run test:conformance # every covered category parses with no ERROR/MISSING
-npm run test:corpus      # both, in order
+npm run check-formatted        # grammar.js is prettier-formatted
+npm run test:parser-warnings   # generated tables compile without -Woverflow
+npm run test:final-terminator  # a missing final newline changes no tree
+npm run test:editor-queries    # editor query captures and ranges
+npm run test:marker-separators # marker runs stay out of content
+npm run test:nesting-depth     # deep nesting through the Node binding
+npm run test:binding-parity    # Node binding and CLI agree over the corpus
+npm run test:asan              # corpus under AddressSanitizer
+npm run build-wasm && npm run test:wasm
+cargo test                     # Rust binding
 ```
-
-`test/coverage.json` is the coverage matrix. A category is `covered` when the
-grammar parses every one of its corpus inputs cleanly; otherwise it is listed in
-`skip` with a reason recording the unmodeled construct. Adding a new spec
-category (after bumping the submodule) fails `test:coverage` until it is
-classified, which is intentional: it forces a decision rather than silently
-dropping coverage.
-
-### The oracle against the goldens
-
-`test:under-acceptance` and the boundary checks compare the grammar with
-carve-js, pinned in `package.json`. They can only report where the two disagree,
-so a ruling that both lag reads as conformance (#499).
-`npm run test:oracle-goldens` closes that gap: it renders every corpus document
-with the pinned carve-js and requires the HTML to equal the golden, trimmed, as
-the spec's own corpus test does. A known disagreement is recorded in
-`oracleGoldenDisagreements` in `test/coverage.json` with a reason. An
-unrecorded one fails, and so does a recorded one that no longer happens.
-
-When it fails after a spec bump, move the carve-js pin forward before touching
-the grammar, then re-run `test:under-acceptance` against the new pin.
-
-`test:oracle-goldens` reads HTML and `test:under-acceptance` compares the grammar
-against the oracle, so a ruling that moves the AST without moving a rendered
-element passes both. Corpus `108-security-hardening-8` and `-10` already have
-that shape: `{onclick="steal()"}` and `{srcdoc="<script>"}` render the same
-`<p>A <span>danger</span> span.</p>`, because the renderer drops the refused
-attribute and the AST keeps it.
-
-`npm run test:oracle-ast-shapes` holds the oracle's AST to `test/ast-shapes.json`
-the way the goldens hold its rendering. Per document it records each
-`parent>type` and each `type@attribute-slot` with its count, which is what HTML
-can drop: a re-parented node, an attribute on a different node, a node kind with
-no element behind it. Positions and text values are left out, the first because
-it carries no ruling and the second because it reaches the reader and is already
-`test:oracle-goldens`' subject.
-
-After a pin bump, run `node scripts/oracle-ast-shapes.mjs --write`, read the diff
-document by document, and commit it with the bump. The diff is the list of AST
-rulings the new engine brought in, so re-recording without reading it gives up
-what the check is for.
 
 ## Measuring a change
 
@@ -71,10 +35,9 @@ A reading taken from a stale artifact is the most common wrong answer here.
 - `tree-sitter parse` shares ONE `carve.so` across every checkout on the machine
   (`~/.cache/tree-sitter/lib/`) and rebuilds it only when `src/parser.c` is
   newer. Export `TREE_SITTER_LIBDIR` to a directory of your own and delete the
-  cached library between builds. `test:line-terminators` forks workers, so a
-  shared library can have one run comparing two different grammars.
+  cached library between builds.
 - `node-gyp-build` does NOT rebuild after a `src/parser.c` change. It serves the
-  existing `build/Release/*.node`, so `test:binding-parity`, `test:highlights`,
+  existing `build/Release/*.node`, so `test:binding-parity`,
   `test:marker-separators` and `test:nesting-depth` answer for the previous
   grammar. `npx node-gyp build` rebuilds it.
 - A failed `tree-sitter generate` leaves `src/parser.c` in place, so read its
@@ -98,8 +61,6 @@ of tokens.
 - `mid_line` records that the last external token ended mid-line, which spares
   the line-start test its column read.
 - A pure alphanumeric word of 256 or more characters is one token.
-- `npm run test:inline-scan-work` counts scanner and lexer advances as each
-  input family doubles and fails on growth past 2.5x per doubling.
 
 Two costs remain:
 
@@ -111,43 +72,5 @@ Two costs remain:
   on every `get_column`. There the column reads that each failed bare opener
   makes keep `*a *a ...` lines quadratic, at about a third of the old cost.
 
-The serialized state fits at most 251 open blocks in the fixed 1024-byte buffer.
-`MAX_NESTING_DEPTH` (200) keeps container nesting below that.
-
-## What the gates cannot see
-
-`test:inline-reading` compares inline spans, so a change that moves none of them
-is invisible to it however wrong the tree is.
-
-- `alias()` over an inline `seq` renames each CHILD rather than wrapping them:
-  `alias(seq($._a, $._b), $.cell)` builds two `cell` nodes. Alias a named hidden
-  rule instead. A table row read one attributed cell as two with every gate green.
-- An over-acceptance inside a run the fixture renders literally builds no inline
-  span either way. `test:conformance` reports it only when it becomes an ERROR.
-- A closed fence that loses its closer is a clean tree: the closer line reads as
-  inline verbatim, so neither the corpus nor the no-error sweep fails.
-  `test:fence-closers` parses generated closed-fence documents and fails when a
-  `code_block` or `raw_block` has no end marker.
-
-## A gate that looks redundant and is not
-
-`test:conformance` counts over-acceptance twice: once over single-paragraph
-documents, and once as INVISIBLE over-acceptance, where a node that renders
-nothing covers text the fixture still shows. The second looks like a subset of
-the first and is not. It is the only check that can see a
-`link_reference_definition`, a footnote definition or a comment swallowing text
-that the document still displays, because a node producing no output moves no
-inline span and changes no over-acceptance count.
-
-It has caught defects no other gate could twice: a stray
-`link_reference_definition` in a description body, and four documents where a
-definition opened against a content column that a folded marker had set. In
-both cases `test:inline-reading` and `test:under-acceptance` were green.
-
-Do not fold it into the count beside it.
-
-Its mirror runs beside it: INVISIBLE UNDER-ACCEPTANCE, a reference definition
-the fixture hides that the tree keeps as paragraph text. A definition renders
-nothing, so the only trace of the miss is the paragraph that holds its source,
-and no other gate reads paragraph text. It started with 54 recorded documents,
-every one of them green on every other gate (#372).
+`MAX_NESTING_DEPTH` (200) caps container nesting, so the serialized state fits
+the fixed 1024-byte buffer.
