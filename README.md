@@ -50,8 +50,8 @@ const captures = query.captures(tree.rootNode);
 
 The npm copy is at
 `node_modules/tree-sitter-carve/tree-sitter-carve.wasm`. The matching release
-asset includes a `.sha256` checksum. Highlight and injection queries are in the
-package's `queries/` directory.
+asset includes a `.sha256` checksum. Highlight, injection and tags queries are in
+the package's `queries/` directory.
 
 CI tests this grammar with `web-tree-sitter` 0.22.6 and 0.27.0. Version 0.22.6
 uses the older default `Parser` export and `language.query(...)` API; the
