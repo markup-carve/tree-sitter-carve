@@ -478,11 +478,9 @@ key: x
       (marker)
       (content))
     (section_content
-      (frontmatter
-        (frontmatter_marker)
-        (language)
-        (frontmatter_content)
-        (frontmatter_marker)))))
+      (paragraph
+        (em_dash)
+        (em_dash)))))
 
 ===============================================================================
 C2-B-232: an earlier blank line does not license an opener below a fence
@@ -505,11 +503,9 @@ key: x
     (language)
     (code)
     (code_block_marker_end))
-  (frontmatter
-    (frontmatter_marker)
-    (language)
-    (frontmatter_content)
-    (frontmatter_marker)))
+  (paragraph
+    (em_dash)
+    (em_dash)))
 
 ===============================================================================
 C2-B-164: an invalid later format is text

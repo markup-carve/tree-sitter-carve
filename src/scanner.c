@@ -757,6 +757,8 @@ typedef struct {
   // A newline token just took a blank line inside a list item, so the item
   // spacer that follows starts on the run's second blank line.
   bool blank_line_taken;
+  // The immediately preceding physical line was blank (C2-B-232).
+  bool metadata_gap;
   // Bits 0..8 record missing braced closers.
   uint16_t missing_closers;
   // Whether a caption may stand on this line (CAPTION_HOST_*). Serialized.
@@ -7025,7 +7027,7 @@ static bool parse_list_marker_or_thematic_break(
       bool leading = valid_symbols[FRONTMATTER_UNCLOSED_MARKER];
       bool attributed = valid_symbols[ATTRIBUTED_FRONTMATTER_UNCLOSED_MARKER];
       bool later = valid_symbols[TYPED_FRONTMATTER_UNCLOSED_MARKER] &&
-                   (s->state & STATE_AFTER_BLANK_LINE);
+                   s->metadata_gap;
       if (leading || attributed || later) {
         if (start_col != 0 ||
             (!leading && (find_block(s, DIV) || find_block(s, BLOCK_QUOTE) ||
@@ -18054,6 +18056,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   }
   bool is_newline = at_line_end(lexer);
   if (at_line_start) s->line_blank = is_newline;
+  if (is_newline) s->metadata_gap = at_line_start;
   if (at_line_start && !is_newline && lexer->lookahead != '+') {
     Block *note = find_block(s, FOOTNOTE);
     if (note) note->flags &= (uint8_t)~BLOCK_FLAG_FOOTNOTE_BLANK_BEFORE_PLUS;
@@ -19088,6 +19091,7 @@ static void init_scalars(Scanner *s) {
   s->after_literal_star = false;
   s->after_separator_row = false;
   s->blank_line_taken = false;
+  s->metadata_gap = false;
   s->missing_closers = 0;
   s->caption_gap = 0;
   s->line_blank = false;
@@ -19209,8 +19213,10 @@ unsigned tree_sitter_carve_external_scanner_serialize(void *payload,
   buffer[size++] = (char)s->block_quote_level;
   buffer[size++] = (char)s->indent;
   buffer[size++] = (char)s->marker_end_col;
-  // `table_attribute_pending` is 0 to 2; the high bit carries the box flag.
+  // `table_attribute_pending` is 0 to 2; bit 2 carries the direct metadata
+  // gap, and the high bit carries the box flag.
   buffer[size++] = (char)(s->table_attribute_pending |
+                          (s->metadata_gap ? 0x04 : 0) |
                           (s->task_box_next ? 0x80 : 0));
   buffer[size++] = (char)(s->state & 0xff);
   buffer[size++] = (char)((s->state >> 8) & 0xff);
@@ -19365,7 +19371,8 @@ void tree_sitter_carve_external_scanner_deserialize(void *payload, char *buffer,
     s->block_quote_level = (uint8_t)buffer[size++];
     s->indent = (uint8_t)buffer[size++];
     s->marker_end_col = (uint8_t)buffer[size++];
-    s->table_attribute_pending = (uint8_t)buffer[size] & 0x7f;
+    s->table_attribute_pending = (uint8_t)buffer[size] & 0x03;
+    s->metadata_gap = ((uint8_t)buffer[size] & 0x04) != 0;
     s->task_box_next = ((uint8_t)buffer[size++] & 0x80) != 0;
     s->state = (uint16_t)(uint8_t)buffer[size++];
     s->state |= (uint16_t)(uint8_t)buffer[size++] << 8;
