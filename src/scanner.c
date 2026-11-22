@@ -328,10 +328,14 @@ typedef enum {
   // Zero width, at a block image or display math line that starts a
   // paragraph: the one paragraph a caption line interrupts (C2-B-017).
   CAPTION_HOST_LINE,
+  TYPED_FRONTMATTER_MARKER,
+  TYPED_FRONTMATTER_UNCLOSED_MARKER,
+  ATTRIBUTED_FRONTMATTER_MARKER,
+  ATTRIBUTED_FRONTMATTER_UNCLOSED_MARKER,
 } TokenType;
 
 // The size of `valid_symbols`, for the copies that edit one entry.
-#define EXTERNAL_TOKEN_COUNT (CAPTION_HOST_LINE + 1)
+#define EXTERNAL_TOKEN_COUNT (ATTRIBUTED_FRONTMATTER_UNCLOSED_MARKER + 1)
 
 // The different blocks in Carve that we track,
 // in order to match or close them properly.
@@ -753,6 +757,8 @@ typedef struct {
   // A newline token just took a blank line inside a list item, so the item
   // spacer that follows starts on the run's second blank line.
   bool blank_line_taken;
+  // The immediately preceding physical line was blank (C2-B-232).
+  bool metadata_gap;
   // Bits 0..8 record missing braced closers.
   uint16_t missing_closers;
   // Whether a caption may stand on this line (CAPTION_HOST_*). Serialized.
@@ -6729,7 +6735,7 @@ static bool frontmatter_has_closer(TSLexer *lexer) {
       ++dashes;
       lexer->advance(lexer, false);
     }
-    if (dashes >= 3) {
+    if (dashes == 3) {
       while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
         lexer->advance(lexer, false);
       }
@@ -6757,24 +6763,28 @@ static bool frontmatter_has_closer(TSLexer *lexer) {
 /// Call with the lexer sitting right after the opening run of `-`, and only
 /// where a frontmatter OPENER is what is being decided; the closing marker
 /// inside `frontmatter_content` has no tail to model.
-static bool frontmatter_opener_tail_is_modeled(Scanner *s, TSLexer *lexer) {
+static bool frontmatter_opener_tail_is_modeled(Scanner *s, TSLexer *lexer,
+                                                bool typed_required) {
   bool tabbed = false;
   uint16_t spaces = consume_ws_run(s, lexer, &tabbed);
   if (at_line_end(lexer) || lexer->eof(lexer)) {
-    return true; // a bare `---`, or one with trailing whitespace
+    return !typed_required;
   }
   if (tabbed || spaces > 1) {
     return false;
   }
-  // `language: /[^\r\n\t \{\}=\["]+/` in grammar.js - one token, then nothing
-  // but trailing whitespace.
+  // C2-B-164 permits ASCII letters and digits only.
+  uint32_t letters = 0;
   while (!at_line_end(lexer) && !lexer->eof(lexer) && lexer->lookahead != ' ' &&
          lexer->lookahead != '\t' && lexer->lookahead != '{' &&
          lexer->lookahead != '}' && lexer->lookahead != '=' &&
          lexer->lookahead != '[' && lexer->lookahead != '"' &&
          lexer->lookahead != '\f' && lexer->lookahead != 0xa0) {
+    if (!carve_is_alnum_ascii(lexer->lookahead)) return false;
     advance(s, lexer);
+    ++letters;
   }
+  if (!letters) return false;
   bool trailing_tabbed = false;
   consume_ws_run(s, lexer, &trailing_tabbed);
   return at_line_end(lexer) || lexer->eof(lexer);
@@ -6824,8 +6834,10 @@ static bool parse_list_marker_or_thematic_break(
   const TokenType task_type =
       marker == '*' ? LIST_MARKER_TASK_STAR_BEGIN : LIST_MARKER_TASK_BEGIN;
   // This is a bit ugly to do here, but eh, refactoring will look very ugly.
-  bool check_frontmatter = (valid_symbols[FRONTMATTER_MARKER] ||
-      valid_symbols[FRONTMATTER_UNCLOSED_MARKER]) && marker == '-';
+  bool check_frontmatter = marker == '-' &&
+      (valid_symbols[FRONTMATTER_MARKER] || valid_symbols[FRONTMATTER_UNCLOSED_MARKER] ||
+       valid_symbols[TYPED_FRONTMATTER_MARKER] || valid_symbols[TYPED_FRONTMATTER_UNCLOSED_MARKER] ||
+       valid_symbols[ATTRIBUTED_FRONTMATTER_MARKER] || valid_symbols[ATTRIBUTED_FRONTMATTER_UNCLOSED_MARKER]);
   if (list_text_line(s) || line_block_body(s)) {
     return false;
   }
@@ -7012,25 +7024,37 @@ static bool parse_list_marker_or_thematic_break(
       // reachable). So this gate is what tells the OPENING commitment apart
       // from the CLOSING one without needing any extra state: the closer
       // keeps committing unconditionally below, exactly as before.
-      if (valid_symbols[FRONTMATTER_UNCLOSED_MARKER]) {
+      bool leading = valid_symbols[FRONTMATTER_UNCLOSED_MARKER];
+      bool attributed = valid_symbols[ATTRIBUTED_FRONTMATTER_UNCLOSED_MARKER];
+      bool later = valid_symbols[TYPED_FRONTMATTER_UNCLOSED_MARKER] &&
+                   s->metadata_gap;
+      if (leading || attributed || later) {
+        if (start_col != 0 ||
+            (!leading && (find_block(s, DIV) || find_block(s, BLOCK_QUOTE) ||
+                          find_list(s) || find_block(s, FOOTNOTE)))) return false;
         // The opener's own slot, read before the closer search below moves the
         // lexer off this line. A tail this grammar cannot model leaves the line
         // as PROSE, so neither symbol is produced here - returning the thematic
         // break instead would be wrong for the same reason the frontmatter is:
         // the line carries a word, and a break is a run of markers.
-        if (!frontmatter_opener_tail_is_modeled(s, lexer)) {
+        if (!frontmatter_opener_tail_is_modeled(s, lexer, !leading)) {
           return false;
         }
         // An opener with no closer claims the rest of the document
         // (carve#5016, #5085); `_frontmatter_rest` then takes it whole.
         s->host_previous = -1;
-        lexer->result_symbol = frontmatter_has_closer(lexer)
-                                   ? FRONTMATTER_MARKER
-                                   : FRONTMATTER_UNCLOSED_MARKER;
+        bool closed = frontmatter_has_closer(lexer);
+        lexer->result_symbol = leading
+            ? (closed ? FRONTMATTER_MARKER : FRONTMATTER_UNCLOSED_MARKER)
+            : attributed
+                ? (closed ? ATTRIBUTED_FRONTMATTER_MARKER : ATTRIBUTED_FRONTMATTER_UNCLOSED_MARKER)
+                : (closed ? TYPED_FRONTMATTER_MARKER : TYPED_FRONTMATTER_UNCLOSED_MARKER);
         return true;
       }
-      lexer->result_symbol = FRONTMATTER_MARKER;
-      return true;
+      if (valid_symbols[FRONTMATTER_MARKER]) {
+        lexer->result_symbol = FRONTMATTER_MARKER;
+        return true;
+      }
     }
     consumed_line_of_markers = frontmatter_run > 0;
   }
@@ -12343,6 +12367,9 @@ static bool scan_row_or_break_at_paragraph_end(Scanner *s, TSLexer *lexer) {
     return row;
   }
   uint8_t count = consume_chars(s, lexer, (char)c);
+  if (c == '-' && count == 3 && column == 0 && find_list(s) &&
+      lexer->lookahead != '-' && !at_line_end(lexer) &&
+      frontmatter_opener_tail_is_modeled(s, lexer, true)) return true;
   if (c == '*' && count == 1 && lexer->lookahead == '[') {
     if (abbreviation_definition_follows(s, lexer)) {
       s->erasable_line = true;
@@ -12431,7 +12458,9 @@ static bool paragraph_block_opener_ahead(Scanner *s, TSLexer *lexer, int markers
   if (lexer->lookahead == '|') return scan_row_or_break_at_paragraph_end(s, lexer);
   // In a list a `*` line may be a sibling marker as well as a break, and the
   // run cannot be read twice: the shared probe answers both.
-  if (lexer->lookahead == '*' && find_list(s)) {
+  if ((lexer->lookahead == '*' ||
+       (lexer->lookahead == '-' && paragraph_end_line_column(s, lexer) == 0)) &&
+      find_list(s)) {
     return scan_row_or_break_at_paragraph_end(s, lexer);
   }
   if (lexer->lookahead == '*') {
@@ -18027,6 +18056,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   }
   bool is_newline = at_line_end(lexer);
   if (at_line_start) s->line_blank = is_newline;
+  if (is_newline) s->metadata_gap = at_line_start;
   if (at_line_start && !is_newline && lexer->lookahead != '+') {
     Block *note = find_block(s, FOOTNOTE);
     if (note) note->flags &= (uint8_t)~BLOCK_FLAG_FOOTNOTE_BLANK_BEFORE_PLUS;
@@ -19061,6 +19091,7 @@ static void init_scalars(Scanner *s) {
   s->after_literal_star = false;
   s->after_separator_row = false;
   s->blank_line_taken = false;
+  s->metadata_gap = false;
   s->missing_closers = 0;
   s->caption_gap = 0;
   s->line_blank = false;
@@ -19182,8 +19213,10 @@ unsigned tree_sitter_carve_external_scanner_serialize(void *payload,
   buffer[size++] = (char)s->block_quote_level;
   buffer[size++] = (char)s->indent;
   buffer[size++] = (char)s->marker_end_col;
-  // `table_attribute_pending` is 0 to 2; the high bit carries the box flag.
+  // `table_attribute_pending` is 0 to 2; bit 2 carries the direct metadata
+  // gap, and the high bit carries the box flag.
   buffer[size++] = (char)(s->table_attribute_pending |
+                          (s->metadata_gap ? 0x04 : 0) |
                           (s->task_box_next ? 0x80 : 0));
   buffer[size++] = (char)(s->state & 0xff);
   buffer[size++] = (char)((s->state >> 8) & 0xff);
@@ -19338,7 +19371,8 @@ void tree_sitter_carve_external_scanner_deserialize(void *payload, char *buffer,
     s->block_quote_level = (uint8_t)buffer[size++];
     s->indent = (uint8_t)buffer[size++];
     s->marker_end_col = (uint8_t)buffer[size++];
-    s->table_attribute_pending = (uint8_t)buffer[size] & 0x7f;
+    s->table_attribute_pending = (uint8_t)buffer[size] & 0x03;
+    s->metadata_gap = ((uint8_t)buffer[size] & 0x04) != 0;
     s->task_box_next = ((uint8_t)buffer[size++] & 0x80) != 0;
     s->state = (uint16_t)(uint8_t)buffer[size++];
     s->state |= (uint16_t)(uint8_t)buffer[size++] << 8;

@@ -191,6 +191,34 @@ function attributeArgs($) {
   return optional(alias($._attribute_args, $.args));
 }
 
+function frontmatterBody($, opener, unclosed) {
+  return choice(
+    seq(
+      alias(opener, $.frontmatter_marker),
+      $._whitespace,
+      optional(field("language", alias($.frontmatter_language, $.language))),
+      $._newline,
+      optional(field("content", $.frontmatter_content)),
+      $.frontmatter_marker,
+      choice($._newline, $._eof_or_newline),
+    ),
+    seq(
+      alias(unclosed, $.frontmatter_marker),
+      $._whitespace,
+      optional(field("language", alias($.frontmatter_language, $.language))),
+      choice(
+        seq(
+          $._newline,
+          optional(
+            field("content", alias($._frontmatter_rest, $.frontmatter_content)),
+          ),
+        ),
+        $._eof_or_newline,
+      ),
+    ),
+  );
+}
+
 // The fallback alternatives, shared by ordinary inline content and by a note's
 // content. `options.notes: false` drops the `[^` opener.
 function symbolFallback($, options) {
@@ -461,6 +489,7 @@ module.exports = grammar({
   extras: (_) => ["\r"],
 
   conflicts: ($) => [
+    [$.frontmatter, $._nonparagraph_block],
     [$._nonparagraph_block, $.div],
     // After a quoted fence's `_block_close`, a `>` is either the closer's own
     // marker or the enclosing quote's; only the end marker after it decides.
@@ -511,41 +540,31 @@ module.exports = grammar({
 
   rules: {
     document: ($) =>
-      seq(optional($.frontmatter), repeat($._block_with_section)),
+      seq(
+        optional(alias($._leading_frontmatter, $.frontmatter)),
+        repeat($._block_with_section),
+      ),
 
+    _leading_frontmatter: ($) =>
+      frontmatterBody($, $.frontmatter_marker, $._frontmatter_unclosed_marker),
     frontmatter: ($) =>
       choice(
-        seq(
-          $.frontmatter_marker,
-          $._whitespace,
-          optional(field("language", $.language)),
-          $._newline,
-          // Empty frontmatter, `---` over `---`, is frontmatter (spec 21879d7).
-          optional(field("content", $.frontmatter_content)),
-          $.frontmatter_marker,
-          choice($._newline, $._eof_or_newline),
+        frontmatterBody(
+          $,
+          $._typed_frontmatter_marker,
+          $._typed_frontmatter_unclosed_marker,
         ),
-        // An opener with no closer runs to the end of the document
-        // (carve#5016, #5085).
         seq(
-          alias($._frontmatter_unclosed_marker, $.frontmatter_marker),
-          $._whitespace,
-          optional(field("language", $.language)),
-          choice(
-            seq(
-              $._newline,
-              optional(
-                field(
-                  "content",
-                  alias($._frontmatter_rest, $.frontmatter_content),
-                ),
-              ),
-            ),
-            $._eof_or_newline,
+          repeat1($.block_attribute),
+          frontmatterBody(
+            $,
+            $._attributed_frontmatter_marker,
+            $._attributed_frontmatter_unclosed_marker,
           ),
         ),
       ),
     frontmatter_content: ($) => repeat1($._line),
+    frontmatter_language: (_) => /[A-Za-z0-9]+/,
 
     // A section is only valid on the top level, or nested inside other sections.
     // Otherwise standalone headings are used (inside divs for example).
@@ -564,6 +583,7 @@ module.exports = grammar({
     _block_with_section: ($) =>
       choice(
         $.section,
+        $.frontmatter,
         $._block_element,
         $.abbreviation_definition,
         alias($._blank_abbreviation_line, $.paragraph),
@@ -3605,5 +3625,9 @@ module.exports = grammar({
     // Zero-width, at a block image or display math line that starts a
     // paragraph (C2-B-017).
     $._caption_host_line,
+    $._typed_frontmatter_marker,
+    $._typed_frontmatter_unclosed_marker,
+    $._attributed_frontmatter_marker,
+    $._attributed_frontmatter_unclosed_marker,
   ],
 });
