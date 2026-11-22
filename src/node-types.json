@@ -1935,6 +1935,10 @@
       "required": true,
       "types": [
         {
+          "type": "block_attribute",
+          "named": true
+        },
+        {
           "type": "frontmatter_marker",
           "named": true
         }
@@ -3688,6 +3692,10 @@
         },
         {
           "type": "footnote",
+          "named": true
+        },
+        {
+          "type": "frontmatter",
           "named": true
         },
         {

@@ -14,7 +14,7 @@
   "types": "bindings/node",
   "scripts": {
     "generate": "tree-sitter generate",
-    "test": "tree-sitter test",
+    "test": "tree-sitter test && node scripts/metadata-query.mjs",
     "test:parser-warnings": "node scripts/parser-warnings.mjs",
     "format": "prettier --write grammar.js",
     "check-formatted": "prettier --check grammar.js",
