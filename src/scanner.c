@@ -4662,6 +4662,7 @@ static bool scan_marker_attribute(Scanner *s, TSLexer *lexer) {
 }
 
 static bool scan_bullet_list_marker(Scanner *s, TSLexer *lexer, char marker) {
+  s->marker_bare_dot = false;
   if (lexer->lookahead != marker) {
     return false;
   }
@@ -7042,6 +7043,7 @@ static bool parse_list_marker_or_thematic_break(
   if (declined_run != NULL) {
     *declined_run = 0;
   }
+  s->marker_bare_dot = false;
   const TokenType task_type =
       marker == '*' ? LIST_MARKER_TASK_STAR_BEGIN : LIST_MARKER_TASK_BEGIN;
   // This is a bit ugly to do here, but eh, refactoring will look very ugly.
@@ -12609,10 +12611,8 @@ static bool scan_row_or_break_at_paragraph_end(Scanner *s, TSLexer *lexer) {
     s->state = state;
     return row;
   }
+  // A typed metadata opener is a lazy line of the paragraph (C2-B-232).
   uint8_t count = consume_chars(s, lexer, (char)c);
-  if (c == '-' && count == 3 && column == 0 && find_list(s) &&
-      lexer->lookahead != '-' && !at_line_end(lexer) &&
-      frontmatter_opener_tail_is_modeled(s, lexer, true)) return true;
   if (c == '*' && count == 1 && lexer->lookahead == '[') {
     if (abbreviation_definition_follows(s, lexer)) {
       s->erasable_line = true;
@@ -12622,8 +12622,8 @@ static bool scan_row_or_break_at_paragraph_end(Scanner *s, TSLexer *lexer) {
   bool attributed = false;
   if (count == 1 && lexer->lookahead == '{') {
     attributed = true;
-    if (!scan_valid_inline_attribute(s, lexer)) {
-      return false;
+    while (lexer->lookahead == '{') {
+      if (!scan_valid_inline_attribute(s, lexer)) return false;
     }
   }
   bool separated = lexer->lookahead == ' ';
@@ -12829,10 +12829,10 @@ static bool quote_opens_in_outer_item(Scanner *s, uint8_t markers,
 
 // A line the line block's container does not own is asked a paragraph's lazy
 // rules: only an interrupter ends the block there (C2-B-012, C2-B-025).
-static bool line_block_line_unowned(Scanner *s, TSLexer *lexer) {
-  if (s->open_blocks->size < 2) return false;
+static bool line_block_line_unowned(Scanner *s, TSLexer *lexer, bool marked) {
+  if (s->open_blocks->size < 2 || s->open_inline->size > 0) return false;
   Block *parent = *array_get(s->open_blocks, s->open_blocks->size - 2);
-  if (parent->type == BLOCK_QUOTE) return lexer->lookahead != '>';
+  if (parent->type == BLOCK_QUOTE) return !marked;
   uint32_t column = line_column(s, lexer);
   // A list in a quote leaves its unowned lines to the quote's closing.
   if (is_list(parent->type)) {
@@ -12893,6 +12893,7 @@ static bool close_paragraph(Scanner *s, TSLexer *lexer) {
   // A line block's paragraph runs to a blank line or a colon fence. In a
   // quote the fence stands after the quote's markers.
   if (line_block_body(s)) {
+    bool marked = lexer->lookahead == '>';
     if (lexer->lookahead == '>' && count_blocks(s, BLOCK_QUOTE) > 0) {
       int quoted = -1;
       if (end_paragraph_in_block_quote(s, lexer, &quoted)) {
@@ -12902,7 +12903,7 @@ static bool close_paragraph(Scanner *s, TSLexer *lexer) {
         advance(s, lexer);
       }
     }
-    if (lexer->lookahead != ':' && line_block_line_unowned(s, lexer)) {
+    if (lexer->lookahead != ':' && line_block_line_unowned(s, lexer, marked)) {
       int32_t lead = lexer->lookahead;
       if (lead == '>' || lead == '#') return line_block_stanza_ends(s, lexer);
       if (lead == '{' || lead == '[' || lead == '*') {
@@ -13129,6 +13130,11 @@ static bool close_paragraph_after_quote(Scanner *s, TSLexer *lexer,
         if (erased) s->erasable_line = true;
         return !erased;
       }
+      // A term or description line interrupts only at an open description
+      // list's column (C2-B-016); a colon fence always does.
+      if (lead == ':' && !(find_list(s) && find_list(s)->type == LIST_DEFINITION)) {
+        return consume_chars(s, line, ':') >= 3;
+      }
       switch (lead) {
       case '#': case '>': case '`': case '~': case ':': case '|': case '*':
       case '-': case '_': case '[': case '{': case '%': case '^': case '=':
@@ -13137,6 +13143,11 @@ static bool close_paragraph_after_quote(Scanner *s, TSLexer *lexer,
       default:
         return false;
       }
+    }
+    // A `+` line is text (C2-B-059), so short of the note it is a lazy line.
+    if (column < margin && !attached_lazy_line && lead == '+' &&
+        !CARVE2_PLUS_ATTACHMENT) {
+      return false;
     }
     if (column < margin && !attached_lazy_line && lead == '+') {
       {
@@ -13210,7 +13221,15 @@ static bool close_paragraph_after_quote(Scanner *s, TSLexer *lexer,
   if (body_line && line_column(s, lexer) >= body->data && !at_line_end(lexer) &&
       !lexer->eof(lexer)) {
     BracketProbe probe = bracket_probe_new(s, lexer);
-    bool nests = scan_list_marker(s, &probe.lexer) && s->marker_value_one &&
+    TokenType marker = scan_list_marker_token(s, &probe.lexer);
+    // A term or description line interrupts only at an open description
+    // list's column (C2-B-016); in the note's paragraph it is a lazy line.
+    Block *open_list = find_list(s);
+    bool definition = marker == LIST_MARKER_DEFINITION ||
+                      marker == LIST_MARKER_DESCRIPTION;
+    bool nests = marker != IGNORED && s->marker_value_one &&
+                 (!definition ||
+                  (open_list && open_list->type == LIST_DEFINITION)) &&
                  marker_line_has_content(s, &probe.lexer);
     bool ends = nests;
     if (!nests) {
@@ -17257,6 +17276,7 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
   s->host_jumped = false;
   s->marker_probe = false;
   s->colon_run_declined = false;
+  s->marker_bare_dot = false;
   if (s->task_box_next) {
     s->task_box_next = 0;
     // A box after an ordered marker's required space, before content

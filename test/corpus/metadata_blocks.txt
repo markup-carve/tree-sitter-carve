@@ -454,10 +454,9 @@ k: v
     (list_item
       (list_marker_dash)
       (list_item_content
-        (paragraph))))
-  (paragraph
-    (em_dash)
-    (em_dash)))
+        (paragraph
+          (em_dash)
+          (em_dash))))))
 
 ===============================================================================
 C2-B-232: an earlier blank line does not license an opener below a heading
