@@ -1,5 +1,3 @@
-#include <stdio.h>
-#include <execinfo.h>
 #include <string.h>
 
 #include "tree_sitter/alloc.h"
@@ -1159,9 +1157,8 @@ static void mark_end(Scanner *s, TSLexer *lexer) {
 
 static void resolve_deferred_column(Scanner *s, TSLexer *host);
 
-__attribute__((noinline)) static void advance(Scanner *s, TSLexer *lexer) {
+static void advance(Scanner *s, TSLexer *lexer) {
   int32_t current = lexer->lookahead;
-  if (current == ':' && getenv("TSDBG")) { void *bt[6]; int n = backtrace(bt, 6); backtrace_symbols_fd(bt, n, 2); fprintf(stderr, "----\n"); }
   if (lexer->advance != bracket_probe_advance && !lexer->eof(lexer)) {
     if (current == '\n' || current == '\r') resolve_deferred_column(s, lexer);
     ++s->host_advances;
@@ -12846,10 +12843,13 @@ static bool line_block_line_unowned(Scanner *s, TSLexer *lexer, bool marked) {
 // although none of them interrupts a paragraph.
 static bool line_block_stanza_ends(Scanner *s, TSLexer *lexer) {
   int32_t lead = lexer->lookahead;
-  if (lead == '>') return true;
+  if (lead == '>') {
+    advance(s, lexer);
+    return lexer->lookahead == ' ' || at_line_end(lexer) || lexer->eof(lexer);
+  }
   if (lead == '#') {
-    while (lexer->lookahead == '#') advance(s, lexer);
-    if (lexer->lookahead != ' ') return false;
+    uint8_t hashes = consume_chars(s, lexer, '#');
+    if (hashes > 6 || lexer->lookahead != ' ') return false;
     while (lexer->lookahead == ' ') advance(s, lexer);
     return !at_line_end(lexer) && !lexer->eof(lexer);
   }

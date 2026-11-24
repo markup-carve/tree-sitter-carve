@@ -407,3 +407,44 @@ b
     (footnote_marker_end)
     (footnote_content
       (paragraph))))
+
+===============================================================================
+C2-B-024: a lazy line led by a glued quote mark is a stanza line
+===============================================================================
+- ::: |
+  a
+>x
+y
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (div
+          (div_marker_begin)
+          (line_block_marker)
+          (content
+            (paragraph)))))))
+
+===============================================================================
+C2-B-024: a lazy line of seven hashes is a stanza line
+===============================================================================
+- ::: |
+  a
+####### h
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (div
+          (div_marker_begin)
+          (line_block_marker)
+          (content
+            (paragraph)))))))
