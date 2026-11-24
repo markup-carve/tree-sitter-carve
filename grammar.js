@@ -3063,12 +3063,6 @@ module.exports = grammar({
         ),
         alias($._parens_span_end, ")"),
       ),
-    _inline_link_url: (_) =>
-      // Can escape `)`, but shouldn't capture it.
-      //
-      // IMMEDIATE and free of space and tab, so `[x]( "t")` is a paragraph
-      // (carve#2070). A no-break space is a destination character (C2-I-067).
-      token.immediate(/([^) \t\r\n]|\\\))+/),
     // `destTitle = titleSp (titleQuoted | titleSquoted)`, `titleSp = " "`: exactly one
     // space, and the title is one token so no extra can be skipped inside it.
     _link_title_space: (_) => token.immediate(" "),
@@ -3680,5 +3674,7 @@ module.exports = grammar({
     $._abbreviation_continuation,
     $._link_tail_continuation,
     $._link_attribute_continuation,
+    // C2-I-067: a destination whose parentheses balance, which no regex reads.
+    $._inline_link_url,
   ],
 });

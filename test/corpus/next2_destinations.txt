@@ -54,3 +54,90 @@ C2-I-067: a tab after a link definition colon is still text
 (document
   (paragraph))
 
+============================================================
+C2-I-067: parentheses balance in a destination
+============================================================
+
+[a](b(c)d) [a](/u(1))
+
+------------------------------------------------------------
+
+(document
+  (paragraph
+    (inline_link
+      text: (link_text)
+      destination: (inline_link_destination))
+    (inline_link
+      text: (link_text)
+      destination: (inline_link_destination))))
+
+============================================================
+C2-I-067: an unbalanced parenthesis leaves no tail
+============================================================
+
+[a](b(c)
+
+------------------------------------------------------------
+
+(document
+  (paragraph))
+
+============================================================
+C2-I-066: a parenthesis in link text is not the tail
+============================================================
+
+[(b)](u) [a (b](u)
+
+------------------------------------------------------------
+
+(document
+  (paragraph
+    (inline_link
+      text: (link_text)
+      destination: (inline_link_destination))
+    (inline_link
+      text: (link_text)
+      destination: (inline_link_destination))))
+
+============================================================
+C2-I-013: a destination escapes a backslash
+============================================================
+
+[a](b\\)
+
+------------------------------------------------------------
+
+(document
+  (paragraph
+    (inline_link
+      text: (link_text)
+      destination: (inline_link_destination))))
+
+============================================================
+C2-I-069: a pair whose tail does not close is text inside an outer link
+============================================================
+
+[[[](]]()
+
+------------------------------------------------------------
+
+(document
+  (paragraph
+    (inline_link
+      text: (link_text)
+      destination: (inline_link_destination))))
+
+============================================================
+C2-I-069: an inner link tail is an atom for the outer bracket
+============================================================
+
+[[[[*]](]])
+
+------------------------------------------------------------
+
+(document
+  (paragraph
+    (inline_link
+      text: (link_text)
+      destination: (inline_link_destination))))
+

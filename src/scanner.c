@@ -337,6 +337,7 @@ typedef enum {
   ABBREVIATION_CONTINUATION,
   LINK_TAIL_CONTINUATION,
   LINK_ATTRIBUTE_CONTINUATION,
+  INLINE_LINK_URL,
 } TokenType;
 
 // The size of `valid_symbols`, for the copies that edit one entry.
@@ -3438,6 +3439,8 @@ typedef struct {
   uint32_t *host_newlines;
   Scanner *scanner;
 } BracketProbe;
+
+static bool probe_scan_inline_link_tail(Scanner *s, TSLexer *lexer, char bare, bool *closer, bool *boundary, BracketProbe *probe);
 
 static void bracket_probe_rewind(BracketProbe *probe, uint32_t position);
 
@@ -14808,6 +14811,19 @@ static bool scan_qualified_bracket_close(Scanner *s, BracketProbe *probe, Inline
         return true;
       }
       advance(s, lexer);
+      // An inner pair's link tail is an atom (C2-I-069): a `]` in its
+      // destination closes nothing here.
+      if (lexer->lookahead == '(') {
+        uint32_t restart = probe->position;
+        uint32_t base = s->col_base;
+        advance(s, lexer);
+        if (probe_scan_inline_link_tail(s, lexer, 0, NULL, NULL, probe)) {
+          advance(s, lexer);
+        } else {
+          bracket_probe_rewind(probe, restart);
+          s->col_base = base;
+        }
+      }
     } else if (c == '[') {
       array_push(&open, probe->position);
       advance(s, lexer);
@@ -15430,6 +15446,32 @@ static bool is_destination_space(int32_t c) {
   return c == ' ' || c == '\t';
 }
 
+/// `_inline_link_url`: the destination run up to a space, a tab, the line end
+/// or the `)` that closes the tail. Parentheses balance and a backslash escapes
+/// `(`, `)` and `\\` (C2-I-067, C2-I-013).
+static bool scan_inline_link_url(Scanner *s, TSLexer *lexer) {
+  uint32_t depth = 0;
+  bool any = false;
+  while (!lexer->eof(lexer) && !at_line_end(lexer) &&
+         !(lexer->lookahead == ')' && depth == 0) && !is_destination_space(lexer->lookahead)) {
+    if (lexer->lookahead == '\\') {
+      advance(s, lexer);
+      any = true;
+      if (lexer->lookahead != '(' && lexer->lookahead != ')' && lexer->lookahead != '\\') continue;
+    } else if (lexer->lookahead == '(') {
+      ++depth;
+    } else if (lexer->lookahead == ')') {
+      --depth;
+    }
+    advance(s, lexer);
+    any = true;
+  }
+  if (!any) return false;
+  mark_end(s, lexer);
+  lexer->result_symbol = INLINE_LINK_URL;
+  return true;
+}
+
 /// Does a well-formed inline link TAIL start at the character after this `(`,
 /// with the `(` already consumed?
 ///
@@ -15439,35 +15481,41 @@ static bool is_destination_space(int32_t c) {
 /// `[t](/u` + TAB + `"T")` are paragraphs (corpus 262, 257) and `[x](a b)` is
 /// one too.
 ///
-/// This reader keeps the grammar's own reading of the destination rather than
-/// the ohm's in one place: nested parentheses are NOT balanced here, matching
-/// `_inline_link_url`, so `[t](/a(b)c` / `SECOND)` reads as it always has.
+/// The destination run is the one `scan_inline_link_url` reads: parentheses
+/// balance and a backslash escapes `(`, `)` and `\\` (C2-I-067, C2-I-013).
 static bool probe_scan_inline_link_tail(Scanner *s, TSLexer *lexer, char bare, bool *closer, bool *boundary, BracketProbe *probe) {
   if (closer) *closer = false;
   if (boundary) *boundary = false;
   bool any_dest = false;
   bool escaped = false;
+  bool any_paren = false;
+  uint32_t depth = 0;
   while (!lexer->eof(lexer) && !at_line_end(lexer) &&
-         lexer->lookahead != ')' && !is_destination_space(lexer->lookahead)) {
+         !(lexer->lookahead == ')' && depth == 0) && !is_destination_space(lexer->lookahead)) {
     any_dest = true;
     bool candidate_closer = closer && lexer->lookahead == bare && !escaped;
     escaped = lexer->lookahead == '\\' && !escaped;
-    // `\)` is the one escape the destination token spells; a backslash before
-    // anything else is an ordinary destination character.
     if (lexer->lookahead == '\\') {
       advance(s, lexer);
-      if (lexer->lookahead != ')') {
+      if (lexer->lookahead != '(' && lexer->lookahead != ')' && lexer->lookahead != '\\') {
         continue;
       }
       escaped = false;
+    } else if (lexer->lookahead == '(') {
+      any_paren = true;
+      ++depth;
+    } else if (lexer->lookahead == ')') {
+      any_paren = true;
+      --depth;
     }
     advance(s, lexer);
     if (candidate_closer && !carve_is_alnum_ascii(lexer->lookahead)) *closer = true;
   }
-  // No `)` and no space from here to the line end: every later destination on
-  // this line fails the same way (see `link_tail_open_line`). Only noted while
-  // the host lexer is still on the line this scan started on.
-  if (at_line_end(lexer) && !s->host_crossed_line) s->link_tail_open_line = true;
+  if (depth != 0) return false;
+  // No parenthesis and no space from here to the line end: every later
+  // destination on this line fails the same way (see `link_tail_open_line`).
+  // Only noted while the host lexer is still on the line this scan started on.
+  if (at_line_end(lexer) && !any_paren && !s->host_crossed_line) s->link_tail_open_line = true;
   if (lexer->lookahead == ')') {
     return true;
   }
@@ -16021,9 +16069,13 @@ static bool mark_span_begin(Scanner *s, TSLexer *lexer,
     //
     // and if `STATE_BRACKET_CAN_START_INLINE_LINK` is true then we should
     // prune the branch and instead treat it as a link.
+    // Only the tail itself: not a `(` inside the bracket's text (`[(b)](u)`)
+    // or behind a pair that has no tail (`[[[](]]()`).
     if (inline_type == PARENS_SPAN &&
-        (s->state & STATE_BRACKET_STARTS_INLINE_LINK)) {
-      return false;
+        (s->state & STATE_BRACKET_STARTS_INLINE_LINK) &&
+        !(top && top->type == SQUARE_BRACKET_SPAN)) {
+      mark_end(s, lexer);
+      if (scan_inline_link_tail(s, lexer, 0, NULL, NULL)) return false;
     }
 
     // For spans `[text]{.class}` we use the same mechanism to solve
@@ -16114,6 +16166,8 @@ static bool mark_span_begin(Scanner *s, TSLexer *lexer,
       }
     } else if (inline_type == PARENS_SPAN) {
       s->state &= ~STATE_BRACKET_STARTS_INLINE_LINK;
+      mark_end(s, lexer);
+      if (!scan_inline_link_tail(s, lexer, 0, NULL, NULL)) return false;
     } else if (inline_type == CURLY_BRACKET_SPAN) {
       s->state &= ~STATE_BRACKET_STARTS_SPAN;
     }
@@ -17282,6 +17336,9 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
       }
       return false;  // unreachable: the marker scan proved the box
     }
+  }
+  if (valid_symbols[INLINE_LINK_URL] && !valid_symbols[ERROR] && scan_inline_link_url(s, lexer)) {
+    return true;
   }
   if (valid_symbols[CELL_MARKER_BEGIN] && !valid_symbols[ERROR]) {
     Block *marker_row = peek_block(s);
