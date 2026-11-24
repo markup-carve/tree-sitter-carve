@@ -667,6 +667,9 @@ typedef struct {
   bool marker_bare_dot;
   // Did a scanner decline a colon run this call? Transient, as above.
   bool colon_run_declined;
+  // Set by `comment_fence_line`: the blocks a `%` line not owned by the item
+  // around an opaque body closes, down to that item (C2-B-137).
+  uint8_t comment_line_closes;
   // Is close_paragraph reading a line the line block's container does not own?
   bool line_block_lazy;
   // Indentation before a quote's marks that columns are read without.
@@ -3778,6 +3781,8 @@ static bool line_leaves_container(Scanner *s, TSLexer *lexer, uint8_t indent);
 /// least the opener's width, at any indent, with all of the quote marks or
 /// none (C2-B-109, C2-B-110). Otherwise a line the block's container does not
 /// own ends the block with that container (C2-B-111).
+static bool line_misses_note(Scanner *s, uint32_t column);
+
 static CommentFenceLine comment_fence_line(Scanner *s, TSLexer *lexer,
                                            uint16_t width) {
   uint8_t saved_indent = s->indent;
@@ -3785,6 +3790,7 @@ static CommentFenceLine comment_fence_line(Scanner *s, TSLexer *lexer,
   uint16_t saved_state = s->state;
   uint32_t saved_col_base = s->col_base;
   CommentFenceLine line = COMMENT_LINE_BODY;
+  s->comment_line_closes = 0;
   uint8_t depth = count_blocks(s, BLOCK_QUOTE);
   // The caller may already stand past the line's leading whitespace.
   uint8_t start = (uint8_t)line_column(s, lexer);
@@ -3802,16 +3808,25 @@ static CommentFenceLine comment_fence_line(Scanner *s, TSLexer *lexer,
   if (owned && !blank) {
     s->block_quote_level = markers;
     // A div closer is body text here: the block is opaque (C2-B-112).
+    // A div in an item does not own a line the item does not own (C2-B-137).
     for (int i = (int)s->open_blocks->size - 1; i >= 0; --i) {
-      BlockType type = (*array_get(s->open_blocks, i))->type;
-      if (type == DIV || type == FIGURE_GROUP || type == BLOCK_QUOTE) break;
-      if (is_list(type) || type == FOOTNOTE) {
-        owned = !line_leaves_container(s, lexer, indent);
+      Block *b = *array_get(s->open_blocks, i);
+      if (b->type == BLOCK_QUOTE) break;
+      if (is_list(b->type)) {
+        s->indent = indent;
+        owned = quoted_line_reaches_list(s, lexer, b);
+        if (!owned && lexer->lookahead == '%')
+          s->comment_line_closes = (uint8_t)(s->open_blocks->size - (uint32_t)i);
+        break;
+      }
+      if (b->type == FOOTNOTE) {
+        owned = !line_misses_note(s, line_column(s, lexer));
         break;
       }
     }
   }
-  if (!blank && lexer->lookahead == '%' && (markers == 0 || markers == depth)) {
+  // The closer stands at any indent and after fewer quote marks (C2-B-109).
+  if (!blank && lexer->lookahead == '%' && markers <= depth) {
     uint16_t run = consume_percents(s, lexer);
     while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
       advance(s, lexer);
@@ -3852,8 +3867,8 @@ static bool parse_comment_fence(Scanner *s, TSLexer *lexer,
   bool closes = line == COMMENT_LINE_CLOSER;
   if (line == COMMENT_LINE_UNOWNED) {
     if (!valid_symbols[BLOCK_CLOSE]) return false;
-    remove_block(s);
-    lexer->result_symbol = BLOCK_CLOSE;
+    uint8_t count = s->comment_line_closes;
+    close_blocks(s, lexer, count > 1 ? count : 1);
     return true;
   }
 
