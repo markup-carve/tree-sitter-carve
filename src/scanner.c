@@ -4093,7 +4093,13 @@ static bool caption_line_ends_block(Scanner *s, BracketProbe *probe, uint8_t ind
   uint32_t content_position = probe->position;
   bool at_margin = at_block_opener_margin(s, content_column);
   bool content_blank = at_line_end(lexer) || lexer->eof(lexer);
-  bool comment_line = lexer->lookahead == '%';
+  // A comment-only line, not a line led by one `%`.
+  bool comment_line = false;
+  if (lexer->lookahead == '%') {
+    advance(s, lexer);
+    comment_line = lexer->lookahead == '%';
+    bracket_probe_rewind(probe, content_position);
+  }
   bool caret_indented = false;
   if (lexer->lookahead == '^') {
     uint32_t caption_margin = 0;
@@ -11554,8 +11560,13 @@ keep_reading:
   // A term in the quote is a label (C2-B-234).
   Block *term = peek_block(s);
   if (term && term->type == LIST_DEFINITION &&
-      (term->flags & BLOCK_FLAG_DEFINITION_TERM) && lexer->lookahead != '%') {
-    return label_line_falls_short(s, lexer) || label_line_interrupts(s, lexer);
+      (term->flags & BLOCK_FLAG_DEFINITION_TERM)) {
+    if (lexer->lookahead == '%') {
+      if (label_line_falls_short(s, lexer)) return true;
+      if (s->erasable_line) return false;
+    } else {
+      return label_line_falls_short(s, lexer) || label_line_interrupts(s, lexer);
+    }
   }
   // A dash or star line can be a thematic break, which only the break probe
   // reads; it reads a bullet too (PART 0 S3).
@@ -12573,22 +12584,31 @@ static bool paragraph_block_opener_ahead(Scanner *s, TSLexer *lexer, int markers
 /// its marker, read behind the open quotes' marks (the lexer stands there).
 /// A comment-only line is not seen, so it is left to the usual probes.
 static bool label_line_falls_short(Scanner *s, TSLexer *lexer) {
-  if (at_line_end(lexer) || lexer->eof(lexer) || lexer->lookahead == '%') {
-    return false;
-  }
+  if (at_line_end(lexer) || lexer->eof(lexer)) return false;
   Block *top = peek_block(s);
   if (!top) return false;
   uint32_t column = line_column(s, lexer);
+  bool shorts;
   if (top->type == HEADING) {
-    return count_blocks(s, BLOCK_QUOTE) > 0 && column <= top->content_col;
-  }
-  if (top->type != LIST_DEFINITION || !(top->flags & BLOCK_FLAG_DEFINITION_TERM)) {
+    shorts = count_blocks(s, BLOCK_QUOTE) > 0 && column <= top->content_col;
+  } else if (top->type == LIST_DEFINITION &&
+             (top->flags & BLOCK_FLAG_DEFINITION_TERM)) {
+    uint32_t past_marker = list_opened_in_quote(s, top) && top->content_col >= 3
+                               ? top->content_col - 2u
+                               : top->data;
+    shorts = column < past_marker;
+  } else {
     return false;
   }
-  uint32_t past_marker = list_opened_in_quote(s, top) && top->content_col >= 3
-                             ? top->content_col - 2u
-                             : top->data;
-  return column < past_marker;
+  if (!shorts || lexer->lookahead != '%') return shorts;
+  // Decided here, as the run is consumed: a line led by one `%` is text and
+  // ends the label, a comment-only line is not seen, and a region marker or
+  // a comment fence ends it.
+  uint16_t percents = consume_percents(s, lexer);
+  if (percents != 2) return true;
+  if (!comment_line_is_erased(s, lexer)) return true;
+  s->erasable_line = true;
+  return false;
 }
 
 static bool close_paragraph_after_quote(Scanner *s, TSLexer *lexer,
@@ -12703,7 +12723,9 @@ static bool close_paragraph_after_quote(Scanner *s, TSLexer *lexer,
     return false;
   }
 
+  bool percent_lead = lexer->lookahead == '%';
   if (label_line_falls_short(s, lexer)) return true;
+  if (percent_lead && s->erasable_line) return false;
   // Past its marker a term line is text unless it interrupts (C2-B-234): a
   // list marker, a description or a term line there is text, as the term is
   // no item. A comment-only line is left to the probes below.
@@ -13136,7 +13158,13 @@ static bool definition_line_continues(Scanner *s, TSLexer *lexer,
   }
   uint8_t indent = consume_whitespace(s, lexer);
   if (indent == 0 || at_line_end(lexer) || lexer->eof(lexer)) return false;
-  if (lexer->lookahead == '%') return false;
+  // A comment-only line, a region marker or a comment fence ends it; a line
+  // led by one `%` is text.
+  if (lexer->lookahead == '%') {
+    if (!abbreviation || consume_percents(s, lexer) >= 2) return false;
+    lexer->result_symbol = ABBREVIATION_CONTINUATION;
+    return true;
+  }
   if (abbreviation) {
     if (label_line_interrupts(s, lexer)) return false;
     lexer->result_symbol = ABBREVIATION_CONTINUATION;

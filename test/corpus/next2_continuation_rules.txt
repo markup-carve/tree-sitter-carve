@@ -639,3 +639,33 @@ C2-B-234: a heading in a quote ends at a line at its marker column
         content: (content))
       (block_quote_marker)
       (paragraph))))
+
+================================================================================
+C2-B-084: a line led by one percent sign continues the expansion
+================================================================================
+
+*[A]: x
+  %word
+
+--------------------------------------------------------------------------------
+
+(document
+  (abbreviation_definition
+    (abbreviation_marker)
+    expansion: (abbreviation_expansion)))
+
+================================================================================
+carve#6508: an unindented line led by one percent sign ends the term
+================================================================================
+
+:: t
+%word
+
+--------------------------------------------------------------------------------
+
+(document
+  (definition_list
+    (list_item
+      marker: (list_marker_definition)
+      term: (term)))
+  (paragraph))
