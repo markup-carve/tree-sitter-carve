@@ -1743,6 +1743,8 @@ static bool has_surplus_indent(Scanner *s) {
   return s->indent > 0;
 }
 
+static uint8_t count_blocks(Scanner *s, BlockType type);
+
 static bool has_extra_indent(Scanner *s) {
   // An attached opener uses the selected column instead of the item's
   // content column.
@@ -1752,6 +1754,15 @@ static bool has_extra_indent(Scanner *s) {
   Block *b = indenting_container(s);
   if (b && b->type == FOOTNOTE && (b->flags & BLOCK_FLAG_FOOTNOTE_ATTACHED)) {
     return s->indent > 0;
+  }
+  // On a line with every quote's marks, a quote opened inside the container
+  // sets the margin, and the indent counts from its marks (C2-B-003).
+  if (b && s->block_quote_level > 0 && s->block_quote_level == count_blocks(s, BLOCK_QUOTE)) {
+    for (int i = (int)s->open_blocks->size - 1; i >= 0; --i) {
+      Block *q = *array_get(s->open_blocks, i);
+      if (q == b) break;
+      if (q->type == BLOCK_QUOTE) return false;
+    }
   }
   if (b) {
     // Inside such a container, any indent at or above its content threshold
@@ -18587,7 +18598,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     // new line rather than on how the previous line's last token happened
     // to be shaped.
     s->block_quote_level = 0;
-  } else if (lexer->lookahead == ' ' && s->block_quote_level > 0 &&
+  } else if ((lexer->lookahead == ' ' || lexer->lookahead == '\t') && s->block_quote_level > 0 &&
              s->block_quote_level == count_blocks(s, BLOCK_QUOTE)) {
     // Indentation right after the quote's markers, before a list marker, is
     // the line's indent, as it is outside a quote: `>  - a` opens a list.
