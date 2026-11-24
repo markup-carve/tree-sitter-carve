@@ -1,3 +1,5 @@
+#include <stdio.h>
+#include <execinfo.h>
 #include <string.h>
 
 #include "tree_sitter/alloc.h"
@@ -664,6 +666,10 @@ typedef struct {
   bool marker_value_one;
   // Did the last marker scan read a bare dot? Transient, as above.
   bool marker_bare_dot;
+  // Did a scanner decline a colon run this call? Transient, as above.
+  bool quote_marker_refused;
+  // Is close_paragraph reading a line the line block's container does not own?
+  bool line_block_lazy;
   // Are all cells after an unclosed tick run header cells? Transient.
   bool open_run_rest_header;
 
@@ -1151,8 +1157,9 @@ static void mark_end(Scanner *s, TSLexer *lexer) {
 
 static void resolve_deferred_column(Scanner *s, TSLexer *host);
 
-static void advance(Scanner *s, TSLexer *lexer) {
+__attribute__((noinline)) static void advance(Scanner *s, TSLexer *lexer) {
   int32_t current = lexer->lookahead;
+  if (current == ':' && getenv("TSDBG")) { void *bt[6]; int n = backtrace(bt, 6); backtrace_symbols_fd(bt, n, 2); fprintf(stderr, "----\n"); }
   if (lexer->advance != bracket_probe_advance && !lexer->eof(lexer)) {
     if (current == '\n' || current == '\r') resolve_deferred_column(s, lexer);
     ++s->host_advances;
@@ -1671,6 +1678,7 @@ static bool inside_line_block(Scanner *s) {
 
 /// A line block's body is lines of inline content: no marker or break opens.
 static bool line_block_body(Scanner *s) {
+  if (s->line_block_lazy) return false;
   Block *top = peek_block(s);
   return top && (top->type == DIV || top->type == FIGURE_GROUP) &&
          (top->flags & BLOCK_FLAG_LINE_BLOCK);
@@ -5084,7 +5092,7 @@ static bool parse_block_quote(Scanner *s, TSLexer *lexer,
   // A valid marker is a '> ' or '>\n'.
   bool marker_at_owner = quote_marker_at_column(
       s, s->block_quote_level + 1, marker_start_col, inside_paragraph);
-  bool has_marker = marker_at_owner &&
+  bool has_marker = marker_at_owner && !s->quote_marker_refused &&
       scan_block_quote_marker(s, lexer, &ending_newline);
   Block *quote_list_owner = find_list(s);
   Block *holding_quote = find_block(s, BLOCK_QUOTE);
@@ -12803,6 +12811,61 @@ static bool quote_opens_in_outer_item(Scanner *s, uint8_t markers,
   return false;
 }
 
+// A line the line block's container does not own is asked a paragraph's lazy
+// rules: only an interrupter ends the block there (C2-B-012, C2-B-025).
+static bool line_block_line_unowned(Scanner *s, TSLexer *lexer) {
+  if (s->open_blocks->size < 2) return false;
+  Block *parent = *array_get(s->open_blocks, s->open_blocks->size - 2);
+  if (parent->type == BLOCK_QUOTE) return lexer->lookahead != '>';
+  uint32_t column = line_column(s, lexer);
+  // A list in a quote leaves its unowned lines to the quote's closing.
+  if (is_list(parent->type)) {
+    return parent->content_col != 0 && column < parent->content_col &&
+           count_blocks(s, BLOCK_QUOTE) == 0;
+  }
+  return false;
+}
+
+// C2-B-024: a lazy heading, quote, attribute line or definition ends a stanza
+// although none of them interrupts a paragraph.
+static bool line_block_stanza_ends(Scanner *s, TSLexer *lexer) {
+  int32_t lead = lexer->lookahead;
+  if (lead == '>') return true;
+  if (lead == '#') {
+    while (lexer->lookahead == '#') advance(s, lexer);
+    if (lexer->lookahead != ' ') return false;
+    while (lexer->lookahead == ' ') advance(s, lexer);
+    return !at_line_end(lexer) && !lexer->eof(lexer);
+  }
+  if (lead == '{') {
+    s->attribute_block_line = true;
+    bool attribute = true;
+    while (attribute && lexer->lookahead == '{') {
+      attribute = scan_valid_inline_attribute(s, lexer);
+    }
+    s->attribute_block_line = false;
+    while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+      advance(s, lexer);
+    }
+    return attribute && (at_line_end(lexer) || lexer->eof(lexer));
+  }
+  if (lead == '[') {
+    advance(s, lexer);
+    if (lexer->lookahead == '^') {
+      advance(s, lexer);
+      return scan_footnote_after_caret(s, lexer);
+    }
+    return scan_ref_def(s, lexer);
+  }
+  if (lead == '*') {
+    advance(s, lexer);
+    return lexer->lookahead == '[' && abbreviation_definition_follows(s, lexer);
+  }
+  return false;
+}
+
+static bool close_paragraph_lazy_line(Scanner *s, TSLexer *lexer);
+
 static bool close_paragraph(Scanner *s, TSLexer *lexer) {
   // Workaround for not including the following blankline when closing a
   // paragraph inside a block.
@@ -12823,10 +12886,34 @@ static bool close_paragraph(Scanner *s, TSLexer *lexer) {
         advance(s, lexer);
       }
     }
+    if (lexer->lookahead != ':' && line_block_line_unowned(s, lexer)) {
+      int32_t lead = lexer->lookahead;
+      if (lead == '>' || lead == '#') return line_block_stanza_ends(s, lexer);
+      if (lead == '{' || lead == '[' || lead == '*') {
+        BracketProbe probe = bracket_probe_new(s, lexer);
+        bool ends = line_block_stanza_ends(s, &probe.lexer);
+        bracket_probe_rewind(&probe, 0);
+        if (!ends) {
+          s->line_block_lazy = true;
+          ends = close_paragraph_lazy_line(s, &probe.lexer);
+          s->line_block_lazy = false;
+        }
+        array_delete(&probe.characters);
+        return ends;
+      }
+      s->line_block_lazy = true;
+      bool ends = close_paragraph_lazy_line(s, lexer);
+      s->line_block_lazy = false;
+      return ends;
+    }
     if (lexer->lookahead != ':') {
       return false;
     }
   }
+  return close_paragraph_lazy_line(s, lexer);
+}
+
+static bool close_paragraph_lazy_line(Scanner *s, TSLexer *lexer) {
 
   // Set by `end_paragraph_in_block_quote` to the `>` markers the next line
   // carries; -1 while no quote is open.
@@ -17153,6 +17240,7 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
   s->deferred_column_pending = false;
   s->host_jumped = false;
   s->marker_probe = false;
+  s->quote_marker_refused = false;
   if (s->task_box_next) {
     s->task_box_next = 0;
     // A box after an ordered marker's required space, before content
@@ -18743,9 +18831,13 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       parse_close_paragraph(s, lexer)) {
     return true;
   }
+  uint32_t before_colon = s->advances;
   if (lexer->lookahead == ':' && parse_colon(s, lexer, valid_symbols)) {
     return true;
   }
+  // A `>` behind a declined colon run is that line's text, not a quote marker
+  // (`> a` / `::: >`, C2-B-014): the quote closes before the fence opens.
+  s->quote_marker_refused = s->advances != before_colon;
 
   // A quoted closer's line keeps its `>` markers for the fence: a spacer here
   // would end the fence's item first and leave the end marker nowhere to go.
