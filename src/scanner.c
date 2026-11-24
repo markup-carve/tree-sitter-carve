@@ -4155,6 +4155,7 @@ static bool caption_line_ends_block(Scanner *s, BracketProbe *probe, uint8_t ind
   }
   bool extra_quote_indent = seen > 0 && !item_inside_quote &&
       (lexer->lookahead == ' ' || lexer->lookahead == '\t');
+  uint32_t quote_base = seen > 0 ? line_column(s, lexer) : 0;
   consume_whitespace(s, lexer);
   uint32_t content_column = line_column(s, lexer);
   uint32_t content_position = probe->position;
@@ -4205,8 +4206,13 @@ static bool caption_line_ends_block(Scanner *s, BracketProbe *probe, uint8_t ind
   uint8_t saved_level = s->block_quote_level;
   // C2-B-234: a caption takes only lines of its containers indented past its
   // marker, which stands at the margin of those containers.
+  // A table caption's caret may stand past that margin (`caption->data` is
+  // its indentation plus two).
+  Block *caption = find_block(s, TABLE_CAPTION);
+  bool short_of_caret = caption && caption->data >= 2 &&
+      content_column - quote_base <= (uint32_t)(caption->data - 2);
   bool falls_short = !content_blank && !comment_line &&
-      (seen < quotes || content_column <= caption_marker_column(s));
+      (seen < quotes || content_column <= caption_marker_column(s) || short_of_caret);
   // Past the marker only an interrupter ends it.
   bool past_marker = !content_blank && !comment_line && !falls_short;
   if (past_marker) bracket_probe_rewind(probe, content_position);
