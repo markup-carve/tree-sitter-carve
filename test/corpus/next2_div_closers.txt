@@ -1,0 +1,109 @@
+================================================================================
+C2-B-109: a longer bare colon line closes a div
+================================================================================
+
+:::
+a
+::::
+
+--------------------------------------------------------------------------------
+
+(document
+  (div
+    (div_marker_begin)
+    content: (content
+      (paragraph))
+    (div_marker_end)))
+
+================================================================================
+C2-B-109: a longer closer with trailing spaces closes a named div
+================================================================================
+
+:::: x
+:::::  
+
+--------------------------------------------------------------------------------
+
+(document
+  (div
+    (div_marker_begin)
+    type: (admonition_type)
+    (div_marker_end)))
+
+================================================================================
+C2-B-109: a closer closes the innermost div it is long enough for
+================================================================================
+
+:::: o
+::: i
+x
+::::
+y
+::::
+
+--------------------------------------------------------------------------------
+
+(document
+  (div
+    (div_marker_begin)
+    type: (admonition_type)
+    content: (content
+      (div
+        (div_marker_begin)
+        type: (admonition_type)
+        content: (content
+          (paragraph))
+        (div_marker_end))
+      (paragraph))
+    (div_marker_end)))
+
+================================================================================
+C2-B-109: a closer shorter than the inner opener closes the outer div
+================================================================================
+
+::: o
+::::: i
+x
+::::
+z
+:::::
+
+--------------------------------------------------------------------------------
+
+(document
+  (div
+    (div_marker_begin)
+    type: (admonition_type)
+    content: (content
+      (div
+        (div_marker_begin)
+        type: (admonition_type)
+        content: (content
+          (paragraph))))
+    (div_marker_end))
+  (paragraph)
+  (div
+    (div_marker_begin)))
+
+================================================================================
+C2-B-109: a longer closer closes a div in a list item
+================================================================================
+
+- :::
+  a
+  ::::
+b
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (div
+          (div_marker_begin)
+          content: (content
+            (paragraph))
+          (div_marker_end)))))
+  (paragraph))
