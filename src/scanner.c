@@ -6476,6 +6476,33 @@ static bool line_misses_note(Scanner *s, uint32_t column) {
   return column < margin;
 }
 
+/// Does a marker at `column`, left of a description's mark, reach an item
+/// list open outside `body`? At or left of that list's marker it continues
+/// the list (C2-B-015); anywhere else it is a lazy line.
+static bool item_list_outside(Scanner *s, Block *body, uint32_t column) {
+  for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (b == body) return false;
+    if (is_list(b->type) && b->type != LIST_DEFINITION && column < b->data) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/// Is a div open inside `list`? Its items' markers then do not count for a
+/// nested list inside the div (C2-B-235).
+static bool div_inside_list(Scanner *s, Block *list) {
+  bool past = false;
+  for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (b == list) past = true;
+    else if (past && (b->type == DIV || b->type == FIGURE_GROUP)) return true;
+  }
+  return false;
+}
+
+static uint32_t paragraph_end_line_column(Scanner *s, TSLexer *lexer);
 static bool scan_paragraph_closing_marker(Scanner *s, TSLexer *lexer) {
   // A COLON-led line is classified in one pass, because every candidate starts
   // with the same run of colons and the lexer cannot rewind: `:::`+ is a
@@ -6599,6 +6626,9 @@ static bool scan_paragraph_closing_marker(Scanner *s, TSLexer *lexer) {
       if (lexer->lookahead != ' ') {
         return false;
       }
+      // C2-B-016: only at an open description list's column.
+      Block *terms = find_block(s, LIST_DEFINITION);
+      if (!terms || marker_column + 1u != terms->data) return false;
       advance(s, lexer);
       // In a description body an empty term marker is text (corpus 483).
       bool in_term = in_definition_list &&
@@ -6642,9 +6672,19 @@ static bool scan_paragraph_closing_marker(Scanner *s, TSLexer *lexer) {
   // A note or description body opens a child list at its content column
   // (PART 9 section 10 I2); below it the marker reads in the body's owner.
   Block *body = peek_block(s);
-  if (body && (body->type == FOOTNOTE ||
-               (body->type == LIST_DEFINITION &&
-                !(body->flags & BLOCK_FLAG_DEFINITION_TERM)))) {
+  if (body && body->type == LIST_DEFINITION &&
+      !(body->flags & BLOCK_FLAG_DEFINITION_TERM)) {
+    // C2-B-015: only past the description's mark, and only a bullet, a bare
+    // dot or a value of 1; otherwise the line is lazy.
+    uint32_t column = paragraph_end_line_column(s, lexer);
+    if (column < body->data) {
+      if (!item_list_outside(s, body, column)) return false;
+      return scan_list_marker(s, lexer) && marker_line_has_content(s, lexer);
+    }
+    return scan_list_marker(s, lexer) && s->marker_value_one &&
+           marker_line_has_content(s, lexer);
+  }
+  if (body && body->type == FOOTNOTE) {
     return scan_list_marker(s, lexer) && marker_line_has_content(s, lexer);
   }
   Block *list = find_list(s);
@@ -6680,6 +6720,9 @@ static bool scan_paragraph_closing_marker(Scanner *s, TSLexer *lexer) {
                (list_opened_in_quote(s, list)
                     ? line_column(s, lexer) >= quoted_list_margin(s, list)
                     : line_column(s, lexer) + 1u > list->data);
+  if (nests && div_inside_list(s, list)) {
+    return false;
+  }
   if (!scan_list_marker(s, lexer)) {
     return false;
   }
@@ -11482,6 +11525,12 @@ static bool end_paragraph_in_block_quote(Scanner *s, TSLexer *lexer,
 keep_reading:
 
   // Markers with nothing after them at the end of input are a blank quote line.
+  // Marks past the open quotes with nothing behind them are paragraph text, as
+  // a quote is no interrupter (C2-B-024).
+  if ((ending_newline || lexer->eof(lexer)) &&
+      marker_count > count_blocks(s, BLOCK_QUOTE)) {
+    return false;
+  }
   if (ending_newline || lexer->eof(lexer)) {
     return true;
   }
@@ -11673,7 +11722,9 @@ static bool scan_caption_at_paragraph_end(Scanner *s, TSLexer *lexer,
   if (lexer->lookahead != ' ') {
     return false;
   }
-  return true;
+  // A caret with no content behind it is no caption line (C2-B-017).
+  advance(s, lexer);
+  return marker_line_has_content(s, lexer);
 }
 
 // A comment opener at line start, `%%` or the fenced `%%%`. Matching here
@@ -12564,7 +12615,8 @@ static bool scan_row_or_break_at_paragraph_end(Scanner *s, TSLexer *lexer) {
   }
   if (!spaced_run) consume_whitespace(s, lexer);
   bool content = spaced_run || (!at_line_end(lexer) && !lexer->eof(lexer));
-  if (at_margin && count >= 3 && !attributed && !content) {
+  // Only a run of stars is a thematic break (C2-B-159).
+  if (c == '*' && at_margin && count >= 3 && !attributed && !content) {
     return true;
   }
   if (c == '_' || count != 1 || !separated || !content) {
@@ -12573,9 +12625,11 @@ static bool scan_row_or_break_at_paragraph_end(Scanner *s, TSLexer *lexer) {
   // A note or description body opens a child list at its content column
   // (PART 9 section 10 I2); below it the marker reads in the body's owner.
   Block *body = peek_block(s);
-  if (body && (body->type == FOOTNOTE ||
-               (body->type == LIST_DEFINITION &&
-                !(body->flags & BLOCK_FLAG_DEFINITION_TERM)))) {
+  if (body && body->type == LIST_DEFINITION &&
+      !(body->flags & BLOCK_FLAG_DEFINITION_TERM)) {
+    return column >= body->data || item_list_outside(s, body, column);
+  }
+  if (body && body->type == FOOTNOTE) {
     return true;
   }
   if (marker_folds_into_item(s, column) ||
@@ -12585,6 +12639,10 @@ static bool scan_row_or_break_at_paragraph_end(Scanner *s, TSLexer *lexer) {
   Block *list = find_list(s);
   if (!list) {
     return line_misses_note(s, column);
+  }
+  if (list->type != LIST_DEFINITION && column + 1u > list->data &&
+      div_inside_list(s, list)) {
+    return false;
   }
   if (list == peek_block(s) && list->type == LIST_DEFINITION &&
       !(list->flags & BLOCK_FLAG_DEFINITION_TERM)) {
