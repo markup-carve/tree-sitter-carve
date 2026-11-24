@@ -1868,7 +1868,8 @@ module.exports = grammar({
           seq(optional($._whitespace1), $._link_line_end),
         ),
       ),
-    link_destination: (_) => /\S+/,
+    // C2-I-067: a no-break space is part of the destination.
+    link_destination: (_) => /[^ \t\r\n]+/,
 
     // A backslash escapes the next character inside a title, so
     // `"a\"b\"c"` is one title (corpus 34-reference-link-7).
@@ -3065,11 +3066,9 @@ module.exports = grammar({
     _inline_link_url: (_) =>
       // Can escape `)`, but shouldn't capture it.
       //
-      // IMMEDIATE and whitespace-free. `dest = destChar+` in
-      // resources/carve-core.ohm and `destChar` admits no whitespace, so a
-      // destination neither starts with one (`[x]( "t")` is a paragraph, not a
-      // link with the title `t`, carve#2070) nor carries one.
-      token.immediate(/([^)\s]|\\\))+/),
+      // IMMEDIATE and free of space and tab, so `[x]( "t")` is a paragraph
+      // (carve#2070). A no-break space is a destination character (C2-I-067).
+      token.immediate(/([^) \t\r\n]|\\\))+/),
     // `destTitle = titleSp (titleQuoted | titleSquoted)`, `titleSp = " "`: exactly one
     // space, and the title is one token so no extra can be skipped inside it.
     _link_title_space: (_) => token.immediate(" "),

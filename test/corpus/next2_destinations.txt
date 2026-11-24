@@ -1,0 +1,56 @@
+============================================================
+C2-I-067: a no-break space starts a link definition destination
+============================================================
+
+[a]:  /u
+
+[a][]
+
+------------------------------------------------------------
+
+(document
+  (link_reference_definition
+    label: (link_label)
+    destination: (link_destination))
+  (paragraph
+    (collapsed_reference_link
+      text: (link_text))))
+
+============================================================
+C2-I-067: a no-break space inside a link definition destination
+============================================================
+
+[a]: /u x
+
+------------------------------------------------------------
+
+(document
+  (link_reference_definition
+    label: (link_label)
+    destination: (link_destination)))
+
+============================================================
+C2-I-067: a no-break space inside an inline link destination
+============================================================
+
+[t](u v)
+
+------------------------------------------------------------
+
+(document
+  (paragraph
+    (inline_link
+      text: (link_text)
+      destination: (inline_link_destination))))
+
+============================================================
+C2-I-067: a tab after a link definition colon is still text
+============================================================
+
+[a]: 	/u
+
+------------------------------------------------------------
+
+(document
+  (paragraph))
+

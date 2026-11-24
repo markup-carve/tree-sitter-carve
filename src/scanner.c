@@ -7433,15 +7433,12 @@ static bool scan_verbatim_run_in_cell(Scanner *s, TSLexer *lexer,
 /// the slot is gone.
 static bool ref_def_tail_is_modeled(Scanner *s, TSLexer *lexer, bool tabbed) {
   // The separator run after the colon has already been consumed.
-  // The separator is spaces only, and the destination does not start with
-  // Unicode whitespace (spec 21879d7): `[a]: <TAB>/u` is paragraph text.
-  int32_t lead = lexer->lookahead;
-  if (tabbed || lead == 0xA0 || lead == 0x1680 || (lead >= 0x2000 && lead <= 0x200A) ||
-      lead == 0x2028 || lead == 0x2029 || lead == 0x202F || lead == 0x205F ||
-      lead == 0x3000 || lead == 0xFEFF) {
+  // The separator is spaces only: `[a]: <TAB>/u` is paragraph text. A
+  // no-break space starts the destination (C2-I-067).
+  if (tabbed) {
     return false;
   }
-  // `link_destination = /\S+/`, so a glued `{...}` is part of it: `[a]: /u{.c}`
+  // `link_destination` runs to a space or tab, so a glued `{...}` is part of it: `[a]: /u{.c}`
   // gives the href `/u{.c}` and carries no attributes.
   while (!at_line_end(lexer) && !lexer->eof(lexer) && lexer->lookahead != ' ' &&
          lexer->lookahead != '\t') {
@@ -15426,16 +15423,11 @@ static bool bare_closer_ahead(Scanner *s, TSLexer *lexer, char bare, bool *combi
 // Updates lookahead states that are used to block the acceptance of
 // the fallback characters `(` and `{` if there's a valid inline link
 // or span to be chosen.
-// The Unicode White_Space characters outside ASCII, `uSpace` in
-// resources/carve-core.ohm. `destChar` excludes them, and so does the `\s` in
-// the destination token, whose class the tree-sitter regex engine reads as the
-// same property. The lookahead below has to stop on exactly what that token
-// stops on, or it marks a link the grammar then cannot build.
+// The characters that end `_inline_link_url`: a space or a tab (C2-I-067).
+// The lookahead below has to stop on exactly what that token stops on, or it
+// marks a link the grammar then cannot build.
 static bool is_destination_space(int32_t c) {
-  return c == ' ' || c == '\t' || c == '\v' || c == '\f' || c == 0x85 ||
-         c == 0xA0 || c == 0x1680 || (c >= 0x2000 && c <= 0x200A) ||
-         c == 0x2028 || c == 0x2029 || c == 0x202F || c == 0x205F ||
-         c == 0x3000;
+  return c == ' ' || c == '\t';
 }
 
 /// Does a well-formed inline link TAIL start at the character after this `(`,

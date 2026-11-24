@@ -6726,7 +6726,7 @@
     },
     "link_destination": {
       "type": "PATTERN",
-      "value": "\\S+"
+      "value": "[^ \\t\\r\\n]+"
     },
     "link_title": {
       "type": "CHOICE",
@@ -11097,7 +11097,7 @@
       "type": "IMMEDIATE_TOKEN",
       "content": {
         "type": "PATTERN",
-        "value": "([^)\\s]|\\\\\\))+"
+        "value": "([^) \\t\\r\\n]|\\\\\\))+"
       }
     },
     "_link_title_space": {
