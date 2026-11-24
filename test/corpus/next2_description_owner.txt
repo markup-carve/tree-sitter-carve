@@ -1,0 +1,78 @@
+============================================================
+C2-B-025: a list marker past a description colon opens in the description
+============================================================
+
+:: t
+: d
+ - x
+
+------------------------------------------------------------
+
+(document
+  (definition_list
+    (list_item
+      marker: (list_marker_definition)
+      term: (term))
+    (list_item
+      marker: (list_marker_description)
+      definition: (definition)
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (paragraph)))))))
+
+============================================================
+C2-B-025: a list past the colon of a description in a div in an item
+============================================================
+
+- ::::
+  :: t
+  : x
+   - y
+
+------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (div
+          (div_marker_begin)
+          content: (content
+            (definition_list
+              (list_item
+                marker: (list_marker_definition)
+                term: (term))
+              (list_item
+                marker: (list_marker_description)
+                definition: (definition)
+                (list
+                  (list_item
+                    marker: (list_marker_dash)
+                    content: (list_item_content
+                      (paragraph))))))))))))
+
+============================================================
+C2-B-025: a description line short of the body is a sibling
+============================================================
+
+:: t
+:   d
+  : e
+
+------------------------------------------------------------
+
+(document
+  (definition_list
+    (list_item
+      marker: (list_marker_definition)
+      term: (term))
+    (list_item
+      marker: (list_marker_description)
+      definition: (definition))
+    (list_item
+      marker: (list_marker_description)
+      definition: (definition))))
+

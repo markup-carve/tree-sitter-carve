@@ -2115,8 +2115,10 @@ static bool parse_indented_content_spacer(Scanner *s, TSLexer *lexer,
 // An item owns a line indented past its marker (C2-B-025), so the margin is
 // the marker column plus one, not the content column.
 static uint8_t list_item_margin(Scanner *s, Block *list) {
-  // A term owns no body, so a definition list keeps its content column.
+  // A term owns no body, so a definition list keeps its content column; a
+  // description owns the lines past its marker (C2-B-025).
   if (list->type == LIST_DEFINITION && list->content_col != 0 &&
+      (list->flags & BLOCK_FLAG_DEFINITION_TERM) &&
       count_blocks(s, BLOCK_QUOTE) == 0) {
     return list->content_col;
   }
@@ -2184,6 +2186,10 @@ static bool quoted_line_reaches_list(Scanner *s, TSLexer *lexer, Block *list) {
         !(s->state & STATE_AFTER_BLANK_LINE) &&
         line_column(s, lexer) - s->quote_lead_shift >= margin;
   }
+  // A term or description marker short of the body is a sibling, not body.
+  if (list->type == LIST_DEFINITION && list->content_col != 0 && lexer->lookahead == ':' &&
+      count_blocks(s, BLOCK_QUOTE) == 0)
+    return s->indent >= list->content_col;
   return s->indent >= list_item_margin(s, list);
 }
 
@@ -7935,7 +7941,11 @@ static bool parse_list_item_end(Scanner *s, TSLexer *lexer,
   // decide whether its later marker is a sibling item.
   if ((lexer->lookahead != '>' || stray_marker) && quoted_list) {
     if (quoted_line_reaches_list(s, lexer, list)) return false;
-  } else if (!quoted_list && s->indent >= list_item_margin(s, list)) {
+  } else if (!quoted_list &&
+             s->indent >= (list->type == LIST_DEFINITION && lexer->lookahead == ':' &&
+                                   list->content_col != 0
+                               ? list->content_col
+                               : list_item_margin(s, list))) {
     return false;
   }
   if (refused_plus) {
