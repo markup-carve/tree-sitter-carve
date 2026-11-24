@@ -2111,9 +2111,14 @@ static bool quoted_line_reaches_list(Scanner *s, TSLexer *lexer, Block *list) {
     // An unmarked blank line has ended the quote.
     // A blank remainder has lost its marker count; it ends nothing here.
     bool blank = at_line_end(lexer) || lexer->eof(lexer);
+    // A term owns no body, so its list keeps its content column (C2-B-234).
+    uint32_t margin = list->type == LIST_DEFINITION &&
+                              (list->flags & BLOCK_FLAG_DEFINITION_TERM)
+                          ? list->content_col
+                          : quoted_list_margin(s, list);
     return (blank || s->block_quote_level >= quotes_below(s, list)) &&
         !(s->state & STATE_AFTER_BLANK_LINE) &&
-        line_column(s, lexer) >= quoted_list_margin(s, list);
+        line_column(s, lexer) >= margin;
   }
   return s->indent >= list_item_margin(s, list);
 }
@@ -3979,6 +3984,56 @@ static bool in_caption(Scanner *s) {
   return find_block(s, TABLE_CAPTION) || (s->state & STATE_SINGLE_LINE_CAPTION);
 }
 
+static bool scan_table_row(Scanner *s, TSLexer *lexer, TokenType *row_type,
+                           bool *continues);
+static bool label_line_falls_short(Scanner *s, TSLexer *lexer);
+static bool scan_list_marker(Scanner *s, TSLexer *lexer);
+/// C2-B-234: a line past a label's marker that still ends the label, as it
+/// ends a paragraph: a code, div or comment fence, a table row with its
+/// closing pipe, or a thematic break. Read from the line's first character.
+static bool label_line_interrupts(Scanner *s, TSLexer *lexer) {
+  // Inside an item, a list marker indented past the item's marker does too.
+  // A term's own description list is no such item.
+  Block *item = NULL;
+  for (int i = s->open_blocks->size - 1; i >= 0; --i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (is_list(b->type)) {
+      if (b->type != LIST_DEFINITION) item = b;
+      break;
+    }
+  }
+  bool past_item = item && line_column(s, lexer) >= item->data;
+  switch (lexer->lookahead) {
+  case '`':
+    return consume_fence_run(s, lexer, '`') >= 3 &&
+           code_fence_info_is_modeled(s, lexer);
+  case ':':
+    return consume_fence_run(s, lexer, ':') >= 3;
+  case '%':
+    return consume_percents(s, lexer) >= 3;
+  case '*': {
+    uint8_t stars = consume_chars(s, lexer, '*');
+    if (stars == 1 && lexer->lookahead == ' ' && past_item) {
+      return marker_line_has_content(s, lexer);
+    }
+    consume_whitespace(s, lexer);
+    return stars >= 3 && (at_line_end(lexer) || lexer->eof(lexer));
+  }
+  case '|': {
+    advance(s, lexer);
+    TokenType row_type;
+    bool continues = false;
+    uint16_t state = s->state;
+    bool row = scan_table_row(s, lexer, &row_type, &continues);
+    s->state = state;
+    return row;
+  }
+  default:
+    return past_item && scan_list_marker(s, lexer) &&
+           marker_line_has_content(s, lexer);
+  }
+}
+
 /// The column of a caption marker: the content column of the innermost
 /// container that sets one, a footnote's measured behind its quote.
 static uint32_t caption_marker_column(Scanner *s) {
@@ -4079,8 +4134,12 @@ static bool caption_line_ends_block(Scanner *s, BracketProbe *probe, uint8_t ind
   // marker, which stands at the margin of those containers.
   bool falls_short = !content_blank && !comment_line &&
       (seen < quotes || content_column <= caption_marker_column(s));
-  bool ends = content_blank || falls_short ||
-      (at_margin && !extra_quote_indent && !caret_indented && deeper_quote);
+  // Past the marker only an interrupter ends it.
+  bool past_marker = !content_blank && !comment_line && !falls_short;
+  if (past_marker) bracket_probe_rewind(probe, content_position);
+  bool ends = past_marker ? label_line_interrupts(s, lexer)
+      : content_blank || falls_short ||
+        (at_margin && !extra_quote_indent && !caret_indented && deeper_quote);
   Block *note = find_block(s, FOOTNOTE);
   uint32_t note_margin = note ? note->data : 0;
   bool below_note = false;
@@ -4092,13 +4151,14 @@ static bool caption_line_ends_block(Scanner *s, BracketProbe *probe, uint8_t ind
       break;
     }
   }
-  bool note_outdent = note && content_column < note_margin;
-  if (!ends && seen == 0 && lexer->lookahead == '+' &&
+  bool note_outdent = !past_marker && note && content_column < note_margin;
+  if (!ends && !past_marker && seen == 0 && lexer->lookahead == '+' &&
       find_list(s) != NULL) {
     ends = scan_continuation_marker_at_paragraph_end(s, lexer, 0);
   }
-  if (!ends && ((at_margin && !extra_quote_indent && !caret_indented) ||
-                comment_line || note_outdent)) {
+  if (!ends && !past_marker &&
+      ((at_margin && !extra_quote_indent && !caret_indented) ||
+       comment_line || note_outdent)) {
     if (seen > 0 && !note_outdent) {
       bracket_probe_rewind(probe, content_position);
       s->indent = indent;
@@ -10501,13 +10561,8 @@ static bool parse_table_caption_end(Scanner *s, TSLexer *lexer) {
     return false;
   }
 
-  // End is only checked at the beginning of a line, and should stop if we're
-  // not indented enough. A blank line ends it as it ends a paragraph
-  // (C2-B-148).
-  if (s->indent >= caption->data && !at_line_end(lexer) && !lexer->eof(lexer)) {
-    return false;
-  }
-
+  // The line end before this token already ended the caption's text: a line
+  // past the marker that continued it was read as its line (C2-B-234).
   remove_block(s);
   // The table holds its caption, so a caret line below is text (C2-B-234).
   s->caption_gap = CAPTION_HOST_NONE;
@@ -11495,6 +11550,12 @@ keep_reading:
       note_short_plus(s, lexer, marker_count);
     }
     return true;
+  }
+  // A term in the quote is a label (C2-B-234).
+  Block *term = peek_block(s);
+  if (term && term->type == LIST_DEFINITION &&
+      (term->flags & BLOCK_FLAG_DEFINITION_TERM) && lexer->lookahead != '%') {
+    return label_line_falls_short(s, lexer) || label_line_interrupts(s, lexer);
   }
   // A dash or star line can be a thematic break, which only the break probe
   // reads; it reads a bullet too (PART 0 S3).
@@ -12643,6 +12704,15 @@ static bool close_paragraph_after_quote(Scanner *s, TSLexer *lexer,
   }
 
   if (label_line_falls_short(s, lexer)) return true;
+  // Past its marker a term line is text unless it interrupts (C2-B-234): a
+  // list marker, a description or a term line there is text, as the term is
+  // no item. A comment-only line is left to the probes below.
+  Block *term = peek_block(s);
+  if (term && term->type == LIST_DEFINITION &&
+      (term->flags & BLOCK_FLAG_DEFINITION_TERM) && !at_line_end(lexer) &&
+      !lexer->eof(lexer) && lexer->lookahead != '%') {
+    return label_line_interrupts(s, lexer);
+  }
 
   Block *note = find_block(s, FOOTNOTE);
   // A line missing a quote that holds the note is asked the quote's rules,
@@ -12817,24 +12887,6 @@ static bool close_paragraph_after_quote(Scanner *s, TSLexer *lexer,
     if (quote && lexer->lookahead == '^' &&
         !caption_escapes_open_block_quote(s, column)) {
       return false;
-    }
-  }
-
-  // Indented block-looking lines are term text. A list marker with content
-  // ends the term instead, allowing a sibling list in the enclosing body.
-  for (int i = s->open_blocks->size - 1; i >= 0; --i) {
-    Block *b = *array_get(s->open_blocks, i);
-    if (is_list(b->type)) {
-      uint32_t term_margin = list_opened_in_quote(s, b) && b->content_col >= 3
-                                 ? b->content_col - 2
-                                 : b->data;
-      if (b->type == LIST_DEFINITION &&
-          (b->flags & BLOCK_FLAG_DEFINITION_TERM) &&
-          line_column(s, lexer) >= term_margin && !at_line_end(lexer) &&
-          !lexer->eof(lexer)) {
-        return scan_list_marker(s, lexer) && marker_line_has_content(s, lexer);
-      }
-      break;
     }
   }
 
@@ -13072,6 +13124,7 @@ static bool link_tail_line_matches(Scanner *s, TSLexer *lexer, bool title,
 /// a text line of an abbreviation's expansion, which a comment-only line and
 /// every line that ends a heading continuation end, or the part of a link
 /// definition's tail the line above left out.
+static bool label_line_interrupts(Scanner *s, TSLexer *lexer);
 static bool definition_line_continues(Scanner *s, TSLexer *lexer,
                                       const bool *valid_symbols) {
   bool abbreviation = valid_symbols[ABBREVIATION_CONTINUATION];
@@ -13085,18 +13138,7 @@ static bool definition_line_continues(Scanner *s, TSLexer *lexer,
   if (indent == 0 || at_line_end(lexer) || lexer->eof(lexer)) return false;
   if (lexer->lookahead == '%') return false;
   if (abbreviation) {
-    s->next_line_indent = indent;
-    uint8_t chain_col = s->chain_col;
-    uint8_t marker_end_col = s->marker_end_col;
-    s->chain_col = UINT8_MAX;
-    s->marker_end_col = 0;
-    s->erasable_line = false;
-    bool ends = close_paragraph(s, lexer);
-    s->chain_col = chain_col;
-    s->marker_end_col = marker_end_col;
-    s->next_line_indent = -1;
-    s->erasable_line = false;
-    if (ends) return false;
+    if (label_line_interrupts(s, lexer)) return false;
     lexer->result_symbol = ABBREVIATION_CONTINUATION;
     return true;
   }
@@ -13194,7 +13236,7 @@ static bool parse_newline(Scanner *s, TSLexer *lexer,
 
   if (valid_symbols[EOF_OR_NEWLINE]) {
     s->state &= ~STATE_FENCE_ABSORBS;
-    s->state &= ~STATE_SINGLE_LINE_CAPTION;
+    // A caption keeps the bit for the line start, which closes it.
     if (newline_column == 0 && top && is_list(top->type)) {
       s->blank_line_taken = true;
     }
@@ -18346,6 +18388,21 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     return ERROR;
   }
 #endif
+
+  // A caption whose line end the next line did not continue ends here, before
+  // any probe reads that line: a probe that declines after reading its quote
+  // marks leaves the quote nothing to continue with (C2-B-234).
+  if ((s->state & STATE_SINGLE_LINE_CAPTION) && at_line_start &&
+      valid_symbols[CLOSE_PARAGRAPH] && !valid_symbols[ERROR]) {
+    s->state &= ~STATE_SINGLE_LINE_CAPTION;
+    clear_literal_brackets(s);
+    lexer->result_symbol = CLOSE_PARAGRAPH;
+    return true;
+  }
+  if (valid_symbols[TABLE_CAPTION_END] && !valid_symbols[ERROR] &&
+      at_line_start && parse_table_caption_end(s, lexer)) {
+    return true;
+  }
 
   if (lexer->lookahead != '>') s->state &= ~STATE_LITERAL_QUOTE_BAND;
   Block *band_quote = find_block(s, BLOCK_QUOTE);
