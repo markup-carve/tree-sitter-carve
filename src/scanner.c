@@ -667,9 +667,11 @@ typedef struct {
   // Did the last marker scan read a bare dot? Transient, as above.
   bool marker_bare_dot;
   // Did a scanner decline a colon run this call? Transient, as above.
-  bool quote_marker_refused;
+  bool colon_run_declined;
   // Is close_paragraph reading a line the line block's container does not own?
   bool line_block_lazy;
+  // Indentation before a quote's marks that columns are read without.
+  uint32_t quote_lead_shift;
   // Are all cells after an unclosed tick run header cells? Transient.
   bool open_run_rest_header;
 
@@ -2168,7 +2170,7 @@ static bool quoted_line_reaches_list(Scanner *s, TSLexer *lexer, Block *list) {
                           : quoted_list_margin(s, list);
     return (blank || s->block_quote_level >= quotes_below(s, list)) &&
         !(s->state & STATE_AFTER_BLANK_LINE) &&
-        line_column(s, lexer) >= margin;
+        line_column(s, lexer) - s->quote_lead_shift >= margin;
   }
   return s->indent >= list_item_margin(s, list);
 }
@@ -5092,7 +5094,7 @@ static bool parse_block_quote(Scanner *s, TSLexer *lexer,
   // A valid marker is a '> ' or '>\n'.
   bool marker_at_owner = quote_marker_at_column(
       s, s->block_quote_level + 1, marker_start_col, inside_paragraph);
-  bool has_marker = marker_at_owner && !s->quote_marker_refused &&
+  bool has_marker = marker_at_owner && !s->colon_run_declined &&
       scan_block_quote_marker(s, lexer, &ending_newline);
   Block *quote_list_owner = find_list(s);
   Block *holding_quote = find_block(s, BLOCK_QUOTE);
@@ -7966,6 +7968,9 @@ static bool parse_list_item_end(Scanner *s, TSLexer *lexer,
   // later in this function.
   // But first we need to skip the `> ` tokens.
   bool ending_newline;
+  // Spaces before the marks of the line after a blank quoted line; that
+  // line's columns are read as if the marks stood where the quote's do.
+  uint32_t lead_shift = 0;
   // An existing quote after a quoted item may have spaces before its marker.
   bool skipped_quote_indent = false;
   uint8_t block_quote_markers = scan_quote_marker_run(
@@ -8004,6 +8009,14 @@ static bool parse_list_item_end(Scanner *s, TSLexer *lexer,
       }
 
       bool second_newline;
+      // A quote held by the document takes indentation before its mark on
+      // the line after the blank one too (PART 0 L2).
+      if (quote_chain_from(s, 1)) {
+        while (lexer->lookahead == ' ') {
+          advance(s, lexer);
+          ++lead_shift;
+        }
+      }
       uint8_t second_block_quote_markers =
           scan_block_quote_markers(s, lexer, &second_newline);
 
@@ -8030,7 +8043,9 @@ static bool parse_list_item_end(Scanner *s, TSLexer *lexer,
       s->indent = consume_whitespace(s, lexer);
       uint8_t level = s->block_quote_level;
       s->block_quote_level = block_quote_markers;
+      s->quote_lead_shift = lead_shift;
       bool reaches = quoted_line_reaches_list(s, lexer, list);
+      s->quote_lead_shift = 0;
       s->block_quote_level = level;
       if (reaches) {
         mark_end(s, lexer);
@@ -8051,8 +8066,9 @@ static bool parse_list_item_end(Scanner *s, TSLexer *lexer,
   //      - a
   //
   //    - b     <- different indent should close the `a` list.
-  uint32_t marker_col = list_opened_in_quote(s, list) ? line_column(s, lexer) : 0;
-  uint32_t marker_start = line_column(s, lexer);
+  uint32_t marker_col =
+      list_opened_in_quote(s, list) ? line_column(s, lexer) - lead_shift : 0;
+  uint32_t marker_start = line_column(s, lexer) - lead_shift;
   TokenType next_marker = scan_list_marker_token(s, lexer);
 
   // While a `+`-attached flush-left block is being parsed, an indent-0 line
@@ -17240,7 +17256,7 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
   s->deferred_column_pending = false;
   s->host_jumped = false;
   s->marker_probe = false;
-  s->quote_marker_refused = false;
+  s->colon_run_declined = false;
   if (s->task_box_next) {
     s->task_box_next = 0;
     // A box after an ordered marker's required space, before content
@@ -18837,7 +18853,8 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   }
   // A `>` behind a declined colon run is that line's text, not a quote marker
   // (`> a` / `::: >`, C2-B-014): the quote closes before the fence opens.
-  s->quote_marker_refused = s->advances != before_colon;
+  // No opener reads past such a run either (below).
+  s->colon_run_declined = s->advances != before_colon;
 
   // A quoted closer's line keeps its `>` markers for the fence: a spacer here
   // would end the fence's item first and leave the end marker nowhere to go.
@@ -19117,6 +19134,9 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     return true;
   }
   if (quote_after_spaces && s->advances != before_quote) return false;
+  // Past a declined colon run only a closer may answer; the line's text is
+  // lexed from its first colon (`: | A |` is a paragraph, C2-B-071).
+  if (s->colon_run_declined) return false;
   if (parse_editorial_comment_hash(s, lexer, valid_symbols)) {
     return true;
   }
