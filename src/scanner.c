@@ -332,6 +332,11 @@ typedef enum {
   TYPED_FRONTMATTER_UNCLOSED_MARKER,
   ATTRIBUTED_FRONTMATTER_MARKER,
   ATTRIBUTED_FRONTMATTER_UNCLOSED_MARKER,
+  // The line end of a root definition line whose next line continues it
+  // (C2-B-083, C2-B-084). See `definition_line_continues`.
+  ABBREVIATION_CONTINUATION,
+  LINK_TAIL_CONTINUATION,
+  LINK_ATTRIBUTE_CONTINUATION,
 } TokenType;
 
 // The size of `valid_symbols`, for the copies that edit one entry.
@@ -13026,6 +13031,82 @@ static bool caption_comment_line_ahead(Scanner *s, TSLexer *lexer) {
   return comment;
 }
 
+/// C2-B-083: the tail of a link definition on the line below, read from the
+/// first character after its indent. Returns false unless the line holds
+/// exactly a title, an attribute block, or a title, one space and an attribute
+/// block, then only spaces and tabs; `title_only` is set for a lone title,
+/// which leaves the attribute block to the line below.
+static bool link_tail_line_matches(Scanner *s, TSLexer *lexer, bool title,
+                                   bool *title_only) {
+  bool tabbed = false;
+  *title_only = false;
+  if (title && (lexer->lookahead == '"' || lexer->lookahead == '\'')) {
+    int32_t quote = lexer->lookahead;
+    advance(s, lexer);
+    while (!at_line_end(lexer) && !lexer->eof(lexer) &&
+           lexer->lookahead != quote) {
+      if (lexer->lookahead == '\\') {
+        advance(s, lexer);
+        if (at_line_end(lexer) || lexer->eof(lexer)) return false;
+      }
+      advance(s, lexer);
+    }
+    if (lexer->lookahead != quote) return false;
+    advance(s, lexer);
+    uint16_t spaces = consume_ws_run(s, lexer, &tabbed);
+    if (at_line_end(lexer) || lexer->eof(lexer)) {
+      *title_only = true;
+      return true;
+    }
+    if (tabbed || spaces != 1) return false;
+  }
+  if (lexer->lookahead != '{' || !scan_valid_inline_attribute(s, lexer)) {
+    return false;
+  }
+  consume_ws_run(s, lexer, &tabbed);
+  return at_line_end(lexer) || lexer->eof(lexer);
+}
+
+/// C2-B-083, C2-B-084: the line end of a root definition line, read with its
+/// end pinned, when the line below is indented and continues the definition:
+/// a text line of an abbreviation's expansion, which a comment-only line and
+/// every line that ends a heading continuation end, or the part of a link
+/// definition's tail the line above left out.
+static bool definition_line_continues(Scanner *s, TSLexer *lexer,
+                                      const bool *valid_symbols) {
+  bool abbreviation = valid_symbols[ABBREVIATION_CONTINUATION];
+  bool tail = valid_symbols[LINK_TAIL_CONTINUATION];
+  bool attribute = valid_symbols[LINK_ATTRIBUTE_CONTINUATION];
+  if ((!abbreviation && !tail && !attribute) || valid_symbols[ERROR] ||
+      lexer->eof(lexer)) {
+    return false;
+  }
+  uint8_t indent = consume_whitespace(s, lexer);
+  if (indent == 0 || at_line_end(lexer) || lexer->eof(lexer)) return false;
+  if (lexer->lookahead == '%') return false;
+  if (abbreviation) {
+    s->next_line_indent = indent;
+    uint8_t chain_col = s->chain_col;
+    uint8_t marker_end_col = s->marker_end_col;
+    s->chain_col = UINT8_MAX;
+    s->marker_end_col = 0;
+    s->erasable_line = false;
+    bool ends = close_paragraph(s, lexer);
+    s->chain_col = chain_col;
+    s->marker_end_col = marker_end_col;
+    s->next_line_indent = -1;
+    s->erasable_line = false;
+    if (ends) return false;
+    lexer->result_symbol = ABBREVIATION_CONTINUATION;
+    return true;
+  }
+  bool title_only = false;
+  if (!link_tail_line_matches(s, lexer, tail, &title_only)) return false;
+  lexer->result_symbol = tail ? LINK_TAIL_CONTINUATION
+                              : LINK_ATTRIBUTE_CONTINUATION;
+  return true;
+}
+
 static bool parse_newline(Scanner *s, TSLexer *lexer,
                           const bool *valid_symbols) {
   if (valid_symbols[TABLE_ROW_END_NEWLINE] &&
@@ -13071,6 +13152,11 @@ static bool parse_newline(Scanner *s, TSLexer *lexer,
       lexer->result_symbol = NEWLINE_INLINE;
       return true;
     }
+  }
+
+  if (definition_line_continues(s, lexer, valid_symbols)) {
+    clear_literal_brackets(s);
+    return true;
   }
 
   // Prefer NEWLINE_INLINE for newlines in inline context.

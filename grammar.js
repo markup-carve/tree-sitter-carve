@@ -1831,7 +1831,7 @@ module.exports = grammar({
         // and `[a]: /u` + TAB + `{.c}` built a definition that renders nothing
         // over source text the fixture still shows. Six recorded invisible
         // over-acceptances.
-        optional(
+        choice(
           seq(
             // The separator after `]:` is a space and then a free run: `[a]:`
             // plus two spaces plus `/u` is a definition, and so is `[a]:` plus
@@ -1847,24 +1847,26 @@ module.exports = grammar({
             // `src/scanner.c` is what applies the cardinality, and it is the
             // only place that can, because refusing has to leave the line as
             // prose.
-            optional(seq($._whitespace1, field("title", $.link_title))),
-            optional(
+            choice(
+              seq(optional($._whitespace1), $._link_line_end),
+              // C2-B-083: the indented lines below hold the part of the tail
+              // this line left out. The scanner offers each token only where
+              // the line below holds exactly that part.
               seq(
-                $._whitespace1,
-                alias(
-                  token(prec(-1, /\{[^\r\n}]*\}/)),
-                  $.link_reference_attributes,
-                ),
+                optional($._whitespace1),
+                $._link_tail_continuation,
+                $._link_tail_line,
               ),
+              seq($._whitespace1, $._link_title_and_rest),
+              seq($._whitespace1, $._link_attributes_line_end),
             ),
           ),
+          // The line ENDING is `whitespace` - space and tab both - the same
+          // terminal `blank_line` takes (PART 1; carve#890), so `[a]: /u` +
+          // TAB is still a definition. A bare line is an empty definition;
+          // trailing ASCII pad is allowed.
+          seq(optional($._whitespace1), $._link_line_end),
         ),
-        // The line ENDING is `whitespace` - space and tab both - the same
-        // terminal `blank_line` takes (PART 1; carve#890), so `[a]: /u` + TAB is
-        // still a definition. A bare line is an empty definition; trailing
-        // ASCII pad is allowed.
-        optional($._whitespace1),
-        choice($._newline, $._eof_or_newline),
       ),
     link_destination: (_) => /\S+/,
 
@@ -1874,6 +1876,33 @@ module.exports = grammar({
       choice(
         seq('"', /(?:[^"\\\r\n]|\\[^\r\n])*/, '"'),
         seq("'", /(?:[^'\\\r\n]|\\[^\r\n])*/, "'"),
+      ),
+
+    _link_line_end: ($) => choice($._newline, $._eof_or_newline),
+    _link_reference_attributes: ($) =>
+      alias(token(prec(-1, /\{[^\r\n}]*\}/)), $.link_reference_attributes),
+    _link_attributes_line_end: ($) =>
+      seq($._link_reference_attributes, optional($._whitespace1), $._link_line_end),
+    // A title, then the line end, an attribute block on this line, or an
+    // attribute block on the line below.
+    _link_title_and_rest: ($) =>
+      seq(
+        field("title", $.link_title),
+        choice(
+          seq(optional($._whitespace1), $._link_line_end),
+          seq(
+            optional($._whitespace1),
+            $._link_attribute_continuation,
+            $._whitespace1,
+            $._link_attributes_line_end,
+          ),
+          seq($._whitespace1, $._link_attributes_line_end),
+        ),
+      ),
+    _link_tail_line: ($) =>
+      seq(
+        $._whitespace1,
+        choice($._link_title_and_rest, $._link_attributes_line_end),
       ),
 
     // carve-php caption block: `^ caption text` on its own line.
@@ -2042,13 +2071,27 @@ module.exports = grammar({
         optional($._whitespace1),
         field(
           "expansion",
-          alias(/[^ \t\r\n][^\r\n]*/, $.abbreviation_expansion),
+          alias($._abbreviation_expansion, $.abbreviation_expansion),
         ),
         // A definition may be the document's last line with nothing after it.
         // The pinned CLI completes that reading on its own, so the site looks
         // inert through it; the node binding inserts `(MISSING _newline)`
         // instead, which is what a consumer of the package sees (#458).
         choice($._newline, $._eof_or_newline),
+      ),
+
+    // C2-B-084: every indented text line directly below continues the
+    // expansion; the scanner decides which lines are text lines.
+    _abbreviation_expansion: ($) =>
+      seq(
+        /[^ \t\r\n][^\r\n]*/,
+        repeat(
+          seq(
+            $._abbreviation_continuation,
+            $._whitespace1,
+            /[^ \t\r\n][^\r\n]*/,
+          ),
+        ),
       ),
 
     _abbreviation_head: (_) => token(seq("*[", /[A-Za-z0-9]+/, "]: ")),
@@ -3629,5 +3672,10 @@ module.exports = grammar({
     $._typed_frontmatter_unclosed_marker,
     $._attributed_frontmatter_marker,
     $._attributed_frontmatter_unclosed_marker,
+    // The line end of a root definition line whose next line continues it
+    // (C2-B-083, C2-B-084).
+    $._abbreviation_continuation,
+    $._link_tail_continuation,
+    $._link_attribute_continuation,
   ],
 });
