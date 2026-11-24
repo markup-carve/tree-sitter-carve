@@ -26,6 +26,11 @@
     }
   },
   {
+    "type": "abbreviation_expansion",
+    "named": true,
+    "fields": {}
+  },
+  {
     "type": "admonition_type",
     "named": true,
     "fields": {}
@@ -4807,10 +4812,6 @@
   {
     "type": "_",
     "named": false
-  },
-  {
-    "type": "abbreviation_expansion",
-    "named": true
   },
   {
     "type": "abbreviation_marker",

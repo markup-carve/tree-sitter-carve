@@ -16,7 +16,7 @@ C2-B-149: a caption line after a blank line is text
   (paragraph))
 
 ================================================================================
-C2-B-148: a caption takes lazy lines
+C2-B-234: an unindented line below a caption starts the next block (carve#6508)
 ================================================================================
 
 ```ts
@@ -35,7 +35,8 @@ more
     (code_block_marker_end))
   (caption
     (caption_marker)
-    content: (caption_content)))
+    content: (caption_content))
+  (paragraph))
 
 ================================================================================
 C2-B-017: a caret line below a text paragraph is a lazy line
@@ -271,7 +272,7 @@ C2-B-148: a blank line ends a table caption
 
 
 ================================================================================
-C2-B-148: a second caret line continues a table caption
+C2-B-234: a second caret line below a table caption is text (carve#6508)
 ================================================================================
 
 | a |
@@ -286,10 +287,11 @@ C2-B-148: a second caret line continues a table caption
       (table_cell))
     (table_caption
       marker: (marker)
-      content: (content))))
+      content: (content)))
+  (paragraph))
 
 ================================================================================
-C2-B-148: a table caption takes an unindented lazy line
+C2-B-234: an unindented line below a table caption starts the next block (carve#6508)
 ================================================================================
 
 | a |
@@ -307,6 +309,7 @@ p
     (table_caption
       marker: (marker)
       content: (content)))
+  (paragraph)
   (paragraph))
 
 ================================================================================
