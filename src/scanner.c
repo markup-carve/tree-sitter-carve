@@ -475,6 +475,10 @@ static const uint8_t BLOCK_FLAG_TABLE_ROW_BOUNDARY_SAFE = 1 << 3;
 // Definition terms and description bodies use the same block type. Keep the
 // current item kind so nested terms and folded continuation lines stay scoped.
 static const uint8_t BLOCK_FLAG_DEFINITION_TERM = 1 << 2;
+// HEADING only: the run of comment lines below was read ahead, and whether a
+// line past the marker follows it, so each comment line need not read it again.
+static const uint8_t BLOCK_FLAG_HEADING_COMMENTS_READ = 1 << 0;
+static const uint8_t BLOCK_FLAG_HEADING_COMMENTS_CONTINUE = 1 << 1;
 // Lists other than LIST_DEFINITION, sharing bit 2: the paragraph-end probe
 // saw a quote-prefixed `+` short of the paragraph's quote attach.
 static const uint8_t BLOCK_FLAG_LIST_SHORT_PLUS = 1 << 2;
@@ -11557,10 +11561,11 @@ keep_reading:
     }
     return true;
   }
-  // A term in the quote is a label (C2-B-234).
+  // A term or a heading in the quote is a label (C2-B-234).
   Block *term = peek_block(s);
-  if (term && term->type == LIST_DEFINITION &&
-      (term->flags & BLOCK_FLAG_DEFINITION_TERM)) {
+  if (term && (term->type == HEADING ||
+               (term->type == LIST_DEFINITION &&
+                (term->flags & BLOCK_FLAG_DEFINITION_TERM)))) {
     if (lexer->lookahead == '%') {
       if (label_line_falls_short(s, lexer)) return true;
       if (s->erasable_line) return false;
@@ -12583,6 +12588,30 @@ static bool paragraph_block_opener_ahead(Scanner *s, TSLexer *lexer, int markers
 /// C2-B-234: a term, or a heading in a quote, takes only lines indented past
 /// its marker, read behind the open quotes' marks (the lexer stands there).
 /// A comment-only line is not seen, so it is left to the usual probes.
+/// Read ahead from inside an erased comment line below a heading: past any
+/// further comment-only lines, does the next line continue the heading?
+static bool comment_lines_continue_heading(Scanner *s, TSLexer *lexer,
+                                           Block *heading) {
+  for (;;) {
+    while (!at_line_end(lexer) && !lexer->eof(lexer)) advance(s, lexer);
+    if (lexer->eof(lexer)) return false;
+    consume_line_end(s, lexer);
+    consume_whitespace(s, lexer);
+    if (at_line_end(lexer) || lexer->eof(lexer)) return false;
+    if (lexer->lookahead == '%') {
+      advance(s, lexer);
+      if (lexer->lookahead != '%') {
+        return line_column(s, lexer) - 1 > heading->content_col;
+      }
+      advance(s, lexer);
+      if (!comment_line_is_erased(s, lexer)) return false;
+      continue;
+    }
+    if (line_column(s, lexer) <= heading->content_col) return false;
+    return !label_line_interrupts(s, lexer);
+  }
+}
+
 static bool label_line_falls_short(Scanner *s, TSLexer *lexer) {
   if (at_line_end(lexer) || lexer->eof(lexer)) return false;
   Block *top = peek_block(s);
@@ -12590,7 +12619,7 @@ static bool label_line_falls_short(Scanner *s, TSLexer *lexer) {
   uint32_t column = line_column(s, lexer);
   bool shorts;
   if (top->type == HEADING) {
-    shorts = count_blocks(s, BLOCK_QUOTE) > 0 && column <= top->content_col;
+    shorts = column <= top->content_col;
   } else if (top->type == LIST_DEFINITION &&
              (top->flags & BLOCK_FLAG_DEFINITION_TERM)) {
     uint32_t past_marker = list_opened_in_quote(s, top) && top->content_col >= 3
@@ -12600,6 +12629,10 @@ static bool label_line_falls_short(Scanner *s, TSLexer *lexer) {
   } else {
     return false;
   }
+  if (top->type == HEADING && lexer->lookahead != '%') {
+    top->flags &= (uint8_t)~(BLOCK_FLAG_HEADING_COMMENTS_READ |
+                             BLOCK_FLAG_HEADING_COMMENTS_CONTINUE);
+  }
   if (!shorts || lexer->lookahead != '%') return shorts;
   // Decided here, as the run is consumed: a line led by one `%` is text and
   // ends the label, a comment-only line is not seen, and a region marker or
@@ -12607,6 +12640,17 @@ static bool label_line_falls_short(Scanner *s, TSLexer *lexer) {
   uint16_t percents = consume_percents(s, lexer);
   if (percents != 2) return true;
   if (!comment_line_is_erased(s, lexer)) return true;
+  // Below an unquoted heading the comment joins it only when a line past the
+  // marker follows; otherwise it stays a sibling of the closed heading.
+  if (top->type == HEADING && count_blocks(s, BLOCK_QUOTE) == 0) {
+    if (!(top->flags & BLOCK_FLAG_HEADING_COMMENTS_READ)) {
+      top->flags |= BLOCK_FLAG_HEADING_COMMENTS_READ;
+      if (comment_lines_continue_heading(s, lexer, top)) {
+        top->flags |= BLOCK_FLAG_HEADING_COMMENTS_CONTINUE;
+      }
+    }
+    if (!(top->flags & BLOCK_FLAG_HEADING_COMMENTS_CONTINUE)) return true;
+  }
   s->erasable_line = true;
   return false;
 }
@@ -12730,6 +12774,10 @@ static bool close_paragraph_after_quote(Scanner *s, TSLexer *lexer,
   // list marker, a description or a term line there is text, as the term is
   // no item. A comment-only line is left to the probes below.
   Block *term = peek_block(s);
+  if (term && term->type == HEADING && !at_line_end(lexer) &&
+      !lexer->eof(lexer) && lexer->lookahead != '%') {
+    return label_line_interrupts(s, lexer);
+  }
   if (term && term->type == LIST_DEFINITION &&
       (term->flags & BLOCK_FLAG_DEFINITION_TERM) && !at_line_end(lexer) &&
       !lexer->eof(lexer) && lexer->lookahead != '%') {
@@ -13043,8 +13091,11 @@ static bool emit_newline_inline(Scanner *s, TSLexer *lexer,
     return false;
   }
   // In a quote the column is read behind the marks (label_line_falls_short).
+  // A comment-only line is not seen (C2-B-137); close_paragraph reads it.
   if (top && top->type == HEADING && count_blocks(s, BLOCK_QUOTE) == 0 &&
-      next_line_whitespace <= top->content_col) return false;
+      next_line_whitespace <= top->content_col && lexer->lookahead != '%') {
+    return false;
+  }
 
   // Caption continuations use the same margin checks as opener lookahead.
   bool ends;
