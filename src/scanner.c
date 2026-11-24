@@ -828,7 +828,7 @@ typedef struct {
 
   // Width of the attribute block the ordered marker scan just consumed, read
   // by the same scan call. Transient, never serialized.
-  uint8_t marker_attribute_width;
+  uint32_t marker_attribute_width;
 
   // Transient raw-row facts collected by the existing row validation pass.
   bool row_capture;
@@ -4181,7 +4181,7 @@ static bool caption_line_ends_block(Scanner *s, BracketProbe *probe, uint8_t ind
     deeper_quote = lexer->lookahead == ' ' || at_line_end(lexer) || lexer->eof(lexer);
   }
   uint32_t marker_end_col = s->marker_end_col;
-  uint8_t marker_attribute_width = s->marker_attribute_width;
+  uint32_t marker_attribute_width = s->marker_attribute_width;
   uint8_t saved_indent = s->indent;
   uint16_t saved_state = s->state;
   uint8_t saved_level = s->block_quote_level;
@@ -4653,8 +4653,7 @@ static bool scan_marker_attribute(Scanner *s, TSLexer *lexer) {
   while (lexer->lookahead == '{') {
     if (!scan_valid_inline_attribute(s, lexer)) return false;
   }
-  uint32_t width = line_column(s, lexer) - start;
-  s->marker_attribute_width = (uint8_t)(width > UINT8_MAX ? UINT8_MAX : width);
+  s->marker_attribute_width = line_column(s, lexer) - start;
   return true;
 }
 
@@ -10041,7 +10040,7 @@ static bool emit_plus_line(Scanner *s, TSLexer *lexer,
   if (footnote_first && next_column == footnote_follower_col &&
       !next_line_end && !next_eof) {
     bool ordered_word_end = s->ordered_word_end;
-    uint8_t attribute_width = s->marker_attribute_width;
+    uint32_t attribute_width = s->marker_attribute_width;
     BracketProbe probe = bracket_probe_new(s, lexer);
     TokenType marker = scan_list_marker_token(s, &probe.lexer);
     bool item = marker != IGNORED && marker_line_has_content(s, &probe.lexer);
@@ -14900,7 +14899,7 @@ static bool extension_line_ends_block(Scanner *s, BracketProbe *probe, uint8_t i
   uint32_t restart = probe->position;
   uint32_t base = s->col_base;
   uint32_t marker_end_col = s->marker_end_col;
-  uint8_t marker_attribute_width = s->marker_attribute_width;
+  uint32_t marker_attribute_width = s->marker_attribute_width;
   bool combined_probe = s->combined_probe;
   s->combined_probe = false;
   bool ends = verbatim_line_ends_paragraph(s, &probe->lexer, indent);
