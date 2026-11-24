@@ -662,6 +662,8 @@ typedef struct {
   // Did the last list marker scan read a bullet or an ordered value of 1?
   // Read in the same scan call only, so it is not serialized.
   bool marker_value_one;
+  // Did the last marker scan read a bare dot? Transient, as above.
+  bool marker_bare_dot;
   // Are all cells after an unclosed tick run header cells? Transient.
   bool open_run_rest_header;
 
@@ -4640,7 +4642,12 @@ static bool scan_marker_attribute(Scanner *s, TSLexer *lexer) {
   if (!scan_valid_inline_attribute(s, lexer)) {
     return false;
   }
-  s->marker_attribute_width = (uint8_t)(line_column(s, lexer) - start);
+  // C2-B-101: a run of glued blocks sits on the marker.
+  while (lexer->lookahead == '{') {
+    if (!scan_valid_inline_attribute(s, lexer)) return false;
+  }
+  uint32_t width = line_column(s, lexer) - start;
+  s->marker_attribute_width = (uint8_t)(width > UINT8_MAX ? UINT8_MAX : width);
   return true;
 }
 
@@ -6141,6 +6148,7 @@ static TokenType scan_ordered_list_marker_token_type(Scanner *s,
   // (308-a-multi-letter-ordered-marker-opens-no-list). `ABC) item` escaped it
   // only because the fallback is `.`-only.
   bool value_omitted = lexer->lookahead == '.';
+  s->marker_bare_dot = false;
 
   OrderedListType list_type;
   s->ordered_word_end = false;
@@ -6157,6 +6165,7 @@ static TokenType scan_ordered_list_marker_token_type(Scanner *s,
     if (value_omitted) {
       advance(s, lexer);
       s->marker_value_one = true;
+      s->marker_bare_dot = true;
       return LIST_MARKER_DECIMAL_PERIOD;
     }
     s->ordered_word_end = true;
@@ -6253,6 +6262,7 @@ static bool scan_task_list_box(Scanner *s, TSLexer *lexer) {
 }
 
 static TokenType scan_unordered_list_marker_token(Scanner *s, TSLexer *lexer) {
+  s->marker_bare_dot = false;
   // A task marker token can be started with either `-` or `*` and still be of
   // the same type. `+` is never a bullet in Carve, so it cannot open a task
   // list.
@@ -6299,6 +6309,12 @@ static bool scan_list_marker(Scanner *s, TSLexer *lexer) {
 static bool marker_line_has_content(Scanner *s, TSLexer *lexer) {
   while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
     advance(s, lexer);
+  }
+  // C2-B-043: a bare dot whose content starts with a dot and a space is text.
+  if (s->marker_bare_dot && lexer->lookahead == '.') {
+    s->marker_bare_dot = false;
+    advance(s, lexer);
+    return lexer->lookahead != ' ';
   }
   return !lexer->eof(lexer) && !at_line_end(lexer);
 }
@@ -7086,6 +7102,9 @@ static bool parse_list_marker_or_thematic_break(
     uint32_t attribute_start = line_column(s, lexer);
     if (!scan_valid_inline_attribute(s, lexer)) {
       return false;
+    }
+    while (lexer->lookahead == '{') {
+      if (!scan_valid_inline_attribute(s, lexer)) return false;
     }
     attribute_width = line_column(s, lexer) - attribute_start;
     marker_attribute = true;
