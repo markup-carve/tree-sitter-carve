@@ -10834,10 +10834,11 @@ static bool probe_scan_braced_comment_to_close(Scanner *s, TSLexer *lexer, Brack
         return false;
       consume_line_end(s, lexer);
       uint8_t indent = consume_whitespace(s, lexer);
-      if (probe && caption_line_ends_block(s, probe, indent)) return false;
       if (at_line_end(lexer) || lexer->eof(lexer)) {
         return false;
       }
+      // Inline content never crosses a block boundary (C2-I-025).
+      if (probe ? caption_line_ends_block(s, probe, indent) : close_paragraph(s, lexer)) return false;
       continue;
     }
     advance(s, lexer);
@@ -10893,10 +10894,11 @@ static bool probe_finish_editorial_comment(Scanner *s, TSLexer *lexer,
         return false;
       consume_line_end(s, lexer);
       uint8_t indent = consume_whitespace(s, lexer);
-      if (probe && caption_line_ends_block(s, probe, indent)) return false;
       if (at_line_end(lexer) || lexer->eof(lexer)) {
         return false;
       }
+      // Inline content never crosses a block boundary (C2-I-025).
+      if (probe ? caption_line_ends_block(s, probe, indent) : close_paragraph(s, lexer)) return false;
       continue;
     }
     advance(s, lexer);
