@@ -1,0 +1,641 @@
+================================================================================
+C2-B-084: an indented line below an abbreviation definition continues its expansion
+================================================================================
+
+*[HTML]: Hyper Text
+  Markup Language
+
+--------------------------------------------------------------------------------
+
+(document
+  (abbreviation_definition
+    (abbreviation_marker)
+    expansion: (abbreviation_expansion)))
+
+================================================================================
+C2-B-084: every indented text line continues the expansion until an unindented one
+================================================================================
+
+*[A]: x
+  y
+   z
+w
+
+--------------------------------------------------------------------------------
+
+(document
+  (abbreviation_definition
+    (abbreviation_marker)
+    expansion: (abbreviation_expansion))
+  (paragraph))
+
+================================================================================
+C2-B-084: an indented table row below an abbreviation definition is a table
+================================================================================
+
+*[A]: x
+  | a |
+
+--------------------------------------------------------------------------------
+
+(document
+  (abbreviation_definition
+    (abbreviation_marker)
+    expansion: (abbreviation_expansion))
+  (table
+    (table_row
+      (table_cell))))
+
+================================================================================
+C2-B-084: an indented thematic break ends the expansion
+================================================================================
+
+*[A]: x
+  ***
+
+--------------------------------------------------------------------------------
+
+(document
+  (abbreviation_definition
+    (abbreviation_marker)
+    expansion: (abbreviation_expansion))
+  (thematic_break))
+
+================================================================================
+C2-B-084: an indented code fence ends the expansion
+================================================================================
+
+*[A]: x
+  ```
+  c
+  ```
+
+--------------------------------------------------------------------------------
+
+(document
+  (abbreviation_definition
+    (abbreviation_marker)
+    expansion: (abbreviation_expansion))
+  (code_block
+    (code_block_marker_begin)
+    code: (code)
+    (code_block_marker_end)))
+
+================================================================================
+C2-B-084: an indented list marker or term line continues the expansion
+================================================================================
+
+*[A]: x
+  - y
+  :: t
+
+--------------------------------------------------------------------------------
+
+(document
+  (abbreviation_definition
+    (abbreviation_marker)
+    expansion: (abbreviation_expansion)))
+
+================================================================================
+C2-B-084: a comment-only line ends the abbreviation definition
+================================================================================
+
+*[A]: x
+  %% c
+  y
+
+--------------------------------------------------------------------------------
+
+(document
+  (abbreviation_definition
+    (abbreviation_marker)
+    expansion: (abbreviation_expansion))
+  (comment_line)
+  (paragraph))
+
+================================================================================
+C2-B-083: an indented title line completes a link definition
+================================================================================
+
+[a]: /url
+  "Title"
+
+--------------------------------------------------------------------------------
+
+(document
+  (link_reference_definition
+    label: (link_label)
+    destination: (link_destination)
+    title: (link_title)))
+
+================================================================================
+C2-B-083: a title line and an attribute line complete a link definition
+================================================================================
+
+[a]: /u
+  "T"
+  {.c}
+
+--------------------------------------------------------------------------------
+
+(document
+  (link_reference_definition
+    label: (link_label)
+    destination: (link_destination)
+    title: (link_title)
+    (link_reference_attributes)))
+
+================================================================================
+C2-B-083: a title and an attribute block on one indented line
+================================================================================
+
+[a]: /u
+  'T' {.c}
+
+--------------------------------------------------------------------------------
+
+(document
+  (link_reference_definition
+    label: (link_label)
+    destination: (link_destination)
+    title: (link_title)
+    (link_reference_attributes)))
+
+================================================================================
+C2-B-083: an attribute line below a titled link definition
+================================================================================
+
+[a]: /u "T"
+  {.c}
+
+--------------------------------------------------------------------------------
+
+(document
+  (link_reference_definition
+    label: (link_label)
+    destination: (link_destination)
+    title: (link_title)
+    (link_reference_attributes)))
+
+================================================================================
+C2-B-083: a definition takes at most one attribute block
+================================================================================
+
+[a]: /u
+  {.c}
+  {.d}
+
+--------------------------------------------------------------------------------
+
+(document
+  (link_reference_definition
+    label: (link_label)
+    destination: (link_destination)
+    (link_reference_attributes))
+  (paragraph))
+
+================================================================================
+C2-B-083: an indented line that is no tail part is the next block
+================================================================================
+
+[a]: /u
+  rest
+
+--------------------------------------------------------------------------------
+
+(document
+  (link_reference_definition
+    label: (link_label)
+    destination: (link_destination))
+  (paragraph))
+
+================================================================================
+C2-B-083: a title below a definition with attributes is the next block
+================================================================================
+
+[a]: /u {.c}
+  "T"
+
+--------------------------------------------------------------------------------
+
+(document
+  (link_reference_definition
+    label: (link_label)
+    destination: (link_destination)
+    (link_reference_attributes))
+  (paragraph))
+
+================================================================================
+C2-B-083: two spaces between title and attributes are no tail
+================================================================================
+
+[a]: /u
+  "T"  {.c}
+
+--------------------------------------------------------------------------------
+
+(document
+  (link_reference_definition
+    label: (link_label)
+    destination: (link_destination))
+  (paragraph))
+
+================================================================================
+C2-B-083: a comment-only line ends the link definition
+================================================================================
+
+[a]: /u
+%% c
+  "T"
+
+--------------------------------------------------------------------------------
+
+(document
+  (link_reference_definition
+    label: (link_label)
+    destination: (link_destination))
+  (comment_line)
+  (paragraph))
+
+================================================================================
+carve#6508: an unindented line below a term starts a paragraph
+================================================================================
+
+:: term
+more
+: desc
+
+--------------------------------------------------------------------------------
+
+(document
+  (definition_list
+    (list_item
+      marker: (list_marker_definition)
+      term: (term)))
+  (paragraph))
+
+================================================================================
+carve#6508: a line indented past the term marker continues the term
+================================================================================
+
+:: term
+  more
+: desc
+
+--------------------------------------------------------------------------------
+
+(document
+  (definition_list
+    (list_item
+      marker: (list_marker_definition)
+      term: (term))
+    (list_item
+      marker: (list_marker_description)
+      definition: (definition))))
+
+================================================================================
+carve#6508: a list marker or description line past the term marker is term text
+================================================================================
+
+:: term
+  - y
+  : d
+
+--------------------------------------------------------------------------------
+
+(document
+  (definition_list
+    (list_item
+      marker: (list_marker_definition)
+      term: (term))))
+
+================================================================================
+carve#6508: a table row past the term marker ends the term
+================================================================================
+
+:: term
+  | a |
+: desc
+
+--------------------------------------------------------------------------------
+
+(document
+  (definition_list
+    (list_item
+      marker: (list_marker_definition)
+      term: (term)))
+  (table
+    (table_row
+      (table_cell)))
+  (paragraph))
+
+================================================================================
+carve#6508: a comment-only line under a term is not seen
+================================================================================
+
+:: term
+%% c
+  more
+: d
+
+--------------------------------------------------------------------------------
+
+(document
+  (definition_list
+    (list_item
+      marker: (list_marker_definition)
+      term: (term
+        (comment_line)))
+    (list_item
+      marker: (list_marker_description)
+      definition: (definition))))
+
+================================================================================
+carve#6508: a term in a quote takes only lines past its marker
+================================================================================
+
+> :: term
+> more
+> : desc
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (definition_list
+        (list_item
+          marker: (list_marker_definition)
+          term: (term)))
+      (block_quote_marker)
+      (paragraph
+        (block_quote_marker)))))
+
+================================================================================
+carve#6508: a term in a quote continues on a line past its marker
+================================================================================
+
+> :: term
+>   :: t
+> : desc
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (definition_list
+        (list_item
+          marker: (list_marker_definition)
+          term: (term
+            (block_quote_marker)))
+        (list_item
+          (block_quote_marker)
+          marker: (list_marker_description)
+          definition: (definition))))))
+
+================================================================================
+carve#6508: a table row past a quoted term's marker ends the term
+================================================================================
+
+> :: term
+>   | a |
+> : desc
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (definition_list
+        (list_item
+          marker: (list_marker_definition)
+          term: (term)))
+      (block_quote_marker)
+      (table
+        (table_row
+          (table_cell)))
+      (block_quote_marker)
+      (paragraph))))
+
+================================================================================
+carve#6508: a term in an item continues on a list marker past it
+================================================================================
+
+- :: term
+    - y
+  : desc
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (definition_list
+          (list_item
+            marker: (list_marker_definition)
+            term: (term))
+          (list_item
+            marker: (list_marker_description)
+            definition: (definition)))))))
+
+================================================================================
+carve#6508: an unindented line below a caption is a paragraph
+================================================================================
+
+![a](i.png)
+^ cap
+more
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (inline_image
+      description: (image_description)
+      destination: (inline_link_destination)))
+  (caption
+    (caption_marker)
+    content: (caption_content))
+  (paragraph))
+
+================================================================================
+carve#6508: an indented line continues the caption
+================================================================================
+
+![a](i.png)
+^ cap
+  more
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (inline_image
+      description: (image_description)
+      destination: (inline_link_destination)))
+  (caption
+    (caption_marker)
+    content: (caption_content)))
+
+================================================================================
+carve#6508: a quote line past the caret continues the caption
+================================================================================
+
+![a](i.png)
+^ cap
+  > q
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (inline_image
+      description: (image_description)
+      destination: (inline_link_destination)))
+  (caption
+    (caption_marker)
+    content: (caption_content)))
+
+================================================================================
+carve#6508: a table row past the caret ends a table caption
+================================================================================
+
+| a |
+^ cap
+  | b |
+
+--------------------------------------------------------------------------------
+
+(document
+  (table
+    (table_row
+      (table_cell))
+    (table_caption
+      marker: (marker)
+      content: (content)))
+  (table
+    (table_row
+      (table_cell))))
+
+================================================================================
+carve#6508: a caption in a quote takes only lines past its caret
+================================================================================
+
+> ![a](i.png)
+> ^ cap
+>   y
+> z
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (paragraph
+        (inline_image
+          description: (image_description)
+          destination: (inline_link_destination)))
+      (block_quote_marker)
+      (caption
+        (caption_marker)
+        content: (caption_content
+          (block_quote_marker)))
+      (block_quote_marker)
+      (paragraph))))
+
+================================================================================
+carve#6508: a second caret line in a quote is text
+================================================================================
+
+> ![a](i.png)
+> ^ cap
+> ^ c
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (paragraph
+        (inline_image
+          description: (image_description)
+          destination: (inline_link_destination)))
+      (block_quote_marker)
+      (caption
+        (caption_marker)
+        content: (caption_content))
+      (block_quote_marker)
+      (paragraph))))
+
+================================================================================
+carve#6508: a list marker past the item marker ends a caption in the item
+================================================================================
+
+- ![a](i.png)
+  ^ cap
+    - y
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph
+          (inline_image
+            description: (image_description)
+            destination: (inline_link_destination)))
+        (caption
+          (caption_marker)
+          content: (caption_content))
+        (list
+          (list_item
+            marker: (list_marker_dash)
+            content: (list_item_content
+              (paragraph))))))))
+
+================================================================================
+C2-B-234: a heading in a quote continues on a line past its marker
+================================================================================
+
+> # H
+>   cont
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (heading
+        marker: (marker)
+        content: (content
+          (block_quote_marker))))))
+
+================================================================================
+C2-B-234: a heading in a quote ends at a line at its marker column
+================================================================================
+
+> # H
+> cont
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (heading
+        marker: (marker)
+        content: (content))
+      (block_quote_marker)
+      (paragraph))))

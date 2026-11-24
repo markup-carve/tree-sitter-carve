@@ -1882,7 +1882,11 @@ module.exports = grammar({
     _link_reference_attributes: ($) =>
       alias(token(prec(-1, /\{[^\r\n}]*\}/)), $.link_reference_attributes),
     _link_attributes_line_end: ($) =>
-      seq($._link_reference_attributes, optional($._whitespace1), $._link_line_end),
+      seq(
+        $._link_reference_attributes,
+        optional($._whitespace1),
+        $._link_line_end,
+      ),
     // A title, then the line end, an attribute block on this line, or an
     // attribute block on the line below.
     _link_title_and_rest: ($) =>
