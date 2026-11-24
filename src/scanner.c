@@ -718,6 +718,14 @@ typedef struct {
   // (`defer_column`): `get_column` rereads the line from its start, so a read
   // per opener is quadratic on a long line. Transient.
   uint32_t host_advances;
+  // Characters since the last '\n' the host passed in this scan call, and the
+  // raw column last read with the host advances it was read at, so a column
+  // at the end of input needs no `get_column` (see `host_column`). Transient.
+  uint32_t host_line_chars;
+  uint32_t column_read;
+  uint32_t column_read_at;
+  bool column_read_known;
+  bool host_columns_lost;
   uint32_t deferred_column_at;
   uint32_t deferred_column;
   bool deferred_column_pending;
@@ -1148,7 +1156,12 @@ static void advance(Scanner *s, TSLexer *lexer) {
     ++s->host_advances;
     s->host_previous = current;
     if (current == '\n' || current == '\r') s->host_crossed_line = true;
-    if (current == '\n') ++s->host_newlines;
+    if (current == '\n') {
+      ++s->host_newlines;
+      s->host_line_chars = 0;
+    } else {
+      ++s->host_line_chars;
+    }
   }
   if (s->marker_probe) {
     if (lexer->advance == bracket_probe_advance || lexer->eof(lexer)) {
@@ -1187,6 +1200,7 @@ static void advance(Scanner *s, TSLexer *lexer) {
   lexer->advance(lexer, false);
   if (lexer->advance != bracket_probe_advance && lexer->is_at_included_range_start(lexer)) {
     s->host_jumped = true;
+    s->host_columns_lost = true;
     resolve_deferred_column(s, lexer);
   }
   if (s->row_capture) {
@@ -1244,9 +1258,31 @@ static bool at_line_end(TSLexer *lexer) {
   return lexer->lookahead == '\n' || lexer->lookahead == '\r';
 }
 
+/// `get_column` on the host lexer, without calling it at the end of input:
+/// the tree-sitter 0.22 runtime loses the start of the token after such a call
+/// and lexes the next token from a NUL, dropping the last line of a document
+/// with no final newline. There the column is counted from the last '\n' or
+/// from the last read in this scan call.
+static uint32_t host_column(Scanner *s, TSLexer *lexer) {
+  if (lexer->advance == bracket_probe_advance) return lexer->get_column(lexer);
+  if (lexer->eof(lexer) && !s->host_columns_lost) {
+    if (s->host_newlines > 0) return s->host_line_chars;
+    if (s->column_read_known) {
+      return s->column_read + (s->host_advances - s->column_read_at);
+    }
+  }
+  uint32_t column = lexer->get_column(lexer);
+  if (!lexer->eof(lexer)) {
+    s->column_read = column;
+    s->column_read_at = s->host_advances;
+    s->column_read_known = true;
+  }
+  return column;
+}
+
 // The column of the lexer's current position on ITS OWN LINE. See `col_base`.
 static uint32_t line_column(Scanner *s, TSLexer *lexer) {
-  uint32_t col = lexer->get_column(lexer);
+  uint32_t col = host_column(s, lexer);
   if (s->col_base == 0) {
     // No lone '\r' has been passed, so tree-sitter's column IS the column.
     // This is the whole of every LF and CRLF document, byte for byte what this
@@ -1301,7 +1337,7 @@ static void consume_line_end(Scanner *s, TSLexer *lexer) {
     // (`ts_lexer_goto`), so a read placed after the terminator was taken emits
     // a token whose end precedes its start. Reading it here, before anything
     // moves, keeps the marked end intact.
-    uint32_t column = lexer->get_column(lexer);
+    uint32_t column = host_column(s, lexer);
     advance(s, lexer);
     if (lexer->lookahead == '\n') {
       advance(s, lexer);
@@ -1580,7 +1616,7 @@ static size_t number_of_colon_fence_blocks_from_top(Scanner *s,
                                                     uint16_t colons) {
   for (int i = s->open_blocks->size - 1; i >= 0; --i) {
     Block *b = *array_get(s->open_blocks, i);
-    if ((b->type == DIV || b->type == FIGURE_GROUP) && b->data == colons) {
+    if ((b->type == DIV || b->type == FIGURE_GROUP) && b->data <= colons) {
       return s->open_blocks->size - i;
     }
   }
@@ -4697,6 +4733,10 @@ static bool scan_block_quote_marker(Scanner *s, TSLexer *lexer,
     consume_line_end(s, lexer);
     *ending_newline = true;
     return true;
+  } else if (lexer->eof(lexer)) {
+    // A bare `>` as the last line, with no final newline (C2-B-010).
+    *ending_newline = true;
+    return true;
   } else {
     s->glued_quote_marker = true;
     return false;
@@ -6824,7 +6864,8 @@ static uint8_t consume_line_with_char_or_whitespace(Scanner *s, TSLexer *lexer,
   return at_line_end(lexer) || lexer->eof(lexer) ? seen : 0;
 }
 
-static bool frontmatter_has_closer(TSLexer *lexer) {
+static bool frontmatter_has_closer(Scanner *s, TSLexer *lexer) {
+  s->host_columns_lost = true;
   while (!lexer->eof(lexer) && !at_line_end(lexer)) {
     lexer->advance(lexer, false);
   }
@@ -7144,7 +7185,7 @@ static bool parse_list_marker_or_thematic_break(
         // An opener with no closer claims the rest of the document
         // (carve#5016, #5085); `_frontmatter_rest` then takes it whole.
         s->host_previous = -1;
-        bool closed = frontmatter_has_closer(lexer);
+        bool closed = frontmatter_has_closer(s, lexer);
         lexer->result_symbol = leading
             ? (closed ? FRONTMATTER_MARKER : FRONTMATTER_UNCLOSED_MARKER)
             : attributed
@@ -9316,7 +9357,7 @@ static void capture_remaining_cell(Scanner *s, TSLexer *lexer, Block *row,
     row->bracket_cell_col = UINT32_MAX;
     return;
   }
-  if (column == UINT32_MAX) column = lexer->get_column(lexer);
+  if (column == UINT32_MAX) column = host_column(s, lexer);
   begin_row_capture(s, lexer, carried, column);
   while (!at_line_end(lexer) && !lexer->eof(lexer) &&
          (s->row_boundary_col == UINT32_MAX ||
@@ -9349,7 +9390,7 @@ static bool parse_table_begin(Scanner *s, TSLexer *lexer,
 
   TokenType row_type;
   bool one_cell_continues = false;
-  begin_row_capture(s, lexer, 0, lexer->get_column(lexer));
+  begin_row_capture(s, lexer, 0, host_column(s, lexer));
   s->marker_probe = true;
   s->marker_len = 0;
   bool valid_row = scan_table_row(s, lexer, &row_type, &one_cell_continues);
@@ -10226,7 +10267,7 @@ static bool parse_plus_line(Scanner *s, TSLexer *lexer,
   bool last_nonspace_was_pipe = false;
   // The cells are read as a row's cells are, so the row opens the same way
   // `parse_table_begin` opens one.
-  begin_row_capture(s, lexer, 0, lexer->get_column(lexer));
+  begin_row_capture(s, lexer, 0, host_column(s, lexer));
   while (!lexer->eof(lexer) && lexer->lookahead != '\r' &&
          lexer->lookahead != '\n') {
     if (lexer->lookahead == '|') {
@@ -10406,7 +10447,7 @@ static bool parse_table_cell_end(Scanner *s, TSLexer *lexer) {
     uint32_t column = top->cell_boundary_col &&
                       top->cell_boundary_col != UINT32_MAX &&
                       (top->flags & BLOCK_FLAG_TABLE_ROW_BOUNDARY_SAFE)
-        ? top->cell_boundary_col + 1 : lexer->get_column(lexer);
+        ? top->cell_boundary_col + 1 : host_column(s, lexer);
     // A parser cell end can precede the raw splitter's boundary after an
     // escaped backslash or tick. Keep the raw context until its own boundary.
     if (column && (top->cell_boundary_col == 0 ||
@@ -13569,7 +13610,7 @@ static bool extension_closes_here(Scanner *s, TSLexer *lexer) {
   if (!extension) return false;
   if (!extension->literal_closes) return true;
   return extension_close_newlines(extension) == s->host_newlines &&
-         lexer->get_column(lexer) == extension_close_column(extension);
+         host_column(s, lexer) == extension_close_column(extension);
 }
 
 /// Is a span of this kind already open in the CURRENT scope?
@@ -17029,6 +17070,9 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
   s->host_newlines = 0;
   s->host_newlines_at_mark = 0;
   s->host_advances = 0;
+  s->host_line_chars = 0;
+  s->column_read_known = false;
+  s->host_columns_lost = false;
   s->deferred_column_pending = false;
   s->host_jumped = false;
   s->marker_probe = false;
