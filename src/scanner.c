@@ -3974,6 +3974,28 @@ static bool in_caption(Scanner *s) {
   return find_block(s, TABLE_CAPTION) || (s->state & STATE_SINGLE_LINE_CAPTION);
 }
 
+/// The column of a caption marker: the content column of the innermost
+/// container that sets one, a footnote's measured behind its quote.
+static uint32_t caption_marker_column(Scanner *s) {
+  for (int i = s->open_blocks->size - 1; i >= 0; --i) {
+    Block *block = *array_get(s->open_blocks, i);
+    if (block->type == FOOTNOTE) {
+      uint32_t margin = block->data;
+      for (int j = i - 1; j >= 0; --j) {
+        Block *outer = *array_get(s->open_blocks, j);
+        if (outer->type == BLOCK_QUOTE) return margin + outer->content_col;
+      }
+      return margin;
+    }
+    if ((is_list(block->type) || block->type == BLOCK_QUOTE ||
+         block->type == DIV || block->type == FIGURE_GROUP) &&
+        block->content_col != 0) {
+      return block->content_col;
+    }
+  }
+  return 0;
+}
+
 static bool caption_line_ends_block(Scanner *s, BracketProbe *probe, uint8_t indent) {
   if (!in_caption(s)) return false;
   uint32_t restart = probe->position;
@@ -4048,7 +4070,11 @@ static bool caption_line_ends_block(Scanner *s, BracketProbe *probe, uint8_t ind
   uint8_t saved_indent = s->indent;
   uint16_t saved_state = s->state;
   uint8_t saved_level = s->block_quote_level;
-  bool ends = content_blank ||
+  // C2-B-234: a caption takes only lines of its containers indented past its
+  // marker, which stands at the margin of those containers.
+  bool falls_short = !content_blank && !comment_line &&
+      (seen < quotes || content_column <= caption_marker_column(s));
+  bool ends = content_blank || falls_short ||
       (at_margin && !extra_quote_indent && !caret_indented && deeper_quote);
   Block *note = find_block(s, FOOTNOTE);
   uint32_t note_margin = note ? note->data : 0;
@@ -10478,8 +10504,8 @@ static bool parse_table_caption_end(Scanner *s, TSLexer *lexer) {
   }
 
   remove_block(s);
-  // A caret line below a caption continues it (C2-B-148).
-  s->caption_gap = CAPTION_HOST_HERE;
+  // The table holds its caption, so a caret line below is text (C2-B-234).
+  s->caption_gap = CAPTION_HOST_NONE;
   lexer->result_symbol = TABLE_CAPTION_END;
   return true;
 }
@@ -12476,6 +12502,29 @@ static bool paragraph_block_opener_ahead(Scanner *s, TSLexer *lexer, int markers
   if (scan_caption_at_paragraph_end(s, lexer, markers_seen)) return true;
   return false;
 }
+
+/// C2-B-234: a term, or a heading in a quote, takes only lines indented past
+/// its marker, read behind the open quotes' marks (the lexer stands there).
+/// A comment-only line is not seen, so it is left to the usual probes.
+static bool label_line_falls_short(Scanner *s, TSLexer *lexer) {
+  if (at_line_end(lexer) || lexer->eof(lexer) || lexer->lookahead == '%') {
+    return false;
+  }
+  Block *top = peek_block(s);
+  if (!top) return false;
+  uint32_t column = line_column(s, lexer);
+  if (top->type == HEADING) {
+    return count_blocks(s, BLOCK_QUOTE) > 0 && column <= top->content_col;
+  }
+  if (top->type != LIST_DEFINITION || !(top->flags & BLOCK_FLAG_DEFINITION_TERM)) {
+    return false;
+  }
+  uint32_t past_marker = list_opened_in_quote(s, top) && top->content_col >= 3
+                             ? top->content_col - 2u
+                             : top->data;
+  return column < past_marker;
+}
+
 static bool close_paragraph_after_quote(Scanner *s, TSLexer *lexer,
                                         int markers_seen);
 /// A quote opens at `column` in an item when this line's markers reach every
@@ -12587,6 +12636,8 @@ static bool close_paragraph_after_quote(Scanner *s, TSLexer *lexer,
   if (s->plus_probe_refused_line) {
     return false;
   }
+
+  if (label_line_falls_short(s, lexer)) return true;
 
   Block *note = find_block(s, FOOTNOTE);
   // A line missing a quote that holds the note is asked the quote's rules,
@@ -12912,7 +12963,8 @@ static bool emit_newline_inline(Scanner *s, TSLexer *lexer,
   if (at_line_end(lexer)) {
     return false;
   }
-  if (top && top->type == HEADING &&
+  // In a quote the column is read behind the marks (label_line_falls_short).
+  if (top && top->type == HEADING && count_blocks(s, BLOCK_QUOTE) == 0 &&
       next_line_whitespace <= top->content_col) return false;
 
   // Caption continuations use the same margin checks as opener lookahead.
