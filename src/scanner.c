@@ -12127,6 +12127,17 @@ static bool list_item_open(Scanner *s) {
 ///
 /// A paragraph-end probe and its opener must both ask this: if they disagree,
 /// the probe ends a paragraph the opener refuses.
+/// A div the quote holds directly records its column from the quote marks;
+/// this is the quote's content column to add, or 0.
+static uint32_t quoted_div_shift(Scanner *s, int index) {
+  for (int i = index - 1; i >= 0; --i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (b->type == BLOCK_QUOTE) return b->content_col;
+    if (b->type != DIV && b->type != FIGURE_GROUP) return 0;
+  }
+  return 0;
+}
+
 static bool opener_reaches_item_margin(Scanner *s, uint32_t column) {
   if (s->state & STATE_LIST_CONTINUATION) {
     return column == s->continuation_col;
@@ -12160,10 +12171,11 @@ static bool opener_reaches_item_margin(Scanner *s, uint32_t column) {
     if ((b->type == DIV || b->type == FIGURE_GROUP ||
          b->type == TABLE_CAPTION) &&
         b->content_col != 0) {
-      if (column == b->content_col) {
+      uint32_t margin = b->content_col + quoted_div_shift(s, i);
+      if (column == margin) {
         return true;
       }
-      if (column > b->content_col) {
+      if (column > margin) {
         return b->type != TABLE_CAPTION && div_host_collects(s, i);
       }
       continue;
