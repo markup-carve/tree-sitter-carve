@@ -24,9 +24,9 @@ C2-B-004: a tab after a quote mark in an item opens a line block
               line_block_marker: (line_block_marker)
               content: (content
                 (paragraph
-                  (block_quote_marker))
-                (paragraph
-                  (block_quote_marker))))))))))
+                  (block_quote_marker)))
+              (block_quote_marker)
+              (div_marker_end))))))))
 
 ============================================================
 C2-B-003: an indent after the quote marks counts from them in an item
@@ -54,9 +54,9 @@ C2-B-003: an indent after the quote marks counts from them in an item
               type: (admonition_type)
               content: (content
                 (paragraph
-                  (block_quote_marker))
-                (paragraph
-                  (block_quote_marker))))))))))
+                  (block_quote_marker)))
+              (block_quote_marker)
+              (div_marker_end))))))))
 
 ============================================================
 C2-B-004: a tab after a quote mark opens a div
@@ -80,7 +80,7 @@ C2-B-004: a tab after a quote mark opens a div
         type: (admonition_type)
         content: (content
           (paragraph
-            (block_quote_marker))
-          (paragraph
-            (block_quote_marker)))))))
+            (block_quote_marker)))
+        (block_quote_marker)
+        (div_marker_end)))))
 

@@ -12127,6 +12127,17 @@ static bool list_item_open(Scanner *s) {
 ///
 /// A paragraph-end probe and its opener must both ask this: if they disagree,
 /// the probe ends a paragraph the opener refuses.
+/// A div the quote holds directly records its column from the quote marks;
+/// this is the quote's content column to add, or 0.
+static uint32_t quoted_div_shift(Scanner *s, int index) {
+  for (int i = index - 1; i >= 0; --i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (b->type == BLOCK_QUOTE) return b->content_col;
+    if (b->type != DIV && b->type != FIGURE_GROUP) return 0;
+  }
+  return 0;
+}
+
 static bool opener_reaches_item_margin(Scanner *s, uint32_t column) {
   if (s->state & STATE_LIST_CONTINUATION) {
     return column == s->continuation_col;
@@ -12160,10 +12171,12 @@ static bool opener_reaches_item_margin(Scanner *s, uint32_t column) {
     if ((b->type == DIV || b->type == FIGURE_GROUP ||
          b->type == TABLE_CAPTION) &&
         b->content_col != 0) {
-      if (column == b->content_col) {
+      uint32_t margin = b->content_col +
+          (b->type == TABLE_CAPTION ? 0u : quoted_div_shift(s, i));
+      if (column == margin) {
         return true;
       }
-      if (column > b->content_col) {
+      if (column > margin) {
         return b->type != TABLE_CAPTION && div_host_collects(s, i);
       }
       continue;
@@ -18775,7 +18788,18 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     Block *quoted_list = peek_block(s);
     uint32_t column = quote && quote->content_col != 0 ? line_column(s, lexer) : 0;
     if (quote && quote->content_col != 0 && column > quote->content_col) s->read_past_quote = true;
-    if (quote && quote == peek_block(s) && quote->content_col != 0 &&
+    // So is indentation before a line of a div the quote holds directly: a
+    // div closer stands at any indent (C2-B-109).
+    bool quote_holds_top = quote == peek_block(s);
+    for (int i = (int)s->open_blocks->size - 1; quote && !quote_holds_top && i >= 0; --i) {
+      Block *b = *array_get(s->open_blocks, i);
+      if (b == quote) {
+        quote_holds_top = true;
+      } else if (b->type != DIV && b->type != FIGURE_GROUP) {
+        break;
+      }
+    }
+    if (quote && quote_holds_top && quote->content_col != 0 &&
         column == quote->content_col) {
       consume_whitespace(s, lexer);
       s->indent = (uint8_t)(line_column(s, lexer) - quote->content_col);
