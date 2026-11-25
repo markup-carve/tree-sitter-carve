@@ -186,3 +186,20 @@ C2-B-071: an indented line after a blank line below a term closes the list
       marker: (list_marker_definition)
       term: (term)))
   (paragraph))
+
+================================================================================
+C2-B-071: a line indented 255 spaces after a blank line below a term closes the list
+================================================================================
+
+:: t
+
+                                                                                                                                                                                                                                                               para
+
+--------------------------------------------------------------------------------
+
+(document
+  (definition_list
+    (list_item
+      marker: (list_marker_definition)
+      term: (term)))
+  (paragraph))
