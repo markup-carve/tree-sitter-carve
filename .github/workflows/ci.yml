@@ -50,6 +50,8 @@ jobs:
         run: npm run test:editor-queries
       - name: Marker separators are runs, and none of a run is content
         run: npm run test:marker-separators
+      - name: Long bracket runs parse in linear time
+        run: npm run test:bracket-growth
 
       # The CLI builds src/scanner.c at -O2; node-gyp builds it at -O3, and that
       # is what an editor loads. A write past an allocation that only the -O3

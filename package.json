@@ -27,6 +27,7 @@
     "test:marker-separators": "node scripts/marker-separators.mjs",
     "test:nesting-depth": "node scripts/nesting-depth.mjs",
     "test:asan": "node scripts/asan.mjs",
+    "test:bracket-growth": "node scripts/bracket-growth.mjs",
     "test:version-surfaces": "node scripts/version-surfaces.mjs && node --test tests/version-surfaces.test.mjs",
     "test:editor-queries": "node scripts/editor-queries.mjs"
   },
