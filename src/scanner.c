@@ -2146,12 +2146,11 @@ static bool parse_indented_content_spacer(Scanner *s, TSLexer *lexer,
 // An item owns a line indented past its marker (C2-B-025), so the margin is
 // the marker column plus one, not the content column.
 static uint8_t list_item_margin(Scanner *s, Block *list) {
-  // A term owns no body, so a definition list keeps its content column; a
+  // A term owns no lines (C2-B-071): no column reaches its item. A
   // description owns the lines past its marker (C2-B-025).
   if (list->type == LIST_DEFINITION && list->content_col != 0 &&
-      (list->flags & BLOCK_FLAG_DEFINITION_TERM) &&
-      count_blocks(s, BLOCK_QUOTE) == 0) {
-    return list->content_col;
+      (list->flags & BLOCK_FLAG_DEFINITION_TERM)) {
+    return UINT8_MAX;
   }
   return list->data;
 }
@@ -2208,10 +2207,10 @@ static bool quoted_line_reaches_list(Scanner *s, TSLexer *lexer, Block *list) {
     // An unmarked blank line has ended the quote.
     // A blank remainder has lost its marker count; it ends nothing here.
     bool blank = at_line_end(lexer) || lexer->eof(lexer);
-    // A term owns no body, so its list keeps its content column (C2-B-234).
+    // A term owns no lines (C2-B-071).
     uint32_t margin = list->type == LIST_DEFINITION &&
                               (list->flags & BLOCK_FLAG_DEFINITION_TERM)
-                          ? list->content_col
+                          ? UINT32_MAX
                           : quoted_list_margin(s, list);
     return (blank || s->block_quote_level >= quotes_below(s, list)) &&
         !(s->state & STATE_AFTER_BLANK_LINE) &&
@@ -2219,6 +2218,7 @@ static bool quoted_line_reaches_list(Scanner *s, TSLexer *lexer, Block *list) {
   }
   // A term or description marker short of the body is a sibling, not body.
   if (list->type == LIST_DEFINITION && list->content_col != 0 && lexer->lookahead == ':' &&
+      !(list->flags & BLOCK_FLAG_DEFINITION_TERM) &&
       count_blocks(s, BLOCK_QUOTE) == 0)
     return s->indent >= list->content_col;
   return s->indent >= list_item_margin(s, list);
@@ -7974,7 +7974,8 @@ static bool parse_list_item_end(Scanner *s, TSLexer *lexer,
     if (quoted_line_reaches_list(s, lexer, list)) return false;
   } else if (!quoted_list &&
              s->indent >= (list->type == LIST_DEFINITION && lexer->lookahead == ':' &&
-                                   list->content_col != 0
+                                   list->content_col != 0 &&
+                                   !(list->flags & BLOCK_FLAG_DEFINITION_TERM)
                                ? list->content_col
                                : list_item_margin(s, list))) {
     return false;
