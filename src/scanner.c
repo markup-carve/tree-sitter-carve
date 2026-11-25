@@ -715,6 +715,20 @@ typedef struct {
   // A link destination probe on this line reached its end with no `)` and no
   // space, so every later one on the line does too. Serialized in the trailer.
   bool link_tail_open_line;
+  // A qualified bracket probe read its first line to the end with the opener
+  // unmatched, and no pair it closed spans more than `bracket_pair_span`
+  // characters. A later opener on that line in the same scope reads a suffix
+  // of that text, so its `]` is that close or none. Serialized in the trailer
+  // behind bit 14 of `no_closer_kinds`, scoped by `no_closer_scope`.
+  bool bracket_span_note;
+  uint32_t bracket_pair_span;
+  // The same probe also ended where `parse_plain_bracket_run` ends, the line
+  // holds a character after its last `[` that makes a run not plain, and no
+  // stretch of the text lowers the bracket depth by more than
+  // `plain_run_drop`: a run of more openers than that cannot close and is not
+  // plain. Serialized behind bit 13 of `no_closer_kinds`.
+  bool plain_run_note;
+  uint32_t plain_run_drop;
   // Transient: the character behind the host lexer (-1 unknown), the same at
   // the last host `mark_end`, and whether a probe reached a paragraph end.
   int32_t host_previous;
@@ -14608,6 +14622,8 @@ static bool scan_inline_attribute_body(Scanner *s, TSLexer *lexer) {
 // structure. Qualifying tails and line boundaries use the regular reader.
 static const uint8_t PLAIN_BRACKET_REMAINDER = UINT8_MAX - 2;
 
+static uint16_t closer_probe_scope(Scanner *s);
+
 static bool parse_plain_bracket_run(Scanner *s, TSLexer *lexer) {
   if (first_bracket_extension(s)) {
     while (lexer->lookahead == '[') advance(s, lexer);
@@ -14631,10 +14647,15 @@ static bool parse_plain_bracket_run(Scanner *s, TSLexer *lexer) {
   bool have_remainder_column = false;
   unsigned first_line_depth = 0;
   unsigned prefix = 0;
+  uint16_t scope = closer_probe_scope(s);
+  bool noted = s->plain_run_note && s->bracket_span_note && !find_block(s, TABLE_ROW) &&
+               (s->no_closer_scope == scope || s->no_closer_scope == (uint16_t)(scope ^ 0x5a5au));
   while (lexer->lookahead == '[') {
     mark_end(s, lexer);
     remainder_advances = s->advances;
     ++prefix;
+    // See `plain_run_note`: the depth cannot fall this far.
+    if (noted && prefix > 1 && prefix > s->plain_run_drop) return false;
     advance(s, lexer);
     while (lexer->lookahead == ' ' || lexer->lookahead == '\t') advance(s, lexer);
   }
@@ -14821,9 +14842,50 @@ static bool bracket_probe_verbatim(Scanner *s, BracketProbe *probe, uint8_t widt
 
 // Pair brackets outside code and closed comments, as the engine's bracket map
 // does. An unclosed comment remains text; an unclosed code run has no close.
+// Reads the probed text the way `parse_plain_bracket_run` counts it: the
+// largest fall of the bracket depth over any stretch, and whether a character
+// that makes a run not plain follows the first line's last `[`.
+static bool plain_run_cannot_close(const BracketProbe *probe, uint32_t start, uint32_t *drop) {
+  int32_t depth = 0, highest = 0;
+  uint32_t widest = 0;
+  bool first_line = true, plain_after_open = true;
+  for (uint32_t i = start; i < probe->position && i < probe->characters.size; ++i) {
+    int32_t c = probe->characters.contents[i].character;
+    if (c == '\n' || c == '\r') { first_line = false; continue; }
+    if (c == '[') {
+      if (++depth > highest) highest = depth;
+      if (first_line) plain_after_open = true;
+      continue;
+    }
+    if (c == ']') {
+      --depth;
+      if ((uint32_t)(highest - depth) > widest) widest = (uint32_t)(highest - depth);
+      continue;
+    }
+    if (!first_line) continue;
+    if (c == '\\') { plain_after_open = false; ++i; continue; }
+    if (c == '.' && i + 1 < probe->position && probe->characters.contents[i + 1].character == '.')
+      plain_after_open = false;
+    else if (!carve_is_alnum_ascii(c) && c != ' ' && c != '\t' && c < 0x80 &&
+             c != '.' && c != ',' && c != ';' && c != '?')
+      plain_after_open = false;
+  }
+  *drop = widest;
+  return !plain_after_open;
+}
+
 static bool scan_qualified_bracket_close(Scanner *s, BracketProbe *probe, InlineType *top) {
   TSLexer *lexer = &probe->lexer;
   bool in_row = find_block(s, TABLE_ROW) != NULL;
+  // Only the outermost scan of a fresh question takes or leaves the span note.
+  bool noted = !in_row && !probe->extension_cut && !probe->bracket_scans &&
+               !probe->cell_tail;
+  uint16_t scope = noted ? (uint16_t)(closer_probe_scope(s) ^ (top ? 0x5a5au : 0)) : 0;
+  uint32_t start = probe->position;
+  bool span_bound = noted && s->bracket_span_note && s->no_closer_scope == scope;
+  uint32_t widest = 0;
+  bool line_read = false;
+  bool natural_end = false;
   uint32_t root = probe->position &&
       probe->characters.contents[probe->position - 1].character == '['
       ? probe->position - 1 : UINT32_MAX;
@@ -14839,6 +14901,13 @@ static bool scan_qualified_bracket_close(Scanner *s, BracketProbe *probe, Inline
   array_push(&open, root);
   ++probe->bracket_scans;
   while (!lexer->eof(lexer)) {
+    // Past the noted span no `]` can close the opener: what lies between
+    // holds openers whose answers the note does not give, so none is cached.
+    if (span_bound && probe->position - start > s->bracket_pair_span) {
+      --probe->bracket_scans;
+      array_delete(&open);
+      return false;
+    }
     if (top && scan_span_end_marker(s, lexer, *top)) goto failed;
     int32_t c = lexer->lookahead;
     if (c == ']') {
@@ -14848,6 +14917,7 @@ static bool scan_qualified_bracket_close(Scanner *s, BracketProbe *probe, Inline
         cached->bracket_known = true;
         cached->bracket_close = probe->position;
         cached->bracket_close_base = s->col_base;
+        if (probe->position - opener > widest) widest = probe->position - opener;
       }
       if (!open.size) {
         --probe->bracket_scans;
@@ -14922,16 +14992,29 @@ static bool scan_qualified_bracket_close(Scanner *s, BracketProbe *probe, Inline
       const BracketProbeCharacter *current = &probe->characters.contents[probe->position];
       if (!bracket_probe_pipe(s, probe, current->row_ticks || current->escaped_pipe)) goto failed;
     } else if (at_line_end(lexer)) {
+      line_read = true;
       Block *host = peek_block(s);
+      natural_end = true;
       if (in_row || (host && (host->type == HEADING || disallow_newline(host)))) goto failed;
       consume_line_end(s, lexer);
       uint8_t indent = consume_whitespace(s, lexer);
-      if (at_line_end(lexer) || caption_line_ends_block(s, probe, indent)) goto failed;
+      if (at_line_end(lexer)) goto failed;
+      natural_end = false;
+      if (caption_line_ends_block(s, probe, indent)) goto failed;
     } else {
       advance(s, lexer);
     }
   }
+  line_read = true;
+  natural_end = true;
 failed:
+  if (noted && line_read && open.size) {
+    if (s->no_closer_scope != scope) s->no_closer_kinds = s->closer_ahead_kinds = 0;
+    s->no_closer_scope = scope;
+    s->bracket_span_note = true;
+    s->bracket_pair_span = widest;
+    s->plain_run_note = natural_end && plain_run_cannot_close(probe, start, &s->plain_run_drop);
+  }
   for (uint32_t i = 0; i < open.size; ++i) if (open.contents[i] != UINT32_MAX) {
     BracketProbeCharacter *cached = &probe->characters.contents[open.contents[i]];
     cached->bracket_known = true;
@@ -15472,7 +15555,10 @@ static bool bare_closer_ahead(Scanner *s, TSLexer *lexer, char bare, bool *combi
       combined_literal || find_inline(s, EXTENSION) ? NULL : &last_on_line);
   bool note = closer ? last_on_line : s->probe_reached_end && !s->probe_opaque_holds_bare;
   if (note) {
-    if (s->no_closer_scope != scope) s->no_closer_kinds = s->closer_ahead_kinds = 0;
+    if (s->no_closer_scope != scope) {
+      s->no_closer_kinds = s->closer_ahead_kinds = 0;
+      s->bracket_span_note = s->plain_run_note = false;
+    }
     if (closer) s->closer_ahead_kinds |= bit;
     else s->no_closer_kinds |= bit;
     s->no_closer_scope = scope;
@@ -17505,10 +17591,12 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
       s->no_closer_kinds = 0;
       s->closer_ahead_kinds = 0;
       s->link_tail_open_line = false;
+      s->bracket_span_note = s->plain_run_note = false;
     }
     if (crossed || lexer->result_symbol == NEWLINE_INLINE) {
       s->link_tail_open_line = false;
       s->closer_ahead_kinds = 0;
+      s->bracket_span_note = s->plain_run_note = false;
     }
   }
   return found;
@@ -19696,6 +19784,10 @@ static void init_scalars(Scanner *s) {
   s->no_closer_scope = 0;
   s->closer_ahead_kinds = 0;
   s->link_tail_open_line = false;
+  s->bracket_span_note = false;
+  s->bracket_pair_span = 0;
+  s->plain_run_note = false;
+  s->plain_run_drop = 0;
   s->host_previous = -1;
   s->host_previous_at_mark = -1;
   s->host_marked = false;
@@ -19891,12 +19983,23 @@ unsigned tree_sitter_carve_external_scanner_serialize(void *payload,
   // The inline notes are an optimization: drop them rather than the state
   // when the buffer cannot hold them.
   bool ahead = s->closer_ahead_kinds != 0;
-  bool notes = (s->no_closer_kinds || ahead || s->link_tail_open_line) &&
-               size + 4 + (ahead ? 2 : 0) + (plus_extension ? 3 : 0) +
+  bool span_note = s->bracket_span_note;
+  bool plain_note = span_note && s->plain_run_note;
+  bool notes = (s->no_closer_kinds || ahead || s->link_tail_open_line || span_note) &&
+               size + 4 + (ahead ? 2 : 0) + (span_note ? 4 : 0) + (plain_note ? 4 : 0) + (plus_extension ? 3 : 0) +
                    (row_extension ? 1 : 0) + (chain_extension ? 1 : 0) + 3 <=
                    TREE_SITTER_SERIALIZATION_BUFFER_SIZE;
   if (notes) {
-    uint16_t kinds = s->no_closer_kinds | (ahead ? 1u << 15 : 0);
+    uint16_t kinds = s->no_closer_kinds | (ahead ? 1u << 15 : 0) | (span_note ? 1u << 14 : 0) |
+                     (plain_note ? 1u << 13 : 0);
+    if (plain_note) {
+      for (unsigned shift = 0; shift < 32; shift += 8)
+        buffer[size++] = (char)(s->plain_run_drop >> shift);
+    }
+    if (span_note) {
+      for (unsigned shift = 0; shift < 32; shift += 8)
+        buffer[size++] = (char)(s->bracket_pair_span >> shift);
+    }
     if (ahead) {
       buffer[size++] = (char)(s->closer_ahead_kinds & 0xff);
       buffer[size++] = (char)(s->closer_ahead_kinds >> 8);
@@ -19983,6 +20086,24 @@ void tree_sitter_carve_external_scanner_deserialize(void *payload, char *buffer,
         if (length < 2) return;
         s->closer_ahead_kinds = (uint16_t)((uint8_t)buffer[length - 2] | (uint8_t)buffer[length - 1] << 8);
         length -= 2;
+      }
+      if (s->no_closer_kinds & 1u << 14) {
+        s->no_closer_kinds &= ~(1u << 14);
+        if (length < 4) return;
+        s->bracket_span_note = true;
+        s->bracket_pair_span = 0;
+        for (unsigned i = 0; i < 4; ++i)
+          s->bracket_pair_span |= (uint32_t)(uint8_t)buffer[length - 4 + i] << (8 * i);
+        length -= 4;
+      }
+      if (s->no_closer_kinds & 1u << 13) {
+        s->no_closer_kinds &= ~(1u << 13);
+        if (length < 4) return;
+        s->plain_run_note = true;
+        s->plain_run_drop = 0;
+        for (unsigned i = 0; i < 4; ++i)
+          s->plain_run_drop |= (uint32_t)(uint8_t)buffer[length - 4 + i] << (8 * i);
+        length -= 4;
       }
     }
     size_t size = 0;
