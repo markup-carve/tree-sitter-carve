@@ -12171,7 +12171,8 @@ static bool opener_reaches_item_margin(Scanner *s, uint32_t column) {
     if ((b->type == DIV || b->type == FIGURE_GROUP ||
          b->type == TABLE_CAPTION) &&
         b->content_col != 0) {
-      uint32_t margin = b->content_col + quoted_div_shift(s, i);
+      uint32_t margin = b->content_col +
+          (b->type == TABLE_CAPTION ? 0u : quoted_div_shift(s, i));
       if (column == margin) {
         return true;
       }
