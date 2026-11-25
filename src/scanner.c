@@ -18775,7 +18775,18 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     Block *quoted_list = peek_block(s);
     uint32_t column = quote && quote->content_col != 0 ? line_column(s, lexer) : 0;
     if (quote && quote->content_col != 0 && column > quote->content_col) s->read_past_quote = true;
-    if (quote && quote == peek_block(s) && quote->content_col != 0 &&
+    // So is indentation before a line of a div the quote holds directly: a
+    // div closer stands at any indent (C2-B-109).
+    bool quote_holds_top = quote == peek_block(s);
+    for (int i = (int)s->open_blocks->size - 1; quote && !quote_holds_top && i >= 0; --i) {
+      Block *b = *array_get(s->open_blocks, i);
+      if (b == quote) {
+        quote_holds_top = true;
+      } else if (b->type != DIV && b->type != FIGURE_GROUP) {
+        break;
+      }
+    }
+    if (quote && quote_holds_top && quote->content_col != 0 &&
         column == quote->content_col) {
       consume_whitespace(s, lexer);
       s->indent = (uint8_t)(line_column(s, lexer) - quote->content_col);
