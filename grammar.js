@@ -3104,14 +3104,14 @@ module.exports = grammar({
               ),
             ),
           ),
-          seq(
-            optional(
-              seq(
-                $._link_title_space,
-                field("title", alias($._inline_link_title, $.link_title)),
-              ),
+          // An empty destination takes no padding of its own: `( )` is no
+          // tail, and only spaces follow a title (C2-I-067 to C2-I-069).
+          optional(
+            seq(
+              $._link_title_space,
+              field("title", alias($._inline_link_title, $.link_title)),
+              optional(token.immediate(/ +/)),
             ),
-            optional($._empty_link_padding),
           ),
         ),
         alias($._parens_span_end, ")"),

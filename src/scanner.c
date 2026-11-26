@@ -15919,12 +15919,12 @@ static bool probe_scan_inline_link_tail(Scanner *s, TSLexer *lexer, char bare, b
   if (!any_dest && (lexer->lookahead == ' ' || lexer->lookahead == '\t')) {
     bool title_separator = lexer->lookahead == ' ';
     advance(s, lexer);
-    if (title_separator && (lexer->lookahead == '"' || lexer->lookahead == '\'')) {
-      title_space_consumed = true;
-    } else {
-      while (lexer->lookahead == ' ' || lexer->lookahead == '\t') advance(s, lexer);
-      return lexer->lookahead == ')';
+    // An empty destination takes no padding: only a title may follow it
+    // (C2-I-067, C2-I-068).
+    if (!title_separator || (lexer->lookahead != '"' && lexer->lookahead != '\'')) {
+      return false;
     }
+    title_space_consumed = true;
   }
   if (!any_dest && !title_space_consumed) {
     return false;
@@ -15974,11 +15974,7 @@ static bool probe_scan_inline_link_tail(Scanner *s, TSLexer *lexer, char bare, b
                             previous != '\t' && previous != '\n';
     if (lexer->lookahead == quote) {
       advance(s, lexer);
-      if (!any_dest) {
-        while (lexer->lookahead == ' ' || lexer->lookahead == '\t') advance(s, lexer);
-      } else {
-        while (lexer->lookahead == ' ') advance(s, lexer);
-      }
+      while (lexer->lookahead == ' ') advance(s, lexer);
       return lexer->lookahead == ')';
     }
     advance(s, lexer);
@@ -17730,7 +17726,7 @@ static bool caption_host_line_ahead(Scanner *s, TSLexer *lexer) {
           if (lexer->lookahead == '"' || lexer->lookahead == '\'') {
             title_quote = lexer->lookahead;
             advance(s, lexer);
-          } else if (lexer->lookahead != ' ' && lexer->lookahead != ')') {
+          } else {
             return false;
           }
           continue;
