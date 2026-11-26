@@ -10946,8 +10946,17 @@
                 "name": "_bracketed_text_begin"
               },
               {
-                "type": "SYMBOL",
-                "name": "_square_bracket_span_mark_begin"
+                "type": "CHOICE",
+                "members": [
+                  {
+                    "type": "SYMBOL",
+                    "name": "_square_bracket_span_mark_begin"
+                  },
+                  {
+                    "type": "SYMBOL",
+                    "name": "_link_text_mark_begin"
+                  }
+                ]
               },
               {
                 "type": "SYMBOL",
@@ -14104,6 +14113,10 @@
     {
       "type": "SYMBOL",
       "name": "_footnote_label_mark_begin"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_link_text_mark_begin"
     }
   ],
   "inline": [],

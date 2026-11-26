@@ -351,10 +351,11 @@ typedef enum {
   IMAGE_SPAN_MARK_BEGIN,
   CARET_BRACKET_MARK_BEGIN,
   FOOTNOTE_LABEL_MARK_BEGIN,
+  LINK_TEXT_MARK_BEGIN,
 } TokenType;
 
 // The size of `valid_symbols`, for the copies that edit one entry.
-#define EXTERNAL_TOKEN_COUNT (FOOTNOTE_LABEL_MARK_BEGIN + 1)
+#define EXTERNAL_TOKEN_COUNT (LINK_TEXT_MARK_BEGIN + 1)
 
 // The different blocks in Carve that we track,
 // in order to match or close them properly.
@@ -16515,6 +16516,11 @@ static bool parse_attributed_span_mark_begin(Scanner *s, TSLexer *lexer,
   if (valid_symbols[IN_FALLBACK]) {
     if (balanced && (s->state & STATE_BRACKET_STARTS_INLINE_LINK)) {
       push_inline_flagged(s, SQUARE_BRACKET_SPAN, 0, INLINE_BRACED);
+      // Only link text reads on, as in `mark_span_begin`.
+      if (valid_symbols[LINK_TEXT_MARK_BEGIN]) {
+        lexer->result_symbol = LINK_TEXT_MARK_BEGIN;
+        return true;
+      }
     } else if (balanced) {
       if (top && top->type == SQUARE_BRACKET_SPAN && ((top->flags & (INLINE_LABEL | INLINE_BRACED)) == INLINE_LABEL)) {
         if (top->literal_closes < UINT32_MAX) ++top->literal_closes;
@@ -16607,6 +16613,10 @@ static bool mark_span_begin(Scanner *s, TSLexer *lexer,
       if (balanced && (s->state & (STATE_BRACKET_STARTS_SPAN | STATE_BRACKET_STARTS_INLINE_LINK))) {
         push_inline_flagged(s, SQUARE_BRACKET_SPAN, 0, INLINE_BRACED);
         lexer->result_symbol = token;
+        // Only link text reads on: the fallback reading would end at the
+        // tail's `(` anyway, and each nested link would double the versions.
+        if ((s->state & STATE_BRACKET_STARTS_INLINE_LINK) && valid_symbols[LINK_TEXT_MARK_BEGIN])
+          lexer->result_symbol = LINK_TEXT_MARK_BEGIN;
         return true;
       }
       balanced_bracket = balanced;
@@ -17926,7 +17936,8 @@ static bool keeps_inline_notes(TokenType token) {
   case EMPHASIS_QUALIFIED_MARK_BEGIN: case WORD_END:
   case HIGHLIGHTED_QUALIFIED_MARK_BEGIN: case LITERAL_STAR: case LITERAL_SLASH:
   case LITERAL_SLASH_BOUNDARY: case AFTER_BARE_CLOSER: case IMAGE_SPAN_MARK_BEGIN:
-  case CARET_BRACKET_MARK_BEGIN: case FOOTNOTE_LABEL_MARK_BEGIN: case TRAILING_COMMENT:
+  case CARET_BRACKET_MARK_BEGIN: case FOOTNOTE_LABEL_MARK_BEGIN: case LINK_TEXT_MARK_BEGIN:
+  case TRAILING_COMMENT:
   // A code span holds no delimiter, so it changes no closer probe's answer.
   case VERBATIM_BEGIN: case VERBATIM_CONTENT: case VERBATIM_END:
     return true;

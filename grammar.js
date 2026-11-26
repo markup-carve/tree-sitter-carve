@@ -2974,7 +2974,9 @@ module.exports = grammar({
         choice(
           seq(
             $._bracketed_text_begin,
-            $._square_bracket_span_mark_begin,
+            // The scanner's own mark where an inline link tail follows, which
+            // no fallback reading of the bracket takes.
+            choice($._square_bracket_span_mark_begin, $._link_text_mark_begin),
             $._inline,
             // Alias to "]" to allow us to highlight it in Neovim.
             // Maybe some bug, or some undocumented behavior?
@@ -3787,5 +3789,6 @@ module.exports = grammar({
     // The bracket mark behind a caret pair that C2-I-089 makes ordinary.
     $._caret_bracket_mark_begin,
     $._footnote_label_mark_begin,
+    $._link_text_mark_begin,
   ],
 });
