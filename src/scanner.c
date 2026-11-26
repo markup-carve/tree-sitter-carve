@@ -14375,6 +14375,16 @@ static bool braced_closer_in_open_run(Scanner *s, BracketProbe *probe,
   return true;
 }
 
+static bool marker_of_open_inline(Scanner *s, int32_t c);
+
+static bool open_braced_of_marker(Scanner *s, int32_t c) {
+  for (int i = (int)s->open_inline->size - 1; i >= 0; --i) {
+    Inline *e = *array_get(s->open_inline, i);
+    if ((e->flags & INLINE_BRACED) && (int32_t)inline_marker(e->type) == c) return true;
+  }
+  return false;
+}
+
 static bool probe_braced_closer_ahead(Scanner *s, TSLexer *lexer, char marker, BracketProbe *probe, uint32_t *close_position, uint32_t before) {
   // An EMPTY braced span is not a span (carve#1447): `{--}` is the en dash.
   if (lexer->lookahead == marker) {
@@ -14406,6 +14416,7 @@ static bool probe_braced_closer_ahead(Scanner *s, TSLexer *lexer, char marker, B
   int32_t last = marker;
   while (!lexer->eof(lexer) && (!probe || probe->position < before)) {
     bool after_space = last == ' ' || last == '\t' || last == '\n';
+    int32_t before_c = last;
     last = lexer->lookahead;
     if (at_line_end(lexer)) {
       last = '\n';
@@ -14532,6 +14543,23 @@ static bool probe_braced_closer_ahead(Scanner *s, TSLexer *lexer, char marker, B
       }
       continue;
     }
+    // The first pair closed wins (C2-I-059): a closer of a span open around
+    // this opener, met first, removes it.
+    if (depth == 0 && bracket_depth == 0 && c != marker && marker_of_open_inline(s, c)) {
+      advance(s, lexer);
+      int32_t next = lexer->lookahead;
+      InlineType kind;
+      Inline *open = is_bare_delim_kind(c, &kind) ? find_inline_in_scope(s, kind) : NULL;
+      bool closes = next == '}' ? open_braced_of_marker(s, c)
+                    : open && !(open->flags & INLINE_BRACED) && (c == '*' || c == '/') &&
+                          !after_space && before_c != c && next != c &&
+                          !carve_is_alnum_ascii(next) && !carve_is_grapheme_extender(next);
+      if (closes) {
+        s->braced_probe_raw_closer = true;
+        return false;
+      }
+      continue;
+    }
     if (c == marker || (depth > 0 && c == nested[depth - 1])) {
       advance(s, lexer);
       if (lexer->lookahead == '}') {
@@ -14540,7 +14568,8 @@ static bool probe_braced_closer_ahead(Scanner *s, TSLexer *lexer, char marker, B
           advance(s, lexer);
           continue;
         }
-        if (depth == 0 && bracket_depth == 0 && !capped) {
+        // Closing first, this pair removes the braced entries opened inside it.
+        if (bracket_depth == 0 && !capped) {
           if (close_position && probe) *close_position = probe->position - 1;
           return true;
         }
@@ -15661,8 +15690,9 @@ static bool probe_bare_closer_skips_brackets(Scanner *s, BracketProbe *probe, ch
       static const InlineType braced_kinds[] = {STRONG, EMPHASIS, UNDERLINE, STRIKETHROUGH,
           HIGHLIGHTED, SUPERSCRIPT, SUBSCRIPT, INSERT, DELETE};
       uint16_t brace_bit = candidate ? (uint16_t)(1 << (candidate - markers)) : 0;
-      // A braced span of the bare kind is opaque too: it nests (E3).
-      if (brace_bit && !(unclosed_braced & brace_bit) &&
+      // A braced span of the bare kind is opaque too: it nests (E3). In one of
+      // another kind the bare closer closes first and removes it (C2-I-059).
+      if (brace_bit && lexer->lookahead == bare && !(unclosed_braced & brace_bit) &&
           !braced_same_kind_blocked(s, braced_kinds[candidate - markers])) {
         char marker = (char)lexer->lookahead;
         advance(s, lexer);
