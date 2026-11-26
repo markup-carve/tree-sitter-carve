@@ -422,7 +422,7 @@ carve#6508: a table row past a quoted term's marker ends the term
       (paragraph))))
 
 ================================================================================
-carve#6508: a term in an item continues on a list marker past it
+C2-B-234: a bullet past an item's marker ends the term in it
 ================================================================================
 
 - :: term
@@ -439,10 +439,12 @@ carve#6508: a term in an item continues on a list marker past it
         (definition_list
           (list_item
             marker: (list_marker_definition)
-            term: (term))
+            term: (term)))
+        (list
           (list_item
-            marker: (list_marker_description)
-            definition: (definition)))))))
+            marker: (list_marker_dash)
+            content: (list_item_content
+              (paragraph))))))))
 
 ================================================================================
 carve#6508: an unindented line below a caption is a paragraph

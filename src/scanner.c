@@ -4097,13 +4097,15 @@ static bool scan_list_marker(Scanner *s, TSLexer *lexer);
 /// ends a paragraph: a code, div or comment fence, a table row with its
 /// closing pipe, or a thematic break. Read from the line's first character.
 static bool label_line_interrupts(Scanner *s, TSLexer *lexer) {
-  // Inside an item, a list marker indented past the item's marker does too.
-  // A term's own description list is no such item.
+  // Inside an item, a description or a footnote body, a list marker indented
+  // past its marker does too (C2-B-234, C2-B-015). A term's own description
+  // list is no such container.
   Block *item = NULL;
   for (int i = s->open_blocks->size - 1; i >= 0; --i) {
     Block *b = *array_get(s->open_blocks, i);
-    if (is_list(b->type)) {
-      if (b->type != LIST_DEFINITION) item = b;
+    if (b->type == LIST_DEFINITION && (b->flags & BLOCK_FLAG_DEFINITION_TERM)) continue;
+    if (is_list(b->type) || b->type == FOOTNOTE) {
+      item = b;
       break;
     }
   }
@@ -4134,7 +4136,7 @@ static bool label_line_interrupts(Scanner *s, TSLexer *lexer) {
     return row;
   }
   default:
-    return past_item && scan_list_marker(s, lexer) &&
+    return past_item && scan_list_marker(s, lexer) && s->marker_value_one &&
            marker_line_has_content(s, lexer);
   }
 }
