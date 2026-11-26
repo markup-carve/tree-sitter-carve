@@ -708,43 +708,47 @@
       ]
     },
     "_include_block": {
-      "type": "SEQ",
-      "members": [
-        {
-          "type": "ALIAS",
-          "content": {
-            "type": "SYMBOL",
-            "name": "_include_block_directive"
+      "type": "PREC_DYNAMIC",
+      "value": 30000,
+      "content": {
+        "type": "SEQ",
+        "members": [
+          {
+            "type": "ALIAS",
+            "content": {
+              "type": "SYMBOL",
+              "name": "_include_block_directive"
+            },
+            "named": true,
+            "value": "include_directive"
           },
-          "named": true,
-          "value": "include_directive"
-        },
-        {
-          "type": "CHOICE",
-          "members": [
-            {
-              "type": "SYMBOL",
-              "name": "_whitespace1"
-            },
-            {
-              "type": "BLANK"
-            }
-          ]
-        },
-        {
-          "type": "CHOICE",
-          "members": [
-            {
-              "type": "SYMBOL",
-              "name": "_newline"
-            },
-            {
-              "type": "SYMBOL",
-              "name": "_eof_or_newline"
-            }
-          ]
-        }
-      ]
+          {
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "_whitespace1"
+              },
+              {
+                "type": "BLANK"
+              }
+            ]
+          },
+          {
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "_newline"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "_eof_or_newline"
+              }
+            ]
+          }
+        ]
+      }
     },
     "section": {
       "type": "SEQ",
@@ -2850,8 +2854,17 @@
               {
                 "type": "REPEAT",
                 "content": {
-                  "type": "SYMBOL",
-                  "name": "_table_row"
+                  "type": "CHOICE",
+                  "members": [
+                    {
+                      "type": "SYMBOL",
+                      "name": "_table_row"
+                    },
+                    {
+                      "type": "SYMBOL",
+                      "name": "_table_comment_unit"
+                    }
+                  ]
                 }
               },
               {
@@ -3241,13 +3254,6 @@
           ]
         },
         {
-          "type": "REPEAT",
-          "content": {
-            "type": "SYMBOL",
-            "name": "_table_comment"
-          }
-        },
-        {
           "type": "CHOICE",
           "members": [
             {
@@ -3287,6 +3293,27 @@
               "name": "table_continuation_row"
             }
           ]
+        }
+      ]
+    },
+    "_table_comment_unit": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "_table_list_row_check"
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        },
+        {
+          "type": "SYMBOL",
+          "name": "_table_comment"
         }
       ]
     },
@@ -4789,17 +4816,43 @@
                   ]
                 },
                 {
-                  "type": "FIELD",
-                  "name": "figure_group_marker",
-                  "content": {
-                    "type": "ALIAS",
-                    "content": {
-                      "type": "SYMBOL",
-                      "name": "_figure_group_marker"
+                  "type": "SEQ",
+                  "members": [
+                    {
+                      "type": "FIELD",
+                      "name": "figure_group_marker",
+                      "content": {
+                        "type": "ALIAS",
+                        "content": {
+                          "type": "SYMBOL",
+                          "name": "_figure_group_marker"
+                        },
+                        "named": true,
+                        "value": "figure_group_marker"
+                      }
                     },
-                    "named": true,
-                    "value": "figure_group_marker"
-                  }
+                    {
+                      "type": "CHOICE",
+                      "members": [
+                        {
+                          "type": "FIELD",
+                          "name": "invalid_metadata",
+                          "content": {
+                            "type": "ALIAS",
+                            "content": {
+                              "type": "SYMBOL",
+                              "name": "_container_invalid_metadata"
+                            },
+                            "named": true,
+                            "value": "invalid_metadata"
+                          }
+                        },
+                        {
+                          "type": "BLANK"
+                        }
+                      ]
+                    }
+                  ]
                 },
                 {
                   "type": "SEQ",

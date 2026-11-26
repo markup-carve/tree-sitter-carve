@@ -1,0 +1,118 @@
+================================================================================
+C2-A-086: a comment-only line below the last row before a paragraph
+================================================================================
+
+| a |
+%% c
+x
+
+--------------------------------------------------------------------------------
+
+(document
+  (table
+    (table_row
+      (table_cell))
+    (comment_line))
+  (paragraph))
+
+================================================================================
+C2-A-086: comment-only lines below the last row keep the caption
+================================================================================
+
+| a |
+%% c
+%% d
+^ cap
+
+--------------------------------------------------------------------------------
+
+(document
+  (table
+    (table_row
+      (table_cell))
+    (comment_line)
+    (comment_line)
+    (table_caption
+      marker: (marker)
+      content: (content))))
+
+================================================================================
+C2-A-086: a comment-only line below a quoted table's last row
+================================================================================
+
+> | a |
+> %% c
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (table
+        (table_row
+          (table_cell))
+        (block_quote_marker)
+        (comment_line)))))
+
+================================================================================
+C2-A-086: a comment-only line below the last row of a table in an item
+================================================================================
+
+- | a |
+  %% c
+- b
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (table
+          (table_row
+            (table_cell))
+          (comment_line))))
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)))))
+
+================================================================================
+C2-B-137: a comment-only line between rows of a table in an item
+================================================================================
+
+- | a |
+  %% c
+  | b |
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (table
+          (table_row
+            (table_cell))
+          (comment_line)
+          (table_row
+            (table_cell)))))))
+
+================================================================================
+C2-B-137: a comment-only line after a blank line stays outside the table
+================================================================================
+
+| a |
+
+%% c
+
+--------------------------------------------------------------------------------
+
+(document
+  (table
+    (table_row
+      (table_cell)))
+  (comment_line))

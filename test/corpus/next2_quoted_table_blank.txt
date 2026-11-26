@@ -1,0 +1,51 @@
+================================================================================
+a quoted blank line ends a quoted table
+================================================================================
+
+> | 1 | 2 |
+>
+> | 1 | 2 |
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (table
+        (table_row
+          (table_cell)
+          (table_cell)))
+      (block_quote_marker)
+      (table
+        (block_quote_marker)
+        (table_row
+          (table_cell)
+          (table_cell))))))
+
+================================================================================
+a quoted blank line puts a comment below a quoted table outside it
+================================================================================
+
+> |= a |= b |
+> | 1 | 2 |
+>
+> %% c
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (table
+        (table_header
+          (table_cell)
+          (table_cell))
+        (block_quote_marker)
+        (table_row
+          (table_cell)
+          (table_cell)))
+      (block_quote_marker)
+      (block_quote_marker)
+      (comment_line))))

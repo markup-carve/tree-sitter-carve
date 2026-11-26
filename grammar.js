@@ -637,11 +637,17 @@ module.exports = grammar({
 
     // A directive alone on its line is a block of one line (C2-B-156); the
     // scanner checks the shape of C2-B-201 to C2-B-204 before it opens one.
+    // Weighted as the inline directive is, or a paragraph that reads the
+    // same line as an inline one outranks the block reading (a quoted fence
+    // closer then turns into paragraph text).
     _include_block: ($) =>
-      seq(
-        alias($._include_block_directive, $.include_directive),
-        optional($._whitespace1),
-        choice($._newline, $._eof_or_newline),
+      prec.dynamic(
+        300 * ELEMENT_PRECEDENCE,
+        seq(
+          alias($._include_block_directive, $.include_directive),
+          optional($._whitespace1),
+          choice($._newline, $._eof_or_newline),
+        ),
       ),
 
     // A heading ends at its newline and nothing folds into it (SINGLE-LINE
@@ -1113,7 +1119,7 @@ module.exports = grammar({
         prec.right(
           seq(
             $._table_regular_row,
-            repeat($._table_row),
+            repeat(choice($._table_row, $._table_comment_unit)),
             optional($._table_list_end),
             optional($._newline),
             optional($.table_caption),
@@ -1127,12 +1133,10 @@ module.exports = grammar({
         ),
       ),
     // A comment-only line is not seen by block structure, so it ends no table
-    // (C2-B-137, C2-B-175). The scanner offers the token only when a row
-    // follows; one below the last row stays outside the table.
+    // (C2-B-137, C2-B-175); one below the last row is the table's (C2-A-086).
     _table_row: ($) =>
       seq(
         optional($._table_list_row_check),
-        repeat($._table_comment),
         optional(
           repeat1(alias($._table_quote_continuation, $.block_quote_marker)),
         ),
@@ -1143,6 +1147,8 @@ module.exports = grammar({
           $.table_continuation_row,
         ),
       ),
+    _table_comment_unit: ($) =>
+      seq(optional($._table_list_row_check), $._table_comment),
     _table_comment: ($) =>
       seq(
         optional(
@@ -1459,7 +1465,7 @@ module.exports = grammar({
               ),
             ),
             // COMPOSITE FIGURE GROUP (PART 9 §4c): the fence, its separator,
-            // the word `figure`, and NOTHING else. `figure` is RESERVED among
+            // the word `figure`, and no title or label. `figure` is RESERVED among
             // the `:::` kind words, so a BARE opener is one figure of ordered
             // panels rather than an admonition - while `::: figure "T"` and
             // `::: figure [g]` do NOT match that production and stay an
@@ -1482,9 +1488,18 @@ module.exports = grammar({
             // named the line block and the local hard-break block
             // (markup-carve/carve-grammars#311): the marker that SELECTS the
             // container is the construct's name.
-            field(
-              "figure_group_marker",
-              alias($._figure_group_marker, $.figure_group_marker),
+            // Words or a brace block after the word are ignored (C2-B-122).
+            seq(
+              field(
+                "figure_group_marker",
+                alias($._figure_group_marker, $.figure_group_marker),
+              ),
+              optional(
+                field(
+                  "invalid_metadata",
+                  alias($._container_invalid_metadata, $.invalid_metadata),
+                ),
+              ),
             ),
             // ADMONITION, with an optional quoted custom title and an optional
             // bracketed [label] (a grouping id; PART 9 §12).

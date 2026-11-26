@@ -2174,6 +2174,24 @@ static uint32_t quoted_list_margin(Scanner *s, Block *list) {
   return list->content_col;
 }
 
+/// A description list's marker column plus one, absolute. A list opened at
+/// the start of a quoted line records it behind the quote's marks; one opened
+/// on an item's marker line records the absolute column.
+static uint32_t definition_list_margin(Scanner *s, Block *list) {
+  bool below_list = false;
+  for (int i = s->open_blocks->size - 1; i >= 0; --i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (b == list) {
+      below_list = true;
+    } else if (below_list && is_list(b->type)) {
+      return list->data;
+    } else if (below_list && b->type == BLOCK_QUOTE) {
+      return (uint32_t)b->content_col + list->data;
+    }
+  }
+  return list->data;
+}
+
 /// How many quotes hold `b`?
 static uint8_t quotes_below(Scanner *s, Block *b) {
   uint8_t n = 0;
@@ -4097,13 +4115,17 @@ static bool scan_list_marker(Scanner *s, TSLexer *lexer);
 /// ends a paragraph: a code, div or comment fence, a table row with its
 /// closing pipe, or a thematic break. Read from the line's first character.
 static bool label_line_interrupts(Scanner *s, TSLexer *lexer) {
-  // Inside an item, a list marker indented past the item's marker does too.
-  // A term's own description list is no such item.
+  // Inside an item, a description or a footnote body, a list marker indented
+  // past its marker does too (C2-B-234, C2-B-015). A term's own description
+  // list is no such container.
   Block *item = NULL;
   for (int i = s->open_blocks->size - 1; i >= 0; --i) {
     Block *b = *array_get(s->open_blocks, i);
-    if (is_list(b->type)) {
-      if (b->type != LIST_DEFINITION) item = b;
+    if (b->type == LIST_DEFINITION && (b->flags & BLOCK_FLAG_DEFINITION_TERM)) continue;
+    // A div between the term and the item is the term's container.
+    if (b->type == DIV || b->type == FIGURE_GROUP) break;
+    if (is_list(b->type) || b->type == FOOTNOTE) {
+      item = b;
       break;
     }
   }
@@ -4134,7 +4156,7 @@ static bool label_line_interrupts(Scanner *s, TSLexer *lexer) {
     return row;
   }
   default:
-    return past_item && scan_list_marker(s, lexer) &&
+    return past_item && scan_list_marker(s, lexer) && s->marker_value_one &&
            marker_line_has_content(s, lexer);
   }
 }
@@ -5837,9 +5859,10 @@ static bool parse_table_comment_line(Scanner *s, TSLexer *lexer,
   consume_line_end(s, lexer);
   mark_end(s, lexer);
   lexer->result_symbol = TABLE_COMMENT_LINE;
+  // A comment-only line separates no caption from its table (C2-B-137).
+  if (s->caption_gap == CAPTION_HOST_THIS_LINE) s->caption_gap = CAPTION_HOST_HERE;
   if (s->state & STATE_PROVEN_RUN) return true;
-  if (!table_row_after_comments(s, lexer)) return false;
-  s->state |= STATE_PROVEN_RUN;
+  if (table_row_after_comments(s, lexer)) s->state |= STATE_PROVEN_RUN;
   return true;
 }
 
@@ -5968,10 +5991,13 @@ static bool parse_table_quote_continuation(Scanner *s, TSLexer *lexer,
   bool quote_symbols[ATTACHED_QUOTE_PREFIX + 1];
   memcpy(quote_symbols, valid_symbols, sizeof(quote_symbols));
   quote_symbols[BLOCK_QUOTE_CONTINUATION] = true;
+  bool after_blank = (s->state & STATE_AFTER_BLANK_LINE) != 0;
   if (!parse_block_quote(s, lexer, quote_symbols)) return false;
   if (lexer->result_symbol != BLOCK_QUOTE_CONTINUATION) {
     return valid_symbols[lexer->result_symbol];
   }
+  // A blank quoted line: what follows is the next line's, and it ends the table.
+  if (s->host_crossed_line) return valid_symbols[BLOCK_QUOTE_CONTINUATION];
   bool ending = false;
   uint8_t rest = scan_block_quote_markers(s, lexer, &ending);
   consume_whitespace(s, lexer);
@@ -5993,11 +6019,13 @@ static bool parse_table_quote_continuation(Scanner *s, TSLexer *lexer,
   } else if (!ending && lexer->lookahead == '%' &&
              s->block_quote_level + rest <= count_blocks(s, BLOCK_QUOTE) &&
              valid_symbols[TABLE_COMMENT_LINE]) {
+    bool marked = s->block_quote_level + rest == count_blocks(s, BLOCK_QUOTE);
     row = scan_comment_only_line(s, lexer);
     if (row && !(state & STATE_PROVEN_RUN)) {
       consume_line_end(s, lexer);
-      row = table_row_after_comments(s, lexer);
-      if (row) state |= STATE_PROVEN_RUN;
+      // One below the last row is the table's too (C2-A-086).
+      if (table_row_after_comments(s, lexer)) state |= STATE_PROVEN_RUN;
+      else row = marked && !after_blank;
     }
   } else {
     row = false;
@@ -6722,7 +6750,8 @@ static bool scan_paragraph_closing_marker(Scanner *s, TSLexer *lexer) {
       }
       // C2-B-016: only at an open description list's column.
       Block *terms = find_block(s, LIST_DEFINITION);
-      if (!terms || marker_column + 1u != terms->data) return false;
+      if (!terms) return false;
+      if (marker_column + 1u != definition_list_margin(s, terms)) return false;
       advance(s, lexer);
       // In a description body an empty term marker is text (corpus 483).
       bool in_term = in_definition_list &&
@@ -6771,7 +6800,7 @@ static bool scan_paragraph_closing_marker(Scanner *s, TSLexer *lexer) {
     // C2-B-015: only past the description's mark, and only a bullet, a bare
     // dot or a value of 1; otherwise the line is lazy.
     uint32_t column = paragraph_end_line_column(s, lexer);
-    if (column < body->data) {
+    if (column < definition_list_margin(s, body)) {
       if (!item_list_outside(s, body, column)) return false;
       return scan_list_marker(s, lexer) && marker_line_has_content(s, lexer);
     }
@@ -12793,7 +12822,7 @@ static bool scan_row_or_break_at_paragraph_end(Scanner *s, TSLexer *lexer) {
   Block *body = peek_block(s);
   if (body && body->type == LIST_DEFINITION &&
       !(body->flags & BLOCK_FLAG_DEFINITION_TERM)) {
-    return column >= body->data || item_list_outside(s, body, column);
+    return column >= definition_list_margin(s, body) || item_list_outside(s, body, column);
   }
   if (body && body->type == FOOTNOTE) {
     return true;
@@ -13083,6 +13112,8 @@ static bool close_paragraph_after_quote(Scanner *s, TSLexer *lexer,
   // list marker, a description or a term line there is text, as the term is
   // no item. A comment-only line is left to the probes below.
   Block *term = peek_block(s);
+  // A marker more than the quotes hold opens a quote, which ends a heading.
+  if (term && term->type == HEADING && markers_seen > count_blocks(s, BLOCK_QUOTE)) return true;
   if (term && term->type == HEADING && !at_line_end(lexer) &&
       !lexer->eof(lexer) && lexer->lookahead != '%') {
     return label_line_interrupts(s, lexer);
@@ -17172,7 +17203,7 @@ static bool check_highlighted_open(Scanner *s, TSLexer *lexer) {
 /// section 4c): the fence, its separator, the word, AND NOTHING ELSE. An opener
 /// carrying a quoted title or a `[label]` - `::: figure "T"`, `::: figure [g]` -
 /// does not match that production and stays an `admonition` of kind `figure`, a
-/// generic Tier-2 container.
+/// generic Tier-2 container. Other words after it are ignored (C2-B-122).
 ///
 /// So the word alone cannot decide it, and a token in `grammar.js` could not
 /// either: tree-sitter's lexer chooses between two tokens before the parser has
@@ -17217,7 +17248,9 @@ static bool parse_figure_group_marker(Scanner *s, TSLexer *lexer) {
   while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
     advance(s, lexer);
   }
-  if (!glued_tail && !at_line_end(lexer) && !lexer->eof(lexer)) {
+  // Only a quoted title or a label first makes it an admonition; further
+  // words or a brace block are ignored (C2-B-122).
+  if (!glued_tail && (lexer->lookahead == '"' || lexer->lookahead == '[')) {
     return false;
   }
   // The container the word decided. Recorded on the block rather than derived
@@ -17830,8 +17863,16 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   }
   if (valid_symbols[WORD_END] && !valid_symbols[ERROR]) {
     mark_end(s, lexer);
-    s->after_closer_char = 'a';
-    s->after_closer_col = line_column(s, lexer);
+    // The note is read only by a bare marker at this very spot, and a column
+    // read is quadratic on a long line, so the note is kept only for one.
+    InlineType next_kind;
+    if (is_bare_delim_kind(lexer->lookahead, &next_kind)) {
+      s->after_closer_char = 'a';
+      s->after_closer_col = line_column(s, lexer);
+    } else {
+      s->after_closer_char = 0;
+      s->after_closer_col = 0;
+    }
     lexer->result_symbol = WORD_END;
     return true;
   }
@@ -18989,8 +19030,9 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     uint32_t col_base = s->col_base;
     bool valid_row;
     bool comment = lexer->lookahead == '%';
+    bool comment_only = false;
     if (comment) {
-      valid_row = scan_comment_only_line(s, lexer);
+      valid_row = comment_only = scan_comment_only_line(s, lexer);
       if (valid_row && !(state & STATE_PROVEN_RUN)) {
         consume_line_end(s, lexer);
         valid_row = table_row_after_comments(s, lexer);
@@ -19008,8 +19050,13 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     s->block_quote_level = level;
     s->state = state;
     s->col_base = col_base;
-    // A comment line with no row below it is what the spacer below would
-    // have met.
+    // A comment-only line directly below the last row is the table's
+    // (C2-A-086); after a blank line it is what the spacer below would meet.
+    if (comment_only && !valid_row && s->caption_gap != CAPTION_HOST_NONE &&
+        !quoted_closer_line) {
+      lexer->result_symbol = TABLE_LIST_ROW_CHECK;
+      return true;
+    }
     if (comment && !valid_row) {
       if (!valid_symbols[INDENTED_CONTENT_SPACER] || quoted_closer_line) {
         return false;

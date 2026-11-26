@@ -33,7 +33,7 @@ C2-B-137: a comment-only line between two rows
       (table_cell))))
 
 ===============================================================================
-C2-B-137: a comment-only line below the last row stays outside the table
+C2-A-086: a comment-only line below the last row is the table's
 ===============================================================================
 | a |
 %% x
@@ -43,8 +43,8 @@ C2-B-137: a comment-only line below the last row stays outside the table
 (document
   (table
     (table_row
-      (table_cell)))
-  (comment_line))
+      (table_cell))
+    (comment_line)))
 
 ===============================================================================
 C2-B-137: a comment-only line between two rows in a quote

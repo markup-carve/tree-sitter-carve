@@ -220,7 +220,7 @@ C2-B-137: a column-0 comment line after a closed fence keeps the item
         (paragraph)))))
 
 ================================================================================
-C2-B-137: a column-0 comment line after a table keeps the item
+C2-A-086: a column-0 comment line after a table keeps the item
 ================================================================================
 
 - | a |
@@ -236,8 +236,8 @@ C2-B-137: a column-0 comment line after a table keeps the item
       content: (list_item_content
         (table
           (table_row
-            (table_cell)))
-        (comment_line)
+            (table_cell))
+          (comment_line))
         (paragraph)))))
 
 ================================================================================
