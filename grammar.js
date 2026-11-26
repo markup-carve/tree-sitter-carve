@@ -637,11 +637,17 @@ module.exports = grammar({
 
     // A directive alone on its line is a block of one line (C2-B-156); the
     // scanner checks the shape of C2-B-201 to C2-B-204 before it opens one.
+    // Weighted as the inline directive is, or a paragraph that reads the
+    // same line as an inline one outranks the block reading (a quoted fence
+    // closer then turns into paragraph text).
     _include_block: ($) =>
-      seq(
-        alias($._include_block_directive, $.include_directive),
-        optional($._whitespace1),
-        choice($._newline, $._eof_or_newline),
+      prec.dynamic(
+        300 * ELEMENT_PRECEDENCE,
+        seq(
+          alias($._include_block_directive, $.include_directive),
+          optional($._whitespace1),
+          choice($._newline, $._eof_or_newline),
+        ),
       ),
 
     // A heading ends at its newline and nothing folds into it (SINGLE-LINE

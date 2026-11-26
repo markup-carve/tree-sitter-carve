@@ -708,43 +708,47 @@
       ]
     },
     "_include_block": {
-      "type": "SEQ",
-      "members": [
-        {
-          "type": "ALIAS",
-          "content": {
-            "type": "SYMBOL",
-            "name": "_include_block_directive"
+      "type": "PREC_DYNAMIC",
+      "value": 30000,
+      "content": {
+        "type": "SEQ",
+        "members": [
+          {
+            "type": "ALIAS",
+            "content": {
+              "type": "SYMBOL",
+              "name": "_include_block_directive"
+            },
+            "named": true,
+            "value": "include_directive"
           },
-          "named": true,
-          "value": "include_directive"
-        },
-        {
-          "type": "CHOICE",
-          "members": [
-            {
-              "type": "SYMBOL",
-              "name": "_whitespace1"
-            },
-            {
-              "type": "BLANK"
-            }
-          ]
-        },
-        {
-          "type": "CHOICE",
-          "members": [
-            {
-              "type": "SYMBOL",
-              "name": "_newline"
-            },
-            {
-              "type": "SYMBOL",
-              "name": "_eof_or_newline"
-            }
-          ]
-        }
-      ]
+          {
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "_whitespace1"
+              },
+              {
+                "type": "BLANK"
+              }
+            ]
+          },
+          {
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "_newline"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "_eof_or_newline"
+              }
+            ]
+          }
+        ]
+      }
     },
     "section": {
       "type": "SEQ",
