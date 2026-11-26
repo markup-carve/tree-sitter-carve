@@ -19712,9 +19712,10 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     return true;
   } else if (valid_symbols[SQUARE_BRACKET_SPAN_MARK_BEGIN] && valid_symbols[IN_FALLBACK] &&
              !valid_symbols[ERROR] && !valid_symbols[ATTRIBUTED_SPAN_MARK_BEGIN] &&
-             !find_inline(s, INLINE_NOTE) && footnote_label_holds_bracket(s, lexer)) {
-    // A `[^` label with a `[` is not read as one yet: the pair is literal
-    // text, so its `]` closes no bracket around it.
+             (find_inline(s, INLINE_NOTE) || footnote_label_holds_bracket(s, lexer))) {
+    // In a note, at any depth, `[^` opens no footnote reference (C2-I-089). A
+    // `[^` label with a `[` is not read as one yet. Either way the pair is
+    // literal text, so its `]` closes no bracket around it.
     mark_end(s, lexer);
     BracketProbe probe = bracket_probe_new(s, lexer);
     bool closed = probe_scan_until_bracket_close(s, &probe.lexer, NULL, &probe);

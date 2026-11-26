@@ -1,0 +1,24 @@
+================================================================================
+C2-I-089: a note opens no footnote reference inside nested emphasis
+================================================================================
+
+a ^[see *[^1]* there] d
+
+[^1]: note
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (inline_note
+      content: (content
+        (strong
+          begin_marker: (strong_begin)
+          content: (content)
+          end_marker: (strong_end)))))
+  (footnote
+    (footnote_marker_begin)
+    label: (reference_label)
+    (footnote_marker_end)
+    content: (footnote_content
+      (paragraph))))
