@@ -333,10 +333,11 @@ typedef enum {
   LINK_TAIL_CONTINUATION,
   LINK_ATTRIBUTE_CONTINUATION,
   INLINE_LINK_URL,
+  IMAGE_SPAN_MARK_BEGIN,
 } TokenType;
 
 // The size of `valid_symbols`, for the copies that edit one entry.
-#define EXTERNAL_TOKEN_COUNT (ATTRIBUTED_FRONTMATTER_UNCLOSED_MARKER + 1)
+#define EXTERNAL_TOKEN_COUNT (IMAGE_SPAN_MARK_BEGIN + 1)
 
 // The different blocks in Carve that we track,
 // in order to match or close them properly.
@@ -451,6 +452,9 @@ static const uint8_t BLOCK_FLAG_LIST_HARD_BOUNDARY = 1 << 1;
 // Lists only: the previous line was an unclosed comment block opened below
 // the content column (retention).
 static const uint8_t BLOCK_FLAG_LIST_COMMENT_RETAINS = 1 << 4;
+// Lists only: the item kept a line comment after a blank quoted line, so that
+// line's token ends past the comment line's markers.
+static const uint8_t BLOCK_FLAG_LIST_QUOTED_COMMENT = 1 << 3;
 // Lists other than LIST_DEFINITION, sharing bit 0 with
 // `BLOCK_FLAG_BODY_OWNED_BY_FENCE`: the current line is a follower kept below
 // the content column, so it is paragraph text and opens no list.
@@ -779,6 +783,8 @@ typedef struct {
   // The token is valid only right behind an opener the internal lexer took
   // (`[`, `![`, `[^`), so it ends mid-line without a column read. Transient.
   bool behind_internal_opener;
+  // The bracket being opened is an image's. Transient.
+  bool image_opener;
   // `mid_line` is false, yet a zero-width token since the line's last
   // terminator stood behind such an opener: the line-start check would read
   // a nonzero column. Kept apart from `mid_line` so that no two states that
@@ -1025,6 +1031,7 @@ static const uint32_t MAX_NESTING_DEPTH = 200;
 static const uint32_t MAX_LIST_MARKER_COLUMN = 240;
 
 static TokenType scan_list_marker_token(Scanner *s, TSLexer *lexer);
+static bool scan_comment_line_tail(Scanner *s, TSLexer *lexer);
 static uint8_t scan_quote_marker_run(Scanner *s, TSLexer *lexer,
                                      bool *ending_newline,
                                      bool *skipped_indent, bool in_paragraph);
@@ -2698,9 +2705,12 @@ static bool at_nesting_cap(Scanner *s) {
 }
 
 static bool colon_fence_tail_opens_block(Scanner *s, TSLexer *lexer, bool bare,
-                                         bool spaced, bool tabbed, int32_t c) {
-  // Past the nesting cap an opener is paragraph text.
-  if (!bare && at_nesting_cap(s)) return false;
+                                         bool spaced, bool tabbed, int32_t c,
+                                         uint16_t colons) {
+  // Past the nesting cap an opener is paragraph text (C2-B-190); a bare
+  // fence that closes an open one still closes it.
+  if (at_nesting_cap(s) && !(bare && number_of_colon_fence_blocks_from_top(s, colons) > 0))
+    return false;
   // A BARE fence is decided before the separator's SPELLING is read, and
   // deliberately: a whitespace-only tail is trailing whitespace, not a
   // separator, so `:::` + tab + newline is the same bare fence as `:::` and
@@ -4698,6 +4708,16 @@ static bool parse_code_fence(Scanner *s, TSLexer *lexer,
         lexer->result_symbol = LITERAL_RUN;
         return true;
       }
+    } else if (valid_symbols[LITERAL_RUN] && !top) {
+      // The fence probe stopped in the info string, short of any closing run.
+      char marker = span_verbatim_stop_marker(peek_inline(s));
+      bool in_table_row = valid_symbols[TABLE_CELL_END] ||
+                          find_block(s, TABLE_ROW) != NULL;
+      if (read_verbatim_run(s, lexer, width, marker, in_table_row) ==
+          VerbatimRunReachesBlockEnd) {
+        lexer->result_symbol = LITERAL_RUN;
+        return true;
+      }
     }
     lexer->result_symbol = VERBATIM_BEGIN;
     push_inline_flagged(s, VERBATIM, width, flags);
@@ -5544,6 +5564,20 @@ static bool parse_block_quote(Scanner *s, TSLexer *lexer,
     plus_list->flags &= (uint8_t)~BLOCK_FLAG_LIST_SHORT_PLUS;
   }
   int32_t lead = lexer->lookahead;
+  // An unmarked comment-only line closes no quote (C2-B-137), though an
+  // unmarked blank line before it has; a region marker line is the
+  // enclosing container's (C2-B-217).
+  bool comment_only_line = false;
+  if (lead == '%' && marker_count == 0 && !has_marker && highest_block_quote &&
+      valid_symbols[BLOCK_CLOSE] && !run_continues && !any_open_inline &&
+      !(s->state & STATE_AFTER_BLANK_LINE)) {
+    advance(s, lexer);
+    if (lexer->lookahead == '%') {
+      advance(s, lexer);
+      comment_only_line = lexer->lookahead != '%' && scan_comment_line_tail(s, lexer);
+    }
+    if (comment_only_line) return false;
+  }
   if (highest_block_quote && marker_count < highest_block_quote->data &&
       !run_continues && !run_stopped_short && !attached_table_prefix &&
       !attached_code_prefix && !lazy_drop &&
@@ -5591,6 +5625,17 @@ static bool parse_block_quote(Scanner *s, TSLexer *lexer,
     // only place a short line after an open div can still be announced.
     if (ending_newline && line_column(s, lexer) == 0) {
       s->state &= ~STATE_QUOTED_LINE_SHORT_OF_ITEM;
+      Block *comment_list = find_list(s);
+      if (comment_list && (comment_list->flags & BLOCK_FLAG_LIST_QUOTED_COMMENT)) {
+        comment_list->flags &= (uint8_t)~BLOCK_FLAG_LIST_QUOTED_COMMENT;
+        bool next_newline;
+        uint8_t next_markers = scan_block_quote_markers(s, lexer, &next_newline);
+        s->indent = consume_whitespace(s, lexer);
+        mark_end(s, lexer);
+        output_block_quote_continuation(s, lexer, next_markers, true);
+        s->block_quote_level = next_markers;
+        return true;
+      }
       scan_quoted_code_fence_closer(s, lexer);
     }
     output_block_quote_continuation(s, lexer, marker_count, ending_newline);
@@ -5954,18 +5999,29 @@ static bool attribute_line_taken(Scanner *s, TSLexer *lexer) {
   uint32_t col_base = s->col_base;
   bool saw_table = s->attribute_saw_table;
   bool taken = false;
+  bool after_comment = false;
   for (;;) {
-    if (lexer->eof(lexer)) break;
+    if (lexer->eof(lexer)) {
+      // Comment-only lines up to the end leave the run nothing to take.
+      if (after_comment) s->attribute_run_ends = !proven;
+      break;
+    }
     consume_line_end(s, lexer);
     AttributeRunLine line = attribute_run_line(s, lexer);
-    if (line == RUN_LINE_BLANK) break;
+    if (line == RUN_LINE_BLANK) {
+      if (after_comment) s->attribute_run_ends = !proven;
+      break;
+    }
     // A caption takes no attribute line (C2-B-096), so the run is a closed
     // paragraph above it, as at the end of its container.
     if (line == RUN_LINE_ENDS_CONTAINER || line == RUN_LINE_CAPTION) {
       s->attribute_run_ends = !proven;
       break;
     }
-    if (line == RUN_LINE_COMMENT) continue;
+    if (line == RUN_LINE_COMMENT) {
+      after_comment = true;
+      continue;
+    }
     if (line == RUN_LINE_OTHER) {
       taken = true;
       break;
@@ -6659,7 +6715,7 @@ static bool scan_paragraph_closing_marker(Scanner *s, TSLexer *lexer) {
       }
       int32_t c = lexer->lookahead;
       bool bare = c == '\n' || c == '\r' || lexer->eof(lexer);
-      if (!colon_fence_tail_opens_block(s, lexer, bare, spaced, tabbed, c)) {
+      if (!colon_fence_tail_opens_block(s, lexer, bare, spaced, tabbed, c, colons)) {
         // Paragraph text - and from here the paragraph is "expecting a
         // closer": a later BARE fence is text too (PART 9 §12).
         s->state |= STATE_FENCE_ABSORBS;
@@ -8156,6 +8212,22 @@ static bool parse_list_item_end(Scanner *s, TSLexer *lexer,
         s->block_quote_level = block_quote_markers;
         return true;
       }
+      // A line comment after the blank quoted line stays in the item, as a
+      // comment line does after an unquoted blank; the token ends before the
+      // blank line, so the rest is read as the item's next lines.
+      if (ending_newline && valid_symbols[LIST_ITEM_CONTINUATION] &&
+          lexer->lookahead == '%') {
+        advance(s, lexer);
+        if (lexer->lookahead == '%') {
+          advance(s, lexer);
+          // A region marker line is the quote's line (C2-B-137, C2-B-217).
+          if (lexer->lookahead != '%' && scan_comment_line_tail(s, lexer)) {
+            list->flags |= BLOCK_FLAG_LIST_QUOTED_COMMENT;
+            lexer->result_symbol = LIST_ITEM_CONTINUATION;
+            return true;
+          }
+        }
+      }
     }
   }
 
@@ -8531,7 +8603,7 @@ static bool parse_colon(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     // (`local_hard_break_marker`), so it marks here with the other three and
     // the tail test reads past the mark exactly as it does for `|`.
     mark_end(s, lexer);
-    bool ok = colon_fence_tail_opens_block(s, lexer, bare, spaced, tabbed, c);
+    bool ok = colon_fence_tail_opens_block(s, lexer, bare, spaced, tabbed, c, colons);
     // ...and a bare fence is not an opener at all while the open paragraph is
     // absorbing: after a malformed `::: {.x}` the trailing `:::` is text, at
     // any width (PART 9 §12). The peek above normally keeps the parser inside
@@ -8984,6 +9056,19 @@ static bool parse_footnote_end(Scanner *s, TSLexer *lexer,
       remove_block(s);
       lexer->result_symbol = FOOTNOTE_END;
       return true;
+    }
+  }
+  // A comment-only line closes no container (C2-B-137); a region marker
+  // line is the enclosing container's (C2-B-217).
+  if (!at_eof && lexer->lookahead == '%' && valid_symbols[FOOTNOTE_CONTINUATION] &&
+      s->block_quote_level >= quotes_below(s, top)) {
+    advance(s, lexer);
+    if (lexer->lookahead == '%') {
+      advance(s, lexer);
+      if (lexer->lookahead != '%' && scan_comment_line_tail(s, lexer)) {
+        lexer->result_symbol = FOOTNOTE_CONTINUATION;
+        return true;
+      }
     }
   }
 
@@ -11298,6 +11383,8 @@ static bool parse_open_curly_bracket(Scanner *s, TSLexer *lexer,
         while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
           advance(s, lexer);
         }
+        // Read below only when `attribute_line_taken` ran in this call.
+        s->attribute_run_ends = false;
         if ((at_line_end(lexer) || lexer->eof(lexer)) &&
             attribute_line_taken(s, lexer)) {
           Block *attached = peek_block(s);
@@ -13432,11 +13519,17 @@ static bool emit_newline_inline(Scanner *s, TSLexer *lexer,
     uint8_t level = s->block_quote_level;
     uint32_t col_base = s->col_base;
     AttributeRunLine line = attribute_run_line(s, lexer);
+    bool comment = line == RUN_LINE_COMMENT;
+    // Comment lines below the run's last attribute line are not the run's.
+    while (line == RUN_LINE_COMMENT && !lexer->eof(lexer)) {
+      consume_line_end(s, lexer);
+      line = attribute_run_line(s, lexer);
+    }
     s->indent = indent;
     s->block_quote_level = level;
     s->col_base = col_base;
-    if (line != RUN_LINE_ATTRIBUTE && line != RUN_LINE_COMMENT) return false;
-    if (line == RUN_LINE_COMMENT) s->erasable_line = true;
+    if (line != RUN_LINE_ATTRIBUTE) return false;
+    if (comment) s->erasable_line = true;
     lexer->result_symbol = NEWLINE_INLINE;
     return true;
   }
@@ -14984,6 +15077,10 @@ static bool row_probe_end_shared(const BracketProbe *probe, uint32_t start) {
   return true;
 }
 
+static bool iswspace_ascii(int32_t c) {
+  return c == ' ' || c == '\t' || c == '\n' || c == '\r';
+}
+
 static bool scan_qualified_bracket_close(Scanner *s, BracketProbe *probe, InlineType *top) {
   TSLexer *lexer = &probe->lexer;
   bool in_row = find_block(s, TABLE_ROW) != NULL;
@@ -15053,6 +15150,14 @@ static bool scan_qualified_bracket_close(Scanner *s, BracketProbe *probe, Inline
     } else if (c == '\\') {
       advance(s, lexer);
       if (!lexer->eof(lexer)) advance(s, lexer);
+    } else if (c == '%' && !s->image_opener && probe->position > 0 &&
+               iswspace_ascii(probe->characters.contents[probe->position - 1].character)) {
+      // A line comment takes every closer on its line (C2-I-023, C2-I-024);
+      // an image's alt text is source (C2-I-074).
+      advance(s, lexer);
+      if (lexer->lookahead == '%') {
+        while (!lexer->eof(lexer) && !at_line_end(lexer)) advance(s, lexer);
+      }
     } else if (c == '`') {
       uint8_t width = consume_chars(s, lexer, '`');
       if (!bracket_probe_verbatim(s, probe, width)) goto failed;
@@ -15238,6 +15343,13 @@ static bool extension_payload_close(Scanner *s, TSLexer *host, uint32_t *remaini
       if (at_line_end(lexer) || extension_line_ends_block(s, &probe, indent)) break;
     } else if (find_block(s, TABLE_ROW) && lexer->lookahead == '|') {
       if (!bracket_probe_pipe(s, &probe, false)) break;
+    } else if (lexer->lookahead == '%' && probe.position > 0 &&
+               iswspace_ascii(probe.characters.contents[probe.position - 1].character)) {
+      // A line comment takes every closer on its line (C2-I-024).
+      advance(s, lexer);
+      if (lexer->lookahead == '%') {
+        while (!lexer->eof(lexer) && !at_line_end(lexer)) advance(s, lexer);
+      }
     } else advance(s, lexer);
   }
   uint32_t closer = depth_zero != UINT32_MAX ? depth_zero : first_unescaped;
@@ -17297,7 +17409,7 @@ static bool keeps_inline_notes(TokenType token) {
   case STRONG_QUALIFIED_MARK_BEGIN: case BOLD_ITALIC_LITERAL_STAR:
   case EMPHASIS_QUALIFIED_MARK_BEGIN: case WORD_END:
   case HIGHLIGHTED_QUALIFIED_MARK_BEGIN: case LITERAL_STAR: case LITERAL_SLASH:
-  case LITERAL_SLASH_BOUNDARY: case AFTER_BARE_CLOSER:
+  case LITERAL_SLASH_BOUNDARY: case AFTER_BARE_CLOSER: case IMAGE_SPAN_MARK_BEGIN:
     return true;
   default:
     return false;
@@ -17563,8 +17675,47 @@ static bool caption_host_line_ahead(Scanner *s, TSLexer *lexer) {
       }
     }
     uint32_t parens = 1;
+    // A tail is a destination with no whitespace, then one space and a quoted
+    // title, then spaces: a tab or a second space before the title is no tail.
+    int32_t title_quote = 0;
+    bool past_destination = false;
     while (parens > 0) {
       if (at_line_end(lexer) || lexer->eof(lexer)) return false;
+      int32_t c = lexer->lookahead;
+      if (close == ')' && title_quote) {
+        if (c == '\\') {
+          advance(s, lexer);
+          if (at_line_end(lexer) || lexer->eof(lexer)) return false;
+        } else if (c == title_quote) {
+          title_quote = 0;
+        }
+        advance(s, lexer);
+        continue;
+      }
+      if (close == ')' && (c == ' ' || c == '\t')) {
+        if (c == '\t') return false;
+        if (!past_destination) {
+          past_destination = true;
+          advance(s, lexer);
+          if (lexer->lookahead == '"' || lexer->lookahead == '\'') {
+            title_quote = lexer->lookahead;
+            advance(s, lexer);
+          } else if (lexer->lookahead != ' ' && lexer->lookahead != ')') {
+            return false;
+          }
+          continue;
+        }
+      } else if (close == ')' && past_destination && c != ')') {
+        return false;
+      } else if (close == ']' && (c == ' ' || c == '\t')) {
+        // A line comment in the label takes its `]` (C2-I-077).
+        advance(s, lexer);
+        if (lexer->lookahead == '%') {
+          advance(s, lexer);
+          if (lexer->lookahead == '%') return false;
+        }
+        continue;
+      }
       if (lexer->lookahead == '\\') {
         advance(s, lexer);
         if (at_line_end(lexer) || lexer->eof(lexer)) return false;
@@ -19474,7 +19625,25 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
                             SQUARE_BRACKET_SPAN_END);
     }
   }
-  if (parse_span(s, lexer, valid_symbols, SQUARE_BRACKET_SPAN)) {
+  if (valid_symbols[IMAGE_SPAN_MARK_BEGIN] && !valid_symbols[ERROR]) {
+    bool image_symbols[EXTERNAL_TOKEN_COUNT];
+    memcpy(image_symbols, valid_symbols, sizeof(image_symbols));
+    image_symbols[SQUARE_BRACKET_SPAN_MARK_BEGIN] = true;
+    s->image_opener = true;
+    bool found = parse_span(s, lexer, image_symbols, SQUARE_BRACKET_SPAN);
+    s->image_opener = false;
+    if (found && lexer->result_symbol == SQUARE_BRACKET_SPAN_MARK_BEGIN) {
+      lexer->result_symbol = IMAGE_SPAN_MARK_BEGIN;
+    }
+    if (found) return true;
+  } else if (valid_symbols[SQUARE_BRACKET_SPAN_MARK_BEGIN] && valid_symbols[IN_FALLBACK] &&
+             !valid_symbols[ERROR] && lexer->lookahead == ']') {
+    // Only `[^` leaves a bracket mark before `]`: an empty label, so the
+    // bracket is text and opens no pair (C2-I-087).
+    mark_end(s, lexer);
+    lexer->result_symbol = IN_FALLBACK;
+    return true;
+  } else if (parse_span(s, lexer, valid_symbols, SQUARE_BRACKET_SPAN)) {
     return true;
   }
   // AFTER the square-bracket span, so a `]` closes an inner bracket before it
@@ -19769,6 +19938,8 @@ static void reset(Scanner *s) {
 
 void *tree_sitter_carve_external_scanner_create() {
   Scanner *s = (Scanner *)ts_malloc(sizeof(Scanner));
+  // `init` sets the persistent state only; every transient flag starts false.
+  memset(s, 0, sizeof(Scanner));
   s->open_blocks = ts_malloc(sizeof(Array(Block *)));
   s->open_inline = ts_malloc(sizeof(Array(Inline *)));
   s->entry_length = 0;

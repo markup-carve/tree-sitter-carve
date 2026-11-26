@@ -1,0 +1,37 @@
+================================================================================
+C2-I-080: a footnote label may wrap once
+================================================================================
+
+a[^my
+note] b
+
+[^my note]: Text.
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (footnote_reference
+      (footnote_marker_begin)
+      (reference_label)
+      (footnote_marker_end)))
+  (footnote
+    (footnote_marker_begin)
+    label: (reference_label)
+    (footnote_marker_end)
+    content: (footnote_content
+      (paragraph))))
+
+================================================================================
+C2-I-080: a blank line ends a wrapped footnote label
+================================================================================
+
+a[^my
+
+note] b
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph)
+  (paragraph))
