@@ -333,10 +333,11 @@ typedef enum {
   LINK_TAIL_CONTINUATION,
   LINK_ATTRIBUTE_CONTINUATION,
   INLINE_LINK_URL,
+  IMAGE_SPAN_MARK_BEGIN,
 } TokenType;
 
 // The size of `valid_symbols`, for the copies that edit one entry.
-#define EXTERNAL_TOKEN_COUNT (ATTRIBUTED_FRONTMATTER_UNCLOSED_MARKER + 1)
+#define EXTERNAL_TOKEN_COUNT (IMAGE_SPAN_MARK_BEGIN + 1)
 
 // The different blocks in Carve that we track,
 // in order to match or close them properly.
@@ -779,6 +780,8 @@ typedef struct {
   // The token is valid only right behind an opener the internal lexer took
   // (`[`, `![`, `[^`), so it ends mid-line without a column read. Transient.
   bool behind_internal_opener;
+  // The bracket being opened is an image's. Transient.
+  bool image_opener;
   // `mid_line` is false, yet a zero-width token since the line's last
   // terminator stood behind such an opener: the line-start check would read
   // a nonzero column. Kept apart from `mid_line` so that no two states that
@@ -14986,6 +14989,10 @@ static bool row_probe_end_shared(const BracketProbe *probe, uint32_t start) {
   return true;
 }
 
+static bool iswspace_ascii(int32_t c) {
+  return c == ' ' || c == '\t' || c == '\n' || c == '\r';
+}
+
 static bool scan_qualified_bracket_close(Scanner *s, BracketProbe *probe, InlineType *top) {
   TSLexer *lexer = &probe->lexer;
   bool in_row = find_block(s, TABLE_ROW) != NULL;
@@ -15055,6 +15062,14 @@ static bool scan_qualified_bracket_close(Scanner *s, BracketProbe *probe, Inline
     } else if (c == '\\') {
       advance(s, lexer);
       if (!lexer->eof(lexer)) advance(s, lexer);
+    } else if (c == '%' && !s->image_opener && probe->position > 0 &&
+               iswspace_ascii(probe->characters.contents[probe->position - 1].character)) {
+      // A line comment takes every closer on its line (C2-I-023, C2-I-024);
+      // an image's alt text is source (C2-I-074).
+      advance(s, lexer);
+      if (lexer->lookahead == '%') {
+        while (!lexer->eof(lexer) && !at_line_end(lexer)) advance(s, lexer);
+      }
     } else if (c == '`') {
       uint8_t width = consume_chars(s, lexer, '`');
       if (!bracket_probe_verbatim(s, probe, width)) goto failed;
@@ -17299,7 +17314,7 @@ static bool keeps_inline_notes(TokenType token) {
   case STRONG_QUALIFIED_MARK_BEGIN: case BOLD_ITALIC_LITERAL_STAR:
   case EMPHASIS_QUALIFIED_MARK_BEGIN: case WORD_END:
   case HIGHLIGHTED_QUALIFIED_MARK_BEGIN: case LITERAL_STAR: case LITERAL_SLASH:
-  case LITERAL_SLASH_BOUNDARY: case AFTER_BARE_CLOSER:
+  case LITERAL_SLASH_BOUNDARY: case AFTER_BARE_CLOSER: case IMAGE_SPAN_MARK_BEGIN:
     return true;
   default:
     return false;
@@ -19476,7 +19491,18 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
                             SQUARE_BRACKET_SPAN_END);
     }
   }
-  if (parse_span(s, lexer, valid_symbols, SQUARE_BRACKET_SPAN)) {
+  if (valid_symbols[IMAGE_SPAN_MARK_BEGIN] && !valid_symbols[ERROR]) {
+    bool image_symbols[EXTERNAL_TOKEN_COUNT];
+    memcpy(image_symbols, valid_symbols, sizeof(image_symbols));
+    image_symbols[SQUARE_BRACKET_SPAN_MARK_BEGIN] = true;
+    s->image_opener = true;
+    bool found = parse_span(s, lexer, image_symbols, SQUARE_BRACKET_SPAN);
+    s->image_opener = false;
+    if (found && lexer->result_symbol == SQUARE_BRACKET_SPAN_MARK_BEGIN) {
+      lexer->result_symbol = IMAGE_SPAN_MARK_BEGIN;
+    }
+    if (found) return true;
+  } else if (parse_span(s, lexer, valid_symbols, SQUARE_BRACKET_SPAN)) {
     return true;
   }
   // AFTER the square-bracket span, so a `]` closes an inner bracket before it

@@ -334,7 +334,7 @@ function symbolFallback($, options) {
     ...(notes
       ? [seq("[^", choice($._square_bracket_span_mark_begin, $._in_fallback))]
       : []),
-    seq("![", choice($._square_bracket_span_mark_begin, $._in_fallback)),
+    seq("![", choice($._image_span_mark_begin, $._in_fallback)),
     seq("[", choice($._square_bracket_span_mark_begin, $._in_fallback)),
     seq("(", choice($._parens_span_mark_begin, $._in_fallback)),
     // `[t][@a]` is a reference-link shape whose label may not start with `@`,
@@ -2889,7 +2889,7 @@ module.exports = grammar({
         ELEMENT_PRECEDENCE,
         seq(
           $._image_description_begin,
-          $._square_bracket_span_mark_begin,
+          $._image_span_mark_begin,
           optional($._inline),
           alias($._square_bracket_span_end, "]"),
         ),
@@ -3705,5 +3705,8 @@ module.exports = grammar({
     $._link_attribute_continuation,
     // C2-I-067: a destination whose parentheses balance, which no regex reads.
     $._inline_link_url,
+    // The image opener's mark: its alt text is source, so no line comment
+    // starts in it (C2-I-074).
+    $._image_span_mark_begin,
   ],
 });
