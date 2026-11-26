@@ -15814,7 +15814,8 @@ static bool probe_bare_closer_skips_brackets(Scanner *s, BracketProbe *probe, ch
       if (end != VerbatimRunCloses) {
         return false;
       }
-      skipped_opaque_run(s, probe, start, bare);
+      // A mark inside a code span is no opener, so the run does not stop a note.
+      s->probe_skipped_opaque = true;
       previous = 'x';
       ++characters;
       continue;
@@ -17735,6 +17736,8 @@ static bool keeps_inline_notes(TokenType token) {
   case HIGHLIGHTED_QUALIFIED_MARK_BEGIN: case LITERAL_STAR: case LITERAL_SLASH:
   case LITERAL_SLASH_BOUNDARY: case AFTER_BARE_CLOSER: case IMAGE_SPAN_MARK_BEGIN:
   case TRAILING_COMMENT:
+  // A code span holds no delimiter, so it changes no closer probe's answer.
+  case VERBATIM_BEGIN: case VERBATIM_CONTENT: case VERBATIM_END:
     return true;
   default:
     return false;
