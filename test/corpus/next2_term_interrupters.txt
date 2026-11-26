@@ -124,3 +124,27 @@ C2-B-234: a bullet past a quoted item's marker ends a term in the item
                 marker: (list_marker_dash)
                 content: (list_item_content
                   (paragraph))))))))))
+================================================================================
+CC-2135: a bullet in a div in an item stays the term's text
+================================================================================
+
+- ::::
+  :: t
+     - x
+  ::::
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (div
+          (div_marker_begin)
+          content: (content
+            (definition_list
+              (list_item
+                marker: (list_marker_definition)
+                term: (term))))
+          (div_marker_end))))))
