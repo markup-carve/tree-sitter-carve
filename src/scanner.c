@@ -15560,6 +15560,7 @@ static bool probe_bare_closer_skips_brackets(Scanner *s, BracketProbe *probe, ch
   uint8_t unclosed_comments = 0;
   uint16_t unclosed_braced = 0;
   bool word_mark = false;
+  uint16_t literal_brackets = 0;
   int32_t previous = 0;
   uint32_t characters = 0;
   if (combined_literal) *combined_literal = false;
@@ -15772,6 +15773,13 @@ static bool probe_bare_closer_skips_brackets(Scanner *s, BracketProbe *probe, ch
       ++characters;
       continue;
     }
+    if (c == ']' && literal_brackets > 0) {
+      --literal_brackets;
+      advance(s, lexer);
+      previous = c;
+      ++characters;
+      continue;
+    }
     if (c == ']' && in_bracket) return false;
     if (c == (int32_t)(unsigned char)bare &&
         (previous != 0 && previous != ' ' && previous != '\t' && previous != '\n')) {
@@ -15801,9 +15809,20 @@ static bool probe_bare_closer_skips_brackets(Scanner *s, BracketProbe *probe, ch
       advance(s, lexer);
       uint32_t restart = probe->position;
       uint32_t base = s->col_base;
+      bool note = lexer->lookahead == '^';
       if (scan_qualified_bracket_close(s, probe, NULL)) {
-        s->probe_skipped_opaque = true;
         advance(s, lexer); // past the matching `]`
+        // A bracket with no tail is text, and so is its content (C2-I-087).
+        if (!note && lexer->lookahead != '(' && lexer->lookahead != '[' &&
+            lexer->lookahead != '{' && literal_brackets < UINT16_MAX) {
+          bracket_probe_rewind(probe, restart);
+          s->col_base = base;
+          ++literal_brackets;
+          previous = c;
+          ++characters;
+          continue;
+        }
+        s->probe_skipped_opaque = true;
         if (lexer->lookahead == '(') {
           advance(s, lexer);
           uint32_t tail_restart = probe->position;
@@ -16761,7 +16780,16 @@ static bool parse_span_end(Scanner *s, TSLexer *lexer, InlineType element,
   // The `*` isn't allowed to open a span, and that branch should not be
   // valid.
   Inline *top = peek_inline(s);
-  if (!top || top->type != element) {
+  // A literal bracket is text, so a bare closer in it closes the span the
+  // bracket stands in, and the bracket stays text (C2-I-087).
+  uint32_t literal_above = 0;
+  while (top && top->type == LITERAL_BRACKET && element != SQUARE_BRACKET_SPAN &&
+         literal_above + 1 < s->open_inline->size) {
+    ++literal_above;
+    top = *array_get(s->open_inline, s->open_inline->size - 1 - literal_above);
+  }
+  if (!top || top->type != element ||
+      (literal_above && (top->flags & INLINE_BRACED))) {
     return false;
   }
   // If we've chosen any fallback symbols inside the span then we
@@ -16813,6 +16841,14 @@ static bool parse_span_end(Scanner *s, TSLexer *lexer, InlineType element,
   if (element == SQUARE_BRACKET_SPAN &&
       !identifier_after_bracket_stays_on_one_line(s, lexer)) {
     return false;
+  }
+  if (literal_above) {
+    // The brackets keep their own stack: each `]` still pairs with its `[`.
+    uint32_t index = s->open_inline->size - 1 - literal_above;
+    s->missing_closers = 0;
+    ts_free(*array_get(s->open_inline, index));
+    array_erase(s->open_inline, index);
+    return true;
   }
   remove_inline(s);
   return true;
