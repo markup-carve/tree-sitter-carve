@@ -3237,12 +3237,17 @@ module.exports = grammar({
     // literal prose, so highlights.scm captures it plainly and injections.scm
     // leaves it uninjected. A trailing `{…}` attaches as an ordinary inline
     // attribute block, like any other inline element.
+    // It outranks a raw inline behind a text `!`: the prefix takes the run,
+    // and a `{=format}` after it is no raw marker (C2-I-018, C2-I-021).
     inline_literal: ($) =>
-      seq(
-        field("marker", alias("!", $.literal_marker)),
-        field("open", alias($._verbatim_begin, $.literal_marker_begin)),
-        field("content", alias($._verbatim_body, $.content)),
-        field("close", alias($._verbatim_end, $.literal_marker_end)),
+      prec.dynamic(
+        1,
+        seq(
+          field("marker", alias("!", $.literal_marker)),
+          field("open", alias($._verbatim_begin, $.literal_marker_begin)),
+          field("content", alias($._verbatim_body, $.content)),
+          field("close", alias($._verbatim_end, $.literal_marker_end)),
+        ),
       ),
     verbatim: ($) =>
       seq(

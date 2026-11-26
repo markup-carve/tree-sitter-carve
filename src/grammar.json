@@ -11549,61 +11549,65 @@
       ]
     },
     "inline_literal": {
-      "type": "SEQ",
-      "members": [
-        {
-          "type": "FIELD",
-          "name": "marker",
-          "content": {
-            "type": "ALIAS",
+      "type": "PREC_DYNAMIC",
+      "value": 1,
+      "content": {
+        "type": "SEQ",
+        "members": [
+          {
+            "type": "FIELD",
+            "name": "marker",
             "content": {
-              "type": "STRING",
-              "value": "!"
-            },
-            "named": true,
-            "value": "literal_marker"
-          }
-        },
-        {
-          "type": "FIELD",
-          "name": "open",
-          "content": {
-            "type": "ALIAS",
+              "type": "ALIAS",
+              "content": {
+                "type": "STRING",
+                "value": "!"
+              },
+              "named": true,
+              "value": "literal_marker"
+            }
+          },
+          {
+            "type": "FIELD",
+            "name": "open",
             "content": {
-              "type": "SYMBOL",
-              "name": "_verbatim_begin"
-            },
-            "named": true,
-            "value": "literal_marker_begin"
-          }
-        },
-        {
-          "type": "FIELD",
-          "name": "content",
-          "content": {
-            "type": "ALIAS",
+              "type": "ALIAS",
+              "content": {
+                "type": "SYMBOL",
+                "name": "_verbatim_begin"
+              },
+              "named": true,
+              "value": "literal_marker_begin"
+            }
+          },
+          {
+            "type": "FIELD",
+            "name": "content",
             "content": {
-              "type": "SYMBOL",
-              "name": "_verbatim_body"
-            },
-            "named": true,
-            "value": "content"
-          }
-        },
-        {
-          "type": "FIELD",
-          "name": "close",
-          "content": {
-            "type": "ALIAS",
+              "type": "ALIAS",
+              "content": {
+                "type": "SYMBOL",
+                "name": "_verbatim_body"
+              },
+              "named": true,
+              "value": "content"
+            }
+          },
+          {
+            "type": "FIELD",
+            "name": "close",
             "content": {
-              "type": "SYMBOL",
-              "name": "_verbatim_end"
-            },
-            "named": true,
-            "value": "literal_marker_end"
+              "type": "ALIAS",
+              "content": {
+                "type": "SYMBOL",
+                "name": "_verbatim_end"
+              },
+              "named": true,
+              "value": "literal_marker_end"
+            }
           }
-        }
-      ]
+        ]
+      }
     },
     "verbatim": {
       "type": "SEQ",
