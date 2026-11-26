@@ -14378,6 +14378,9 @@ static bool probe_braced_closer_ahead(Scanner *s, TSLexer *lexer, char marker, B
   // Braced spans nest up to the inline nesting cap (MAX_NESTING_DEPTH).
   char nested[200];
   uint8_t depth = 0;
+  // The opener and every entry open around it count toward the cap (C2-I-118).
+  uint32_t around = s->open_inline->size;
+  uint8_t room = around + 1 >= sizeof(nested) ? 0 : (uint8_t)(sizeof(nested) - 1 - around);
   // Past the cap there is no closer. For the memoizing caller the host reads
   // on to the paragraph end, so the note covers every later opener.
   bool capped = false, read_past_cap = !probe && s->braced_probe_marker == marker;
@@ -14484,7 +14487,7 @@ static bool probe_braced_closer_ahead(Scanner *s, TSLexer *lexer, char marker, B
             continue;
           }
         }
-        if (depth == sizeof(nested) || capped) {
+        if (depth >= room || capped) {
           if (!read_past_cap) {
             s->braced_probe_capped = true;
             return false;
@@ -14497,7 +14500,7 @@ static bool probe_braced_closer_ahead(Scanner *s, TSLexer *lexer, char marker, B
       }
       if (m == '*' || m == '/' || m == '_' || m == '~' || m == '=' ||
           m == '^' || m == ',' || m == '+' || m == '-') {
-        if (depth == sizeof(nested) || capped) {
+        if (depth >= room || capped) {
           if (!read_past_cap) {
             s->braced_probe_capped = true;
             return false;
