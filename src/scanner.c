@@ -15466,8 +15466,9 @@ static bool probe_open_holds_note(const BracketProbe *probe, const uint32_t *ope
 }
 
 // Bit of `bracket_pair_span`: the probe read a stretch holding a `[` as one
-// atom (a comment, a code span, a caret pair's label). A token stream that
-// reads it as text opens there, so the note does not outlive a comment token.
+// atom (a comment, a code span, a caret pair's label), or read a caret pair as
+// brackets that a later opener reads as one atom. Such a note may not hold for
+// a later opener, so it does not outlive a comment token, which other notes do.
 #define BRACKET_NOTE_ATOM_OPEN (UINT32_C(1) << 31)
 
 static bool probe_holds_open(const BracketProbe *probe, uint32_t from, uint32_t to) {
@@ -15490,6 +15491,9 @@ static bool scan_qualified_bracket_close(Scanner *s, BracketProbe *probe, Inline
   // A stretch read as one atom held a `[`, which the token stream may read
   // as text (a mid-paragraph line comment): see `BRACKET_NOTE_ATOM_OPEN`.
   bool hidden_open = false;
+  // A caret pair read as brackets because a note's `^[` was open, where a
+  // later opener with no note open reads one atom: see `BRACKET_NOTE_ATOM_OPEN`.
+  bool caret_as_brackets = false;
   uint32_t root = probe->position &&
       probe->characters.contents[probe->position - 1].character == '['
       ? probe->position - 1 : UINT32_MAX;
@@ -15553,6 +15557,9 @@ static bool scan_qualified_bracket_close(Scanner *s, BracketProbe *probe, Inline
       advance(s, lexer);
       // Outside a note a caret pair is atomic, and one with no label opens no
       // pair (C2-I-087).
+      if (lexer->lookahead == '^' &&
+          !(footnotes_atomic && !probe_open_holds_note(probe, open.contents, open.size)))
+        caret_as_brackets = true;
       if (lexer->lookahead == '^' && footnotes_atomic &&
           !probe_open_holds_note(probe, open.contents, open.size)) {
         uint32_t restart = probe->position;
@@ -15664,7 +15671,7 @@ failed:
   // leaves no note: the token at the host may carry it to earlier openers.
   if (noted && start == 0 && line_read && open.size && (!in_row || row_probe_end_shared(probe, start))) {
     s->bracket_span_note = true;
-    s->bracket_pair_span = widest | (hidden_open ? BRACKET_NOTE_ATOM_OPEN : 0);
+    s->bracket_pair_span = widest | (hidden_open || caret_as_brackets ? BRACKET_NOTE_ATOM_OPEN : 0);
     // A row probe ends at a pipe or the line end, past any end marker's reach.
     s->bracket_note_natural = in_row || natural_end;
     s->bracket_note_scope = bracket_note_scope(s, s->bracket_note_natural, top);
