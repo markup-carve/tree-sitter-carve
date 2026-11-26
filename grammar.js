@@ -1113,7 +1113,7 @@ module.exports = grammar({
         prec.right(
           seq(
             $._table_regular_row,
-            repeat($._table_row),
+            repeat(choice($._table_row, $._table_comment_unit)),
             optional($._table_list_end),
             optional($._newline),
             optional($.table_caption),
@@ -1127,12 +1127,10 @@ module.exports = grammar({
         ),
       ),
     // A comment-only line is not seen by block structure, so it ends no table
-    // (C2-B-137, C2-B-175). The scanner offers the token only when a row
-    // follows; one below the last row stays outside the table.
+    // (C2-B-137, C2-B-175); one below the last row is the table's (C2-A-086).
     _table_row: ($) =>
       seq(
         optional($._table_list_row_check),
-        repeat($._table_comment),
         optional(
           repeat1(alias($._table_quote_continuation, $.block_quote_marker)),
         ),
@@ -1143,6 +1141,8 @@ module.exports = grammar({
           $.table_continuation_row,
         ),
       ),
+    _table_comment_unit: ($) =>
+      seq(optional($._table_list_row_check), $._table_comment),
     _table_comment: ($) =>
       seq(
         optional(

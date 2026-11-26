@@ -5857,9 +5857,10 @@ static bool parse_table_comment_line(Scanner *s, TSLexer *lexer,
   consume_line_end(s, lexer);
   mark_end(s, lexer);
   lexer->result_symbol = TABLE_COMMENT_LINE;
+  // A comment-only line separates no caption from its table (C2-B-137).
+  if (s->caption_gap == CAPTION_HOST_THIS_LINE) s->caption_gap = CAPTION_HOST_HERE;
   if (s->state & STATE_PROVEN_RUN) return true;
-  if (!table_row_after_comments(s, lexer)) return false;
-  s->state |= STATE_PROVEN_RUN;
+  if (table_row_after_comments(s, lexer)) s->state |= STATE_PROVEN_RUN;
   return true;
 }
 
@@ -5988,6 +5989,7 @@ static bool parse_table_quote_continuation(Scanner *s, TSLexer *lexer,
   bool quote_symbols[ATTACHED_QUOTE_PREFIX + 1];
   memcpy(quote_symbols, valid_symbols, sizeof(quote_symbols));
   quote_symbols[BLOCK_QUOTE_CONTINUATION] = true;
+  bool after_blank = (s->state & STATE_AFTER_BLANK_LINE) != 0;
   if (!parse_block_quote(s, lexer, quote_symbols)) return false;
   if (lexer->result_symbol != BLOCK_QUOTE_CONTINUATION) {
     return valid_symbols[lexer->result_symbol];
@@ -6013,11 +6015,13 @@ static bool parse_table_quote_continuation(Scanner *s, TSLexer *lexer,
   } else if (!ending && lexer->lookahead == '%' &&
              s->block_quote_level + rest <= count_blocks(s, BLOCK_QUOTE) &&
              valid_symbols[TABLE_COMMENT_LINE]) {
+    bool marked = s->block_quote_level + rest == count_blocks(s, BLOCK_QUOTE);
     row = scan_comment_only_line(s, lexer);
     if (row && !(state & STATE_PROVEN_RUN)) {
       consume_line_end(s, lexer);
-      row = table_row_after_comments(s, lexer);
-      if (row) state |= STATE_PROVEN_RUN;
+      // One below the last row is the table's too (C2-A-086).
+      if (table_row_after_comments(s, lexer)) state |= STATE_PROVEN_RUN;
+      else row = marked && !after_blank;
     }
   } else {
     row = false;
@@ -19010,8 +19014,9 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     uint32_t col_base = s->col_base;
     bool valid_row;
     bool comment = lexer->lookahead == '%';
+    bool comment_only = false;
     if (comment) {
-      valid_row = scan_comment_only_line(s, lexer);
+      valid_row = comment_only = scan_comment_only_line(s, lexer);
       if (valid_row && !(state & STATE_PROVEN_RUN)) {
         consume_line_end(s, lexer);
         valid_row = table_row_after_comments(s, lexer);
@@ -19029,8 +19034,13 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     s->block_quote_level = level;
     s->state = state;
     s->col_base = col_base;
-    // A comment line with no row below it is what the spacer below would
-    // have met.
+    // A comment-only line directly below the last row is the table's
+    // (C2-A-086); after a blank line it is what the spacer below would meet.
+    if (comment_only && !valid_row && s->caption_gap != CAPTION_HOST_NONE &&
+        !quoted_closer_line) {
+      lexer->result_symbol = TABLE_LIST_ROW_CHECK;
+      return true;
+    }
     if (comment && !valid_row) {
       if (!valid_symbols[INDENTED_CONTENT_SPACER] || quoted_closer_line) {
         return false;
