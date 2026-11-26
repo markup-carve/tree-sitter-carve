@@ -17235,18 +17235,17 @@ static int parse_literal_run(Scanner *s, TSLexer *lexer,
                                    (open_braced && next == '}') ||
                                    (!in_run && open_closer_starts_here(s, c, next)));
     // bare_opener(d) = <!(alnum | d | slash_if(d)), d, !(ws | d)
-    bool path_guard = (c == '/' || c == '_') && (prev == '/' || prev == '_') &&
-                      prev2 != 0;
+    bool path_guard = c == '_' && (prev == '/' || prev == '_') && prev2 != 0;
+    // A bare underscore is punctuation here (C2-I-047).
     bool may_open = !carve_is_alnum_ascii(prev) && prev != c &&
-                    prev != '_' && !path_guard &&
+                    (prev != '_' || c == '*' || c == '/') && !path_guard &&
                     !next_ws && next != c && !carve_is_grapheme_extender(next);
     // A combined opener uses the same left boundary as a bare delimiter.
     Inline *enclosing_em = find_inline_in_scope(s, EMPHASIS);
     bool em_path = enclosing_em && (enclosing_em->flags & INLINE_BRACED) &&
                    prev != 0 && prev != ' ' && prev != '\t' && prev != '\n';
     bool bold_italic_opener = c == '/' && next == '*' && !em_path &&
-                             !carve_is_alnum_ascii(prev) && prev != '_' &&
-                             prev != '/' &&
+                             !carve_is_alnum_ascii(prev) && prev != '/' &&
                              !find_inline_in_scope(s, BOLD_ITALIC);
     if (find_inline_in_scope(s, BOLD_ITALIC) && (k == EMPHASIS || k == STRONG))
       may_open = false;

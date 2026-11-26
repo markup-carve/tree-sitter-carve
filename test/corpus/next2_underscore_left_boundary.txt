@@ -1,0 +1,33 @@
+================================================================================
+C2-I-047: a bare underscore before an opener is punctuation
+================================================================================
+
+a_*x* and _*x*_
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (strong
+      begin_marker: (strong_begin)
+      content: (content)
+      end_marker: (strong_end))
+    (strong
+      begin_marker: (strong_begin)
+      content: (content)
+      end_marker: (strong_end))))
+
+================================================================================
+C2-I-047: an underscore before a slash opener
+================================================================================
+
+a_/x/ b
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (emphasis
+      begin_marker: (emphasis_begin)
+      content: (content)
+      end_marker: (emphasis_end))))
