@@ -337,17 +337,6 @@ function symbolFallback($, options) {
     seq("![", choice($._image_span_mark_begin, $._in_fallback)),
     seq("[", choice($._square_bracket_span_mark_begin, $._in_fallback)),
     seq("(", choice($._parens_span_mark_begin, $._in_fallback)),
-    // `[t][@a]` is a reference-link shape whose label may not start with `@`,
-    // so the whole run is text even with citations enabled (corpus 334).
-    token(
-      prec(
-        2,
-        seq(
-          optional("!"),
-          /\[[^\[\]\r\n*\/_~=^`{}<>$\\:@#!%|"']*\]\[@[^\[\]\r\n]*\]/,
-        ),
-      ),
-    ),
 
     // Autolink
     "<",
@@ -3074,10 +3063,11 @@ module.exports = grammar({
         token.immediate("["),
         field(
           "label",
-          // A line comment in the label takes its `]` (C2-I-077).
+          // A line comment in the label takes its `]` (C2-I-077); a blank
+          // label is none (C2-I-079); it may wrap once (C2-I-080).
           alias(
             token.immediate(
-              /[^\]@\r\n](?:[^\]\r\n \t]|[ \t]+(?:[^\]\r\n \t%]|%[^\]\r\n%]))*(?:[ \t]+%?)?/,
+              /(?:[^\]@\r\n \t]|[ \t]+[^\]\r\n \t])(?:[^\]\r\n \t]|[ \t]+(?:[^\]\r\n \t%]|%[^\]\r\n%]))*(?:[ \t]+%?)?(?:\r?\n[ \t]*[^\]\r\n \t](?:[^\]\r\n \t]|[ \t]+[^\]\r\n \t])*[ \t]*)?/,
             ),
             $.link_label,
           ),
@@ -3104,14 +3094,14 @@ module.exports = grammar({
               ),
             ),
           ),
-          seq(
-            optional(
-              seq(
-                $._link_title_space,
-                field("title", alias($._inline_link_title, $.link_title)),
-              ),
+          // An empty destination takes no padding of its own: `( )` is no
+          // tail, and only spaces follow a title (C2-I-067 to C2-I-069).
+          optional(
+            seq(
+              $._link_title_space,
+              field("title", alias($._inline_link_title, $.link_title)),
+              optional(token.immediate(/ +/)),
             ),
-            optional($._empty_link_padding),
           ),
         ),
         alias($._parens_span_end, ")"),
