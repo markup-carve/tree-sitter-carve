@@ -1,0 +1,41 @@
+================================================================================
+C2-I-035: a refused attribute run at an item end is one atom of text
+================================================================================
+
+- {#id}
+- b
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)))
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)))))
+
+================================================================================
+C2-I-035: a refused attribute run before a div holds no tag
+================================================================================
+
+* * {#id}
+:::
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_star)
+      content: (list_item_content
+        (list
+          (list_item
+            marker: (list_marker_star)
+            content: (list_item_content
+              (paragraph)))))))
+  (div
+    (div_marker_begin)))

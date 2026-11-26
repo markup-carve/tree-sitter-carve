@@ -1,0 +1,450 @@
+===============================================================================
+CC-011: a bare dot before a spaced dot is text
+===============================================================================
+.  . a
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph))
+
+===============================================================================
+C2-B-043: a bare dot before a dot and a space is text
+===============================================================================
+. . . and then silence
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph))
+
+===============================================================================
+C2-B-043: a bare dot before a dot glued to text is a marker
+===============================================================================
+. .x
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_decimal_period)
+      (list_item_content
+        (paragraph)))))
+
+===============================================================================
+CC-1189: a bullet takes a run of glued attribute blocks
+===============================================================================
+-{.a}{.b} x
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph)))))
+
+===============================================================================
+C2-B-101: an ordered marker takes a run of glued attribute blocks
+===============================================================================
+1.{.a}{.b} x
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_decimal_period)
+      (list_item_content
+        (paragraph)))))
+
+===============================================================================
+CC-807: a quote fence below a quoted paragraph closes the quote
+===============================================================================
+> a
+::: >
+b
+:::
+
+-------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (paragraph)))
+  (div
+    (div_marker_begin)
+    (block_quote_fence_marker)
+    (content
+      (paragraph))
+    (div_marker_end)))
+
+===============================================================================
+CC-1122: an indented quote fence below a quoted paragraph closes the quote
+===============================================================================
+> a
+    ::: >
+    b
+    :::
+
+-------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (paragraph)))
+  (div
+    (div_marker_begin)
+    (block_quote_fence_marker)
+    (content
+      (paragraph))
+    (div_marker_end)))
+
+===============================================================================
+CC-306: a heading below a lazy stanza line ends the item
+===============================================================================
+- ::: |
+  a
+b
+# h
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (div
+          (div_marker_begin)
+          (line_block_marker)
+          (content
+            (paragraph))))))
+  (section
+    (heading
+      (marker)
+      (content))))
+
+===============================================================================
+C2-B-024: an unowned sibling marker ends a line block stanza
+===============================================================================
+- ::: |
+  a
+b
+- c
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (div
+          (div_marker_begin)
+          (line_block_marker)
+          (content
+            (paragraph)))))
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph)))))
+
+===============================================================================
+C2-B-024: an unowned quote ends a line block stanza
+===============================================================================
+- ::: |
+  a
+> q
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (div
+          (div_marker_begin)
+          (line_block_marker)
+          (content
+            (paragraph))))))
+  (block_quote
+    (block_quote_marker)
+    (content
+      (paragraph))))
+
+===============================================================================
+C2-B-024: an unowned definition ends a line block stanza
+===============================================================================
+- ::: |
+  a
+[x]: u
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (div
+          (div_marker_begin)
+          (line_block_marker)
+          (content
+            (paragraph))))))
+  (link_reference_definition
+    (link_label)
+    (link_destination)))
+
+===============================================================================
+C2-B-024: an unowned heading ends a quoted line block stanza
+===============================================================================
+> ::: |
+> a
+# h
+
+-------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (div
+        (div_marker_begin)
+        (line_block_marker)
+        (content
+          (paragraph
+            (block_quote_marker))))))
+  (section
+    (heading
+      (marker)
+      (content))))
+
+===============================================================================
+C2-B-024: an unowned plain line is a stanza line
+===============================================================================
+- ::: |
+  a
+b
+c
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (div
+          (div_marker_begin)
+          (line_block_marker)
+          (content
+            (paragraph)))))))
+
+===============================================================================
+CC-1411: an indented quote mark after a marked blank line keeps the item
+===============================================================================
+> - a
+>
+  >   # H
+
+-------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (list
+        (list_item
+          (list_marker_dash)
+          (list_item_content
+            (paragraph)
+            (block_quote_marker)
+            (heading
+              (marker)
+              (content))))))))
+
+===============================================================================
+C2-B-032: an indented quote mark after a marked blank line short of the item
+===============================================================================
+> - a
+>
+  > b
+
+-------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (list
+        (list_item
+          (list_marker_dash)
+          (list_item_content
+            (paragraph))))
+      (block_quote_marker)
+      (block_quote_marker)
+      (paragraph))))
+
+===============================================================================
+CC-1866: a description left of an indented term is a paragraph
+===============================================================================
+ :: term
+: | A | B |
+  | x | y |
+
+-------------------------------------------------------------------------------
+
+(document
+  (definition_list
+    (list_item
+      (list_marker_definition)
+      (term)))
+  (paragraph)
+  (table
+    (table_row
+      (table_cell)
+      (table_cell))))
+
+===============================================================================
+C2-B-071: a description with no term is text before a list marker
+===============================================================================
+: - x
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph))
+
+===============================================================================
+C2-B-071: a description with no term is text before a heading marker
+===============================================================================
+: # x
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph))
+
+===============================================================================
+CC-1661: a typed metadata opener below a quoted item is a lazy line
+===============================================================================
+- > q
+---yaml
+k: v
+---
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (block_quote
+          (block_quote_marker)
+          (content
+            (paragraph
+              (em_dash)
+              (em_dash))))))))
+
+===============================================================================
+CC-1671: a typed metadata opener below a description is a lazy line
+===============================================================================
+:: t
+: x
+---yaml
+k: v
+---
+
+-------------------------------------------------------------------------------
+
+(document
+  (definition_list
+    (list_item
+      (list_marker_definition)
+      (term))
+    (list_item
+      (list_marker_description)
+      (definition
+        (em_dash)
+        (em_dash)))))
+
+===============================================================================
+C2-B-016: a term line in a note's paragraph is a lazy line
+===============================================================================
+[^n]: a
+  :: t
+
+-------------------------------------------------------------------------------
+
+(document
+  (footnote
+    (footnote_marker_begin)
+    (reference_label)
+    (footnote_marker_end)
+    (footnote_content
+      (paragraph))))
+
+===============================================================================
+C2-B-059: a plus line below a note's paragraph is a lazy line
+===============================================================================
+[^n]: a
++
+b
+
+-------------------------------------------------------------------------------
+
+(document
+  (footnote
+    (footnote_marker_begin)
+    (reference_label)
+    (footnote_marker_end)
+    (footnote_content
+      (paragraph))))
+
+===============================================================================
+C2-B-024: a lazy line led by a glued quote mark is a stanza line
+===============================================================================
+- ::: |
+  a
+>x
+y
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (div
+          (div_marker_begin)
+          (line_block_marker)
+          (content
+            (paragraph)))))))
+
+===============================================================================
+C2-B-024: a lazy line of seven hashes is a stanza line
+===============================================================================
+- ::: |
+  a
+####### h
+
+-------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (div
+          (div_marker_begin)
+          (line_block_marker)
+          (content
+            (paragraph)))))))

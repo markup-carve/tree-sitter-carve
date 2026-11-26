@@ -1,0 +1,60 @@
+============================================================
+C2-B-109: a closer with fewer quote marks closes the comment block
+============================================================
+
+> > %%%
+> > hidden
+> %%%
+> > after
+
+------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (block_quote
+        (block_quote_marker)
+        content: (content
+          (fenced_comment_block
+            (comment_fence_marker_begin)
+            content: (content)
+            (comment_fence_marker_end))
+          (block_quote_marker)
+          (block_quote_marker)
+          (paragraph))))))
+
+============================================================
+C2-B-137: a comment line left of the item closes the item, its line block and the comment block
+============================================================
+
+- x
+  - ::: |
+    %%%
+%% c
+    %%%
+z
+
+------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)
+        (list
+          (list_item
+            marker: (list_marker_dash)
+            content: (list_item_content
+              (div
+                (div_marker_begin)
+                line_block_marker: (line_block_marker)
+                content: (content
+                  (fenced_comment_block
+                    (comment_fence_marker_begin)))))))
+        (comment_line)
+        (fenced_comment_block
+          (comment_fence_marker_begin)))))
+  (paragraph))
+

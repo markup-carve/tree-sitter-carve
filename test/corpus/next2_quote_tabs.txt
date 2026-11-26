@@ -1,0 +1,86 @@
+============================================================
+C2-B-004: a tab after a quote mark in an item opens a line block
+============================================================
+
+- > a
+  > 	::: |
+  > 	x
+  > 	:::
+
+------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (block_quote
+          (block_quote_marker)
+          content: (content
+            (paragraph)
+            (block_quote_marker)
+            (div
+              (div_marker_begin)
+              line_block_marker: (line_block_marker)
+              content: (content
+                (paragraph
+                  (block_quote_marker)))
+              (block_quote_marker)
+              (div_marker_end))))))))
+
+============================================================
+C2-B-003: an indent after the quote marks counts from them in an item
+============================================================
+
+- > a
+  >  ::: n
+  >  x
+  >  :::
+
+------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (block_quote
+          (block_quote_marker)
+          content: (content
+            (paragraph)
+            (block_quote_marker)
+            (div
+              (div_marker_begin)
+              type: (admonition_type)
+              content: (content
+                (paragraph
+                  (block_quote_marker)))
+              (block_quote_marker)
+              (div_marker_end))))))))
+
+============================================================
+C2-B-004: a tab after a quote mark opens a div
+============================================================
+
+> a
+> 	::: n
+> 	x
+> 	:::
+
+------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (paragraph)
+      (block_quote_marker)
+      (div
+        (div_marker_begin)
+        type: (admonition_type)
+        content: (content
+          (paragraph
+            (block_quote_marker)))
+        (block_quote_marker)
+        (div_marker_end)))))
+

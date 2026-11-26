@@ -1,0 +1,55 @@
+================================================================================
+C2-I-080: a reference label wraps once
+================================================================================
+
+[a][Foo
+Bar] and [b][no
+pe]{.c}
+
+[Foo Bar]: /u
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (full_reference_link
+      text: (link_text)
+      label: (link_label))
+    (full_reference_link
+      text: (link_text)
+      label: (link_label)))
+  (link_reference_definition
+    label: (link_label)
+    destination: (link_destination)))
+
+================================================================================
+C2-I-080: a label wraps inside a quote
+================================================================================
+
+> [a][Foo
+> Bar]
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (paragraph
+        (full_reference_link
+          text: (link_text)
+          label: (link_label))))))
+
+================================================================================
+C2-I-080: a blank line ends a label
+================================================================================
+
+[a][no
+
+pe]
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph)
+  (paragraph))

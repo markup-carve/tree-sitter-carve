@@ -1,0 +1,158 @@
+================================================================================
+C2-B-111: an unclosed comment block ends with the document
+================================================================================
+
+%%%
+x
+
+--------------------------------------------------------------------------------
+
+(document
+  (fenced_comment_block
+    (comment_fence_marker_begin)
+    content: (content)))
+
+================================================================================
+C2-B-109: a comment block closes at a line without the quote's marks
+================================================================================
+
+> %%%
+%%%
+> x
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (fenced_comment_block
+        (comment_fence_marker_begin)
+        (comment_fence_marker_end))
+      (block_quote_marker)
+      (paragraph))))
+
+================================================================================
+C2-B-109: a closer at column 0 closes an item's comment block and no item
+================================================================================
+
+- %%%
+  x
+%%%
+- b
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (fenced_comment_block
+          (comment_fence_marker_begin)
+          content: (content)
+          (comment_fence_marker_end))))
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)))))
+
+================================================================================
+C2-B-110: a percent run followed by text is body
+================================================================================
+
+%%%
+x
+%%% end
+y
+%%%
+
+--------------------------------------------------------------------------------
+
+(document
+  (fenced_comment_block
+    (comment_fence_marker_begin)
+    content: (content)
+    (comment_fence_marker_end)))
+
+================================================================================
+C2-B-109: a longer percent run closes the block
+================================================================================
+
+%%%
+x
+%%%%
+y
+
+--------------------------------------------------------------------------------
+
+(document
+  (fenced_comment_block
+    (comment_fence_marker_begin)
+    content: (content)
+    (comment_fence_marker_end))
+  (paragraph))
+
+================================================================================
+C2-B-111: an unclosed comment block ends with its quote
+================================================================================
+
+> %%%
+> x
+y
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (fenced_comment_block
+        (comment_fence_marker_begin)
+        content: (content))))
+  (paragraph))
+
+================================================================================
+C2-B-111: an unclosed comment block ends with its item
+================================================================================
+
+- %%%
+  x
+- b
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (fenced_comment_block
+          (comment_fence_marker_begin)
+          content: (content))))
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)))))
+
+================================================================================
+C2-B-112: a div closer inside an unclosed comment block is body
+================================================================================
+
+::: note
+%%%
+x
+:::
+y
+
+--------------------------------------------------------------------------------
+
+(document
+  (div
+    (div_marker_begin)
+    type: (admonition_type)
+    content: (content
+      (fenced_comment_block
+        (comment_fence_marker_begin)
+        content: (content)))))
+

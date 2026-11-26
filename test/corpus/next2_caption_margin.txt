@@ -1,0 +1,43 @@
+============================================================
+C2-B-234: a line at the caret column ends a table caption
+============================================================
+
+ | w | w |
+ ^ w
+ [^w]: %%
+
+------------------------------------------------------------
+
+(document
+  (table
+    (table_row
+      (table_cell)
+      (table_cell))
+    (table_caption
+      marker: (marker)
+      content: (content)))
+  (paragraph
+    (footnote_reference
+      (footnote_marker_begin)
+      (reference_label)
+      (footnote_marker_end))
+    (trailing_comment)))
+
+============================================================
+C2-B-234: a line past the caret column continues a table caption
+============================================================
+
+ | w |
+ ^ w
+  x
+
+------------------------------------------------------------
+
+(document
+  (table
+    (table_row
+      (table_cell))
+    (table_caption
+      marker: (marker)
+      content: (content))))
+

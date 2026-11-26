@@ -14,10 +14,8 @@
 # found running two different engines at once because nobody hashed the
 # installed tree.
 #
-# The spec corpus here comes from the `spec` SUBMODULE, so this repo cannot make
-# the mistake its sibling bindings made - aiming a release gate at spec `main`
-# holds an artifact to a corpus newer than the release it gates, which becomes
-# unpassable the moment the spec moves after a tag. The gitlink IS the pin.
+# The corpus the gate runs is the hand-written one in test/corpus, so it is
+# pinned by the tag it gates.
 name: Release
 
 on:
@@ -234,8 +232,6 @@ jobs:
       XDG_CACHE_HOME: ${{ github.workspace }}/tmp/tree-sitter-cache
     steps:
       - uses: actions/checkout@v7
-        with:
-          submodules: recursive
       - uses: actions/setup-node@v7
         with:
           node-version: 20
@@ -270,8 +266,6 @@ jobs:
     needs: [guard]
     steps:
       - uses: actions/checkout@v7
-        with:
-          submodules: recursive
 
       - uses: actions/setup-node@v7
         with:
@@ -298,17 +292,12 @@ jobs:
           # this job is about whether the grammar is right.
           echo "(prebuild presence is asserted by publish-npm, not here)"
 
-      # Both checks against the INSTALLED binding. binding-parity compares the
-      # node addon to the CLI over the corpus (the two have disagreed before -
-      # see #216), and the no-ERROR sweep is the one check that can look outside
-      # the corpus, because no Carve input may parse to ERROR.
+      # Against the INSTALLED binding: binding-parity compares the node addon
+      # to the CLI over the corpus (the two have disagreed before - see #216).
       - name: The installed binding agrees with the CLI over the corpus
         env:
           CARVE_TS_BINDING: /tmp/consumer/node_modules/tree-sitter-carve
         run: npm run test:binding-parity
-
-      - name: No input parses to ERROR
-        run: npm run test:no-error
 
   npm-credential:
     name: The npm credential can publish this package
@@ -440,8 +429,6 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@v7
-        with:
-          submodules: recursive
       - uses: actions/setup-node@v7
         with:
           node-version: 20

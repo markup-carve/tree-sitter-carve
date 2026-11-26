@@ -1,0 +1,61 @@
+================================================================================
+a quoted backtick fence closes before a quoted include line
+================================================================================
+
+> ```js
+> x
+> ```
+>
+> {{ a.crv }}
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (code_block
+        (code_block_marker_begin)
+        language: (language)
+        code: (code
+          (block_quote_marker))
+        (block_quote_marker)
+        (code_block_marker_end))
+      (block_quote_marker)
+      (block_quote_marker)
+      (include_directive
+        (include_open)
+        path: (include_path)
+        (include_close)))))
+
+================================================================================
+a quoted raw block closes before a quoted include line
+================================================================================
+
+> ```=html
+> <b>
+> ```
+>
+> {{ a.crv }}
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (raw_block
+        (raw_block_marker_begin)
+        info: (raw_block_info
+          marker: (language_marker)
+          language: (language))
+        content: (content
+          (block_quote_marker))
+        (block_quote_marker)
+        (raw_block_marker_end))
+      (block_quote_marker)
+      (block_quote_marker)
+      (include_directive
+        (include_open)
+        path: (include_path)
+        (include_close)))))

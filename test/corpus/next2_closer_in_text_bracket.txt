@@ -1,0 +1,46 @@
+================================================================================
+C2-I-087: a bracket with no tail is text, so a bare closer in it closes
+================================================================================
+
+x *a [b* c] d
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (strong
+      begin_marker: (strong_begin)
+      content: (content)
+      end_marker: (strong_end))))
+
+================================================================================
+C2-I-087: the text bracket still pairs inside a link
+================================================================================
+
+[*a [b* c] d](u)
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (inline_link
+      text: (link_text
+        (strong
+          begin_marker: (strong_begin)
+          content: (content)
+          end_marker: (strong_end)))
+      destination: (inline_link_destination))))
+
+================================================================================
+C2-I-087: a bracket with a tail stays opaque
+================================================================================
+
+*a [b* c](u) d
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (inline_link
+      text: (link_text)
+      destination: (inline_link_destination))))

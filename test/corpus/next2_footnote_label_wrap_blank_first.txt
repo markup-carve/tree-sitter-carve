@@ -1,0 +1,35 @@
+================================================================================
+C2-I-080: a wrapped footnote label may start on its second line
+================================================================================
+
+a[^ 
+foo] b
+
+[^foo]: d
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (footnote_reference
+      (footnote_marker_begin)
+      (reference_label)
+      (footnote_marker_end)))
+  (footnote
+    (footnote_marker_begin)
+    label: (reference_label)
+    (footnote_marker_end)
+    content: (footnote_content
+      (paragraph))))
+
+================================================================================
+C2-I-079: a footnote label blank on both lines is text
+================================================================================
+
+a[^ 
+ ] b
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph))

@@ -26,6 +26,11 @@
     }
   },
   {
+    "type": "abbreviation_expansion",
+    "named": true,
+    "fields": {}
+  },
+  {
     "type": "admonition_type",
     "named": true,
     "fields": {}
@@ -235,9 +240,13 @@
       }
     },
     "children": {
-      "multiple": false,
+      "multiple": true,
       "required": true,
       "types": [
+        {
+          "type": "block_quote_marker",
+          "named": true
+        },
         {
           "type": "caption_marker",
           "named": true
@@ -265,6 +274,10 @@
       "required": false,
       "types": [
         {
+          "type": "abbreviation_definition",
+          "named": true
+        },
+        {
           "type": "auto_text_link",
           "named": true
         },
@@ -277,6 +290,10 @@
           "named": true
         },
         {
+          "type": "block_quote_marker",
+          "named": true
+        },
+        {
           "type": "bold_italic",
           "named": true
         },
@@ -285,15 +302,15 @@
           "named": true
         },
         {
-          "type": "citation_group",
-          "named": true
-        },
-        {
           "type": "collapsed_reference_image",
           "named": true
         },
         {
           "type": "collapsed_reference_link",
+          "named": true
+        },
+        {
+          "type": "comment_line",
           "named": true
         },
         {
@@ -373,6 +390,10 @@
           "named": true
         },
         {
+          "type": "link_reference_definition",
+          "named": true
+        },
+        {
           "type": "math",
           "named": true
         },
@@ -406,10 +427,6 @@
         },
         {
           "type": "subscript",
-          "named": true
-        },
-        {
-          "type": "substitution",
           "named": true
         },
         {
@@ -447,32 +464,6 @@
     "type": "checked",
     "named": true,
     "fields": {}
-  },
-  {
-    "type": "citation_definition",
-    "named": true,
-    "fields": {
-      "entry": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "citation_entry",
-            "named": true
-          }
-        ]
-      },
-      "label": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "citation_label",
-            "named": true
-          }
-        ]
-      }
-    }
   },
   {
     "type": "class",
@@ -514,6 +505,16 @@
         "types": [
           {
             "type": "code_block_header",
+            "named": true
+          }
+        ]
+      },
+      "invalid_metadata": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "invalid_metadata",
             "named": true
           }
         ]
@@ -598,10 +599,6 @@
           "named": true
         },
         {
-          "type": "citation_group",
-          "named": true
-        },
-        {
           "type": "collapsed_reference_image",
           "named": true
         },
@@ -719,10 +716,6 @@
         },
         {
           "type": "subscript",
-          "named": true
-        },
-        {
-          "type": "substitution",
           "named": true
         },
         {
@@ -854,14 +847,6 @@
         },
         {
           "type": "caption",
-          "named": true
-        },
-        {
-          "type": "citation_definition",
-          "named": true
-        },
-        {
-          "type": "citation_group",
           "named": true
         },
         {
@@ -1017,6 +1002,10 @@
           "named": true
         },
         {
+          "type": "region_marker",
+          "named": true
+        },
+        {
           "type": "span",
           "named": true
         },
@@ -1030,10 +1019,6 @@
         },
         {
           "type": "subscript",
-          "named": true
-        },
-        {
-          "type": "substitution",
           "named": true
         },
         {
@@ -1136,14 +1121,6 @@
         },
         {
           "type": "caption",
-          "named": true
-        },
-        {
-          "type": "citation_definition",
-          "named": true
-        },
-        {
-          "type": "citation_group",
           "named": true
         },
         {
@@ -1295,6 +1272,10 @@
           "named": true
         },
         {
+          "type": "region_marker",
+          "named": true
+        },
+        {
           "type": "span",
           "named": true
         },
@@ -1308,10 +1289,6 @@
         },
         {
           "type": "subscript",
-          "named": true
-        },
-        {
-          "type": "substitution",
           "named": true
         },
         {
@@ -1559,15 +1536,15 @@
           "named": true
         },
         {
+          "type": "block_quote_marker",
+          "named": true
+        },
+        {
           "type": "callout_list",
           "named": true
         },
         {
           "type": "caption",
-          "named": true
-        },
-        {
-          "type": "citation_definition",
           "named": true
         },
         {
@@ -1599,6 +1576,10 @@
           "named": true
         },
         {
+          "type": "include_directive",
+          "named": true
+        },
+        {
           "type": "link_reference_definition",
           "named": true
         },
@@ -1616,6 +1597,10 @@
         },
         {
           "type": "raw_block",
+          "named": true
+        },
+        {
+          "type": "region_marker",
           "named": true
         },
         {
@@ -1835,10 +1820,6 @@
           "named": true
         },
         {
-          "type": "citation_definition",
-          "named": true
-        },
-        {
           "type": "code_block",
           "named": true
         },
@@ -1867,6 +1848,10 @@
           "named": true
         },
         {
+          "type": "include_directive",
+          "named": true
+        },
+        {
           "type": "link_reference_definition",
           "named": true
         },
@@ -1888,6 +1873,10 @@
         },
         {
           "type": "raw_block",
+          "named": true
+        },
+        {
+          "type": "region_marker",
           "named": true
         },
         {
@@ -1958,6 +1947,10 @@
       "multiple": true,
       "required": true,
       "types": [
+        {
+          "type": "block_attribute",
+          "named": true
+        },
         {
           "type": "frontmatter_marker",
           "named": true
@@ -2137,10 +2130,6 @@
           "named": true
         },
         {
-          "type": "citation_group",
-          "named": true
-        },
-        {
           "type": "collapsed_reference_image",
           "named": true
         },
@@ -2266,10 +2255,6 @@
         },
         {
           "type": "subscript",
-          "named": true
-        },
-        {
-          "type": "substitution",
           "named": true
         },
         {
@@ -2709,10 +2694,6 @@
           "named": true
         },
         {
-          "type": "citation_group",
-          "named": true
-        },
-        {
           "type": "collapsed_reference_image",
           "named": true
         },
@@ -2841,10 +2822,6 @@
           "named": true
         },
         {
-          "type": "substitution",
-          "named": true
-        },
-        {
           "type": "superscript",
           "named": true
         },
@@ -2909,6 +2886,20 @@
     "type": "list_item",
     "named": true,
     "fields": {
+      "checkmark": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "checked",
+            "named": true
+          },
+          {
+            "type": "unchecked",
+            "named": true
+          }
+        ]
+      },
       "content": {
         "multiple": false,
         "required": false,
@@ -3051,10 +3042,6 @@
           "named": true
         },
         {
-          "type": "citation_definition",
-          "named": true
-        },
-        {
           "type": "code_block",
           "named": true
         },
@@ -3083,6 +3070,10 @@
           "named": true
         },
         {
+          "type": "include_directive",
+          "named": true
+        },
+        {
           "type": "link_reference_definition",
           "named": true
         },
@@ -3104,6 +3095,10 @@
         },
         {
           "type": "raw_block",
+          "named": true
+        },
+        {
+          "type": "region_marker",
           "named": true
         },
         {
@@ -3146,10 +3141,6 @@
           "named": true
         },
         {
-          "type": "citation_definition",
-          "named": true
-        },
-        {
           "type": "code_block",
           "named": true
         },
@@ -3178,6 +3169,10 @@
           "named": true
         },
         {
+          "type": "include_directive",
+          "named": true
+        },
+        {
           "type": "link_reference_definition",
           "named": true
         },
@@ -3199,6 +3194,10 @@
         },
         {
           "type": "raw_block",
+          "named": true
+        },
+        {
+          "type": "region_marker",
           "named": true
         },
         {
@@ -3336,10 +3335,6 @@
           "named": true
         },
         {
-          "type": "citation_group",
-          "named": true
-        },
-        {
           "type": "collapsed_reference_image",
           "named": true
         },
@@ -3468,10 +3463,6 @@
           "named": true
         },
         {
-          "type": "substitution",
-          "named": true
-        },
-        {
           "type": "superscript",
           "named": true
         },
@@ -3522,6 +3513,16 @@
         "types": [
           {
             "type": "raw_block_info",
+            "named": true
+          }
+        ]
+      },
+      "invalid_metadata": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "invalid_metadata",
             "named": true
           }
         ]
@@ -3619,23 +3620,7 @@
     }
   },
   {
-    "type": "raw_inline_attribute",
-    "named": true,
-    "fields": {
-      "language": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "language",
-            "named": true
-          }
-        ]
-      }
-    }
-  },
-  {
-    "type": "reference_label",
+    "type": "region_marker",
     "named": true,
     "fields": {}
   },
@@ -3686,15 +3671,15 @@
           "named": true
         },
         {
+          "type": "block_quote_marker",
+          "named": true
+        },
+        {
           "type": "callout_list",
           "named": true
         },
         {
           "type": "caption",
-          "named": true
-        },
-        {
-          "type": "citation_definition",
           "named": true
         },
         {
@@ -3722,6 +3707,14 @@
           "named": true
         },
         {
+          "type": "frontmatter",
+          "named": true
+        },
+        {
+          "type": "include_directive",
+          "named": true
+        },
+        {
           "type": "link_reference_definition",
           "named": true
         },
@@ -3739,6 +3732,10 @@
         },
         {
           "type": "raw_block",
+          "named": true
+        },
+        {
+          "type": "region_marker",
           "named": true
         },
         {
@@ -3906,32 +3903,6 @@
     "fields": {}
   },
   {
-    "type": "substitution",
-    "named": true,
-    "fields": {
-      "from": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "content",
-            "named": true
-          }
-        ]
-      },
-      "to": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "content",
-            "named": true
-          }
-        ]
-      }
-    }
-  },
-  {
     "type": "superscript",
     "named": true,
     "fields": {
@@ -3996,6 +3967,16 @@
           }
         ]
       },
+      "invalid_metadata": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "invalid_metadata",
+            "named": true
+          }
+        ]
+      },
       "label": {
         "multiple": false,
         "required": false,
@@ -4031,6 +4012,10 @@
         },
         {
           "type": "code_block_marker_end",
+          "named": true
+        },
+        {
+          "type": "comment_line",
           "named": true
         },
         {
@@ -4119,10 +4104,6 @@
         },
         {
           "type": "braced_comment",
-          "named": true
-        },
-        {
-          "type": "citation_group",
           "named": true
         },
         {
@@ -4246,10 +4227,6 @@
           "named": true
         },
         {
-          "type": "substitution",
-          "named": true
-        },
-        {
           "type": "superscript",
           "named": true
         },
@@ -4329,6 +4306,10 @@
         {
           "type": "table_cell",
           "named": true
+        },
+        {
+          "type": "trailing_comment",
+          "named": true
         }
       ]
     }
@@ -4343,6 +4324,10 @@
       "types": [
         {
           "type": "table_cell",
+          "named": true
+        },
+        {
+          "type": "trailing_comment",
           "named": true
         }
       ]
@@ -4417,10 +4402,6 @@
         },
         {
           "type": "braced_comment",
-          "named": true
-        },
-        {
-          "type": "citation_group",
           "named": true
         },
         {
@@ -4553,10 +4534,6 @@
         },
         {
           "type": "subscript",
-          "named": true
-        },
-        {
-          "type": "substitution",
           "named": true
         },
         {
@@ -4844,10 +4821,6 @@
     "named": false
   },
   {
-    "type": "abbreviation_expansion",
-    "named": true
-  },
-  {
     "type": "abbreviation_marker",
     "named": true
   },
@@ -4869,18 +4842,6 @@
   },
   {
     "type": "caption_marker",
-    "named": true
-  },
-  {
-    "type": "citation_entry",
-    "named": true
-  },
-  {
-    "type": "citation_group",
-    "named": true
-  },
-  {
-    "type": "citation_label",
     "named": true
   },
   {
@@ -5148,11 +5109,19 @@
     "named": true
   },
   {
+    "type": "raw_inline_attribute",
+    "named": true
+  },
+  {
     "type": "raw_inline_marker_begin",
     "named": true
   },
   {
     "type": "raw_inline_marker_end",
+    "named": true
+  },
+  {
+    "type": "reference_label",
     "named": true
   },
   {
@@ -5253,14 +5222,6 @@
   },
   {
     "type": "~",
-    "named": false
-  },
-  {
-    "type": "~>",
-    "named": false
-  },
-  {
-    "type": "~}",
     "named": false
   }
 ]

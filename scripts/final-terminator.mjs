@@ -61,6 +61,14 @@ const CASES = [
   { site: 'citation_definition in a list item', input: '- a\n\n  [@k]: An entry' },
   { site: 'caption in a list item', input: '- a\n\n  ^ cap' },
   { site: 'block attribute line in a list item', input: '- a\n\n  {.c}' },
+  // A column read at the end of input made the 0.22 runtime lex the last line
+  // from a NUL and drop it (#750).
+  { site: 'lone star paragraph', input: 'a\n\n*' },
+  { site: 'star word paragraph', input: '*x' },
+  { site: 'lone dash paragraph', input: '-' },
+  { site: 'plus line after a table', input: '| 1 |\n+ note' },
+  { site: 'bare quote marker', input: '>' },
+  { site: 'bare quote marker after a quoted line', input: '> a\n>' },
 ];
 
 const localCli = path.join(repoRoot, 'node_modules', '.bin', 'tree-sitter');

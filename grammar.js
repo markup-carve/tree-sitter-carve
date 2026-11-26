@@ -4,6 +4,17 @@ const ELEMENT_PRECEDENCE = 100;
 const NAME = /[a-zA-Z0-9_-]+(\.[a-zA-Z0-9_-]+)*/;
 const NAME_WORD_END = /(?:[a-zA-Z0-9_-]+\.)*[a-zA-Z0-9_-]*[a-zA-Z0-9_]/;
 const NAME_DASH_END = /(?:[a-zA-Z0-9_-]+\.)*[a-zA-Z0-9_-]*-/;
+// A mention's or a tag's own name holds at least one letter (C2-I-092).
+const NAME_WITH_LETTER =
+  /(?:[0-9_-]+\.)*[0-9_-]*[a-zA-Z](?:(?:[a-zA-Z0-9_-]|\.[a-zA-Z0-9_-])*(?:[a-zA-Z0-9_]|\.[a-zA-Z0-9_]))?/;
+// A sigil's run directly followed by a non-ASCII letter, number or mark
+// starts no form (C2-I-092); spelled as one longer token, it stays text.
+// The generated lexer does not class the emoji past U+FFFF as `\p{S}`, so
+// those planes are excluded by range: `#tag😀` is the tag `#tag`.
+const SIGIL_RUN_BEFORE_LETTER = new RegExp(
+  "[#@][a-zA-Z0-9_.-]*[^\\x00-\\x7F\\p{Z}\\p{P}\\p{S}\\p{C}\\u{1F000}-\\u{1FFFF}]",
+  "u",
+);
 
 // `url = scheme, ':', {url_char}+`: outside ASCII a url_char is anything but
 // whitespace, a format character (Cf) or a control character (Cc).
@@ -30,18 +41,33 @@ const CELL_ATTR_ITEM =
   "|[A-Za-z_][A-Za-z0-9_-]*(?:=(?:\"[^\"\\r\\n]*\"|'[^'\\r\\n]*'|[^\\s\"'{}]+))?)";
 const CELL_ALIGNMENT = "(?:[<>~][\\^~v]?|\\?[\\^~v])";
 const CELL_ATTR_LIST = CELL_ATTR_ITEM + "(?: +" + CELL_ATTR_ITEM + ")*";
-// Alignment is the first token inside the braces (`|={> .x} `, carve#5091 D3);
-// the glued 0.1.13 prefix (`|=>{.x} `) stays readable through 0.1.x.
+// In 0.2 alignment is inside the first brace block, directly before any
+// attributes. A mark outside braces is cell text (C2-B-171, C2-B-182).
+// A bare key does not start with `_` (C2-I-031), so `{_a_}` stays a braced
+// underline.
+const ATOM_ITEM = CELL_ATTR_ITEM.replace(
+  "|[A-Za-z_][A-Za-z0-9_-]*(?:=",
+  "|[A-Za-z][A-Za-z0-9_-]*|[A-Za-z_][A-Za-z0-9_-]*(?:=",
+)
+  .replace(/\)\?\)$/, "))")
+  // An unquoted value holds no backslash and no pipe (C2-I-032).
+  .replace("[^\\s\"'{}]+", "[^\\s\"'{}\\\\|]+");
+const ATTRIBUTE_ATOM = new RegExp(
+  "\\{[ ]*" + ATOM_ITEM + "(?:[ ]+" + ATOM_ITEM + ")*[ ]*\\}",
+);
+// `{{ #a }}` has no path (C2-N-089): its second brace opens an attribute
+// block, which holds no tag.
+const SECTION_ONLY_INCLUDE = new RegExp(
+  "\\{\\{[ ]*#[A-Za-z0-9_][A-Za-z0-9_-]*(?:[ ]+" + ATOM_ITEM + ")*[ ]*\\}",
+);
 const CELL_MARKER_RUN = new RegExp(
-  "(?:=?\\{" +
+  "=?\\{(?:" +
     CELL_ALIGNMENT +
-    "(?: +" +
+    "(?: *" +
     CELL_ATTR_LIST +
-    ")? *|(?:=?" +
-    CELL_ALIGNMENT +
-    "|=)?\\{ *(?:" +
+    ")? *| *" +
     CELL_ATTR_LIST +
-    " *)?)\\} ",
+    " *)\\} ",
 );
 
 // The inline element alternatives, shared by ordinary inline content and by a
@@ -50,6 +76,7 @@ const CELL_MARKER_RUN = new RegExp(
 function inlineElement($, options) {
   const notes = options.notes !== false;
   const cells = options.cells === true;
+  const title = options.title === true;
   return prec.left(
     choice(
       // Span is declared separately because it always parses an `inline_attribute`,
@@ -75,6 +102,7 @@ function inlineElement($, options) {
         // external scanner because no character class can match it.
         $._nul_byte,
         $._include_open_fallback,
+        $._section_only_include_text,
         seq($._extension_marker, $._extension_literal_check),
         // Word runs that ABSORB a glued mention / tag / symbol, which is
         // how the leading word-boundary guard is enforced without
@@ -82,6 +110,10 @@ function inlineElement($, options) {
         seq($._glued_mention, repeat($._glued_marker)),
         seq($._glued_tag, repeat($._glued_marker)),
         $._glued_symbol,
+        $._glued_extension_name,
+        $._sigil_run_text,
+        $._sigil_name_text,
+        $._attribute_atom_text,
         // Text and the symbol fallback matches everything not matched elsewhere.
         notes ? $._symbol_fallback : $._note_symbol_fallback,
         $._literal_run,
@@ -128,7 +160,6 @@ function inlineElement($, options) {
           prec.dynamic(ELEMENT_PRECEDENCE, $.subscript),
           prec.dynamic(ELEMENT_PRECEDENCE, $.insert),
           prec.dynamic(ELEMENT_PRECEDENCE, $.delete),
-          $.substitution,
           $.editorial_comment,
           // A note's content recognizes neither a note nor a footnote
           // reference, so both drop out there and stay the literal text
@@ -136,7 +167,8 @@ function inlineElement($, options) {
           ...(notes
             ? [
                 prec.dynamic(ELEMENT_PRECEDENCE, $.inline_note),
-                prec.dynamic(ELEMENT_PRECEDENCE, $.footnote_reference),
+                prec.dynamic(2 * ELEMENT_PRECEDENCE, $.footnote_reference),
+                prec.dynamic(ELEMENT_PRECEDENCE, $._caret_link),
               ]
             : []),
           prec.dynamic(ELEMENT_PRECEDENCE, $._image),
@@ -153,18 +185,19 @@ function inlineElement($, options) {
             seq($.mention, repeat($._glued_marker)),
           ),
           prec.dynamic(ELEMENT_PRECEDENCE, seq($.tag, repeat($._glued_marker))),
-          prec.dynamic(ELEMENT_PRECEDENCE, $.citation_group),
           $.auto_text_link,
           $.autolink,
           $.verbatim,
-          alias($.inline_math, $.math),
+          prec.dynamic(ELEMENT_PRECEDENCE, alias($.inline_math, $.math)),
           $.inline_literal,
           $.raw_inline,
           $.symbol,
           $.braced_comment,
-          cells
-            ? alias($._cell_trailing_comment, $.trailing_comment)
-            : $.trailing_comment,
+          title
+            ? alias($._title_trailing_comment, $.trailing_comment)
+            : cells
+              ? alias($._cell_trailing_comment, $.trailing_comment)
+              : $.trailing_comment,
           $._todo_highlights,
         ),
         optional(
@@ -190,6 +223,34 @@ function inlineElement($, options) {
 // and tree-sitter admits an empty match only inline.
 function attributeArgs($) {
   return optional(alias($._attribute_args, $.args));
+}
+
+function frontmatterBody($, opener, unclosed) {
+  return choice(
+    seq(
+      alias(opener, $.frontmatter_marker),
+      $._whitespace,
+      optional(field("language", alias($.frontmatter_language, $.language))),
+      $._newline,
+      optional(field("content", $.frontmatter_content)),
+      $.frontmatter_marker,
+      choice($._newline, $._eof_or_newline),
+    ),
+    seq(
+      alias(unclosed, $.frontmatter_marker),
+      $._whitespace,
+      optional(field("language", alias($.frontmatter_language, $.language))),
+      choice(
+        seq(
+          $._newline,
+          optional(
+            field("content", alias($._frontmatter_rest, $.frontmatter_content)),
+          ),
+        ),
+        $._eof_or_newline,
+      ),
+    ),
+  );
 }
 
 // The fallback alternatives, shared by ordinary inline content and by a note's
@@ -273,22 +334,20 @@ function symbolFallback($, options) {
     // opener there either: taken as one it swallows the caret and
     // `[^1]{.k}` comes back as a span over `1` where the spec wants `^1`.
     ...(notes
-      ? [seq("[^", choice($._square_bracket_span_mark_begin, $._in_fallback))]
+      ? [
+          seq(
+            "[^",
+            choice(
+              $._square_bracket_span_mark_begin,
+              $._in_fallback,
+              $._caret_bracket_mark_begin,
+            ),
+          ),
+        ]
       : []),
-    seq("![", choice($._square_bracket_span_mark_begin, $._in_fallback)),
+    seq("![", choice($._image_span_mark_begin, $._in_fallback)),
     seq("[", choice($._square_bracket_span_mark_begin, $._in_fallback)),
     seq("(", choice($._parens_span_mark_begin, $._in_fallback)),
-    // `[t][@a]` is a reference-link shape whose label may not start with `@`,
-    // so the whole run is text even with citations enabled (corpus 334).
-    token(
-      prec(
-        2,
-        seq(
-          optional("!"),
-          /\[[^\[\]\r\n*\/_~=^`{}<>$\\:@#!%|"']*\]\[@[^\[\]\r\n]*\]/,
-        ),
-      ),
-    ),
 
     // Autolink
     "<",
@@ -311,9 +370,17 @@ function symbolFallback($, options) {
 function codeBlock($, beginToken) {
   return seq(
     alias(beginToken, $.code_block_marker_begin),
-    // `fenced_code_block = code_fence_open, [space], [code_fence_info]`:
-    // exactly one space, never a tab and never a run, which
-    // `code_fence_info_is_modeled` in `src/scanner.c` is what enforces.
+    // Two leading spaces before a word are invalid metadata in 0.2. Offer
+    // the scanner's whole-tail token before the whitespace slot consumes
+    // those spaces, while a single space still reaches a valid info token.
+    optional(
+      field(
+        "invalid_metadata",
+        alias($._container_invalid_metadata, $.invalid_metadata),
+      ),
+    ),
+    // The scanner classifies the opener. Invalid metadata remains a child of
+    // the fence in 0.2 (C2-B-122).
     //
     // THIS TOKEN CANNOT SAY SO, because the same characters are TRAILING
     // whitespace on a bare fence - `[ \t]*` here is the two roles at once,
@@ -381,9 +448,14 @@ function codeBlock($, beginToken) {
     // lookahead - a quote or a bracket opens a padding slot, a line ending
     // closes the opener - rather than a lexer ambiguity no conflict
     // declaration could settle. A run CARRYING A TAB is the second token:
-    // a padding slot never takes a tab (`code_fence_info_is_modeled`
-    // returns false for ```` ```js<TAB>"T" ````), so at this position such
-    // a run can only be trailing whitespace.
+    // a padding slot never takes a tab. A tabbed metadata tail is collected
+    // as invalid metadata when it has further text.
+    optional(
+      field(
+        "invalid_metadata",
+        alias($._container_invalid_metadata, $.invalid_metadata),
+      ),
+    ),
     optional(choice($._padding_spaces, $._opener_trailing_tabs)),
     choice($._newline, $._eof_or_newline),
     optional(field("code", $.code)),
@@ -411,6 +483,29 @@ function codeBlock($, beginToken) {
   );
 }
 
+function includeDirective($, open) {
+  return seq(
+    open,
+    $._include_pad,
+    field("path", $.include_path),
+    // The section is NOT a slot of its own here. It was, and with the pad
+    // between parts no longer mandatory that spelling is ambiguous with the
+    // `section` arm of `_include_part`: after `path include_section`
+    // nothing decides which of the two produced it, and `tree-sitter
+    // generate` refuses the grammar. One arm carries it, and it keeps the
+    // same `section` field, so `src/node-types.json` does not move.
+    //
+    // SPELLED AS AN EXPLICIT CHOICE, not `optional($._include_pad)`. Under
+    // the pinned tree-sitter-cli 0.22.6 the `optional` form generates a
+    // parser that rejects `{{ c.crv@shift:1 }}` outright, with `generate`
+    // exiting 0 and warning nothing; 0.26.8 accepts the same grammar. Do
+    // not fold this back while 0.22.6 is the pin.
+    repeat(choice(seq($._include_pad, $._include_part), $._include_part)),
+    $._include_pad,
+    alias("}}", $.include_close),
+  );
+}
+
 module.exports = grammar({
   name: "carve",
 
@@ -426,6 +521,7 @@ module.exports = grammar({
   extras: (_) => ["\r"],
 
   conflicts: ($) => [
+    [$.frontmatter, $._nonparagraph_block],
     [$._nonparagraph_block, $.div],
     // After a quoted fence's `_block_close`, a `>` is either the closer's own
     // marker or the enclosing quote's; only the end marker after it decides.
@@ -463,6 +559,7 @@ module.exports = grammar({
     [$._image_description_begin, $._symbol_fallback],
     [$._image_description_begin, $._note_symbol_fallback],
     [$.footnote_marker_begin, $._symbol_fallback],
+    [$._caret_link_text, $._symbol_fallback],
     [$.inline_math, $._symbol_fallback],
     [$.inline_math, $._note_symbol_fallback],
     [$.block_math, $.inline_math, $._symbol_fallback],
@@ -476,41 +573,31 @@ module.exports = grammar({
 
   rules: {
     document: ($) =>
-      seq(optional($.frontmatter), repeat($._block_with_section)),
+      seq(
+        optional(alias($._leading_frontmatter, $.frontmatter)),
+        repeat($._block_with_section),
+      ),
 
+    _leading_frontmatter: ($) =>
+      frontmatterBody($, $.frontmatter_marker, $._frontmatter_unclosed_marker),
     frontmatter: ($) =>
       choice(
-        seq(
-          $.frontmatter_marker,
-          $._whitespace,
-          optional(field("language", $.language)),
-          $._newline,
-          // Empty frontmatter, `---` over `---`, is frontmatter (spec 21879d7).
-          optional(field("content", $.frontmatter_content)),
-          $.frontmatter_marker,
-          choice($._newline, $._eof_or_newline),
+        frontmatterBody(
+          $,
+          $._typed_frontmatter_marker,
+          $._typed_frontmatter_unclosed_marker,
         ),
-        // An opener with no closer runs to the end of the document
-        // (carve#5016, #5085).
         seq(
-          alias($._frontmatter_unclosed_marker, $.frontmatter_marker),
-          $._whitespace,
-          optional(field("language", $.language)),
-          choice(
-            seq(
-              $._newline,
-              optional(
-                field(
-                  "content",
-                  alias($._frontmatter_rest, $.frontmatter_content),
-                ),
-              ),
-            ),
-            $._eof_or_newline,
+          repeat1($.block_attribute),
+          frontmatterBody(
+            $,
+            $._attributed_frontmatter_marker,
+            $._attributed_frontmatter_unclosed_marker,
           ),
         ),
       ),
     frontmatter_content: ($) => repeat1($._line),
+    frontmatter_language: (_) => /[A-Za-z0-9]+/,
 
     // A section is only valid on the top level, or nested inside other sections.
     // Otherwise standalone headings are used (inside divs for example).
@@ -529,8 +616,10 @@ module.exports = grammar({
     _block_with_section: ($) =>
       choice(
         $.section,
+        $.frontmatter,
         $._block_element,
         $.abbreviation_definition,
+        alias($._blank_abbreviation_line, $.paragraph),
         $._newline,
       ),
     _block_with_heading: ($) =>
@@ -552,13 +641,29 @@ module.exports = grammar({
         $.thematic_break,
         $.block_quote,
         alias($.block_math, $.math),
-        $.citation_definition,
         $.link_reference_definition,
         $.comment_line,
+        $.region_marker,
         $.fenced_comment_block,
         $.caption,
         $.block_attribute,
         $.callout_list,
+        $._include_block,
+      ),
+
+    // A directive alone on its line is a block of one line (C2-B-156); the
+    // scanner checks the shape of C2-B-201 to C2-B-204 before it opens one.
+    // Weighted as the inline directive is, or a paragraph that reads the
+    // same line as an inline one outranks the block reading (a quoted fence
+    // closer then turns into paragraph text).
+    _include_block: ($) =>
+      prec.dynamic(
+        300 * ELEMENT_PRECEDENCE,
+        seq(
+          alias($._include_block_directive, $.include_directive),
+          optional($._whitespace1),
+          choice($._newline, $._eof_or_newline),
+        ),
       ),
 
     // A heading ends at its newline and nothing folds into it (SINGLE-LINE
@@ -585,7 +690,7 @@ module.exports = grammar({
         $._block_close,
         optional($._eof_or_newline),
       ),
-    _heading_content: ($) => $._inline_line,
+    _heading_content: ($) => $._paragraph_content,
 
     // Carve has a crazy number of different list types
     // that we need to keep separate from each other.
@@ -594,7 +699,6 @@ module.exports = grammar({
         choice(
           $._list_dash,
           $._list_star,
-          $._list_task,
           $._list_decimal_period,
           $._list_decimal_paren,
           $._list_decimal_parens,
@@ -612,8 +716,15 @@ module.exports = grammar({
           $._list_upper_roman_parens,
         ),
       ),
+    // A task box is a fact of its item, so boxed and plain items with one
+    // bullet character are siblings in one list (C2-B-049).
     _list_dash: ($) =>
-      seq(repeat1(alias($._list_item_dash, $.list_item)), $._block_close),
+      seq(
+        repeat1(
+          alias(choice($._list_item_dash, $._list_item_task), $.list_item),
+        ),
+        $._block_close,
+      ),
     _list_item_dash: ($) =>
       seq(
         optional($._block_quote_prefix),
@@ -622,7 +733,12 @@ module.exports = grammar({
       ),
 
     _list_star: ($) =>
-      seq(repeat1(alias($._list_item_star, $.list_item)), $._block_close),
+      seq(
+        repeat1(
+          alias(choice($._list_item_star, $._list_item_task_star), $.list_item),
+        ),
+        $._block_close,
+      ),
     _list_item_star: ($) =>
       seq(
         optional($._block_quote_prefix),
@@ -630,8 +746,19 @@ module.exports = grammar({
         field("content", $.list_item_content),
       ),
 
-    _list_task: ($) =>
-      seq(repeat1(alias($._list_item_task, $.list_item)), $._block_close),
+    _list_item_task_star: ($) =>
+      seq(
+        optional($._block_quote_prefix),
+        field("marker", alias($._list_marker_task_star, $.list_marker_task)),
+        field("content", $.list_item_content),
+      ),
+    _list_marker_task_star: ($) =>
+      seq(
+        $._list_marker_task_star_begin,
+        optional($._whitespace1),
+        field("checkmark", choice($.checked, $.unchecked)),
+        $._whitespace1,
+      ),
     _list_item_task: ($) =>
       seq(
         optional($._block_quote_prefix),
@@ -646,6 +773,14 @@ module.exports = grammar({
         // engine, and requiring the checkbox to sit against the marker put an
         // ERROR inside this node (corpus 75-list-nesting-and-looseness-9).
         optional($._whitespace1),
+        field("checkmark", choice($.checked, $.unchecked)),
+        $._whitespace1,
+      ),
+    // A box after an ordered marker's required space (C2-B-046); the scanner
+    // decides it, so `[` stays inline text everywhere else.
+    _ordered_task_box: ($) =>
+      seq(
+        $._list_task_box,
         field("checkmark", choice($.checked, $.unchecked)),
         $._whitespace1,
       ),
@@ -681,6 +816,7 @@ module.exports = grammar({
         choice(
           $._list_continuation,
           seq(
+            optional($._caption_host_line),
             field("definition", alias($._paragraph_content, $.definition)),
             choice($._eof_or_newline, $._close_paragraph),
           ),
@@ -750,6 +886,7 @@ module.exports = grammar({
       seq(
         optional($._block_quote_prefix),
         field("marker", $.list_marker_decimal_period),
+        optional($._ordered_task_box),
         field("content", $.list_item_content),
       ),
     _list_decimal_paren: ($) =>
@@ -761,6 +898,7 @@ module.exports = grammar({
       seq(
         optional($._block_quote_prefix),
         field("marker", $.list_marker_decimal_paren),
+        optional($._ordered_task_box),
         field("content", $.list_item_content),
       ),
     _list_decimal_parens: ($) =>
@@ -772,6 +910,7 @@ module.exports = grammar({
       seq(
         optional($._block_quote_prefix),
         field("marker", $.list_marker_decimal_parens),
+        optional($._ordered_task_box),
         field("content", $.list_item_content),
       ),
 
@@ -784,6 +923,7 @@ module.exports = grammar({
       seq(
         optional($._block_quote_prefix),
         field("marker", $.list_marker_lower_alpha_period),
+        optional($._ordered_task_box),
         field("content", $.list_item_content),
       ),
     _list_lower_alpha_paren: ($) =>
@@ -795,6 +935,7 @@ module.exports = grammar({
       seq(
         optional($._block_quote_prefix),
         field("marker", $.list_marker_lower_alpha_paren),
+        optional($._ordered_task_box),
         field("content", $.list_item_content),
       ),
     _list_lower_alpha_parens: ($) =>
@@ -806,6 +947,7 @@ module.exports = grammar({
       seq(
         optional($._block_quote_prefix),
         field("marker", $.list_marker_lower_alpha_parens),
+        optional($._ordered_task_box),
         field("content", $.list_item_content),
       ),
 
@@ -818,6 +960,7 @@ module.exports = grammar({
       seq(
         optional($._block_quote_prefix),
         field("marker", $.list_marker_upper_alpha_period),
+        optional($._ordered_task_box),
         field("content", $.list_item_content),
       ),
     _list_upper_alpha_paren: ($) =>
@@ -829,6 +972,7 @@ module.exports = grammar({
       seq(
         optional($._block_quote_prefix),
         field("marker", $.list_marker_upper_alpha_paren),
+        optional($._ordered_task_box),
         field("content", $.list_item_content),
       ),
     _list_upper_alpha_parens: ($) =>
@@ -840,6 +984,7 @@ module.exports = grammar({
       seq(
         optional($._block_quote_prefix),
         field("marker", $.list_marker_upper_alpha_parens),
+        optional($._ordered_task_box),
         field("content", $.list_item_content),
       ),
 
@@ -852,6 +997,7 @@ module.exports = grammar({
       seq(
         optional($._block_quote_prefix),
         field("marker", $.list_marker_lower_roman_period),
+        optional($._ordered_task_box),
         field("content", $.list_item_content),
       ),
     _list_lower_roman_paren: ($) =>
@@ -863,6 +1009,7 @@ module.exports = grammar({
       seq(
         optional($._block_quote_prefix),
         field("marker", $.list_marker_lower_roman_paren),
+        optional($._ordered_task_box),
         field("content", $.list_item_content),
       ),
     _list_lower_roman_parens: ($) =>
@@ -874,6 +1021,7 @@ module.exports = grammar({
       seq(
         optional($._block_quote_prefix),
         field("marker", $.list_marker_lower_roman_parens),
+        optional($._ordered_task_box),
         field("content", $.list_item_content),
       ),
 
@@ -886,6 +1034,7 @@ module.exports = grammar({
       seq(
         optional($._block_quote_prefix),
         field("marker", $.list_marker_upper_roman_period),
+        optional($._ordered_task_box),
         field("content", $.list_item_content),
       ),
     _list_upper_roman_paren: ($) =>
@@ -897,6 +1046,7 @@ module.exports = grammar({
       seq(
         optional($._block_quote_prefix),
         field("marker", $.list_marker_upper_roman_paren),
+        optional($._ordered_task_box),
         field("content", $.list_item_content),
       ),
     _list_upper_roman_parens: ($) =>
@@ -908,6 +1058,7 @@ module.exports = grammar({
       seq(
         optional($._block_quote_prefix),
         field("marker", $.list_marker_upper_roman_parens),
+        optional($._ordered_task_box),
         field("content", $.list_item_content),
       ),
 
@@ -984,7 +1135,7 @@ module.exports = grammar({
         prec.right(
           seq(
             $._table_regular_row,
-            repeat($._table_row),
+            repeat(choice($._table_row, $._table_comment_unit)),
             optional($._table_list_end),
             optional($._newline),
             optional($.table_caption),
@@ -997,6 +1148,8 @@ module.exports = grammar({
           ),
         ),
       ),
+    // A comment-only line is not seen by block structure, so it ends no table
+    // (C2-B-137, C2-B-175); one below the last row is the table's (C2-A-086).
     _table_row: ($) =>
       seq(
         optional($._table_list_row_check),
@@ -1010,6 +1163,15 @@ module.exports = grammar({
           $.table_continuation_row,
         ),
       ),
+    _table_comment_unit: ($) =>
+      seq(optional($._table_list_row_check), $._table_comment),
+    _table_comment: ($) =>
+      seq(
+        optional(
+          repeat1(alias($._table_quote_continuation, $.block_quote_marker)),
+        ),
+        alias($._table_comment_line, $.comment_line),
+      ),
     _table_regular_row: ($) =>
       seq(
         optional(
@@ -1020,13 +1182,14 @@ module.exports = grammar({
     table_continuation_row: ($) =>
       seq(
         alias($._table_continuation_row, "+"),
-        repeat($._table_cell),
+        repeat($._table_fragment),
         $._table_row_end_newline,
       ),
     table_header: ($) =>
       seq(
         alias($._table_header_begin, "|"),
         repeat($._table_cell),
+        optional(alias($._table_row_comment, $.trailing_comment)),
         $._table_row_end_newline,
       ),
     table_separator: ($) =>
@@ -1039,6 +1202,7 @@ module.exports = grammar({
       seq(
         alias($._table_row_begin, "|"),
         repeat($._table_cell),
+        optional(alias($._table_row_comment, $.trailing_comment)),
         $._table_row_end_newline,
       ),
     _table_cell: ($) =>
@@ -1054,6 +1218,18 @@ module.exports = grammar({
         ),
         alias($._table_escaped_cell_body, $.table_cell),
       ),
+    // A continuation row's fragment reads no cell prefix (C2-B-185).
+    _table_fragment: ($) =>
+      choice(
+        seq(alias($._cell_inline, $.table_cell), alias($._table_cell_end, "|")),
+        seq(
+          alias($._empty_table_cell, $.table_cell),
+          alias($._table_cell_end, "|"),
+        ),
+        alias($._table_escaped_fragment, $.table_cell),
+      ),
+    _table_escaped_fragment: ($) =>
+      seq($._cell_inline, alias($._table_escaped_cell_end, $.backslash_escape)),
     _table_escaped_cell_body: ($) =>
       seq(
         $._table_cell_body,
@@ -1111,18 +1287,17 @@ module.exports = grammar({
       seq(
         $._cell_marker_begin,
         optional(token.immediate("=")),
+        token.immediate("{"),
         choice(
           seq(
-            token.immediate("{"),
             $._cell_alignment,
-            optional(seq($._padding_spaces, $._cell_attribute_list)),
+            optional(seq(optional($._padding_spaces), $._cell_attribute_list)),
             optional($._padding_spaces),
           ),
           seq(
-            optional($._cell_alignment),
-            token.immediate("{"),
             optional($._padding_spaces),
-            optional(seq($._cell_attribute_list, optional($._padding_spaces))),
+            $._cell_attribute_list,
+            optional($._padding_spaces),
           ),
         ),
         token.immediate("}"),
@@ -1150,7 +1325,9 @@ module.exports = grammar({
     table_caption: ($) =>
       seq(
         field("marker", alias($._table_caption_begin, $.marker)),
-        field("content", alias(repeat1($._inline_line), $.content)),
+        // Paragraph-like, as a standalone caption is (C2-B-148).
+        field("content", alias($._caption_content, $.content)),
+        $._eof_or_newline,
         choice($._table_caption_end, "\0"),
       ),
 
@@ -1158,7 +1335,11 @@ module.exports = grammar({
       seq(
         $._footnote_mark_begin,
         $.footnote_marker_begin,
-        field("label", $.reference_label),
+        // Spaces may stand in a definition's label (C2-B-082).
+        field(
+          "label",
+          alias(token(/([^\]\[\\\r\n]|\\[^\r\n])+/), $.reference_label),
+        ),
         alias("]:", $.footnote_marker_end),
         $._whitespace1,
         field("content", $.footnote_content),
@@ -1245,7 +1426,15 @@ module.exports = grammar({
             //
             // Line block: `::: |` (the separator space is required before the
             // bar, and enforced there).
-            seq(field("line_block_marker", alias("|", $.line_block_marker))),
+            seq(
+              field("line_block_marker", alias("|", $.line_block_marker)),
+              optional(
+                field(
+                  "invalid_metadata",
+                  alias($._container_invalid_metadata, $.invalid_metadata),
+                ),
+              ),
+            ),
             // Fenced block quote: `::: >` (grammar.ebnf `quote_block_open =
             // colon_fence:open, space, ">"`, markup-carve/carve#1718). The
             // third member of the sigil family beside the bar and the
@@ -1262,6 +1451,12 @@ module.exports = grammar({
               field(
                 "block_quote_fence_marker",
                 alias(">", $.block_quote_fence_marker),
+              ),
+              optional(
+                field(
+                  "invalid_metadata",
+                  alias($._container_invalid_metadata, $.invalid_metadata),
+                ),
               ),
             ),
             // Local hard-break block: `::: \` (grammar.ebnf
@@ -1286,7 +1481,7 @@ module.exports = grammar({
               ),
             ),
             // COMPOSITE FIGURE GROUP (PART 9 §4c): the fence, its separator,
-            // the word `figure`, and NOTHING else. `figure` is RESERVED among
+            // the word `figure`, and no title or label. `figure` is RESERVED among
             // the `:::` kind words, so a BARE opener is one figure of ordered
             // panels rather than an admonition - while `::: figure "T"` and
             // `::: figure [g]` do NOT match that production and stay an
@@ -1309,9 +1504,18 @@ module.exports = grammar({
             // named the line block and the local hard-break block
             // (markup-carve/carve-grammars#311): the marker that SELECTS the
             // container is the construct's name.
-            field(
-              "figure_group_marker",
-              alias($._figure_group_marker, $.figure_group_marker),
+            // Words or a brace block after the word are ignored (C2-B-122).
+            seq(
+              field(
+                "figure_group_marker",
+                alias($._figure_group_marker, $.figure_group_marker),
+              ),
+              optional(
+                field(
+                  "invalid_metadata",
+                  alias($._container_invalid_metadata, $.invalid_metadata),
+                ),
+              ),
             ),
             // ADMONITION, with an optional quoted custom title and an optional
             // bracketed [label] (a grouping id; PART 9 §12).
@@ -1331,6 +1535,10 @@ module.exports = grammar({
                   "invalid_metadata",
                   alias($._container_invalid_metadata, $.invalid_metadata),
                 ),
+                field(
+                  "invalid_metadata",
+                  alias(token.immediate(/\[[^\r\n]*/), $.invalid_metadata),
+                ),
                 seq(
                   optional(seq($._padding_spaces, field("title", $.div_title))),
                   optional(
@@ -1342,6 +1550,19 @@ module.exports = grammar({
             // Bare [label] with no type word (a typeless tab member); it may
             // sit directly against the fence (`:::[First]`) or after a space.
             seq(field("label", $.code_block_label)),
+            seq(
+              field("title", $.div_title),
+              optional(
+                seq($._padding_spaces, field("label", $.code_block_label)),
+              ),
+            ),
+            field(
+              "invalid_metadata",
+              alias(
+                token.immediate(/[^A-Za-z0-9_\-\["\\|> \t\r\n][^\r\n]*/),
+                $.invalid_metadata,
+              ),
+            ),
           ),
         ),
         // TRAILING WHITESPACE ON THE OPENER LINE, for every branch above.
@@ -1374,9 +1595,9 @@ module.exports = grammar({
         // A run CARRYING A TAB is a second, disjoint token, because
         // `_padding_spaces` cannot hold one and a padding slot never takes one:
         // an admonition opener with a tab between the type word and its quoted
-        // title is a paragraph in this grammar and in carve-js alike
-        // (carve#886). So a whitespace run with a tab in it, at this position,
-        // can only be the opener's trailing whitespace - which the engine
+        // title keeps the block but reports the tail as invalid metadata in
+        // 0.2 (C2-B-122). A whitespace run with a tab in it at this position
+        // can only be trailing whitespace when the line ends - which the engine
         // accepts on all four openers, and which the backslash form used to
         // reach only because `div_marker_begin` swallowed the whole line.
         optional(choice($._padding_spaces, $._opener_trailing_tabs)),
@@ -1404,9 +1625,15 @@ module.exports = grammar({
     // renders the strong and the code span in the title paragraph.
     div_title: ($) =>
       choice(
-        seq('"', optional(alias($._inline_single_line, $.content)), '"'),
+        seq('"', optional(alias($._title_inline_single_line, $.content)), '"'),
         seq("'", optional(alias($._inline_single_line, $.content)), "'"),
       ),
+
+    _title_inline_single_line: ($) =>
+      prec.left(repeat1(choice($._title_inline_element, $._whitespace1))),
+    _title_inline_element: ($) => inlineElement($, { title: true }),
+    // A title comment ends at its own quote, leaving the opener complete.
+    _title_trailing_comment: (_) => token(seq(/[ \t]/, "%%", /[^"\r\n]*/)),
 
     code_block: ($) => codeBlock($, $._code_block_begin),
     raw_block: ($) =>
@@ -1419,8 +1646,14 @@ module.exports = grammar({
         // The same trailing-whitespace slot the code fence takes, for the same
         // reason: `code_fence_info_is_modeled` accepts ```` ```=html ```` with a
         // trailing space or tab, and without a slot here that opener was an
-        // ERROR and its body live prose. Both raw spellings reach it -
-        // ```` ```=FORMAT ```` and ```` ```raw FORMAT ````.
+        // ERROR and its body live prose. A raw fence takes no title or label,
+        // so everything after the format lands here (C2-B-122).
+        optional(
+          field(
+            "invalid_metadata",
+            alias($._container_invalid_metadata, $.invalid_metadata),
+          ),
+        ),
         optional(choice($._padding_spaces, $._opener_trailing_tabs)),
         choice($._newline, $._eof_or_newline),
         field("content", optional(alias($.code, $.content))),
@@ -1438,25 +1671,18 @@ module.exports = grammar({
           ),
         ),
       ),
+    // ```=FORMAT (C2-B-116). The 0.1 spelling ```raw FORMAT is a code block.
     raw_block_info: ($) =>
-      choice(
-        // Carve form: ```raw FORMAT
-        seq(
-          field("marker", alias("raw", $.language_marker)),
-          $._whitespace1,
-          field("language", $.language),
-        ),
-        // Djot form: ```=FORMAT (the `=` is glued to the fence, no space)
-        seq(
-          field("marker", alias(token.immediate("="), $.language_marker)),
-          field("language", $.language),
-        ),
+      seq(
+        field("marker", alias(token.immediate("="), $.language_marker)),
+        field("language", alias($.raw_format, $.language)),
       ),
 
     // Excludes `"` and `[` so a glued header/label (```php"x", ```php[x]) is
     // not swallowed into the language token -- the info string then needs the
-    // space the spec requires, and a glued form falls back (matches the impls).
-    language: (_) => /[^\r\n\t \{\}=\["]+/,
+    // space the spec requires, and a glued form is invalid metadata.
+    language: (_) => /[A-Za-z0-9_#+.\/-]+/,
+    raw_format: (_) => /[A-Za-z][A-Za-z0-9_-]*/,
     code_block_label: ($) =>
       seq(
         "[",
@@ -1498,7 +1724,6 @@ module.exports = grammar({
     thematic_break: ($) =>
       seq(
         choice(
-          $._thematic_break_dash,
           $._thematic_break_star,
           // The underscore spelling needs no external token: unlike `-` and
           // `*`, `_` is not a list marker, so there is nothing for the scanner
@@ -1506,7 +1731,6 @@ module.exports = grammar({
           // underscores has an obvious fallback (a paragraph), so the corpus
           // conformance run, which fails only on ERROR and MISSING nodes, saw
           // nothing wrong with `___`.
-          $._thematic_break_underscore,
         ),
         choice($._newline, $._eof_or_newline),
       ),
@@ -1553,6 +1777,8 @@ module.exports = grammar({
                 ),
               ),
             ),
+            // A comment-only line closes no quote, marked or not (C2-B-137).
+            $.comment_line,
             // A `+` continuation marker can attach a block after a surviving
             // outer quote prefix.
             seq(
@@ -1607,6 +1833,7 @@ module.exports = grammar({
       prec.dynamic(
         2 * ELEMENT_PRECEDENCE,
         seq(
+          optional($._caption_host_line),
           field("math_marker", alias("$$", $.math_marker)),
           field("begin_marker", alias($._verbatim_begin, $.math_marker_begin)),
           field("content", alias($._verbatim_body, $.content)),
@@ -1626,9 +1853,16 @@ module.exports = grammar({
         // defines a label spelled `*bold*` and builds no emphasis on a line
         // that renders nothing. `scan_ref_def` in `src/scanner.c` reads the
         // same run; where the two disagreed about where the label ends, the
-        // line came back as an ERROR. The subtracted `@` keeps `[@key]:` for
-        // `citation_definition`.
-        field("label", alias(token(/[^\]@\r\n][^\]\r\n]*/), $.link_label)),
+        // line came back as an ERROR. `[@key]:` is a link definition too: a
+        // citation has no core form (C2-B-083, C2-I-101).
+        // A backslash escapes the next character, a `]` included (C2-I-076).
+        field(
+          "label",
+          alias(
+            token(/([^\]\\\r\n]|\\[^\r\n])([^\]\\\r\n]|\\[^\r\n])*/),
+            $.link_label,
+          ),
+        ),
         $._link_ref_def_label_end,
         "]",
         ":",
@@ -1647,7 +1881,7 @@ module.exports = grammar({
         // and `[a]: /u` + TAB + `{.c}` built a definition that renders nothing
         // over source text the fixture still shows. Six recorded invisible
         // over-acceptances.
-        optional(
+        choice(
           seq(
             // The separator after `]:` is a space and then a free run: `[a]:`
             // plus two spaces plus `/u` is a definition, and so is `[a]:` plus
@@ -1663,65 +1897,67 @@ module.exports = grammar({
             // `src/scanner.c` is what applies the cardinality, and it is the
             // only place that can, because refusing has to leave the line as
             // prose.
-            optional(seq($._whitespace1, field("title", $.link_title))),
-            optional(
+            choice(
+              seq(optional($._whitespace1), $._link_line_end),
+              // C2-B-083: the indented lines below hold the part of the tail
+              // this line left out. The scanner offers each token only where
+              // the line below holds exactly that part.
               seq(
-                $._whitespace1,
-                alias(
-                  token(prec(-1, /\{[^\r\n}]*\}/)),
-                  $.link_reference_attributes,
-                ),
+                optional($._whitespace1),
+                $._link_tail_continuation,
+                $._link_tail_line,
               ),
+              seq($._whitespace1, $._link_title_and_rest),
+              seq($._whitespace1, $._link_attributes_line_end),
             ),
           ),
+          // The line ENDING is `whitespace` - space and tab both - the same
+          // terminal `blank_line` takes (PART 1; carve#890), so `[a]: /u` +
+          // TAB is still a definition. A bare line is an empty definition;
+          // trailing ASCII pad is allowed.
+          seq(optional($._whitespace1), $._link_line_end),
         ),
-        // The line ENDING is `whitespace` - space and tab both - the same
-        // terminal `blank_line` takes (PART 1; carve#890), so `[a]: /u` + TAB is
-        // still a definition. A bare line is an empty definition; trailing
-        // ASCII pad is allowed.
-        optional($._whitespace1),
-        choice($._newline, $._eof_or_newline),
       ),
-    link_destination: (_) => /\S+/,
+    // C2-I-067: a no-break space is part of the destination.
+    link_destination: (_) => /[^ \t\r\n]+/,
 
-    // Citation definition block (Carve §22, Tier-2). `[@key]: entry text`.
-    //
-    // The spec reserves a leading `@` label here: `[@key]:` is NEVER a link
-    // reference definition, it is a bibliography entry (parallels the `[^...]:`
-    // footnote-definition precedence). The external scanner emits the same
-    // `_link_ref_def_mark_begin` / `_link_ref_def_label_end` pair as a link ref
-    // def (it matches any `[...]:`), so this rule shares that opener and is
-    // disambiguated by the `@`-prefixed citation label. Unlike a link ref def
-    // (whose destination is a single `\S+` token), the entry runs free-form to
-    // end of line, so a multi-word entry (`Smith, J. (2020). Title.`) is kept
-    // whole. The `prec(1)` makes this branch win over `link_reference_definition`
-    // (whose `_inline` label would otherwise also match the `@key`). The label
-    // is the SAME Pandoc citation-key charset that `citation_group` accepts, so
-    // a key with internal punctuation (`[@smith.2020]`, `[@doi/10.1]`) is
-    // defined consistently with the way it is cited.
-    citation_definition: ($) =>
-      prec(
-        1,
-        seq(
-          $._link_ref_def_mark_begin,
-          "[",
-          field("label", $.citation_label),
-          $._link_ref_def_label_end,
-          "]",
-          ":",
-          token.immediate(/ +/),
-          optional(field("entry", alias(/[^\r\n]+/, $.citation_entry))),
-          choice($._newline, $._eof_or_newline),
-        ),
-      ),
-    // `@` + Pandoc citation key (first char \w, then \w or internal punctuation).
-    citation_label: (_) => token(seq("@", /[\w][\w:.#$%&+?<>~\/-]*/)),
     // A backslash escapes the next character inside a title, so
     // `"a\"b\"c"` is one title (corpus 34-reference-link-7).
     link_title: (_) =>
       choice(
         seq('"', /(?:[^"\\\r\n]|\\[^\r\n])*/, '"'),
         seq("'", /(?:[^'\\\r\n]|\\[^\r\n])*/, "'"),
+      ),
+
+    _link_line_end: ($) => choice($._newline, $._eof_or_newline),
+    _link_reference_attributes: ($) =>
+      alias(token(prec(-1, /\{[^\r\n}]*\}/)), $.link_reference_attributes),
+    _link_attributes_line_end: ($) =>
+      seq(
+        $._link_reference_attributes,
+        optional($._whitespace1),
+        $._link_line_end,
+      ),
+    // A title, then the line end, an attribute block on this line, or an
+    // attribute block on the line below.
+    _link_title_and_rest: ($) =>
+      seq(
+        field("title", $.link_title),
+        choice(
+          seq(optional($._whitespace1), $._link_line_end),
+          seq(
+            optional($._whitespace1),
+            $._link_attribute_continuation,
+            $._whitespace1,
+            $._link_attributes_line_end,
+          ),
+          seq($._whitespace1, $._link_attributes_line_end),
+        ),
+      ),
+    _link_tail_line: ($) =>
+      seq(
+        $._whitespace1,
+        choice($._link_title_and_rest, $._link_attributes_line_end),
       ),
 
     // carve-php caption block: `^ caption text` on its own line.
@@ -1760,11 +1996,22 @@ module.exports = grammar({
     // external.
     caption: ($) =>
       seq(
+        // The markers a block taking only one of them leaves behind.
+        optional($._block_quote_prefix),
         alias($._caption_begin, $.caption_marker),
         // A caption's content is INLINE: its text renders as a figure caption,
         // so `^ See #data` carries the tag and `^ a *# x* b` the strong.
-        field("content", alias($._inline_single_line, $.caption_content)),
-        choice($._newline, $._eof_or_newline),
+        // Paragraph-like: the text takes lazy lines (C2-B-148).
+        field("content", alias($._caption_content, $.caption_content)),
+        $._eof_or_newline,
+        optional($._close_paragraph),
+      ),
+    _caption_content: ($) =>
+      seq(
+        $._inline,
+        repeat(
+          seq($._newline_inline, optional($._block_quote_prefix), $._inline),
+        ),
       ),
 
     // THE TERMINATOR IS THE SCANNER'S. `consume_line_end` is where `col_base`
@@ -1773,9 +2020,33 @@ module.exports = grammar({
     // ending never reaches it. After a comment line ended by a LONE '\r' the
     // base was stale and an indented construct on the next line was misread,
     // which is what nine of the lone-CR documents on #341 came down to.
+    // No token precedence: lexical precedence outranks match length, so a
+    // prec here cut `%% #region a b` short of the longer comment line
+    // (C2-B-217). On an equal match the earlier rule, this one, wins.
+    region_marker: ($) =>
+      seq(
+        token(
+          seq(
+            /[ \t]*/,
+            "%%",
+            /[ \t]*/,
+            choice(
+              seq("#region", /[ \t]+/, /[A-Za-z_][A-Za-z0-9_-]*/),
+              seq(
+                "#endregion",
+                optional(seq(/[ \t]+/, /[A-Za-z_][A-Za-z0-9_-]*/)),
+              ),
+            ),
+            /[ \t]*/,
+          ),
+        ),
+        choice($._newline, $._eof_or_newline),
+      ),
+
+    // A third `%` opens a comment block (C2-B-108), never a comment line.
     comment_line: ($) =>
       seq(
-        token(seq(/[ \t]*/, "%%", /[^\r\n]*/)),
+        token(seq(/[ \t]*/, "%%", optional(seq(/[^%\r\n]/, /[^\r\n]*/)))),
         choice($._newline, $._eof_or_newline),
       ),
 
@@ -1854,12 +2125,11 @@ module.exports = grammar({
         // stay paragraph text in every engine - and a definition renders
         // NOTHING, so this highlighted a line as one that disappears from the
         // rendered document when it does not (carve#791).
-        alias(token(seq("*[", /[A-Za-z0-9]+/, "]: ")), $.abbreviation_marker),
-        optional(
-          seq(
-            optional($._whitespace1),
-            field("expansion", alias(/[^\r\n]+/, $.abbreviation_expansion)),
-          ),
+        alias($._abbreviation_head, $.abbreviation_marker),
+        optional($._whitespace1),
+        field(
+          "expansion",
+          alias($._abbreviation_expansion, $.abbreviation_expansion),
         ),
         // A definition may be the document's last line with nothing after it.
         // The pinned CLI completes that reading on its own, so the site looks
@@ -1868,66 +2138,29 @@ module.exports = grammar({
         choice($._newline, $._eof_or_newline),
       ),
 
-    // Citation group inline: `[@key]`, `[+@key]`, `[-@key]`, `[@a; see @b, p.4]`
-    // (Carve §22, Tier-2 extension; Pandoc-compatible citation syntax.)
-    //
-    // The token is a single regex that matches the whole `[...]` construct so it
-    // wins over `_bracketed_text_begin` in the lexer without needing the external
-    // scanner.  Key charset follows Pandoc: first char \w, subsequent chars
-    // \w or any of  :  .  #  $  %  &  +  ?  <  >  ~  /  -
-    //
-    // TAIL-LOOKAHEAD LIMITATION (tree-sitter 0.22 regex has no lookahead). The
-    // spec / carve-js reference rule is: a `[...]` with a `@key` is a citation
-    // ONLY when it has NO `(url)` / `[ref]` / `{attrs}` tail; with a tail it is a
-    // link or span. A single lexer token cannot look past its own `]` to test the
-    // following char, and a structural rule that reuses the bracket-span scanner
-    // tokens collides irreconcilably with `link_text` / `span` over the inline
-    // body. So two deliberate trade-offs keep this a clean lexer token:
-    //
-    //   1. CONSERVATIVE FIRST ITEM (no leading prefix text). `[see @a]` and a
-    //      real link `[contact @support](url)` are lexically identical up to the
-    //      `]`; matching arbitrary first-item prefix would steal such links. The
-    //      first item therefore begins with `@` straight after `[`, `[+`, or
-    //      `[-`. Prefix text IS supported on SECOND and later `;`-items
-    //      (`[@a; see @b]`) where no link tail can follow a `;`. The dropped
-    //      `[prefix @key]` single-item form falls back to text + a `mention`.
-    //
-    //   2. RESIDUAL `[@key](url)` / `[@key][ref]` OVERLAP. A bracket that is
-    //      EXACTLY `[@key]` followed by a `(url)` or `[ref]` link tail is matched
-    //      here as a citation, leaving the tail as separate text. This narrow
-    //      mention-only-link form is the one case that still diverges; it is rare
-    //      (a profile link is normally written `[@user]` then a separate link, or
-    //      `[user](url)`), and the cost is cosmetic highlighting, not a parse
-    //      failure. A `{attrs}` tail still attaches as an `inline_attribute`
-    //      after the citation token (so `[@k]{.x}` stays citation + attribute).
-    citation_group: (_) =>
-      token(
-        prec(
-          1,
+    // C2-B-084: every indented text line directly below continues the
+    // expansion; the scanner decides which lines are text lines.
+    _abbreviation_expansion: ($) =>
+      seq(
+        /[^ \t\r\n][^\r\n]*/,
+        repeat(
           seq(
-            "[",
-            optional("+"),
-            // First item: `@key` immediately (optional `-` suppress-author).
-            optional("-"),
-            "@",
-            /[\w][\w:.#$%&+?<>~\/-]*/,
-            // optional locator text after the key
-            /[^\[\]@\r\n]*/,
-            // zero or more additional citation items separated by `;`; these MAY
-            // carry prefix text since no link tail can follow a `;`.
-            repeat(
-              seq(
-                ";",
-                /[^\[\]@\r\n]*/,
-                optional("-"),
-                "@",
-                /[\w][\w:.#$%&+?<>~\/-]*/,
-                /[^\[\]@\r\n]*/,
-              ),
-            ),
-            "]",
+            $._abbreviation_continuation,
+            $._whitespace1,
+            /[^ \t\r\n][^\r\n]*/,
           ),
         ),
+      ),
+
+    _abbreviation_head: (_) => token(seq("*[", /[A-Za-z0-9]+/, "]: ")),
+    // The expansion is not empty (C2-B-084). The marker token has already
+    // committed by the line end, so a blank expansion closes as a paragraph
+    // here instead of an ERROR.
+    _blank_abbreviation_line: ($) =>
+      seq(
+        $._abbreviation_head,
+        optional($._whitespace1),
+        choice($._newline, $._eof_or_newline),
       ),
 
     // Callout list block (§10 / Tier-2 extension).
@@ -2021,6 +2254,8 @@ module.exports = grammar({
         // container opener - it hands the run back so this paragraph can take
         // it. Produces no node.
         optional($._not_a_container_opener),
+        // A host line nested in quotes comes after all of its markers.
+        optional(seq(optional($._block_quote_prefix), $._caption_host_line)),
         alias($._paragraph_content, $.paragraph),
         // Blankline is split out from paragraph to enable textobject
         // to not select newline up to following text.
@@ -2029,7 +2264,8 @@ module.exports = grammar({
     _term_content: ($) =>
       seq(
         optional($._block_quote_prefix),
-        $._inline,
+        // A term may be only a line comment (C2-I-024).
+        choice($._inline, alias($._label_start_comment, $.trailing_comment)),
         repeat(
           seq(
             $._newline_inline,
@@ -2055,7 +2291,12 @@ module.exports = grammar({
     _whitespace: (_) => token.immediate(/[ \t]*/),
     // The scanner hands a space over as `_mid_line_space` to note that its
     // line has passed its start (#669).
-    _whitespace1: ($) => choice(token.immediate(/[ \t]+/), $._mid_line_space),
+    _whitespace1: ($) =>
+      choice($._space_run, token.immediate(/[ \t]+/), $._mid_line_space),
+    // A run of spaces alone, for the slots that take no tab (C2-B-201). Plain
+    // whitespace takes it too, so where a slot and text both stay open the
+    // lexer's pick of this token leaves the text reading alive.
+    _space_run: (_) => token.immediate(/ +/),
 
     // A SLOT SPELLED `space`, in its two cardinalities. grammar.ebnf PART 7
     // (MARKER SEPARATORS AND PADDING SLOTS) spells every separator and every
@@ -2144,7 +2385,15 @@ module.exports = grammar({
     // a bare one cannot open on whitespace, so the alternative is unreachable
     // there. An EMPTY pair stays literal text (`_empty_braced_pair`).
     _braced_span_content: ($) =>
-      choice($._inline_without_trailing_space, $._whitespace1),
+      repeat1(
+        choice(
+          $._inline_element,
+          $._newline_inline,
+          $._whitespace1,
+          $._table_continuation_seam,
+          $._erased_line,
+        ),
+      ),
 
     _inline_element: ($) => inlineElement($, {}),
 
@@ -2211,17 +2460,17 @@ module.exports = grammar({
     // with `tagDot = "." &tagChar` (resources/carve-core.ohm), so `@john.doe`
     // and `#release-1.0` are one name each and the sentence-ending dot of
     // `Reach @john.` is not.
-    mention: ($) =>
-      choice(
-        seq(token(seq("@", NAME_WORD_END)), $._word_end),
-        token(seq("@", NAME_DASH_END)),
-      ),
+    mention: ($) => seq(token(seq("@", NAME_WITH_LETTER)), $._word_end),
 
-    tag: ($) =>
-      choice(
-        seq(token(seq("#", NAME_WORD_END)), $._word_end),
-        token(seq("#", NAME_DASH_END)),
-      ),
+    tag: ($) => seq(token(seq("#", NAME_WITH_LETTER)), $._word_end),
+
+    _sigil_run_text: (_) => token(SIGIL_RUN_BEFORE_LETTER),
+    // A name with no letter is text (C2-I-092), kept as one token: a lone
+    // sigil token before a digit run made the parse quadratic.
+    _sigil_name_text: (_) => token(prec(-1, seq(/[#@]/, NAME_WORD_END))),
+    // An attribute block that attaches to nothing is one atom of text
+    // (C2-I-035); every opener token outranks it.
+    _attribute_atom_text: (_) => token(ATTRIBUTE_ATOM),
 
     // `extension = ":" extName "[" extContent "]"` (resources/carve-core.ohm).
     // The bracket holds INLINE content: `:code[*b*]` renders the strong inside
@@ -2242,12 +2491,22 @@ module.exports = grammar({
     // (corpus 351-a-bracketed-construct-spanning-a-line-boundary-7).
     _extension_content: ($) =>
       prec.left(
-        repeat1(choice($._inline_element, $._newline_inline, $._whitespace1)),
+        repeat1(
+          choice(
+            $._inline_element,
+            $._newline_inline,
+            $._whitespace1,
+            $._table_continuation_seam,
+            $._erased_line,
+          ),
+        ),
       ),
 
     // A `:name:` symbol: the first name char is a letter, digit, `+` or `-`
     // (so `:+1:` / `:-1:` parse), never `_`; the rest may add `_`. (carve#261)
-    symbol: (_) => token(seq(":", /[a-zA-Z0-9+-][\w+-]*/, ":")),
+    // The name does not end with a hyphen (C2-I-093), so `:-:` is text.
+    symbol: (_) =>
+      token(seq(":", /[a-zA-Z0-9+]|[a-zA-Z0-9+-][\w+-]*[\w+]/, ":")),
 
     // Emphasis and strong are a little special as they don't allow spaces next
     // to begin and end markers unless using the bracketed variant.
@@ -2324,7 +2583,7 @@ module.exports = grammar({
         field("content", alias($._braced_span_content, $.content)),
         field("end_marker", $.underline_end),
       ),
-    underline_begin: ($) => choice("{_", seq("_", $._non_whitespace_check)),
+    underline_begin: (_) => "{_",
 
     strikethrough: ($) =>
       seq(
@@ -2333,7 +2592,7 @@ module.exports = grammar({
         field("content", alias($._braced_span_content, $.content)),
         field("end_marker", $.strikethrough_end),
       ),
-    strikethrough_begin: ($) => choice("{~", seq("~", $._non_whitespace_check)),
+    strikethrough_begin: (_) => "{~",
 
     // The syntax description isn't clear about if non-bracket can contain surrounding spaces.
     // The live playground suggests that yes they can, although it's a bit inconsistent.
@@ -2364,7 +2623,7 @@ module.exports = grammar({
         field("content", alias($._inline, $.content)),
         field("end_marker", $.highlighted_end),
       ),
-    highlighted_begin: ($) => choice("{=", seq("=", $._highlighted_open_check)),
+    highlighted_begin: (_) => "{=",
     insert: ($) =>
       seq(
         field("begin_marker", $.insert_begin),
@@ -2381,28 +2640,6 @@ module.exports = grammar({
         field("end_marker", $.delete_end),
       ),
     delete_begin: (_) => "{-",
-
-    // Either half of a substitution may be EMPTY (carve#1447): `{~a~>~}`
-    // deletes without inserting, `{~~>b~}` inserts without deleting, and
-    // `{~~>~}` does both to nothing. All three are the construct, with an
-    // empty `del` or `ins` - which is why the arrow, and not the content, is
-    // what makes this a substitution rather than the empty pair below.
-    // The content of each half is INLINE, and only a TOP-LEVEL arrow splits it
-    // (corpus 472), which no token can say: a `~>` inside a code span, a math
-    // run, an inline literal or an editorial comment is content, and so is one
-    // behind a backslash. The arrow and the closer are therefore tokens of their
-    // own, offered only while this substitution is the innermost open run, and
-    // the opener is a zero-width check that reads the run ahead. Where no
-    // top-level arrow follows, the `{~` opens the strikethrough it always did.
-    substitution: ($) =>
-      seq(
-        "{~",
-        $._substitution_begin,
-        optional(field("from", alias($._inline, $.content))),
-        alias($._substitution_arrow, "~>"),
-        optional(field("to", alias($._inline, $.content))),
-        alias($._substitution_end, "~}"),
-      ),
 
     // `{##}` is NOT an empty comment. Every braced construct's content slot is
     // a one-or-more repetition (carve#1447), so an empty one is literal text
@@ -2482,27 +2719,11 @@ module.exports = grammar({
     // this rule `{{ ch.crv #intro }}` highlights `#intro` as a tag.
     //
     // One token, so it cannot span a line break and cannot nest.
-    include_directive: ($) =>
-      seq(
-        alias("{{", $.include_open),
-        $._include_pad,
-        field("path", $.include_path),
-        // The section is NOT a slot of its own here. It was, and with the pad
-        // between parts no longer mandatory that spelling is ambiguous with the
-        // `section` arm of `_include_part`: after `path include_section`
-        // nothing decides which of the two produced it, and `tree-sitter
-        // generate` refuses the grammar. One arm carries it, and it keeps the
-        // same `section` field, so `src/node-types.json` does not move.
-        //
-        // SPELLED AS AN EXPLICIT CHOICE, not `optional($._include_pad)`. Under
-        // the pinned tree-sitter-cli 0.22.6 the `optional` form generates a
-        // parser that rejects `{{ c.crv@shift:1 }}` outright, with `generate`
-        // exiting 0 and warning nothing; 0.26.8 accepts the same grammar. Do
-        // not fold this back while 0.22.6 is the pin.
-        repeat(choice(seq($._include_pad, $._include_part), $._include_part)),
-        $._include_pad,
-        alias("}}", $.include_close),
-      ),
+    include_directive: ($) => includeDirective($, alias("{{", $.include_open)),
+    // The same directive in block position: its `{{` is the scanner's token,
+    // emitted only where the whole line has the directive's shape.
+    _include_block_directive: ($) =>
+      includeDirective($, alias($._include_line_begin, $.include_open)),
 
     // TOLERANT after the path, deliberately. The one-token rule this replaces
     // matched anything between the braces, and a grammar that ERRORS on a
@@ -2541,6 +2762,7 @@ module.exports = grammar({
     // closer - wins by dynamic precedence whenever it does complete. Same shape
     // as `_symbol_fallback` above, for the same reason.
     _include_open_fallback: (_) => token("{{"),
+    _section_only_include_text: (_) => token(SECTION_ONLY_INCLUDE),
 
     // Whitespace is not an `extra` in this grammar - it is content almost
     // everywhere - so the directive's padding is spelled. A RUN, and required
@@ -2548,7 +2770,8 @@ module.exports = grammar({
     // parts it is optional, because `include_path` stops at `#` and `@` and
     // neither identifier class holds one, so `{{ c.crv@shift:1 }}` is well
     // formed (grammar PART 6 `include_options`).
-    _include_pad: ($) => choice(token.immediate(/[ \t]+/), $._mid_line_space),
+    // Spaces only: `{{` followed by a tab is text (C2-B-201).
+    _include_pad: ($) => choice($._space_run, $._mid_line_space),
 
     // The PARTS, not one opaque run. Highlighting only needs the directive not
     // to be shredded into `tag` and `mention`, which the context already
@@ -2559,7 +2782,14 @@ module.exports = grammar({
     // Every part is a token, so the `#` and `@` inside stay part of the
     // directive rather than reaching the inline rules.
     include_path: (_) =>
-      token(choice(/[^#@}\s"][^#@}\s]*/, /"(?:\\.|[^"\\\n])*"/)),
+      token(
+        choice(
+          /[^#@}\s"“][^#@}\s]*/,
+          /"(?:\\.|[^"\\\n])*"/,
+          // A path in curly quotes is read as written (C2-B-202).
+          /“[^”\n]+”/,
+        ),
+      ),
     // Higher token precedence than `include_extra`, which matches the same
     // characters: without it the tolerant catch-all wins the tie and a valid
     // selector is reported as "something else".
@@ -2631,8 +2861,18 @@ module.exports = grammar({
     footnote_reference: ($) =>
       seq(
         $.footnote_marker_begin,
-        $._square_bracket_span_mark_begin,
-        $.reference_label,
+        // The scanner's own mark where the label holds a `[`, which no
+        // fallback reading of the `[^` takes.
+        choice($._square_bracket_span_mark_begin, $._footnote_label_mark_begin),
+        // Characters up to the next unescaped `]`, not all blank, across at
+        // most one line break (C2-I-079, C2-I-080, C2-I-087); a `[` in it is
+        // no bracket (C2-I-076).
+        alias(
+          token(
+            /([^\]\\\r\n]|\\[^\r\n])*([^\]\\\r\n \t]|\\[^\r\n])([^\]\\\r\n]|\\[^\r\n])*(\r?\n([^\]\\\r\n]|\\[^\r\n])+)?|[ \t]*\r?\n([^\]\\\r\n]|\\[^\r\n])*([^\]\\\r\n \t]|\\[^\r\n])([^\]\\\r\n]|\\[^\r\n])*/,
+          ),
+          $.reference_label,
+        ),
         alias($._square_bracket_span_end, $.footnote_marker_end),
       ),
     footnote_marker_begin: (_) => "[^",
@@ -2666,7 +2906,7 @@ module.exports = grammar({
         ELEMENT_PRECEDENCE,
         seq(
           $._image_description_begin,
-          $._square_bracket_span_mark_begin,
+          $._image_span_mark_begin,
           optional($._inline),
           alias($._square_bracket_span_end, "]"),
         ),
@@ -2675,22 +2915,68 @@ module.exports = grammar({
 
     _link: ($) =>
       choice($.full_reference_link, $.collapsed_reference_link, $.inline_link),
+    // A caret pair that C2-I-089 makes an ordinary bracket: its caret is text
+    // of the link. The scanner gives the mark only there.
+    _caret_link_text: ($) =>
+      prec.dynamic(
+        ELEMENT_PRECEDENCE,
+        seq(
+          alias("[^", "["),
+          $._caret_bracket_mark_begin,
+          $._inline,
+          alias($._square_bracket_span_end, "]"),
+        ),
+      ),
+    _caret_link: ($) =>
+      choice(
+        alias($._caret_full_reference_link, $.full_reference_link),
+        alias($._caret_collapsed_reference_link, $.collapsed_reference_link),
+        alias($._caret_inline_link, $.inline_link),
+      ),
+    _caret_full_reference_link: ($) =>
+      seq(field("text", alias($._caret_link_text, $.link_text)), $._link_label),
+    _caret_collapsed_reference_link: ($) =>
+      seq(
+        field("text", alias($._caret_link_text, $.link_text)),
+        token.immediate("[]"),
+      ),
+    _caret_inline_link: ($) =>
+      seq(
+        field("text", alias($._caret_link_text, $.link_text)),
+        field("destination", $.inline_link_destination),
+      ),
     full_reference_link: ($) => seq(field("text", $.link_text), $._link_label),
+    // Its text is its label, and an empty label is none (C2-I-079).
     collapsed_reference_link: ($) =>
-      seq(field("text", $.link_text), token.immediate("[]")),
+      seq(
+        field("text", alias($._filled_link_text, $.link_text)),
+        token.immediate("[]"),
+      ),
     inline_link: ($) =>
       seq(
         field("text", $.link_text),
         field("destination", $.inline_link_destination),
       ),
 
+    _filled_link_text: ($) =>
+      prec.dynamic(
+        ELEMENT_PRECEDENCE,
+        seq(
+          $._bracketed_text_begin,
+          $._square_bracket_span_mark_begin,
+          $._inline,
+          alias($._square_bracket_span_end, "]"),
+        ),
+      ),
     link_text: ($) =>
       prec.dynamic(
         ELEMENT_PRECEDENCE,
         choice(
           seq(
             $._bracketed_text_begin,
-            $._square_bracket_span_mark_begin,
+            // The scanner's own mark where an inline link tail follows, which
+            // no fallback reading of the bracket takes.
+            choice($._square_bracket_span_mark_begin, $._link_text_mark_begin),
             $._inline,
             // Alias to "]" to allow us to highlight it in Neovim.
             // Maybe some bug, or some undocumented behavior?
@@ -2838,10 +3124,20 @@ module.exports = grammar({
     // literal (#335).
     _link_label: ($) =>
       seq(
+        // The scanner offers the label only where one matches.
+        $._link_label_start,
         token.immediate("["),
         field(
           "label",
-          alias(token.immediate(/[^\]@\r\n][^\]\r\n]*/), $.link_label),
+          // A line comment in the label takes its `]` (C2-I-077); a blank
+          // label is none (C2-I-079), and one led by `@` or `^` too (C2-I-078); it may wrap once (C2-I-080); a backslash
+          // escapes a `]` (C2-I-076).
+          alias(
+            token.immediate(
+              /(?:(?:[^\]@^\\\r\n \t]|\\[^\r\n])|[ \t]+(?:[^\]\\\r\n \t]|\\[^\r\n]))(?:(?:[^\]\\\r\n \t]|\\[^\r\n])|[ \t]+(?:(?:[^\]\\\r\n \t%]|\\[^\r\n])|%(?:[^\]\\\r\n%]|\\[^\r\n])))*(?:[ \t]+%?)?(?:\r?\n[ \t]*(?:[^\]\\\r\n \t]|\\[^\r\n])(?:(?:[^\]\\\r\n \t]|\\[^\r\n])|[ \t]+(?:[^\]\\\r\n \t]|\\[^\r\n]))*[ \t]*)?/,
+            ),
+            $.link_label,
+          ),
         ),
         token.immediate("]"),
       ),
@@ -2865,26 +3161,18 @@ module.exports = grammar({
               ),
             ),
           ),
-          seq(
-            optional(
-              seq(
-                $._link_title_space,
-                field("title", alias($._inline_link_title, $.link_title)),
-              ),
+          // An empty destination takes no padding of its own: `( )` is no
+          // tail, and only spaces follow a title (C2-I-067 to C2-I-069).
+          optional(
+            seq(
+              $._link_title_space,
+              field("title", alias($._inline_link_title, $.link_title)),
+              optional(token.immediate(/ +/)),
             ),
-            optional($._empty_link_padding),
           ),
         ),
         alias($._parens_span_end, ")"),
       ),
-    _inline_link_url: (_) =>
-      // Can escape `)`, but shouldn't capture it.
-      //
-      // IMMEDIATE and whitespace-free. `dest = destChar+` in
-      // resources/carve-core.ohm and `destChar` admits no whitespace, so a
-      // destination neither starts with one (`[x]( "t")` is a paragraph, not a
-      // link with the title `t`, carve#2070) nor carries one.
-      token.immediate(/([^)\s]|\\\))+/),
     // `destTitle = titleSp (titleQuoted | titleSquoted)`, `titleSp = " "`: exactly one
     // space, and the title is one token so no extra can be skipped inside it.
     _link_title_space: (_) => token.immediate(" "),
@@ -2993,8 +3281,7 @@ module.exports = grammar({
         field("end_marker", alias($._verbatim_end, $.raw_inline_marker_end)),
         field("attribute", $.raw_inline_attribute),
       ),
-    raw_inline_attribute: ($) =>
-      seq(token.immediate("{="), field("language", $.language), "}"),
+    raw_inline_attribute: (_) => token.immediate(/\{=[A-Za-z][A-Za-z0-9_-]*\}/),
     inline_math: ($) =>
       seq(
         field("math_marker", alias(choice("$$", "$"), $.math_marker)),
@@ -3007,12 +3294,17 @@ module.exports = grammar({
     // literal prose, so highlights.scm captures it plainly and injections.scm
     // leaves it uninjected. A trailing `{…}` attaches as an ordinary inline
     // attribute block, like any other inline element.
+    // It outranks a raw inline behind a text `!`: the prefix takes the run,
+    // and a `{=format}` after it is no raw marker (C2-I-018, C2-I-021).
     inline_literal: ($) =>
-      seq(
-        field("marker", alias("!", $.literal_marker)),
-        field("open", alias($._verbatim_begin, $.literal_marker_begin)),
-        field("content", alias($._verbatim_body, $.content)),
-        field("close", alias($._verbatim_end, $.literal_marker_end)),
+      prec.dynamic(
+        1,
+        seq(
+          field("marker", alias("!", $.literal_marker)),
+          field("open", alias($._verbatim_begin, $.literal_marker_begin)),
+          field("content", alias($._verbatim_body, $.content)),
+          field("close", alias($._verbatim_end, $.literal_marker_end)),
+        ),
       ),
     verbatim: ($) =>
       seq(
@@ -3082,23 +3374,25 @@ module.exports = grammar({
     _glued_mention: ($) =>
       choice(
         seq(
-          token(prec(1, seq(/[A-Za-z0-9_]+/, "@", NAME_WORD_END))),
+          token(prec(1, seq(/[\p{L}\p{N}]+/, "@", NAME_WORD_END))),
           $._word_end,
         ),
-        token(prec(1, seq(/[A-Za-z0-9_]+/, "@", NAME_DASH_END))),
+        token(prec(1, seq(/[\p{L}\p{N}]+/, "@", NAME_DASH_END))),
       ),
     _glued_tag: ($) =>
       choice(
         seq(
-          token(prec(1, seq(/[A-Za-z0-9_]+/, "#", NAME_WORD_END))),
+          token(prec(1, seq(/[\p{L}\p{N}]+/, "#", NAME_WORD_END))),
           $._word_end,
         ),
-        token(prec(1, seq(/[A-Za-z0-9_]+/, "#", NAME_DASH_END))),
+        token(prec(1, seq(/[\p{L}\p{N}]+/, "#", NAME_DASH_END))),
       ),
-    // The closing `:` is required, so an inline extension still fires intraword
-    // (`foo:kbd[Ctrl]`): `:kbd[` carries no closing colon and is not absorbed.
     _glued_symbol: (_) =>
       token(prec(1, /[A-Za-z0-9_]+:[a-zA-Z0-9+-][a-zA-Z0-9_+-]*:/)),
+    // A sigil behind a letter or number starts no form (C2-I-090), so
+    // `config:items[0]` holds no extension; the bracket after it stays one.
+    _glued_extension_name: (_) =>
+      token(prec(1, /[\p{L}\p{N}]+:[a-zA-Z_][a-zA-Z0-9_-]*/)),
 
     // `gluedMarker = ("@" | "#") tagName` (resources/carve-core.ohm): a marker
     // glued to the END of a name opens nothing, so `#i#j` is one tag and `#j`
@@ -3379,14 +3673,6 @@ module.exports = grammar({
     // `parse_caption_begin` in src/scanner.c.
     $._caption_begin,
 
-    // A SUBSTITUTION's three marks. The opener is zero-width, standing behind
-    // the `{~` the strikethrough opener spells too; all three are external
-    // because each needs to know whether this run holds a TOP-LEVEL arrow - see
-    // `substitution_arrow_ahead` in `src/scanner.c`. Appended last for the same
-    // index reason as the tokens above them.
-    $._substitution_begin,
-    $._substitution_arrow,
-    $._substitution_end,
     // The literal reading of a BRACED opener, valid only right after one. See
     // `symbolFallback`. Appended last for the same index reason.
     $._braced_fallback,
@@ -3475,5 +3761,37 @@ module.exports = grammar({
     $._table_row_continuation_plus,
     $._table_row_continuation_line,
     $._cell_marker_begin,
+    // `* [ ]`; `_list_marker_task_begin` is the `-` spelling. Two tokens so a
+    // boxed item joins the list of its own bullet character (C2-B-049).
+    $._list_marker_task_star_begin,
+    // The `{{` of a line that holds one include directive and nothing else.
+    $._include_line_begin,
+    $._table_comment_line,
+    // A line comment after a row's closing pipe or row attribute (C2-B-167).
+    $._table_row_comment,
+    // Zero-width: a task box follows an ordered marker (C2-B-046).
+    $._list_task_box,
+    // Zero-width, at a block image or display math line that starts a
+    // paragraph (C2-B-017).
+    $._caption_host_line,
+    $._typed_frontmatter_marker,
+    $._typed_frontmatter_unclosed_marker,
+    $._attributed_frontmatter_marker,
+    $._attributed_frontmatter_unclosed_marker,
+    // The line end of a root definition line whose next line continues it
+    // (C2-B-083, C2-B-084).
+    $._abbreviation_continuation,
+    $._link_tail_continuation,
+    $._link_attribute_continuation,
+    // C2-I-067: a destination whose parentheses balance, which no regex reads.
+    $._inline_link_url,
+    // The image opener's mark: its alt text is source, so no line comment
+    // starts in it (C2-I-074).
+    $._image_span_mark_begin,
+    // The bracket mark behind a caret pair that C2-I-089 makes ordinary.
+    $._caret_bracket_mark_begin,
+    $._footnote_label_mark_begin,
+    $._link_text_mark_begin,
+    $._link_label_start,
   ],
 });

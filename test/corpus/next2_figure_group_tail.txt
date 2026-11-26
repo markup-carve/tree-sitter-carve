@@ -1,0 +1,62 @@
+================================================================================
+CC-020: a brace block after the figure word is ignored
+================================================================================
+
+::: figure {#f}
+| x |
+:::
+
+--------------------------------------------------------------------------------
+
+(document
+  (div
+    (div_marker_begin)
+    figure_group_marker: (figure_group_marker)
+    invalid_metadata: (invalid_metadata)
+    content: (content
+      (table
+        (table_row
+          (table_cell))))
+    (div_marker_end)))
+
+================================================================================
+C2-B-122: further words after the figure word keep the group
+================================================================================
+
+::: figure x
+| a |
+:::
+
+--------------------------------------------------------------------------------
+
+(document
+  (div
+    (div_marker_begin)
+    figure_group_marker: (figure_group_marker)
+    invalid_metadata: (invalid_metadata)
+    content: (content
+      (table
+        (table_row
+          (table_cell))))
+    (div_marker_end)))
+
+================================================================================
+a label after the figure word makes an admonition
+================================================================================
+
+::: figure [g]
+| a |
+:::
+
+--------------------------------------------------------------------------------
+
+(document
+  (div
+    (div_marker_begin)
+    type: (admonition_type)
+    label: (code_block_label)
+    content: (content
+      (table
+        (table_row
+          (table_cell))))
+    (div_marker_end)))

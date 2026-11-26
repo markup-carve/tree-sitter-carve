@@ -1,0 +1,161 @@
+================================================================================
+C2-B-016: a term line does not interrupt a paragraph with no description list open
+================================================================================
+
+a
+:: t
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph))
+
+================================================================================
+C2-B-016: an indented term and description line are lazy lines of an item paragraph
+================================================================================
+
+- a
+  :: term
+  : def
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)))))
+
+================================================================================
+C2-B-024: a bare nested quote mark is text of a quoted paragraph
+================================================================================
+
+> a
+> >
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (paragraph
+        (block_quote_marker)))))
+
+================================================================================
+C2-B-159: a dash run is no thematic break below an item
+================================================================================
+
+- a
+---
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph
+          (em_dash))))))
+
+================================================================================
+C2-B-015: a bullet at the description's column is a lazy line
+================================================================================
+
+:: t
+: d
+- x
+
+--------------------------------------------------------------------------------
+
+(document
+  (definition_list
+    (list_item
+      marker: (list_marker_definition)
+      term: (term))
+    (list_item
+      marker: (list_marker_description)
+      definition: (definition))))
+
+================================================================================
+C2-B-015: an ordered marker other than 1 past the description's mark is a lazy line
+================================================================================
+
+:: t
+: d
+  2. x
+
+--------------------------------------------------------------------------------
+
+(document
+  (definition_list
+    (list_item
+      marker: (list_marker_definition)
+      term: (term))
+    (list_item
+      marker: (list_marker_description)
+      definition: (definition))))
+
+================================================================================
+C2-B-015: a bullet at the outer item's column still continues that list
+================================================================================
+
+- :: t
+  : d
+- x
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (definition_list
+          (list_item
+            marker: (list_marker_definition)
+            term: (term))
+          (list_item
+            marker: (list_marker_description)
+            definition: (definition)))))
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)))))
+
+================================================================================
+C2-B-235: a bullet past the item's marker inside a div in the item is a lazy line
+================================================================================
+
+- ::::
+  x
+ - y
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (div
+          (div_marker_begin)
+          content: (content
+            (paragraph)))))))
+
+================================================================================
+C2-B-017: a caret line with no content is a lazy line below an image
+================================================================================
+
+![](a)
+^  
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (inline_image
+      description: (image_description)
+      destination: (inline_link_destination))))

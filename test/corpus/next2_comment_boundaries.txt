@@ -1,0 +1,74 @@
+============================================================
+C2-I-025: a braced comment does not cross into the next item
+============================================================
+
+- a {% c
+- b %}
+
+------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)))
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)))))
+
+============================================================
+C2-I-025: a braced comment does not cross a code fence
+============================================================
+
+a {% b
+```
+c %}
+```
+
+------------------------------------------------------------
+
+(document
+  (paragraph)
+  (code_block
+    (code_block_marker_begin)
+    code: (code)
+    (code_block_marker_end)))
+
+============================================================
+C2-I-025: a braced comment spans the lines of one paragraph
+============================================================
+
+- a {% b
+  c %} d
+
+------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph
+          (braced_comment
+            content: (content)))))))
+
+============================================================
+C2-I-025: an editorial comment does not cross a code fence
+============================================================
+
+a {# b
+```
+c #}
+```
+
+------------------------------------------------------------
+
+(document
+  (paragraph)
+  (code_block
+    (code_block_marker_begin)
+    code: (code)
+    (code_block_marker_end)))
+

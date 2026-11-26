@@ -1,0 +1,15 @@
+================================================================================
+C2-I-021: a format marker after a literal-text span is no raw inline
+================================================================================
+
+!`x`{=html}
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (inline_literal
+      marker: (literal_marker)
+      open: (literal_marker_begin)
+      content: (content)
+      close: (literal_marker_end))))

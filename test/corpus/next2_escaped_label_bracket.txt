@@ -1,0 +1,16 @@
+================================================================================
+C2-I-076: a backslash escapes the closing bracket of a reference label
+================================================================================
+
+x [a][\][a][] and [b][c\]d]
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (full_reference_link
+      text: (link_text)
+      label: (link_label))
+    (full_reference_link
+      text: (link_text)
+      label: (link_label))))
