@@ -620,6 +620,8 @@ typedef struct {
 
   // Open inline is a stack of non-closed inline elements.
   Array(Inline *) * open_inline;
+  // Set by the bracket probe for one scan only: a blank text before `[]`.
+  bool blank_collapsed;
 
   // How many BLOCK_CLOSE we should output right now?
   uint8_t blocks_to_close;
@@ -15297,6 +15299,21 @@ static bool qualified_bracket_balanced(Scanner *s, TSLexer *lexer) {
   if (first_bracket_extension(s)) return false;
   BracketProbe probe = bracket_probe_new(s, lexer);
   bool balanced = scan_qualified_bracket_close(s, &probe, NULL);
+  if (balanced) {
+    bool blank = true;
+    for (uint32_t i = 0; i < probe.position && blank; ++i) {
+      int32_t c = probe.characters.contents[i].character;
+      blank = c == ' ' || c == '\t';
+    }
+    // A blank text with `[]` folds to an empty key: no reference (C2-I-072).
+    if (blank) {
+      advance(s, &probe.lexer);
+      if (probe.lexer.lookahead == '[') {
+        advance(s, &probe.lexer);
+        balanced = probe.lexer.lookahead != ']';
+      }
+    }
+  }
   array_delete(&probe.characters);
   return balanced;
 }
@@ -16004,6 +16021,7 @@ static bool probe_square_bracket_lookahead_states(Scanner *s, BracketProbe *prob
                                                   Inline *top) {
   TSLexer *lexer = &probe->lexer;
   // Reset flags so we can set them later if the scanning succeeds.
+  s->blank_collapsed = false;
   s->state &= ~STATE_BRACKET_STARTS_INLINE_LINK;
   s->state &= ~STATE_BRACKET_STARTS_SPAN;
 
@@ -16022,11 +16040,26 @@ static bool probe_square_bracket_lookahead_states(Scanner *s, BracketProbe *prob
 
   // Scan the `[some text]` span, stepping over nested bracket runs so a
   // nested `[^1]{.k}` is not mistaken for this bracket's own `] {attrs}` tail.
+  uint32_t text_start = probe->position;
   if (!scan_qualified_bracket_close(s, probe, top_type)) {
     return false;
   }
+  bool blank_text = true;
+  for (uint32_t i = text_start; i < probe->position && blank_text; ++i) {
+    int32_t c = probe->characters.contents[i].character;
+    blank_text = c == ' ' || c == '\t';
+  }
   advance(s, lexer);
   probe->cell_tail = find_block(s, TABLE_ROW) != NULL;
+  if (blank_text && lexer->lookahead == '[') {
+    uint32_t tail = probe->position;
+    uint32_t base = s->col_base;
+    advance(s, lexer);
+    // A blank text with `[]` folds to an empty key: no reference (C2-I-072).
+    s->blank_collapsed = lexer->lookahead == ']';
+    bracket_probe_rewind(probe, tail);
+    s->col_base = base;
+  }
 
   if (lexer->lookahead == '(') {
     // An inline link may follow.
@@ -16131,6 +16164,7 @@ static bool mark_span_begin(Scanner *s, TSLexer *lexer,
                             const bool *valid_symbols, InlineType inline_type,
                             TokenType token);
 
+
 // Qualify an attributed span before its content branches merge. The shared
 // bracket mark remains available for links and literal bracket fallback.
 static bool footnote_label_bracket_ahead(Scanner *s, TSLexer *lexer);
@@ -16182,7 +16216,7 @@ static bool parse_attributed_span_mark_begin(Scanner *s, TSLexer *lexer,
       if (open) ++open->data;
     }
   } else {
-    if (!balanced) return false;
+    if (!balanced || s->blank_collapsed) return false;
     push_inline_flagged(s, SQUARE_BRACKET_SPAN, 0, INLINE_BRACED);
   }
   lexer->result_symbol = SQUARE_BRACKET_SPAN_MARK_BEGIN;
