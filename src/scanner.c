@@ -17855,8 +17855,16 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   }
   if (valid_symbols[WORD_END] && !valid_symbols[ERROR]) {
     mark_end(s, lexer);
-    s->after_closer_char = 'a';
-    s->after_closer_col = line_column(s, lexer);
+    // The note is read only by a bare marker at this very spot, and a column
+    // read is quadratic on a long line, so the note is kept only for one.
+    InlineType next_kind;
+    if (is_bare_delim_kind(lexer->lookahead, &next_kind)) {
+      s->after_closer_char = 'a';
+      s->after_closer_col = line_column(s, lexer);
+    } else {
+      s->after_closer_char = 0;
+      s->after_closer_col = 0;
+    }
     lexer->result_symbol = WORD_END;
     return true;
   }
