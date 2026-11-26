@@ -1,0 +1,33 @@
+================================================================================
+C2-I-053: a span holding its own mark between word characters does not form
+================================================================================
+
+the /etc/ dir and /usr/local/ and /etc/hosts/ file
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (emphasis
+      begin_marker: (emphasis_begin)
+      content: (content)
+      end_marker: (emphasis_end))))
+
+================================================================================
+C2-I-053: a later span behind the word mark still forms
+================================================================================
+
+/a x/y /b/ and *a x*y *b*
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (emphasis
+      begin_marker: (emphasis_begin)
+      content: (content)
+      end_marker: (emphasis_end))
+    (strong
+      begin_marker: (strong_begin)
+      content: (content)
+      end_marker: (strong_end))))

@@ -762,6 +762,8 @@ typedef struct {
   // A skipped opaque run held the probed marker, so a later opener of the
   // kind may stand inside one and read differently. Transient.
   bool probe_opaque_holds_bare;
+  // The probe failed at a mark between two word characters (C2-I-053).
+  bool probe_word_mark;
   bool probe_crossed_line;
   // The probe stopped where `close_paragraph` ends the paragraph, which the
   // grammar does not always follow.
@@ -15557,12 +15559,14 @@ static bool probe_bare_closer_skips_brackets(Scanner *s, BracketProbe *probe, ch
   bool saw_strong_closer = false;
   uint8_t unclosed_comments = 0;
   uint16_t unclosed_braced = 0;
+  bool word_mark = false;
   int32_t previous = 0;
   uint32_t characters = 0;
   if (combined_literal) *combined_literal = false;
   s->probe_reached_end = false;
   s->probe_skipped_opaque = false;
   s->probe_opaque_holds_bare = false;
+  s->probe_word_mark = false;
   s->probe_crossed_line = false;
   s->probe_end_judged = false;
   bool in_row = find_block(s, TABLE_ROW) != NULL;
@@ -15774,11 +15778,21 @@ static bool probe_bare_closer_skips_brackets(Scanner *s, BracketProbe *probe, ch
       advance(s, lexer);
       // A mark of a bare run of two is text (C2-I-049).
       bool in_run = (bare == '*' || bare == '/') && (previous == c || lexer->lookahead == c);
+      // A span holding its own mark between two word characters does not
+      // form (C2-I-053).
+      // The scan reads on, so that a line with no closer at all is noted.
+      if ((bare == '*' || bare == '/') && carve_is_alnum_ascii(previous) &&
+          carve_is_alnum_ascii(lexer->lookahead))
+        word_mark = true;
       if (in_run || carve_is_alnum_ascii(lexer->lookahead) ||
           carve_is_grapheme_extender(lexer->lookahead)) {
         previous = c;
         ++characters;
         continue;
+      }
+      if (word_mark) {
+        s->probe_word_mark = true;
+        return false;
       }
       if (combined_literal) *combined_literal = !saw_strong_closer;
       return true;
@@ -15895,7 +15909,10 @@ static bool bare_closer_ahead(Scanner *s, TSLexer *lexer, char bare, bool *combi
   bool closer = bare_closer_skips_brackets_noting(
       s, lexer, bare, combined_literal,
       combined_literal || find_inline(s, EXTENSION) ? NULL : &last_on_line);
-  bool note = closer ? last_on_line : s->probe_reached_end && !s->probe_opaque_holds_bare;
+  // Behind a word mark every later opener before it fails the same way; the
+  // literal reader drops the note once it passes the mark.
+  bool note = closer ? last_on_line
+                     : (s->probe_reached_end && !s->probe_opaque_holds_bare) || s->probe_word_mark;
   if (note) {
     if (s->no_closer_scope != scope) s->no_closer_kinds = s->closer_ahead_kinds = 0;
     if (closer) s->closer_ahead_kinds |= bit;
@@ -17252,6 +17269,10 @@ static int parse_literal_run(Scanner *s, TSLexer *lexer,
     if (may_close || may_open || bold_italic_opener) {
       if (bold_italic_opener && !may_open) forbid_emphasis = true;
       break;
+    }
+    if ((c == '*' || c == '/') && carve_is_alnum_ascii(prev) && carve_is_alnum_ascii(next)) {
+      const char *slot = strchr(BARE_CLOSER_MARKERS, c);
+      s->no_closer_kinds &= (uint16_t)~(1u << (slot - BARE_CLOSER_MARKERS));
     }
     mark_end(s, lexer);
     TokenType literal_token = c == '*' ? LITERAL_STAR : LITERAL_SLASH;
