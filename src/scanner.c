@@ -10562,10 +10562,24 @@ static bool parse_table_end_newline(Scanner *s, TSLexer *lexer,
   return true;
 }
 
-static bool parse_table_cell_end(Scanner *s, TSLexer *lexer) {
+static bool parse_table_cell_end(Scanner *s, TSLexer *lexer,
+                                 bool hard_break_valid) {
   bool escaped = lexer->lookahead == '\\';
   if (escaped) {
+    bool at_scan_start = s->host_advances == 0;
     advance(s, lexer);
+    // The backslash before the spaces that pad the cell's pipe is a hard
+    // break (C2-I-102); this reader has consumed it, so it answers for it.
+    if (hard_break_valid && at_scan_start &&
+        (lexer->lookahead == ' ' || lexer->lookahead == '\t')) {
+      mark_end(s, lexer);
+      consume_whitespace(s, lexer);
+      if (lexer->lookahead != '|' && !at_line_end(lexer) && !lexer->eof(lexer)) {
+        return false;
+      }
+      lexer->result_symbol = HARD_LINE_BREAK;
+      return true;
+    }
   }
   if (lexer->lookahead != '|') {
     return false;
@@ -11382,7 +11396,15 @@ static bool parse_hard_line_break(Scanner *s, TSLexer *lexer) {
   }
   advance(s, lexer);
   mark_end(s, lexer);
-  if (!at_line_end(lexer)) {
+  // C2-I-102: spaces and tabs may stand between the backslash and the end of
+  // the line, the content or a table cell; `\|` stays an escaped pipe.
+  bool spaced = false;
+  while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+    advance(s, lexer);
+    spaced = true;
+  }
+  if (!at_line_end(lexer) && !lexer->eof(lexer) &&
+      !(spaced && lexer->lookahead == '|' && find_block(s, TABLE_ROW))) {
     return false;
   }
   lexer->result_symbol = HARD_LINE_BREAK;
@@ -19730,7 +19752,8 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     return true;
   }
   if ((valid_symbols[TABLE_CELL_END] || valid_symbols[TABLE_ESCAPED_CELL_END]) &&
-      parse_table_cell_end(s, lexer)) {
+      parse_table_cell_end(s, lexer, valid_symbols[HARD_LINE_BREAK] &&
+                                         !valid_symbols[ERROR])) {
     return true;
   }
 
