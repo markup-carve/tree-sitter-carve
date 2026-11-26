@@ -15250,10 +15250,18 @@ static bool footnote_label_scan(Scanner *s, TSLexer *lexer, bool *bracket) {
 // paragraph end, it bounds a later opener's probe by the widest pair it closed
 // (`note_probe_span`), unless it skipped a `[` or read one differently than
 // that opener's own probe would (`hidden`).
+//
+// A caret pair's label is one atom to this probe, but an opener at or in it
+// reads the label as text (`^[^[b]`). Past the label's `]` both readers pair
+// alike, and every `]` that closes such an opener there closes a pair of this
+// probe that spans the label end, so it closes within the label plus the
+// widest pair, or never: the label widens the bound (`atom_extent`) when it
+// holds nothing else this reader takes as an atom (`%`, a backslash).
 typedef struct {
   BracketProbe *probe;
   Array(uint32_t) open;
   uint32_t widest;
+  uint32_t atom_extent;
   bool hidden;
   bool bounded;
   uint32_t bound;
@@ -15263,6 +15271,16 @@ static bool probe_skipped_bracket(const NoteProbeTrack *track, uint32_t from) {
   for (uint32_t i = from; i < track->probe->position; ++i)
     if (track->probe->characters.contents[i].character == '[') return true;
   return false;
+}
+
+// The stretch up to the probe holds no character that starts an atom of this
+// reader other than a caret pair.
+static bool probe_label_reads_alike(const NoteProbeTrack *track, uint32_t from) {
+  for (uint32_t i = from; i < track->probe->position; ++i) {
+    int32_t c = track->probe->characters.contents[i].character;
+    if (c == '%' || c == '\\') return false;
+  }
+  return true;
 }
 
 static bool probe_scan_until_bracket_close(Scanner *s, TSLexer *lexer,
@@ -15305,9 +15323,8 @@ static bool probe_scan_until_bracket_close(Scanner *s, TSLexer *lexer,
       advance(s, lexer);
       // A `^[^`: the probe of that note starts at the second caret, which it
       // reads as text, not as a caret pair.
-      if (track && s->probe_footnotes && lexer->lookahead == '^' && at > 0 &&
-          track->probe->characters.contents[at - 1].character == '^')
-        track->hidden = true;
+      bool glued = track && s->probe_footnotes && lexer->lookahead == '^' && at > 0 &&
+          track->probe->characters.contents[at - 1].character == '^';
       // A caret pair is atomic, and one with no label opens no pair (C2-I-087).
       if (s->probe_footnotes && lexer->lookahead == '^' &&
           (probe_footnote_label(s, lexer) || lexer->lookahead == ']')) {
@@ -15315,7 +15332,14 @@ static bool probe_scan_until_bracket_close(Scanner *s, TSLexer *lexer,
         ++s->probe_carets;
         if (track) array_pop(&track->open);
       }
-      if (track && s->probe_footnotes && probe_skipped_bracket(track, at + 1)) track->hidden = true;
+      if (track && s->probe_footnotes && (glued || probe_skipped_bracket(track, at + 1))) {
+        if (probe_label_reads_alike(track, at + 1)) {
+          uint32_t extent = track->probe->position - at;
+          if (extent > track->atom_extent) track->atom_extent = extent;
+        } else {
+          track->hidden = true;
+        }
+      }
     } else if (lexer->lookahead == '\\') {
       advance(s, lexer);
       advance(s, lexer);
@@ -16573,25 +16597,27 @@ static bool note_probe(Scanner *s, BracketProbe *probe, unsigned mode);
 // this paragraph, read its text as a note's `^[` would be read too. A refused
 // `^[` emits no token, so the notes its own probe takes are lost with it; the
 // token of the `[` behind it carries the same notes on to the next `^[` (#787).
+static void take_note_probes(Scanner *s, BracketProbe *probe) {
+  uint32_t base = s->col_base;
+  probe->cell_tail = false;
+  bracket_probe_rewind(probe, 0);
+  bool closed = note_probe(s, probe, 0);
+  s->col_base = base;
+  if (!closed) {
+    bracket_probe_rewind(probe, 0);
+    s->probe_footnotes = true;
+    s->probe_carets = 0;
+    note_probe(s, probe, 1);
+    s->probe_footnotes = false;
+    s->col_base = base;
+  }
+}
+
 static bool update_square_bracket_lookahead_states(Scanner *s, TSLexer *lexer,
                                                    Inline *top, bool notes) {
   BracketProbe probe = bracket_probe_new(s, lexer);
   bool balanced = probe_square_bracket_lookahead_states(s, &probe, top);
-  if (!balanced && notes && !s->note_probe_note[0] && !probe.extension_cut) {
-    uint32_t base = s->col_base;
-    probe.cell_tail = false;
-    bracket_probe_rewind(&probe, 0);
-    bool closed = note_probe(s, &probe, 0);
-    s->col_base = base;
-    if (!closed) {
-      bracket_probe_rewind(&probe, 0);
-      s->probe_footnotes = true;
-      s->probe_carets = 0;
-      note_probe(s, &probe, 1);
-      s->probe_footnotes = false;
-      s->col_base = base;
-    }
-  }
+  if (!balanced && notes && !s->note_probe_note[0] && !probe.extension_cut) take_note_probes(s, &probe);
   array_delete(&probe.characters);
   return balanced;
 }
@@ -16779,6 +16805,13 @@ static bool mark_span_begin(Scanner *s, TSLexer *lexer,
         // A footnote label runs to the next `]`, a `[` in it included
         // (C2-I-087); this mark ends the fallback reading of its `[^`.
         s->col_base = base;
+        // Behind a refused `^[^` this is the first token, so it carries the
+        // notes that `^[` took and lost, as the `[` fallback does (#791).
+        Block *host = peek_block(s);
+        if (!top && !valid_symbols[ERROR] && !s->note_probe_note[0] && !probe.extension_cut && !in_caption(s) &&
+            !find_inline(s, EXTENSION) &&
+            !(host && (host->type == HEADING || host->type == TABLE_ROW || disallow_newline(host))))
+          take_note_probes(s, &probe);
         array_delete(&probe.characters);
         push_inline_flagged(s, SQUARE_BRACKET_SPAN, 0, 0);
         lexer->result_symbol = FOOTNOTE_LABEL_MARK_BEGIN;
@@ -17394,7 +17427,7 @@ static bool note_probe(Scanner *s, BracketProbe *probe, unsigned mode) {
   bool closed = probe_scan_until_bracket_close(s, &probe->lexer, NULL, NULL, &track);
   if (!closed && !track.bounded && !track.hidden) {
     s->note_probe_note[mode] = true;
-    s->note_probe_span[mode] = track.widest;
+    s->note_probe_span[mode] = track.widest + track.atom_extent;
   }
   // The plain probe read the text to the paragraph end.
   if (!closed && !track.bounded && mode == 0) {
