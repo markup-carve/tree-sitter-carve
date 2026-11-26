@@ -1,0 +1,40 @@
+================================================================================
+C2-B-137: a line comment after a blank line stays in the note
+================================================================================
+
+[^1]: note
+
+%% c
+
+  more
+
+--------------------------------------------------------------------------------
+
+(document
+  (footnote
+    (footnote_marker_begin)
+    label: (reference_label)
+    (footnote_marker_end)
+    content: (footnote_content
+      (paragraph)
+      (comment_line)
+      (paragraph))))
+
+================================================================================
+C2-B-217: a region marker after a blank line ends the note
+================================================================================
+
+[^1]: note
+
+%% #region a
+
+--------------------------------------------------------------------------------
+
+(document
+  (footnote
+    (footnote_marker_begin)
+    label: (reference_label)
+    (footnote_marker_end)
+    content: (footnote_content
+      (paragraph)))
+  (region_marker))

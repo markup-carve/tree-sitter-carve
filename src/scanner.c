@@ -9033,6 +9033,19 @@ static bool parse_footnote_end(Scanner *s, TSLexer *lexer,
       return true;
     }
   }
+  // A comment-only line closes no container (C2-B-137); a region marker
+  // line is the enclosing container's (C2-B-217).
+  if (!at_eof && lexer->lookahead == '%' && valid_symbols[FOOTNOTE_CONTINUATION] &&
+      s->block_quote_level >= quotes_below(s, top)) {
+    advance(s, lexer);
+    if (lexer->lookahead == '%') {
+      advance(s, lexer);
+      if (lexer->lookahead != '%' && scan_comment_line_tail(s, lexer)) {
+        lexer->result_symbol = FOOTNOTE_CONTINUATION;
+        return true;
+      }
+    }
+  }
 
   remove_block(s);
   lexer->result_symbol = FOOTNOTE_END;
