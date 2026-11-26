@@ -3068,10 +3068,11 @@ module.exports = grammar({
         field(
           "label",
           // A line comment in the label takes its `]` (C2-I-077); a blank
-          // label is none (C2-I-079); it may wrap once (C2-I-080).
+          // label is none (C2-I-079); it may wrap once (C2-I-080); a backslash
+          // escapes a `]` (C2-I-076).
           alias(
             token.immediate(
-              /(?:[^\]@\r\n \t]|[ \t]+[^\]\r\n \t])(?:[^\]\r\n \t]|[ \t]+(?:[^\]\r\n \t%]|%[^\]\r\n%]))*(?:[ \t]+%?)?(?:\r?\n[ \t]*[^\]\r\n \t](?:[^\]\r\n \t]|[ \t]+[^\]\r\n \t])*[ \t]*)?/,
+              /(?:(?:[^\]@\\\r\n \t]|\\[^\r\n])|[ \t]+(?:[^\]\\\r\n \t]|\\[^\r\n]))(?:(?:[^\]\\\r\n \t]|\\[^\r\n])|[ \t]+(?:(?:[^\]\\\r\n \t%]|\\[^\r\n])|%(?:[^\]\\\r\n%]|\\[^\r\n])))*(?:[ \t]+%?)?(?:\r?\n[ \t]*(?:[^\]\\\r\n \t]|\\[^\r\n])(?:(?:[^\]\\\r\n \t]|\\[^\r\n])|[ \t]+(?:[^\]\\\r\n \t]|\\[^\r\n]))*[ \t]*)?/,
             ),
             $.link_label,
           ),
