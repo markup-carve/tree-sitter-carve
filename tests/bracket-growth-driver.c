@@ -48,6 +48,12 @@ static const Shape SHAPES[] = {
     {"refused notes in a heading (#795)", "# ", "^[ [b] x ", "\n"},
     {"refused notes, one per table row (#795)", "", "| ^[ [b] x |\n", "\n"},
     {"escaped caret before [^], one per item (#793)", "", "1. \\^[ [^]\n", "\n"},
+    {"glued ^[^ notes with no ] ahead (#794)", "", "^[^{%c%}. ", "\n"},
+    {"glued ^[^ notes in a heading (#794)", "# ", "^[^[b]. ", "\n"},
+    {"glued ^[^ notes in a row (#794)", "| ", "^[^[b] x", " |\n"},
+    {"glued ^[^[[b]] notes (#794)", "", "^[^[[b]] ", "\n"},
+    {"comments behind \\^[ in a row (#796)", "| ", "\\^[ {%c%} x ", " |\n"},
+    {"caret pairs behind \\^[ in a row (#796)", "| ", "\\^[ ^[b] x ", " |\n"},
 };
 
 static char *build(const Shape *shape, size_t chars, uint32_t *length) {
