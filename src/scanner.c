@@ -16613,11 +16613,55 @@ static void take_note_probes(Scanner *s, BracketProbe *probe) {
   }
 }
 
+// The text behind a `[` paired as `parse_plain_bracket_run` pairs it, escapes
+// alone reading differently. Where that `[` stays unpaired to the paragraph
+// end, so does every later `[` whose pair is wider than the widest pair
+// read: the plain-pair note, which bounds a later run that is not plain even
+// where the probes above read the `[` as balanced (`[ [^]`, #791).
+static void take_plain_pair_note(Scanner *s, BracketProbe *probe) {
+  TSLexer *lexer = &probe->lexer;
+  uint32_t base = s->col_base;
+  bracket_probe_rewind(probe, 0);
+  Array(uint32_t) open;
+  array_init(&open);
+  uint32_t widest = 0;
+  bool ended = false;
+  while (!lexer->eof(lexer) && !extension_closes_here(s, lexer)) {
+    int32_t c = lexer->lookahead;
+    if (at_line_end(lexer)) {
+      Block *host = peek_block(s);
+      if (host && (host->type == HEADING || disallow_newline(host))) break;
+      consume_line_end(s, lexer);
+      while (lexer->lookahead == ' ' || lexer->lookahead == '\t') advance(s, lexer);
+      if (at_line_end(lexer)) break;
+      continue;
+    }
+    if (c == '\\') {
+      advance(s, lexer);
+      if (lexer->eof(lexer) || at_line_end(lexer)) { ended = true; break; }
+    } else if (c == '[') {
+      array_push(&open, probe->position);
+    } else if (c == ']') {
+      if (!open.size) { ended = true; break; }
+      uint32_t at = array_pop(&open);
+      if (probe->position - at > widest) widest = probe->position - at;
+    }
+    advance(s, lexer);
+  }
+  if (!ended) {
+    s->plain_pair_note = true;
+    s->plain_pair_span = widest;
+  }
+  array_delete(&open);
+  s->col_base = base;
+}
+
 static bool update_square_bracket_lookahead_states(Scanner *s, TSLexer *lexer,
                                                    Inline *top, bool notes) {
   BracketProbe probe = bracket_probe_new(s, lexer);
   bool balanced = probe_square_bracket_lookahead_states(s, &probe, top);
   if (!balanced && notes && !s->note_probe_note[0] && !probe.extension_cut) take_note_probes(s, &probe);
+  if (notes && !s->plain_pair_note && !probe.extension_cut) take_plain_pair_note(s, &probe);
   array_delete(&probe.characters);
   return balanced;
 }
