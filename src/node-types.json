@@ -240,9 +240,13 @@
       }
     },
     "children": {
-      "multiple": false,
+      "multiple": true,
       "required": true,
       "types": [
+        {
+          "type": "block_quote_marker",
+          "named": true
+        },
         {
           "type": "caption_marker",
           "named": true
@@ -1529,6 +1533,10 @@
         },
         {
           "type": "block_quote",
+          "named": true
+        },
+        {
+          "type": "block_quote_marker",
           "named": true
         },
         {
@@ -3660,6 +3668,10 @@
         },
         {
           "type": "block_quote",
+          "named": true
+        },
+        {
+          "type": "block_quote_marker",
           "named": true
         },
         {

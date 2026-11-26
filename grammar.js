@@ -1984,6 +1984,8 @@ module.exports = grammar({
     // external.
     caption: ($) =>
       seq(
+        // The markers a block taking only one of them leaves behind.
+        optional($._block_quote_prefix),
         alias($._caption_begin, $.caption_marker),
         // A caption's content is INLINE: its text renders as a figure caption,
         // so `^ See #data` carries the tag and `^ a *# x* b` the strong.
@@ -2240,7 +2242,8 @@ module.exports = grammar({
         // container opener - it hands the run back so this paragraph can take
         // it. Produces no node.
         optional($._not_a_container_opener),
-        optional($._caption_host_line),
+        // A host line nested in quotes comes after all of its markers.
+        optional(seq(optional($._block_quote_prefix), $._caption_host_line)),
         alias($._paragraph_content, $.paragraph),
         // Blankline is split out from paragraph to enable textobject
         // to not select newline up to following text.
@@ -2249,7 +2252,8 @@ module.exports = grammar({
     _term_content: ($) =>
       seq(
         optional($._block_quote_prefix),
-        $._inline,
+        // A term may be only a line comment (C2-I-024).
+        choice($._inline, alias($._label_start_comment, $.trailing_comment)),
         repeat(
           seq(
             $._newline_inline,

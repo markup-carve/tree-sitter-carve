@@ -1,0 +1,63 @@
+================================================================================
+C2-I-059: a bare closer inside a braced span closes first and removes it
+================================================================================
+
+*a {~b* c~}
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (strong
+      begin_marker: (strong_begin)
+      content: (content)
+      end_marker: (strong_end))))
+
+================================================================================
+C2-I-059: a braced closer inside another braced span closes first
+================================================================================
+
+{*a {~b*} c~}
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (strong
+      begin_marker: (strong_begin)
+      content: (content)
+      end_marker: (strong_end))))
+
+================================================================================
+C2-I-059: a braced opener before an enclosing closer is text
+================================================================================
+
+{+a {*b+} c*}
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (insert
+      begin_marker: (insert_begin)
+      content: (content)
+      end_marker: (insert_end))))
+
+================================================================================
+C2-I-059: a braced span closed inside a bare one stays
+================================================================================
+
+*a {~b~} c*
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (strong
+      begin_marker: (strong_begin)
+      content: (content
+        (strikethrough
+          begin_marker: (strikethrough_begin)
+          content: (content)
+          end_marker: (strikethrough_end)))
+      end_marker: (strong_end))))

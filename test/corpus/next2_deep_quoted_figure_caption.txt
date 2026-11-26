@@ -1,0 +1,79 @@
+================================================================================
+C2-B-017: a figure caption in a div two quotes deep
+================================================================================
+
+> > ::: figure
+> > ![a](i.png)
+> > ^ p
+> > :::
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (block_quote
+        (block_quote_marker)
+        content: (content
+          (div
+            (div_marker_begin)
+            figure_group_marker: (figure_group_marker)
+            content: (content
+              (block_quote_marker)
+              (block_quote_marker)
+              (paragraph
+                (inline_image
+                  description: (image_description)
+                  destination: (inline_link_destination)))
+              (caption
+                (block_quote_marker)
+                (block_quote_marker)
+                (caption_marker)
+                content: (caption_content)))
+            (block_quote_marker)
+            (block_quote_marker)
+            (div_marker_end)))))))
+
+================================================================================
+C2-B-017: a figure caption in a div three quotes deep
+================================================================================
+
+> > > ::: figure
+> > > ![a](i.png)
+> > > ^ (a) p
+> > > :::
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (block_quote
+        (block_quote_marker)
+        content: (content
+          (block_quote
+            (block_quote_marker)
+            content: (content
+              (div
+                (div_marker_begin)
+                figure_group_marker: (figure_group_marker)
+                content: (content
+                  (block_quote_marker)
+                  (block_quote_marker)
+                  (block_quote_marker)
+                  (paragraph
+                    (inline_image
+                      description: (image_description)
+                      destination: (inline_link_destination)))
+                  (caption
+                    (block_quote_marker)
+                    (block_quote_marker)
+                    (block_quote_marker)
+                    (caption_marker)
+                    content: (caption_content)))
+                (block_quote_marker)
+                (block_quote_marker)
+                (block_quote_marker)
+                (div_marker_end)))))))))

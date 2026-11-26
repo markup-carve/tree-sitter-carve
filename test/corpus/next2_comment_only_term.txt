@@ -1,0 +1,40 @@
+================================================================================
+C2-I-024: a term may be only a line comment
+================================================================================
+
+::  %% c
+: d
+
+--------------------------------------------------------------------------------
+
+(document
+  (definition_list
+    (list_item
+      marker: (list_marker_definition)
+      term: (term
+        (trailing_comment)))
+    (list_item
+      marker: (list_marker_description)
+      definition: (definition))))
+
+================================================================================
+C2-I-024: a line comment right behind a term marker
+================================================================================
+
+%% top
+
+:: %% c
+: d
+
+--------------------------------------------------------------------------------
+
+(document
+  (comment_line)
+  (definition_list
+    (list_item
+      marker: (list_marker_definition)
+      term: (term
+        (trailing_comment)))
+    (list_item
+      marker: (list_marker_description)
+      definition: (definition))))
