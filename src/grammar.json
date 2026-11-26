@@ -3783,6 +3783,10 @@
                 "name": "_include_open_fallback"
               },
               {
+                "type": "SYMBOL",
+                "name": "_section_only_include_text"
+              },
+              {
                 "type": "SEQ",
                 "members": [
                   {
@@ -5186,6 +5190,10 @@
               {
                 "type": "SYMBOL",
                 "name": "_include_open_fallback"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "_section_only_include_text"
               },
               {
                 "type": "SEQ",
@@ -8216,6 +8224,10 @@
                 "name": "_include_open_fallback"
               },
               {
+                "type": "SYMBOL",
+                "name": "_section_only_include_text"
+              },
+              {
                 "type": "SEQ",
                 "members": [
                   {
@@ -8627,6 +8639,10 @@
               {
                 "type": "SYMBOL",
                 "name": "_include_open_fallback"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "_section_only_include_text"
               },
               {
                 "type": "SEQ",
@@ -9239,12 +9255,8 @@
     "_attribute_atom_text": {
       "type": "TOKEN",
       "content": {
-        "type": "PREC",
-        "value": -1,
-        "content": {
-          "type": "PATTERN",
-          "value": "\\{[ \\t]*(?:\\.[A-Za-z0-9_][A-Za-z0-9_-]*|#[A-Za-z0-9_][A-Za-z0-9_-]*|:[A-Za-z][A-Za-z0-9-]*|[A-Za-z_][A-Za-z0-9_-]*(?:=(?:\"[^\"\\r\\n]*\"|'[^'\\r\\n]*'|[^\\s\"'{}]+))?)(?:[ \\t]+(?:\\.[A-Za-z0-9_][A-Za-z0-9_-]*|#[A-Za-z0-9_][A-Za-z0-9_-]*|:[A-Za-z][A-Za-z0-9-]*|[A-Za-z_][A-Za-z0-9_-]*(?:=(?:\"[^\"\\r\\n]*\"|'[^'\\r\\n]*'|[^\\s\"'{}]+))?))*[ \\t]*\\}"
-        }
+        "type": "PATTERN",
+        "value": "\\{[ ]*(?:\\.[A-Za-z0-9_][A-Za-z0-9_-]*|#[A-Za-z0-9_][A-Za-z0-9_-]*|:[A-Za-z][A-Za-z0-9-]*|[A-Za-z][A-Za-z0-9_-]*|[A-Za-z_][A-Za-z0-9_-]*(?:=(?:\"[^\"\\r\\n]*\"|'[^'\\r\\n]*'|[^\\s\"'{}\\\\|]+)))(?:[ ]+(?:\\.[A-Za-z0-9_][A-Za-z0-9_-]*|#[A-Za-z0-9_][A-Za-z0-9_-]*|:[A-Za-z][A-Za-z0-9-]*|[A-Za-z][A-Za-z0-9_-]*|[A-Za-z_][A-Za-z0-9_-]*(?:=(?:\"[^\"\\r\\n]*\"|'[^'\\r\\n]*'|[^\\s\"'{}\\\\|]+))))*[ ]*\\}"
       }
     },
     "_extension_marker": {
@@ -10210,6 +10222,13 @@
       "content": {
         "type": "STRING",
         "value": "{{"
+      }
+    },
+    "_section_only_include_text": {
+      "type": "TOKEN",
+      "content": {
+        "type": "PATTERN",
+        "value": "\\{\\{[ ]*#[A-Za-z0-9_][A-Za-z0-9_-]*(?:[ ]+(?:\\.[A-Za-z0-9_][A-Za-z0-9_-]*|#[A-Za-z0-9_][A-Za-z0-9_-]*|:[A-Za-z][A-Za-z0-9-]*|[A-Za-z][A-Za-z0-9_-]*|[A-Za-z_][A-Za-z0-9_-]*(?:=(?:\"[^\"\\r\\n]*\"|'[^'\\r\\n]*'|[^\\s\"'{}\\\\|]+))))*[ ]*\\}"
       }
     },
     "_include_pad": {

@@ -43,8 +43,22 @@ const CELL_ALIGNMENT = "(?:[<>~][\\^~v]?|\\?[\\^~v])";
 const CELL_ATTR_LIST = CELL_ATTR_ITEM + "(?: +" + CELL_ATTR_ITEM + ")*";
 // In 0.2 alignment is inside the first brace block, directly before any
 // attributes. A mark outside braces is cell text (C2-B-171, C2-B-182).
+// A bare key does not start with `_` (C2-I-031), so `{_a_}` stays a braced
+// underline.
+const ATOM_ITEM = CELL_ATTR_ITEM.replace(
+  "|[A-Za-z_][A-Za-z0-9_-]*(?:=",
+  "|[A-Za-z][A-Za-z0-9_-]*|[A-Za-z_][A-Za-z0-9_-]*(?:=",
+)
+  .replace(/\)\?\)$/, "))")
+  // An unquoted value holds no backslash and no pipe (C2-I-032).
+  .replace("[^\\s\"'{}]+", "[^\\s\"'{}\\\\|]+");
 const ATTRIBUTE_ATOM = new RegExp(
-  "\\{[ \\t]*" + CELL_ATTR_LIST.replace(/ \+/g, "[ \\t]+") + "[ \\t]*\\}",
+  "\\{[ ]*" + ATOM_ITEM + "(?:[ ]+" + ATOM_ITEM + ")*[ ]*\\}",
+);
+// `{{ #a }}` has no path (C2-N-089): its second brace opens an attribute
+// block, which holds no tag.
+const SECTION_ONLY_INCLUDE = new RegExp(
+  "\\{\\{[ ]*#[A-Za-z0-9_][A-Za-z0-9_-]*(?:[ ]+" + ATOM_ITEM + ")*[ ]*\\}",
 );
 const CELL_MARKER_RUN = new RegExp(
   "=?\\{(?:" +
@@ -88,6 +102,7 @@ function inlineElement($, options) {
         // external scanner because no character class can match it.
         $._nul_byte,
         $._include_open_fallback,
+        $._section_only_include_text,
         seq($._extension_marker, $._extension_literal_check),
         // Word runs that ABSORB a glued mention / tag / symbol, which is
         // how the leading word-boundary guard is enforced without
@@ -2448,7 +2463,7 @@ module.exports = grammar({
     _sigil_name_text: (_) => token(prec(-1, seq(/[#@]/, NAME_WORD_END))),
     // An attribute block that attaches to nothing is one atom of text
     // (C2-I-035); every opener token outranks it.
-    _attribute_atom_text: (_) => token(prec(-1, ATTRIBUTE_ATOM)),
+    _attribute_atom_text: (_) => token(ATTRIBUTE_ATOM),
 
     // `extension = ":" extName "[" extContent "]"` (resources/carve-core.ohm).
     // The bracket holds INLINE content: `:code[*b*]` renders the strong inside
@@ -2740,6 +2755,7 @@ module.exports = grammar({
     // closer - wins by dynamic precedence whenever it does complete. Same shape
     // as `_symbol_fallback` above, for the same reason.
     _include_open_fallback: (_) => token("{{"),
+    _section_only_include_text: (_) => token(SECTION_ONLY_INCLUDE),
 
     // Whitespace is not an `extra` in this grammar - it is content almost
     // everywhere - so the directive's padding is spelled. A RUN, and required

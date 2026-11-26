@@ -11298,6 +11298,8 @@ static bool parse_open_curly_bracket(Scanner *s, TSLexer *lexer,
         while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
           advance(s, lexer);
         }
+        // Read below only when `attribute_line_taken` ran in this call.
+        s->attribute_run_ends = false;
         if ((at_line_end(lexer) || lexer->eof(lexer)) &&
             attribute_line_taken(s, lexer)) {
           Block *attached = peek_block(s);
