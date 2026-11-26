@@ -19445,9 +19445,14 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   if (parse_editorial_comment_hash(s, lexer, valid_symbols)) {
     return true;
   }
+  bool hash_lead = lexer->lookahead == '#';
+  uint32_t advances_before_heading = s->host_advances;
   if (parse_heading(s, lexer, valid_symbols)) {
     return true;
   }
+  // A `#` run that opened no heading is text; nothing below may read on from
+  // behind it (`#. a` is no list).
+  if (hash_lead && s->host_advances != advances_before_heading) return false;
   if (parse_comment_end(s, lexer, valid_symbols)) {
     return true;
   }
