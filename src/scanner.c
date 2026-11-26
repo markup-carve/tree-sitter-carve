@@ -15143,7 +15143,13 @@ static bool probe_footnote_label(Scanner *s, TSLexer *lexer) {
   return footnote_label_ahead(s, lexer);
 }
 
+static bool footnote_label_scan(Scanner *s, TSLexer *lexer, bool *bracket);
 static bool footnote_label_ahead(Scanner *s, TSLexer *lexer) {
+  bool bracket = false;
+  return footnote_label_scan(s, lexer, &bracket);
+}
+
+static bool footnote_label_scan(Scanner *s, TSLexer *lexer, bool *bracket) {
   bool filled = false, wrapped = false;
   while (!lexer->eof(lexer)) {
     int32_t c = lexer->lookahead;
@@ -15165,6 +15171,7 @@ static bool footnote_label_ahead(Scanner *s, TSLexer *lexer) {
       c = 'x';
     }
     if (c != ' ' && c != '\t') filled = true;
+    if (c == '[') *bracket = true;
     advance(s, lexer);
   }
   return false;
@@ -15540,11 +15547,14 @@ static bool footnote_label_bracket_ahead(Scanner *s, TSLexer *lexer);
 static bool qualified_bracket_balanced(Scanner *s, TSLexer *lexer, bool footnote) {
   if (first_bracket_extension(s)) return false;
   BracketProbe probe = bracket_probe_new(s, lexer);
+  uint32_t base = s->col_base;
   if (footnote && footnote_label_bracket_ahead(s, &probe.lexer)) {
     array_delete(&probe.characters);
+    s->col_base = base;
     return true;
   }
   bracket_probe_rewind(&probe, 0);
+  s->col_base = base;
   bool balanced = scan_qualified_bracket_close(s, &probe, NULL);
   if (balanced) {
     bool blank = true;
@@ -16480,15 +16490,10 @@ static bool mark_span_begin(Scanner *s, TSLexer *lexer,
                             TokenType token);
 
 
-// Whether a `[` comes before the `]` that ends a footnote label here.
+// Whether a footnote label closes here and holds a `[`.
 static bool footnote_label_bracket_ahead(Scanner *s, TSLexer *lexer) {
-  while (!lexer->eof(lexer) && !at_line_end(lexer)) {
-    if (lexer->lookahead == ']') return false;
-    if (lexer->lookahead == '[') return true;
-    if (lexer->lookahead == '\\') advance(s, lexer);
-    advance(s, lexer);
-  }
-  return false;
+  bool bracket = false;
+  return footnote_label_scan(s, lexer, &bracket) && bracket;
 }
 
 // Qualify an attributed span before its content branches merge. The shared
@@ -16598,16 +16603,19 @@ static bool mark_span_begin(Scanner *s, TSLexer *lexer,
       // pair of literal brackets there (`[t[z]](/u)`), not a competing opener,
       // and that `]` is text rather than the enclosing close.
       BracketProbe probe = bracket_probe_new(s, lexer);
+      uint32_t base = s->col_base;
       if (valid_symbols[FOOTNOTE_LABEL_MARK_BEGIN] && !s->caret_ordinary &&
           !find_inline(s, INLINE_NOTE) && footnote_label_bracket_ahead(s, &probe.lexer)) {
         // A footnote label runs to the next `]`, a `[` in it included
         // (C2-I-087); this mark ends the fallback reading of its `[^`.
+        s->col_base = base;
         array_delete(&probe.characters);
         push_inline_flagged(s, SQUARE_BRACKET_SPAN, 0, 0);
         lexer->result_symbol = FOOTNOTE_LABEL_MARK_BEGIN;
         return true;
       }
       bracket_probe_rewind(&probe, 0);
+      s->col_base = base;
       bool balanced = probe_square_bracket_lookahead_states(s, &probe, top);
       array_delete(&probe.characters);
       if (balanced && (s->state & (STATE_BRACKET_STARTS_SPAN | STATE_BRACKET_STARTS_INLINE_LINK))) {

@@ -132,3 +132,30 @@ C2-I-087: a footnote label holding a bracket takes no attribute
       (footnote_marker_begin)
       (reference_label)
       (footnote_marker_end))))
+
+================================================================================
+C2-I-087: a wrapped footnote label holding a bracket is one reference
+================================================================================
+
+x [^a
+b[c] y
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (footnote_reference
+      (footnote_marker_begin)
+      (reference_label)
+      (footnote_marker_end))))
+
+================================================================================
+C2-I-087: an unclosed footnote label holding a bracket is text
+================================================================================
+
+[^a[b
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph))
