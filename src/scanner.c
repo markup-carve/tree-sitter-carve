@@ -15063,7 +15063,11 @@ static bool link_label_ahead(Scanner *s, TSLexer *lexer) {
   return false;
 }
 
-static bool parse_plain_bracket_run(Scanner *s, TSLexer *lexer) {
+static bool probe_line_ends_paragraph(Scanner *s, BracketProbe *probe, uint16_t indent);
+
+// Past its first line break the run reads through `probe`, so each later line
+// can be tested for a paragraph end (#793). `*reading` says the probe is live.
+static bool plain_bracket_run_scan(Scanner *s, TSLexer *lexer, BracketProbe *probe, bool *reading) {
   if (first_bracket_extension(s)) {
     while (lexer->lookahead == '[') advance(s, lexer);
     mark_end(s, lexer);
@@ -15119,9 +15123,14 @@ static bool parse_plain_bracket_run(Scanner *s, TSLexer *lexer) {
       int32_t ending = lexer->lookahead;
       advance(s, lexer);
       if (ending == '\r' && lexer->lookahead == '\n') advance(s, lexer);
-      while (lexer->lookahead == ' ' || lexer->lookahead == '\t') advance(s, lexer);
+      if (!*reading) {
+        *probe = bracket_probe_new(s, lexer);
+        *reading = true;
+        lexer = &probe->lexer;
+      }
+      uint16_t indent = consume_whitespace(s, lexer);
       if (lexer->eof(lexer)) break;
-      if (at_line_end(lexer)) {
+      if (at_line_end(lexer) || probe_line_ends_paragraph(s, probe, indent)) {
         if (have_remainder_column && !find_inline(s, INLINE_NOTE)) {
           s->after_closer_char = PLAIN_BRACKET_REMAINDER;
           s->after_closer_col = remainder_column;
@@ -15179,11 +15188,26 @@ static bool parse_plain_bracket_run(Scanner *s, TSLexer *lexer) {
       }
       s->after_closer_char = PLAIN_BRACKET_REMAINDER;
       s->after_closer_col = remainder_column;
+    } else if (*reading) {
+      // The host may have read ahead of the probe; the token cannot end here.
+      if (probe->position + 1 != probe->characters.size) return false;
+      mark_end(s, probe->host);
     } else mark_end(s, lexer);
     lexer->result_symbol = LITERAL_RUN;
     return true;
   }
   return false;
+}
+
+static bool parse_plain_bracket_run(Scanner *s, TSLexer *lexer) {
+  BracketProbe probe = {.host = lexer};
+  bool reading = false;
+  bool found = plain_bracket_run_scan(s, lexer, &probe, &reading);
+  if (reading) {
+    lexer->result_symbol = probe.lexer.result_symbol;
+    array_delete(&probe.characters);
+  }
+  return found;
 }
 
 // Scan for the `]` that closes the bracket run we are already inside,
@@ -15211,6 +15235,12 @@ static bool probe_footnote_label(Scanner *s, TSLexer *lexer) {
 }
 
 static bool footnote_label_scan(Scanner *s, TSLexer *lexer, bool *bracket);
+// A host whose inline content ends at its line end.
+static bool one_line_host(Scanner *s) {
+  Block *host = peek_block(s);
+  return find_block(s, TABLE_ROW) || (host && (host->type == HEADING || disallow_newline(host)));
+}
+
 static bool footnote_label_ahead(Scanner *s, TSLexer *lexer) {
   bool bracket = false;
   return footnote_label_scan(s, lexer, &bracket);
@@ -15226,10 +15256,24 @@ static bool footnote_label_scan(Scanner *s, TSLexer *lexer, bool *bracket) {
       return true;
     }
     if (at_line_end(lexer)) {
-      if (wrapped) return false;
+      if (wrapped || one_line_host(s)) return false;
       wrapped = true;
+      BracketProbe *probe = lexer->advance == bracket_probe_advance ? (BracketProbe *)lexer : NULL;
+      uint32_t line_end = probe ? probe->position : 0, end_base = s->col_base;
       consume_line_end(s, lexer);
       if (at_line_end(lexer) || lexer->eof(lexer)) return false;
+      if (probe) {
+        uint32_t line_start = probe->position, base = s->col_base;
+        uint16_t indent = consume_whitespace(s, lexer);
+        if (!at_line_end(lexer) && probe_line_ends_paragraph(s, probe, indent)) {
+          // Leave the paragraph end to the probe reading around this label.
+          bracket_probe_rewind(probe, line_end);
+          s->col_base = end_base;
+          return false;
+        }
+        bracket_probe_rewind(probe, line_start);
+        s->col_base = base;
+      }
       continue;
     }
     if (c == '\\') {
@@ -15281,6 +15325,37 @@ static bool probe_label_reads_alike(const NoteProbeTrack *track, uint32_t from) 
     if (c == '%' || c == '\\') return false;
   }
   return true;
+}
+
+// Does the line under a bracket probe end the host paragraph? Reads it as the
+// block scanner would, then puts the probe and the scanner back.
+static bool probe_line_ends_paragraph(Scanner *s, BracketProbe *probe, uint16_t indent) {
+  if (in_caption(s)) return caption_line_ends_block(s, probe, indent);
+  uint32_t restart = probe->position;
+  Scanner saved = *s;
+  s->indent = indent;
+  s->erasable_line = false;
+  bool ends = close_paragraph(s, &probe->lexer);
+  // The host moved only where the probe pulled characters from it.
+  Scanner read = *s;
+  *s = saved;
+  s->host_previous = read.host_previous;
+  s->host_crossed_line = read.host_crossed_line;
+  s->host_newlines = read.host_newlines;
+  s->host_advances = read.host_advances;
+  s->host_line_chars = read.host_line_chars;
+  s->column_read = read.column_read;
+  s->column_read_at = read.column_read_at;
+  s->column_read_known = read.column_read_known;
+  s->host_columns_lost = read.host_columns_lost;
+  s->deferred_column_at = read.deferred_column_at;
+  s->deferred_column = read.deferred_column;
+  s->deferred_column_pending = read.deferred_column_pending;
+  s->deferred_column_known = read.deferred_column_known;
+  s->host_jumped = read.host_jumped;
+  s->marker_probe = read.marker_probe;
+  bracket_probe_rewind(probe, restart);
+  return ends;
 }
 
 static bool probe_scan_until_bracket_close(Scanner *s, TSLexer *lexer,
@@ -15345,10 +15420,12 @@ static bool probe_scan_until_bracket_close(Scanner *s, TSLexer *lexer,
       advance(s, lexer);
     } else if (at_line_end(lexer)) {
       last = '\n';
+      BracketProbe *reader = probe ? probe : track ? track->probe : NULL;
+      if (reader && one_line_host(s)) return false;
       // One newline is ok in inline spans, but not several in a row.
       consume_line_end(s, lexer);
       uint16_t indent = consume_whitespace(s, lexer);
-      if ((probe && caption_line_ends_block(s, probe, indent)) || at_line_end(lexer)) {
+      if (at_line_end(lexer) || (reader && probe_line_ends_paragraph(s, reader, indent))) {
         return false;
       }
     } else {
@@ -15659,7 +15736,7 @@ static bool scan_qualified_bracket_close(Scanner *s, BracketProbe *probe, Inline
       uint16_t indent = consume_whitespace(s, lexer);
       if (at_line_end(lexer)) goto failed;
       natural_end = false;
-      if (caption_line_ends_block(s, probe, indent)) goto failed;
+      if (probe_line_ends_paragraph(s, probe, indent)) goto failed;
     } else {
       advance(s, lexer);
     }
@@ -16747,14 +16824,11 @@ static bool parse_attributed_span_mark_begin(Scanner *s, TSLexer *lexer,
   }
   s->behind_internal_opener = s->host_advances == 0;
   Inline *top = peek_inline(s);
-  // A token follows only in the fallback, and only a root-scope `^[` asks. In
-  // root-scope paragraph text an unbalanced bracket's own probe reads to the
-  // paragraph end as the note probe does, so the note costs no more than it.
-  Block *host = peek_block(s);
+  // A token follows only in the fallback, and only a root-scope `^[` asks. An
+  // unbalanced bracket's own probe reads to the paragraph end (a heading or
+  // row: its line end) as the note probe does, so the note costs no more.
   bool notes = valid_symbols[SQUARE_BRACKET_SPAN_MARK_BEGIN] && valid_symbols[IN_FALLBACK] &&
-               !valid_symbols[ERROR] && !top && !in_caption(s) &&
-               !(host && (host->type == HEADING || host->type == TABLE_ROW ||
-                          disallow_newline(host)));
+               !valid_symbols[ERROR] && !top && !in_caption(s);
   bool balanced = update_square_bracket_lookahead_states(s, lexer,
       top && (top->flags & INLINE_BRACED) && top->type != INLINE_NOTE ? top : NULL, notes);
   if (balanced && (s->state & STATE_BRACKET_STARTS_SPAN)) {
@@ -18769,9 +18843,11 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   }
   Block *metadata_host = peek_block(s);
   // The tail is an opener's: error recovery offers it everywhere, and read on
-  // every line of prose it costs the rest of the line per token (#787).
+  // every line of prose it costs the rest of the line per token (#787), in a
+  // list item or quote as much as at the root (#793).
+  bool fence_host = metadata_host && (metadata_host->type == DIV || metadata_host->type == CODE_BLOCK);
   if (valid_symbols[CONTAINER_INVALID_METADATA] &&
-      (!valid_symbols[ERROR] || metadata_host || !s->mid_line) &&
+      (!valid_symbols[ERROR] || fence_host || !s->mid_line) &&
       !at_line_end(lexer) && !lexer->eof(lexer)) {
     // Let a valid first info token win before the fallback consumes its tail.
     int32_t lead = lexer->lookahead;
