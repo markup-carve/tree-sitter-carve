@@ -14220,8 +14220,12 @@ static bool probe_braced_closer_ahead(Scanner *s, TSLexer *lexer, char marker, B
   // Past the cap there is no closer. For the memoizing caller the host reads
   // on to the paragraph end, so the note covers every later opener.
   bool capped = false, read_past_cap = !probe && s->braced_probe_marker == marker;
+  int32_t last = marker;
   while (!lexer->eof(lexer) && (!probe || probe->position < before)) {
+    bool after_space = last == ' ' || last == '\t' || last == '\n';
+    last = lexer->lookahead;
     if (at_line_end(lexer)) {
+      last = '\n';
       if (in_row) {
         if (continuation_row_ahead(s, lexer)) {
           continue;
@@ -14277,6 +14281,17 @@ static bool probe_braced_closer_ahead(Scanner *s, TSLexer *lexer, char marker, B
       }
       if (end == VerbatimRunReachesBlockEnd) {
         return braced_closer_in_open_run(s, probe, capped ? 0 : pending, pending_position, pending_col_base, close_position);
+      }
+      continue;
+    }
+    // A line comment takes the rest of its line, closers included (C2-I-024).
+    if (c == '%' && after_space) {
+      advance(s, lexer);
+      if (lexer->lookahead == '%') {
+        while (!lexer->eof(lexer) && !at_line_end(lexer) &&
+               !(in_row && lexer->lookahead == '|')) {
+          advance(s, lexer);
+        }
       }
       continue;
     }
