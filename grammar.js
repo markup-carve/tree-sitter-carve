@@ -2902,14 +2902,28 @@ module.exports = grammar({
     _link: ($) =>
       choice($.full_reference_link, $.collapsed_reference_link, $.inline_link),
     full_reference_link: ($) => seq(field("text", $.link_text), $._link_label),
+    // Its text is its label, and an empty label is none (C2-I-079).
     collapsed_reference_link: ($) =>
-      seq(field("text", $.link_text), token.immediate("[]")),
+      seq(
+        field("text", alias($._filled_link_text, $.link_text)),
+        token.immediate("[]"),
+      ),
     inline_link: ($) =>
       seq(
         field("text", $.link_text),
         field("destination", $.inline_link_destination),
       ),
 
+    _filled_link_text: ($) =>
+      prec.dynamic(
+        ELEMENT_PRECEDENCE,
+        seq(
+          $._bracketed_text_begin,
+          $._square_bracket_span_mark_begin,
+          $._inline,
+          alias($._square_bracket_span_end, "]"),
+        ),
+      ),
     link_text: ($) =>
       prec.dynamic(
         ELEMENT_PRECEDENCE,
@@ -3068,10 +3082,11 @@ module.exports = grammar({
         field(
           "label",
           // A line comment in the label takes its `]` (C2-I-077); a blank
-          // label is none (C2-I-079); it may wrap once (C2-I-080).
+          // label is none (C2-I-079); it may wrap once (C2-I-080); a backslash
+          // escapes a `]` (C2-I-076).
           alias(
             token.immediate(
-              /(?:[^\]@\r\n \t]|[ \t]+[^\]\r\n \t])(?:[^\]\r\n \t]|[ \t]+(?:[^\]\r\n \t%]|%[^\]\r\n%]))*(?:[ \t]+%?)?(?:\r?\n[ \t]*[^\]\r\n \t](?:[^\]\r\n \t]|[ \t]+[^\]\r\n \t])*[ \t]*)?/,
+              /(?:(?:[^\]@\\\r\n \t]|\\[^\r\n])|[ \t]+(?:[^\]\\\r\n \t]|\\[^\r\n]))(?:(?:[^\]\\\r\n \t]|\\[^\r\n])|[ \t]+(?:(?:[^\]\\\r\n \t%]|\\[^\r\n])|%(?:[^\]\\\r\n%]|\\[^\r\n])))*(?:[ \t]+%?)?(?:\r?\n[ \t]*(?:[^\]\\\r\n \t]|\\[^\r\n])(?:(?:[^\]\\\r\n \t]|\\[^\r\n])|[ \t]+(?:[^\]\\\r\n \t]|\\[^\r\n]))*[ \t]*)?/,
             ),
             $.link_label,
           ),

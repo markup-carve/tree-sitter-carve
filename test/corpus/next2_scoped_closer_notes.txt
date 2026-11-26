@@ -1,0 +1,44 @@
+================================================================================
+C2-I-059: openers inside a span stop at its closer
+================================================================================
+
+*a ~b ~c* d~ and *e {~f g* {~h~}
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (strong
+      begin_marker: (strong_begin)
+      content: (content)
+      end_marker: (strong_end))
+    (strong
+      begin_marker: (strong_begin)
+      content: (content)
+      end_marker: (strong_end))
+    (strikethrough
+      begin_marker: (strikethrough_begin)
+      content: (content)
+      end_marker: (strikethrough_end))))
+
+================================================================================
+C2-I-059: a closer inside link text stays hidden from the outer opener
+================================================================================
+
+*a {~b [ {~x ~} ](u) d*
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (strong
+      begin_marker: (strong_begin)
+      content: (content
+        (inline_link
+          text: (link_text
+            (strikethrough
+              begin_marker: (strikethrough_begin)
+              content: (content)
+              end_marker: (strikethrough_end)))
+          destination: (inline_link_destination)))
+      end_marker: (strong_end))))
