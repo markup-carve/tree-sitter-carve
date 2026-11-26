@@ -103,7 +103,7 @@ C2-B-137: a heading continues past a run of comment lines
         (comment_line)))))
 
 ================================================================================
-C2-B-137: a comment line before an unindented line stays out of the heading
+C2-B-154: a comment line before an unindented line is a child of the heading
 ================================================================================
 
 # H
@@ -116,7 +116,7 @@ t
   (section
     heading: (heading
       marker: (marker)
-      content: (content))
+      content: (content
+        (comment_line)))
     content: (section_content
-      (comment_line)
       (paragraph))))
