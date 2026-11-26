@@ -13108,6 +13108,8 @@ static bool close_paragraph_after_quote(Scanner *s, TSLexer *lexer,
   // list marker, a description or a term line there is text, as the term is
   // no item. A comment-only line is left to the probes below.
   Block *term = peek_block(s);
+  // A marker more than the quotes hold opens a quote, which ends a heading.
+  if (term && term->type == HEADING && markers_seen > count_blocks(s, BLOCK_QUOTE)) return true;
   if (term && term->type == HEADING && !at_line_end(lexer) &&
       !lexer->eof(lexer) && lexer->lookahead != '%') {
     return label_line_interrupts(s, lexer);
