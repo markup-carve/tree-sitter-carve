@@ -2857,12 +2857,12 @@ module.exports = grammar({
       seq(
         $.footnote_marker_begin,
         $._square_bracket_span_mark_begin,
-        // Characters up to the next unescaped `]`, not only blanks, across at
-        // most one line break (C2-I-087, C2-I-079, C2-I-080). A `[` is left out: a note's `[^` opens no reference, which
-        // a label holding brackets would make here.
+        // Characters up to the next unescaped `]`, not all blank, across at
+        // most one line break (C2-I-079, C2-I-080, C2-I-087). A `[` is left
+        // out: a note's `[^` opens no reference, which a bracket here would.
         alias(
           token(
-            /([^\]\[\\\r\n]|\\[^\r\n])*([^\]\[\\\r\n \t]|\\[^\r\n])([^\]\[\\\r\n]|\\[^\r\n])*(\r?\n([^\]\[\\\r\n]|\\[^\r\n])+)?/,
+            /([^\]\[\\\r\n]|\\[^\r\n])*([^\]\[\\\r\n \t]|\\[^\r\n])([^\]\[\\\r\n]|\\[^\r\n])*(\r?\n([^\]\[\\\r\n]|\\[^\r\n])+)?|[ \t]*\r?\n([^\]\[\\\r\n]|\\[^\r\n])*([^\]\[\\\r\n \t]|\\[^\r\n])([^\]\[\\\r\n]|\\[^\r\n])*/,
           ),
           $.reference_label,
         ),
