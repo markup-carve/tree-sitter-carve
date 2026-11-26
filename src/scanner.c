@@ -19771,6 +19771,8 @@ static void reset(Scanner *s) {
 
 void *tree_sitter_carve_external_scanner_create() {
   Scanner *s = (Scanner *)ts_malloc(sizeof(Scanner));
+  // `init` sets the persistent state only; every transient flag starts false.
+  memset(s, 0, sizeof(Scanner));
   s->open_blocks = ts_malloc(sizeof(Array(Block *)));
   s->open_inline = ts_malloc(sizeof(Array(Inline *)));
   s->entry_length = 0;

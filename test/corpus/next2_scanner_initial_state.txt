@@ -1,0 +1,25 @@
+================================================================================
+a line block in an item followed by a lazy line and a heading
+================================================================================
+
+- ::: |
+  a
+b
+# h
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (div
+          (div_marker_begin)
+          line_block_marker: (line_block_marker)
+          content: (content
+            (paragraph))))))
+  (section
+    heading: (heading
+      marker: (marker)
+      content: (content))))
