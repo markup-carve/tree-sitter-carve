@@ -1,0 +1,20 @@
+================================================================================
+C2-I-026: a braced comment over a line break is transparent to the closer boundary
+================================================================================
+
+*a*{% comment
+continued %}b* and *c*{% d
+e %} f
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (braced_comment
+      content: (content))
+    (strong
+      begin_marker: (strong_begin)
+      content: (content)
+      end_marker: (strong_end))
+    (braced_comment
+      content: (content))))

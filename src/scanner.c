@@ -780,7 +780,7 @@ typedef struct {
   // A skipped opaque run held the probed marker, so a later opener of the
   // kind may stand inside one and read differently. Transient.
   bool probe_opaque_holds_bare;
-  // A bare closer pinned its end before reading past a comment behind it.
+  // A bare closer pinned its end before a probe read past a comment behind it.
   bool span_end_marked;
   // The bare probe stopped at a closer of the enclosing span.
   bool probe_scope_stop;
@@ -11193,10 +11193,9 @@ static bool probe_finish_editorial_comment(Scanner *s, TSLexer *lexer,
 // A `no_closer_kinds` bit past the bare markers: no `#}` stands between here
 // and the paragraph end, so a later `{#` in the same scope has none either.
 static const uint16_t NO_EDITORIAL_CLOSER = 1u << 9;
-// No `%}` stands between here and the line end; cleared at the line end.
-static const uint16_t NO_LINE_COMMENT_CLOSER = 1u << 10;
-// No `%}` stands between here and the paragraph end, in the noted scope.
-static const uint16_t NO_BRACED_COMMENT_CLOSER = 1u << 11;
+// No `%}` stands between here and the paragraph end. A comment reads no
+// inline scope, so the bit outlives a scope change.
+static const uint16_t NO_BRACED_COMMENT_CLOSER = 1u << 10;
 static uint16_t closer_probe_scope(Scanner *s);
 
 static bool finish_editorial_comment(Scanner *s, TSLexer *lexer, bool last_was_hash, bool literal_ok) {
@@ -11210,7 +11209,7 @@ static bool finish_editorial_comment(Scanner *s, TSLexer *lexer, bool last_was_h
     // The note lives in the state of a token, so the brace becomes one.
     if (!closed && literal_ok) {
       if (s->no_closer_scope != scope) {
-        s->no_closer_kinds &= NO_LINE_COMMENT_CLOSER;
+        s->no_closer_kinds &= NO_BRACED_COMMENT_CLOSER;
         s->closer_ahead_kinds = 0;
       }
       s->no_closer_kinds |= NO_EDITORIAL_CLOSER;
@@ -11416,16 +11415,16 @@ static bool parse_open_curly_bracket(Scanner *s, TSLexer *lexer,
   // back with its braces literal, on this grammar as on the engine.
   if (can_be_braced_comment && valid_symbols[BRACED_COMMENT_BEGIN]) {
     uint16_t scope = closer_probe_scope(s);
-    if ((s->no_closer_kinds & NO_BRACED_COMMENT_CLOSER) && s->no_closer_scope == scope) return false;
+    if (s->no_closer_kinds & NO_BRACED_COMMENT_CLOSER) return false;
     if (!scan_braced_comment_to_close(s, lexer)) {
       // The note lives in the state of a token, so the brace becomes one.
       if (!valid_symbols[LITERAL_RUN] || valid_symbols[ERROR] || in_caption(s) ||
           find_inline(s, EXTENSION)) return false;
       if (s->no_closer_scope != scope) {
-        s->no_closer_kinds &= NO_LINE_COMMENT_CLOSER;
+        s->no_closer_kinds &= NO_BRACED_COMMENT_CLOSER;
         s->closer_ahead_kinds = 0;
       }
-      s->no_closer_kinds |= NO_BRACED_COMMENT_CLOSER | NO_LINE_COMMENT_CLOSER;
+      s->no_closer_kinds |= NO_BRACED_COMMENT_CLOSER;
       s->no_closer_scope = scope;
       lexer->result_symbol = LITERAL_RUN;
       return true;
@@ -16026,7 +16025,7 @@ static bool bare_closer_ahead(Scanner *s, TSLexer *lexer, char bare, bool *combi
                      : (s->probe_reached_end && !s->probe_opaque_holds_bare) || s->probe_word_mark || bounded;
   if (note) {
     if (s->no_closer_scope != scope) {
-      s->no_closer_kinds &= NO_LINE_COMMENT_CLOSER;
+      s->no_closer_kinds &= NO_BRACED_COMMENT_CLOSER;
       s->closer_ahead_kinds = s->bounded_kinds = 0;
     }
     if (closer) s->closer_ahead_kinds |= bit;
@@ -16806,33 +16805,36 @@ static bool identifier_after_bracket_stays_on_one_line(Scanner *s,
 /// `a/b`. A bare span takes the bare marker and leaves a `}` behind it as text,
 /// so `*a {*b*} c*` closes at the `*` of `*}`. Only the real close asks this;
 /// the lookahead scanners keep accepting either form.
-// Reads past a braced comment closed on this line, which is transparent to
-// the boundary test (C2-I-026), and gives the character behind it. Unclosed,
-// it rewinds a probe and leaves a host lexer past what it read.
+// Reads past a braced comment, which is transparent to the boundary test
+// (C2-I-026), and gives the character behind it, or `{` when none closes.
 static int32_t past_braced_comment(Scanner *s, TSLexer *lexer, BracketProbe *probe, uint8_t *unclosed) {
   if (lexer->lookahead != '{' || (*unclosed & 1)) return lexer->lookahead;
-  // The note is per line and holds in any inline scope.
-  if (s->no_closer_kinds & (NO_LINE_COMMENT_CLOSER | NO_BRACED_COMMENT_CLOSER)) return '{';
-  uint32_t restart = probe ? probe->position : 0;
+  if (s->no_closer_kinds & NO_BRACED_COMMENT_CLOSER) return '{';
+  if (!probe) {
+    BracketProbe own = bracket_probe_new(s, lexer);
+    uint32_t base = s->col_base;
+    int32_t next = past_braced_comment(s, &own.lexer, &own, unclosed);
+    s->col_base = base;
+    array_delete(&own.characters);
+    return next;
+  }
+  uint32_t restart = probe->position;
   uint32_t base = s->col_base;
   advance(s, lexer);
   if (lexer->lookahead == '%') {
-    advance(s, lexer);
-    while (!lexer->eof(lexer) && !at_line_end(lexer)) {
-      int32_t current = lexer->lookahead;
+    if (scan_braced_comment_to_close(s, lexer)) {
       advance(s, lexer);
-      if (current == '%' && lexer->lookahead == '}') {
-        advance(s, lexer);
-        return past_braced_comment(s, lexer, probe, unclosed);
-      }
+      return past_braced_comment(s, lexer, probe, unclosed);
     }
-    *unclosed |= 1;
-    s->no_closer_kinds |= NO_LINE_COMMENT_CLOSER;
+    // A combining mark makes the `%` no comment opener, which says nothing
+    // about a later `{%`.
+    if (!carve_is_grapheme_extender(lexer->lookahead)) {
+      *unclosed |= 1;
+      s->no_closer_kinds |= NO_BRACED_COMMENT_CLOSER;
+    }
   }
-  if (probe) {
-    bracket_probe_rewind(probe, restart);
-    s->col_base = base;
-  }
+  bracket_probe_rewind(probe, restart);
+  s->col_base = base;
   return '{';
 }
 
@@ -16855,6 +16857,7 @@ static bool scan_span_end_by_form(Scanner *s, TSLexer *lexer,
     if (lexer->lookahead == marker || carve_is_grapheme_extender(lexer->lookahead)) {
       return false;
     }
+    // The probe moves the host lexer, so the closer pins its end first.
     mark_end(s, lexer);
     s->span_end_marked = true;
     uint8_t unclosed = 0;
@@ -17956,7 +17959,6 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
     }
     if (crossed || lexer->result_symbol == NEWLINE_INLINE) {
       s->link_tail_open_line = false;
-      s->no_closer_kinds &= (uint16_t)~NO_LINE_COMMENT_CLOSER;
       s->closer_ahead_kinds = 0;
       s->bracket_span_note = s->plain_run_note = false;
     }
