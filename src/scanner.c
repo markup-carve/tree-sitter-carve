@@ -4708,6 +4708,16 @@ static bool parse_code_fence(Scanner *s, TSLexer *lexer,
         lexer->result_symbol = LITERAL_RUN;
         return true;
       }
+    } else if (valid_symbols[LITERAL_RUN] && !top) {
+      // The fence probe stopped in the info string, short of any closing run.
+      char marker = span_verbatim_stop_marker(peek_inline(s));
+      bool in_table_row = valid_symbols[TABLE_CELL_END] ||
+                          find_block(s, TABLE_ROW) != NULL;
+      if (read_verbatim_run(s, lexer, width, marker, in_table_row) ==
+          VerbatimRunReachesBlockEnd) {
+        lexer->result_symbol = LITERAL_RUN;
+        return true;
+      }
     }
     lexer->result_symbol = VERBATIM_BEGIN;
     push_inline_flagged(s, VERBATIM, width, flags);
