@@ -17166,7 +17166,7 @@ static bool open_closer_starts_here(Scanner *s, int32_t c, int32_t next) {
 static bool plain_hash_reader(const bool *v) {
   return v[LITERAL_RUN] && !v[ERROR] && !v[BLOCK_CLOSE] && !v[HEADING_BEGIN] &&
          !v[COMMENT_BODY_HASH] && !v[COMMENT_HASH_END_MARKER] && !v[COMMENT_END_MARKER] &&
-         !v[COMMENT_BODY_PERCENT] && !v[EDITORIAL_COMMENT_BEGIN] && !v[COMMENT_CLOSE];
+         !v[COMMENT_BODY_PERCENT] && !v[COMMENT_CLOSE];
 }
 
 // The zero-width marks below, as a result: each follows its opener character.
