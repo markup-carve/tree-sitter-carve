@@ -10,7 +10,7 @@ npm test
 ```
 
 The grammar describes Carve 0.2. `npm test` runs the hand-written corpus in
-`test/corpus/`; carve-js on its `next2` branch is the reference for what a case
+`test/corpus/`; carve-js on its `main` branch is the reference for what a case
 should parse to.
 
 ## Checks

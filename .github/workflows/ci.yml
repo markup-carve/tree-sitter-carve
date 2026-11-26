@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main, next2]
+    branches: [main]
   pull_request:
-    branches: [main, next2]
+    branches: [main]
 
 # A new push to a pull request makes its running checks moot. Pushes to main
 # each keep their own run.
