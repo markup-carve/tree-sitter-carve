@@ -3810,6 +3810,10 @@
               },
               {
                 "type": "SYMBOL",
+                "name": "_sigil_name_text"
+              },
+              {
+                "type": "SYMBOL",
                 "name": "_attribute_atom_text"
               },
               {
@@ -5182,6 +5186,10 @@
               {
                 "type": "SYMBOL",
                 "name": "_sigil_run_text"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "_sigil_name_text"
               },
               {
                 "type": "SYMBOL",
@@ -8209,6 +8217,10 @@
               },
               {
                 "type": "SYMBOL",
+                "name": "_sigil_name_text"
+              },
+              {
+                "type": "SYMBOL",
                 "name": "_attribute_atom_text"
               },
               {
@@ -8615,6 +8627,10 @@
               {
                 "type": "SYMBOL",
                 "name": "_sigil_run_text"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "_sigil_name_text"
               },
               {
                 "type": "SYMBOL",
@@ -9145,6 +9161,26 @@
         "type": "PATTERN",
         "value": "[#@][a-zA-Z0-9_.-]*[^\\x00-\\x7F\\p{Z}\\p{P}\\p{S}\\p{C}\\u{1F000}-\\u{1FFFF}]",
         "flags": "u"
+      }
+    },
+    "_sigil_name_text": {
+      "type": "TOKEN",
+      "content": {
+        "type": "PREC",
+        "value": -1,
+        "content": {
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "PATTERN",
+              "value": "[#@]"
+            },
+            {
+              "type": "PATTERN",
+              "value": "(?:[a-zA-Z0-9_-]+\\.)*[a-zA-Z0-9_-]*[a-zA-Z0-9_]"
+            }
+          ]
+        }
       }
     },
     "_attribute_atom_text": {

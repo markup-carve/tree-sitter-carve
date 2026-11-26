@@ -11008,8 +11008,29 @@ static bool probe_finish_editorial_comment(Scanner *s, TSLexer *lexer,
   return false;
 }
 
-static bool finish_editorial_comment(Scanner *s, TSLexer *lexer, bool last_was_hash) {
-  if (!in_caption(s) && !find_inline(s, EXTENSION)) return probe_finish_editorial_comment(s, lexer, last_was_hash, NULL);
+// A `no_closer_kinds` bit past the bare markers: no `#}` stands between here
+// and the paragraph end, so a later `{#` in the same scope has none either.
+static const uint16_t NO_EDITORIAL_CLOSER = 1u << 9;
+static uint16_t closer_probe_scope(Scanner *s);
+
+static bool finish_editorial_comment(Scanner *s, TSLexer *lexer, bool last_was_hash, bool literal_ok) {
+  if (!in_caption(s) && !find_inline(s, EXTENSION)) {
+    if (last_was_hash && lexer->lookahead == '}') {
+      return probe_finish_editorial_comment(s, lexer, last_was_hash, NULL);
+    }
+    uint16_t scope = closer_probe_scope(s);
+    if ((s->no_closer_kinds & NO_EDITORIAL_CLOSER) && s->no_closer_scope == scope) return false;
+    bool closed = probe_finish_editorial_comment(s, lexer, last_was_hash, NULL);
+    // The note lives in the state of a token, so the brace becomes one.
+    if (!closed && literal_ok) {
+      if (s->no_closer_scope != scope) s->no_closer_kinds = s->closer_ahead_kinds = 0;
+      s->no_closer_kinds |= NO_EDITORIAL_CLOSER;
+      s->no_closer_scope = scope;
+      lexer->result_symbol = LITERAL_RUN;
+      return true;
+    }
+    return closed;
+  }
   if (lexer->advance == bracket_probe_advance)
     return probe_finish_editorial_comment(s, lexer, last_was_hash, (BracketProbe *)lexer);
   BracketProbe probe = bracket_probe_new(s, lexer);
@@ -11164,16 +11185,16 @@ static bool parse_open_curly_bracket(Scanner *s, TSLexer *lexer,
       }
       // A `#` this early is body text no id attribute can read, so only the
       // comment reading is left.
-      return finish_editorial_comment(s, lexer, false);
+      return finish_editorial_comment(s, lexer, false, valid_symbols[LITERAL_RUN] && !valid_symbols[ERROR]);
     }
     if (!scan_explicit_identifier(s, lexer)) {
       // Not an identifier either, so `{#id}` is off the table as well.
-      return finish_editorial_comment(s, lexer, false);
+      return finish_editorial_comment(s, lexer, false, valid_symbols[LITERAL_RUN] && !valid_symbols[ERROR]);
     }
     // The boundary every other item gets in the loop below: `{#a:b}` and
     // `{#a.c}` are not an id followed by a second item.
     if (!at_attribute_boundary(lexer)) {
-      return finish_editorial_comment(s, lexer, false);
+      return finish_editorial_comment(s, lexer, false, valid_symbols[LITERAL_RUN] && !valid_symbols[ERROR]);
     }
     // Both readings are still alive. Fall through to the attribute loop, which
     // takes `{#myid}` and `{#myid .c}`; everything it refuses lands in the
@@ -11255,7 +11276,7 @@ static bool parse_open_curly_bracket(Scanner *s, TSLexer *lexer,
         while (lexer->lookahead == '{') {
           if (!scan_valid_inline_attribute(s, lexer)) {
             s->attribute_block_line = false;
-            goto no_attribute;
+            return false;
           }
         }
         if (s->attribute_saw_table) has_table_flag = true;
@@ -11281,9 +11302,10 @@ static bool parse_open_curly_bracket(Scanner *s, TSLexer *lexer,
           lexer->result_symbol = LITERAL_RUN;
           return true;
         }
-        goto no_attribute;
+        return false;
       } else {
-        goto no_attribute;
+        // A valid attribute block is one atom, never a comment opener (C2-I-035).
+        return false;
       }
     case '.':
       can_be_braced_comment = false;
@@ -11401,7 +11423,7 @@ no_attribute:
   // `#}` - so ask whether one closes, and leave the braces literal if none
   // does. Nothing else reaches here, so every other `{` keeps its old answer.
   if (hash_glued) {
-    return finish_editorial_comment(s, lexer, last_was_hash);
+    return finish_editorial_comment(s, lexer, last_was_hash, valid_symbols[LITERAL_RUN] && !valid_symbols[ERROR]);
   }
   return false;
 }

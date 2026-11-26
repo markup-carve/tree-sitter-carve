@@ -96,6 +96,7 @@ function inlineElement($, options) {
         seq($._glued_tag, repeat($._glued_marker)),
         $._glued_symbol,
         $._sigil_run_text,
+        $._sigil_name_text,
         $._attribute_atom_text,
         // Text and the symbol fallback matches everything not matched elsewhere.
         notes ? $._symbol_fallback : $._note_symbol_fallback,
@@ -2427,6 +2428,9 @@ module.exports = grammar({
     tag: ($) => seq(token(seq("#", NAME_WITH_LETTER)), $._word_end),
 
     _sigil_run_text: (_) => token(SIGIL_RUN_BEFORE_LETTER),
+    // A name with no letter is text (C2-I-092), kept as one token: a lone
+    // sigil token before a digit run made the parse quadratic.
+    _sigil_name_text: (_) => token(prec(-1, seq(/[#@]/, NAME_WORD_END))),
     // An attribute block that attaches to nothing is one atom of text
     // (C2-I-035); every opener token outranks it.
     _attribute_atom_text: (_) => token(prec(-1, ATTRIBUTE_ATOM)),
