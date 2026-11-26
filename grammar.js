@@ -4,6 +4,17 @@ const ELEMENT_PRECEDENCE = 100;
 const NAME = /[a-zA-Z0-9_-]+(\.[a-zA-Z0-9_-]+)*/;
 const NAME_WORD_END = /(?:[a-zA-Z0-9_-]+\.)*[a-zA-Z0-9_-]*[a-zA-Z0-9_]/;
 const NAME_DASH_END = /(?:[a-zA-Z0-9_-]+\.)*[a-zA-Z0-9_-]*-/;
+// A mention's or a tag's own name holds at least one letter (C2-I-092).
+const NAME_WITH_LETTER =
+  /(?:[0-9_-]+\.)*[0-9_-]*[a-zA-Z](?:(?:[a-zA-Z0-9_-]|\.[a-zA-Z0-9_-])*(?:[a-zA-Z0-9_]|\.[a-zA-Z0-9_]))?/;
+// A sigil's run directly followed by a non-ASCII letter, number or mark
+// starts no form (C2-I-092); spelled as one longer token, it stays text.
+// The generated lexer does not class the emoji past U+FFFF as `\p{S}`, so
+// those planes are excluded by range: `#tag😀` is the tag `#tag`.
+const SIGIL_RUN_BEFORE_LETTER = new RegExp(
+  "[#@][a-zA-Z0-9_.-]*[^\\x00-\\x7F\\p{Z}\\p{P}\\p{S}\\p{C}\\u{1F000}-\\u{1FFFF}]",
+  "u",
+);
 
 // `url = scheme, ':', {url_char}+`: outside ASCII a url_char is anything but
 // whitespace, a format character (Cf) or a control character (Cc).
@@ -81,6 +92,7 @@ function inlineElement($, options) {
         seq($._glued_mention, repeat($._glued_marker)),
         seq($._glued_tag, repeat($._glued_marker)),
         $._glued_symbol,
+        $._sigil_run_text,
         // Text and the symbol fallback matches everything not matched elsewhere.
         notes ? $._symbol_fallback : $._note_symbol_fallback,
         $._literal_run,
@@ -2405,9 +2417,11 @@ module.exports = grammar({
     // with `tagDot = "." &tagChar` (resources/carve-core.ohm), so `@john.doe`
     // and `#release-1.0` are one name each and the sentence-ending dot of
     // `Reach @john.` is not.
-    mention: ($) => seq(token(seq("@", NAME_WORD_END)), $._word_end),
+    mention: ($) => seq(token(seq("@", NAME_WITH_LETTER)), $._word_end),
 
-    tag: ($) => seq(token(seq("#", NAME_WORD_END)), $._word_end),
+    tag: ($) => seq(token(seq("#", NAME_WITH_LETTER)), $._word_end),
+
+    _sigil_run_text: (_) => token(SIGIL_RUN_BEFORE_LETTER),
 
     // `extension = ":" extName "[" extContent "]"` (resources/carve-core.ohm).
     // The bracket holds INLINE content: `:code[*b*]` renders the strong inside
@@ -2441,7 +2455,9 @@ module.exports = grammar({
 
     // A `:name:` symbol: the first name char is a letter, digit, `+` or `-`
     // (so `:+1:` / `:-1:` parse), never `_`; the rest may add `_`. (carve#261)
-    symbol: (_) => token(seq(":", /[a-zA-Z0-9+-][\w+-]*/, ":")),
+    // The name does not end with a hyphen (C2-I-093), so `:-:` is text.
+    symbol: (_) =>
+      token(seq(":", /[a-zA-Z0-9+]|[a-zA-Z0-9+-][\w+-]*[\w+]/, ":")),
 
     // Emphasis and strong are a little special as they don't allow spaces next
     // to begin and end markers unless using the bracketed variant.
@@ -3259,18 +3275,18 @@ module.exports = grammar({
     _glued_mention: ($) =>
       choice(
         seq(
-          token(prec(1, seq(/[A-Za-z0-9_]+/, "@", NAME_WORD_END))),
+          token(prec(1, seq(/[\p{L}\p{N}]+/, "@", NAME_WORD_END))),
           $._word_end,
         ),
-        token(prec(1, seq(/[A-Za-z0-9_]+/, "@", NAME_DASH_END))),
+        token(prec(1, seq(/[\p{L}\p{N}]+/, "@", NAME_DASH_END))),
       ),
     _glued_tag: ($) =>
       choice(
         seq(
-          token(prec(1, seq(/[A-Za-z0-9_]+/, "#", NAME_WORD_END))),
+          token(prec(1, seq(/[\p{L}\p{N}]+/, "#", NAME_WORD_END))),
           $._word_end,
         ),
-        token(prec(1, seq(/[A-Za-z0-9_]+/, "#", NAME_DASH_END))),
+        token(prec(1, seq(/[\p{L}\p{N}]+/, "#", NAME_DASH_END))),
       ),
     // The closing `:` is required, so an inline extension still fires intraword
     // (`foo:kbd[Ctrl]`): `:kbd[` carries no closing colon and is not absorbed.
