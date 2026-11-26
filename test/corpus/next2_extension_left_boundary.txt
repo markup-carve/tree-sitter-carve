@@ -1,0 +1,13 @@
+================================================================================
+C2-I-090: a letter or number before the colon starts no extension
+================================================================================
+
+see config:items[0] and é:b[c] and x :b[c]
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (extension_inline
+      (extension_marker_begin)
+      content: (content))))

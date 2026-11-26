@@ -110,6 +110,7 @@ function inlineElement($, options) {
         seq($._glued_mention, repeat($._glued_marker)),
         seq($._glued_tag, repeat($._glued_marker)),
         $._glued_symbol,
+        $._glued_extension_name,
         $._sigil_run_text,
         $._sigil_name_text,
         $._attribute_atom_text,
@@ -3339,10 +3340,12 @@ module.exports = grammar({
         ),
         token(prec(1, seq(/[\p{L}\p{N}]+/, "#", NAME_DASH_END))),
       ),
-    // The closing `:` is required, so an inline extension still fires intraword
-    // (`foo:kbd[Ctrl]`): `:kbd[` carries no closing colon and is not absorbed.
     _glued_symbol: (_) =>
       token(prec(1, /[A-Za-z0-9_]+:[a-zA-Z0-9+-][a-zA-Z0-9_+-]*:/)),
+    // A sigil behind a letter or number starts no form (C2-I-090), so
+    // `config:items[0]` holds no extension; the bracket after it stays one.
+    _glued_extension_name: (_) =>
+      token(prec(1, /[\p{L}\p{N}]+:[a-zA-Z_][a-zA-Z0-9_-]*/)),
 
     // `gluedMarker = ("@" | "#") tagName` (resources/carve-core.ohm): a marker
     // glued to the END of a name opens nothing, so `#i#j` is one tag and `#j`
