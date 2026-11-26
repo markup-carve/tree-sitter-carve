@@ -11064,7 +11064,7 @@
               "type": "IMMEDIATE_TOKEN",
               "content": {
                 "type": "PATTERN",
-                "value": "[^\\]@\\r\\n](?:[^\\]\\r\\n \\t]|[ \\t]+(?:[^\\]\\r\\n \\t%]|%[^\\]\\r\\n%]))*(?:[ \\t]+%?)?"
+                "value": "(?:[^\\]@\\r\\n \\t]|[ \\t]+[^\\]\\r\\n \\t])(?:[^\\]\\r\\n \\t]|[ \\t]+(?:[^\\]\\r\\n \\t%]|%[^\\]\\r\\n%]))*(?:[ \\t]+%?)?"
               }
             },
             "named": true,
@@ -12221,34 +12221,6 @@
           ]
         },
         {
-          "type": "TOKEN",
-          "content": {
-            "type": "PREC",
-            "value": 2,
-            "content": {
-              "type": "SEQ",
-              "members": [
-                {
-                  "type": "CHOICE",
-                  "members": [
-                    {
-                      "type": "STRING",
-                      "value": "!"
-                    },
-                    {
-                      "type": "BLANK"
-                    }
-                  ]
-                },
-                {
-                  "type": "PATTERN",
-                  "value": "\\[[^\\[\\]\\r\\n*\\/_~=^`{}<>$\\\\:@#!%|\"']*\\]\\[@[^\\[\\]\\r\\n]*\\]"
-                }
-              ]
-            }
-          }
-        },
-        {
           "type": "STRING",
           "value": "<"
         },
@@ -12739,34 +12711,6 @@
               ]
             }
           ]
-        },
-        {
-          "type": "TOKEN",
-          "content": {
-            "type": "PREC",
-            "value": 2,
-            "content": {
-              "type": "SEQ",
-              "members": [
-                {
-                  "type": "CHOICE",
-                  "members": [
-                    {
-                      "type": "STRING",
-                      "value": "!"
-                    },
-                    {
-                      "type": "BLANK"
-                    }
-                  ]
-                },
-                {
-                  "type": "PATTERN",
-                  "value": "\\[[^\\[\\]\\r\\n*\\/_~=^`{}<>$\\\\:@#!%|\"']*\\]\\[@[^\\[\\]\\r\\n]*\\]"
-                }
-              ]
-            }
-          }
         },
         {
           "type": "STRING",

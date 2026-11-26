@@ -820,7 +820,6 @@ typedef struct {
   bool line_blank;
   // The bracket probe found `[...]` followed by a `[@...]` label, and the host
   // lexer stands right after that label. Transient.
-  bool citation_label_tail;
   // An attribute block standing on its own line may pad with tabs and wrap; an
   // inline one is space-only (CARVE-P4-001) and stays on its line. Transient,
   // set around the block reads.
@@ -16007,7 +16006,6 @@ static bool probe_square_bracket_lookahead_states(Scanner *s, BracketProbe *prob
   // Reset flags so we can set them later if the scanning succeeds.
   s->state &= ~STATE_BRACKET_STARTS_INLINE_LINK;
   s->state &= ~STATE_BRACKET_STARTS_SPAN;
-  s->citation_label_tail = false;
 
   InlineType *top_type = NULL;
   // An enclosing bracket's `]` is also this one's, and the depth count below
@@ -16053,13 +16051,7 @@ static bool probe_square_bracket_lookahead_states(Scanner *s, BracketProbe *prob
     }
   } else if (lexer->lookahead == '[') {
     advance(s, lexer);
-    bool citation_label = lexer->lookahead == '@';
-    if (scan_until_no_newline(s, lexer, ']', top_type)) {
-      if (citation_label && probe->position + 1 == probe->characters.size) {
-        advance(s, lexer);
-        s->citation_label_tail = true;
-      }
-    } else if (at_line_end(lexer)) {
+    if (!scan_until_no_newline(s, lexer, ']', top_type) && at_line_end(lexer)) {
       s->state |= STATE_MULTILINE_IDENTIFIER;
     }
   } else if (lexer->lookahead == '{') {
@@ -16168,15 +16160,6 @@ static bool parse_attributed_span_mark_begin(Scanner *s, TSLexer *lexer,
   Inline *top = peek_inline(s);
   bool balanced = update_square_bracket_lookahead_states(s, lexer,
       top && (top->flags & INLINE_BRACED) && top->type != INLINE_NOTE ? top : NULL);
-  // `[*b*][@a]`: a label may not start with `@`, so carve-js keeps the whole
-  // reference-link shape as text, markup included (corpus 334).
-  if (balanced && s->citation_label_tail && valid_symbols[IN_FALLBACK]) {
-    s->citation_label_tail = false;
-    s->state &= ~(STATE_BRACKET_STARTS_INLINE_LINK | STATE_BRACKET_STARTS_SPAN);
-    mark_end(s, lexer);
-    lexer->result_symbol = IN_FALLBACK;
-    return true;
-  }
   if (balanced && (s->state & STATE_BRACKET_STARTS_SPAN)) {
     push_inline_flagged(s, SQUARE_BRACKET_SPAN, 0, INLINE_BRACED);
     // Qualification belongs to the opener; its content may contain braces.
@@ -16258,14 +16241,6 @@ static bool mark_span_begin(Scanner *s, TSLexer *lexer,
       // pair of literal brackets there (`[t[z]](/u)`), not a competing opener,
       // and that `]` is text rather than the enclosing close.
       bool balanced = update_square_bracket_lookahead_states(s, lexer, top);
-      // `![*b*][@a]` is text, as `[*b*][@a]` is above.
-      if (balanced && s->citation_label_tail && valid_symbols[IN_FALLBACK]) {
-        s->citation_label_tail = false;
-        s->state &= ~(STATE_BRACKET_STARTS_INLINE_LINK | STATE_BRACKET_STARTS_SPAN);
-        mark_end(s, lexer);
-        lexer->result_symbol = IN_FALLBACK;
-        return true;
-      }
       if (balanced && (s->state & (STATE_BRACKET_STARTS_SPAN | STATE_BRACKET_STARTS_INLINE_LINK))) {
         push_inline_flagged(s, SQUARE_BRACKET_SPAN, 0, INLINE_BRACED);
         lexer->result_symbol = token;
@@ -19966,7 +19941,6 @@ static void init_scalars(Scanner *s) {
   s->missing_closers = 0;
   s->caption_gap = 0;
   s->line_blank = false;
-  s->citation_label_tail = false;
   s->attribute_block_line = false;
   s->braced_probe_marker = 0;
   s->braced_probe_raw_closer = false;
