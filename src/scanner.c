@@ -4,6 +4,7 @@
 #include "tree_sitter/array.h"
 #include "tree_sitter/parser.h"
 #include "unicode_marks.h"
+#include "unicode_words.h"
 
 // `_Static_assert` is a C11 keyword some MSVC toolchains (e.g. the Windows
 // Python wheel build's cp38-win32 target) don't recognize by default,
@@ -22,6 +23,20 @@ static inline bool carve_is_alnum_ascii(int32_t c) {
     return (c >= '0' && c <= '9')
         || (c >= 'A' && c <= 'Z')
         || (c >= 'a' && c <= 'z');
+}
+
+// A word character of C2-I-127: a Unicode letter or number.
+static bool carve_is_word(int32_t c) {
+    if (c < 0x80) return carve_is_alnum_ascii(c);
+    size_t low = 0;
+    size_t high = sizeof(carve_word_ranges) / sizeof(carve_word_ranges[0]);
+    while (low < high) {
+        size_t mid = low + (high - low) / 2;
+        if (c < (int32_t)carve_word_ranges[mid][0]) high = mid;
+        else if (c > (int32_t)carve_word_ranges[mid][1]) low = mid + 1;
+        else return true;
+    }
+    return false;
 }
 
 static bool carve_is_grapheme_extender(int32_t c) {
@@ -1272,14 +1287,14 @@ static void advance(Scanner *s, TSLexer *lexer) {
     int32_t previous = s->combined_raw_previous;
     if ((current == '*' && lexer->lookahead == '/') ||
         (current == '/' && previous != 0 && previous != ' ' && previous != '\t' &&
-         previous != '\r' && previous != '\n' && !carve_is_alnum_ascii(lexer->lookahead))) {
+         previous != '\r' && previous != '\n' && !carve_is_word(lexer->lookahead))) {
       s->combined_raw_closer = true;
     }
     if (current == '*' && lexer->lookahead == '/' && previous != 0 &&
         previous != ' ' && previous != '\t' && previous != '\r' && previous != '\n')
       s->combined_raw_pair = true;
     if (current == '*' && previous != 0 && previous != ' ' && previous != '\t' &&
-        previous != '\r' && previous != '\n' && !carve_is_alnum_ascii(lexer->lookahead))
+        previous != '\r' && previous != '\n' && !carve_is_word(lexer->lookahead))
       s->combined_raw_strong_closer = true;
     if (current == '\r' || current == '\n') s->combined_raw_line_end = true;
     s->combined_raw_previous = current;
@@ -14556,7 +14571,7 @@ static bool probe_braced_closer_ahead(Scanner *s, TSLexer *lexer, char marker, B
       bool closes = (next == '}' && open_braced_of_marker(s, c)) ||
                     (open && !(open->flags & INLINE_BRACED) && (c == '*' || c == '/') &&
                      !after_space && before_c != c && next != c &&
-                     !carve_is_alnum_ascii(next) && !carve_is_grapheme_extender(next));
+                     !carve_is_word(next) && !carve_is_grapheme_extender(next));
       if (closes) {
         s->braced_probe_raw_closer = true;
         return false;
@@ -14622,7 +14637,7 @@ static bool scan_bold_italic_span_end(Scanner *s, TSLexer *lexer) {
     return false;
   }
   advance(s, lexer);
-  if (carve_is_alnum_ascii(lexer->lookahead) ||
+  if (carve_is_word(lexer->lookahead) ||
       carve_is_grapheme_extender(lexer->lookahead)) {
     return false;
   }
@@ -15808,10 +15823,10 @@ static bool probe_bare_closer_skips_brackets(Scanner *s, BracketProbe *probe, ch
       // A span holding its own mark between two word characters does not
       // form (C2-I-053).
       // The scan reads on, so that a line with no closer at all is noted.
-      if ((bare == '*' || bare == '/') && carve_is_alnum_ascii(previous) &&
-          carve_is_alnum_ascii(lexer->lookahead))
+      if ((bare == '*' || bare == '/') && carve_is_word(previous) &&
+          carve_is_word(lexer->lookahead))
         word_mark = true;
-      if (in_run || carve_is_alnum_ascii(lexer->lookahead) ||
+      if (in_run || carve_is_word(lexer->lookahead) ||
           carve_is_grapheme_extender(lexer->lookahead)) {
         previous = c;
         ++characters;
@@ -15870,7 +15885,7 @@ static bool probe_bare_closer_skips_brackets(Scanner *s, BracketProbe *probe, ch
     advance(s, lexer);
     if (combined_literal && c == '*' && characters > 0 && previous != ' ' &&
         previous != '\t' && previous != '\n' && previous != 0 &&
-        !carve_is_alnum_ascii(lexer->lookahead)) saw_strong_closer = true;
+        !carve_is_word(lexer->lookahead)) saw_strong_closer = true;
     previous = c;
     ++characters;
   }
@@ -16033,7 +16048,7 @@ static bool probe_scan_inline_link_tail(Scanner *s, TSLexer *lexer, char bare, b
       --depth;
     }
     advance(s, lexer);
-    if (candidate_closer && !carve_is_alnum_ascii(lexer->lookahead)) *closer = true;
+    if (candidate_closer && !carve_is_word(lexer->lookahead)) *closer = true;
   }
   if (depth != 0) return false;
   // No parenthesis and no space from here to the line end: every later
@@ -16106,7 +16121,7 @@ static bool probe_scan_inline_link_tail(Scanner *s, TSLexer *lexer, char bare, b
       return lexer->lookahead == ')';
     }
     advance(s, lexer);
-    if (candidate_closer && !carve_is_alnum_ascii(lexer->lookahead)) *closer = true;
+    if (candidate_closer && !carve_is_word(lexer->lookahead)) *closer = true;
     previous = current;
   }
   return false;
@@ -16744,7 +16759,7 @@ static bool scan_span_end_by_form(Scanner *s, TSLexer *lexer,
     // bare_closer(d) = <&(non_ws), d, !(alnum). A bare marker glued to
     // the word that follows it closes nothing: `/usr/local/` is one emphasis.
     // A run of two marks is text (C2-I-049).
-    if (lexer->lookahead == marker || carve_is_alnum_ascii(lexer->lookahead) ||
+    if (lexer->lookahead == marker || carve_is_word(lexer->lookahead) ||
         carve_is_grapheme_extender(lexer->lookahead)) {
       return false;
     }
@@ -17039,7 +17054,7 @@ static bool open_closer_starts_here(Scanner *s, int32_t c, int32_t next) {
       }
       continue;
     }
-    if (!carve_is_alnum_ascii(next)) {
+    if (!carve_is_word(next)) {
       return true;
     }
   }
@@ -17209,7 +17224,7 @@ static int parse_literal_run(Scanner *s, TSLexer *lexer,
           (i + 1 < replay_count) ? replay_marker : lexer->lookahead;
       bool next_ws = lexer->eof(lexer) || next == '\n' || next == '\r' ||
                      next == ' ' || next == '\t';
-      bool may_open = !carve_is_alnum_ascii(prev) && prev != replay_marker &&
+      bool may_open = !carve_is_word(prev) && prev != replay_marker &&
                       !next_ws && next != replay_marker;
       // UNREACHABLE under today's contract, and kept on purpose. A probe hands
       // back only a pure run of one marker, and inside such a run every
@@ -17255,7 +17270,7 @@ static int parse_literal_run(Scanner *s, TSLexer *lexer,
       // back.
       return 0;
     }
-  } else if (!carve_is_alnum_ascii(lexer->lookahead)) {
+  } else if (!carve_is_word(lexer->lookahead)) {
     return 0;
   }
 
@@ -17269,7 +17284,7 @@ static int parse_literal_run(Scanner *s, TSLexer *lexer,
   int32_t word_end = -1;
   for (;;) {
     int32_t c = lexer->lookahead;
-    if (carve_is_alnum_ascii(c)) {
+    if (carve_is_word(c)) {
       upper_tail = c >= 'A' && c <= 'Z' ? (upper_tail << 8 | (uint64_t)c) & 0xffffffffffULL : 0;
       if (upper_tail >= 0x10000 && !keyword) {
         uint64_t three = upper_tail & 0xffffff, four = upper_tail & 0xffffffff;
@@ -17302,14 +17317,14 @@ static int parse_literal_run(Scanner *s, TSLexer *lexer,
     bool open_braced = open != NULL && (open->flags & INLINE_BRACED) != 0;
     // A mark of a bare run of two is text (C2-I-049).
     bool in_run = (c == '*' || c == '/') && (prev == c || next == c);
-    bool may_close = prev != 0 && ((open_bare && !in_run && !carve_is_alnum_ascii(next) &&
+    bool may_close = prev != 0 && ((open_bare && !in_run && !carve_is_word(next) &&
                                     !carve_is_grapheme_extender(next)) ||
                                    (open_braced && next == '}') ||
                                    (!in_run && open_closer_starts_here(s, c, next)));
     // bare_opener(d) = <!(alnum | d | slash_if(d)), d, !(ws | d)
     bool path_guard = c == '_' && (prev == '/' || prev == '_') && prev2 != 0;
     // A bare underscore is punctuation here (C2-I-047).
-    bool may_open = !carve_is_alnum_ascii(prev) && prev != c &&
+    bool may_open = !carve_is_word(prev) && prev != c &&
                     (prev != '_' || c == '*' || c == '/') && !path_guard &&
                     !next_ws && next != c && !carve_is_grapheme_extender(next);
     // A combined opener uses the same left boundary as a bare delimiter.
@@ -17317,7 +17332,7 @@ static int parse_literal_run(Scanner *s, TSLexer *lexer,
     bool em_path = enclosing_em && (enclosing_em->flags & INLINE_BRACED) &&
                    prev != 0 && prev != ' ' && prev != '\t' && prev != '\n';
     bool bold_italic_opener = c == '/' && next == '*' && !em_path &&
-                             !carve_is_alnum_ascii(prev) && prev != '/' &&
+                             !carve_is_word(prev) && prev != '/' &&
                              !find_inline_in_scope(s, BOLD_ITALIC);
     if (find_inline_in_scope(s, BOLD_ITALIC) && (k == EMPHASIS || k == STRONG))
       may_open = false;
@@ -17325,7 +17340,7 @@ static int parse_literal_run(Scanner *s, TSLexer *lexer,
       if (bold_italic_opener && !may_open) forbid_emphasis = true;
       break;
     }
-    if ((c == '*' || c == '/') && carve_is_alnum_ascii(prev) && carve_is_alnum_ascii(next)) {
+    if ((c == '*' || c == '/') && carve_is_word(prev) && carve_is_word(next)) {
       const char *slot = strchr(BARE_CLOSER_MARKERS, c);
       s->no_closer_kinds &= (uint16_t)~(1u << (slot - BARE_CLOSER_MARKERS));
     }
@@ -18150,7 +18165,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     mark_end(s, lexer);
     advance(s, lexer);
     bool closes = (slash_scope->flags & INLINE_BRACED) ? lexer->lookahead == '}'
-                                                        : !carve_is_alnum_ascii(lexer->lookahead);
+                                                        : !carve_is_word(lexer->lookahead);
     lexer->result_symbol = closes ? LITERAL_SLASH_BOUNDARY : NON_WHITESPACE_CHECK;
     if (closes) s->state &= ~STATE_BARE_SPAN_OPENER;
     else s->state |= STATE_BARE_SPAN_OPENER;
@@ -18610,7 +18625,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
           int32_t brace_current = lexer->lookahead;
           advance(s, lexer);
           if (brace_current == '/' && brace_previous != ' ' && brace_previous != '\t' &&
-              brace_previous != '\n' && !carve_is_alnum_ascii(lexer->lookahead))
+              brace_previous != '\n' && !carve_is_word(lexer->lookahead))
             brace_emphasis_closer = true;
           brace_previous = brace_current;
         }
@@ -18640,18 +18655,18 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       if (scope && scope_type != BOLD_ITALIC && characters > 1 && current == scope_marker &&
           ((scope_braced && lexer->lookahead == '}') ||
            (!scope_braced && previous != ' ' && previous != '\t' && previous != '\n' &&
-            previous != 0 && !carve_is_alnum_ascii(lexer->lookahead)))) {
+            previous != 0 && !carve_is_word(lexer->lookahead)))) {
         enclosing_closer = true;
         break;
       }
       if (current == '*' && !emphasis_closer && characters > 2 && previous != ' ' &&
           previous != '\t' && previous != '\n' && previous != 0 &&
-          !carve_is_alnum_ascii(lexer->lookahead)) strong_closer = true;
+          !carve_is_word(lexer->lookahead)) strong_closer = true;
       if (current == '*' && lexer->lookahead == '/') {
         bool invalid_pair = characters <= 2 || previous == 0 || previous == ' ' ||
                             previous == '\t' || previous == '\n';
         advance(s, lexer);
-        bool right_boundary = !carve_is_alnum_ascii(lexer->lookahead) &&
+        bool right_boundary = !carve_is_word(lexer->lookahead) &&
                               !carve_is_grapheme_extender(lexer->lookahead);
         if (!invalid_pair && opener_has_content && right_boundary) {
           combined_pair = true;
@@ -18663,7 +18678,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
         continue;
       }
       if (current == '/' && previous != ' ' && previous != '\t' && previous != '\n' &&
-          previous != 0 && !carve_is_alnum_ascii(lexer->lookahead)) emphasis_closer = true;
+          previous != 0 && !carve_is_word(lexer->lookahead)) emphasis_closer = true;
       previous = current;
     }
     s->combined_probe = false;
@@ -18914,9 +18929,14 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       !zero_width_mark_pending(valid_symbols)) {
     deferred_word = true;
   }
+  // A word that no ordered marker can start, deferred only for a block close.
+  bool deferred_unicode_word = valid_symbols[LITERAL_RUN] && !valid_symbols[ERROR] &&
+      lexer->lookahead >= 0x80 && carve_is_word(lexer->lookahead) &&
+      block_reading_ahead(lexer->lookahead, valid_symbols) &&
+      !zero_width_mark_pending(valid_symbols);
   if (valid_symbols[LITERAL_RUN] && !valid_symbols[ERROR] &&
       (is_bare_delim_kind(lexer->lookahead, &literal_run_kind) ||
-       carve_is_alnum_ascii(lexer->lookahead)) &&
+       carve_is_word(lexer->lookahead)) &&
       !block_reading_ahead(lexer->lookahead, valid_symbols) &&
       !zero_width_mark_pending(valid_symbols)) {
     int read = parse_literal_run(s, lexer, valid_symbols, 0, 0, 0);
@@ -19947,6 +19967,13 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     if (read < 0) {
       return false;
     }
+  }
+
+  if (ordered_list_marker == IGNORED && deferred_unicode_word && s->advances == deferred_at &&
+      s->open_inline->size == 0) {
+    int read = parse_literal_run(s, lexer, valid_symbols, 0, 0, 0);
+    if (read > 0) return true;
+    if (read < 0) return false;
   }
 
   if (valid_symbols[TABLE_CAPTION_END] && parse_table_caption_end(s, lexer)) {
