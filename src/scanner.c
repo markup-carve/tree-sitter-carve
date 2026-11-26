@@ -17201,7 +17201,7 @@ static bool check_highlighted_open(Scanner *s, TSLexer *lexer) {
 /// section 4c): the fence, its separator, the word, AND NOTHING ELSE. An opener
 /// carrying a quoted title or a `[label]` - `::: figure "T"`, `::: figure [g]` -
 /// does not match that production and stays an `admonition` of kind `figure`, a
-/// generic Tier-2 container.
+/// generic Tier-2 container. Other words after it are ignored (C2-B-122).
 ///
 /// So the word alone cannot decide it, and a token in `grammar.js` could not
 /// either: tree-sitter's lexer chooses between two tokens before the parser has
@@ -17246,7 +17246,9 @@ static bool parse_figure_group_marker(Scanner *s, TSLexer *lexer) {
   while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
     advance(s, lexer);
   }
-  if (!glued_tail && !at_line_end(lexer) && !lexer->eof(lexer)) {
+  // Only a quoted title or a label first makes it an admonition; further
+  // words or a brace block are ignored (C2-B-122).
+  if (!glued_tail && (lexer->lookahead == '"' || lexer->lookahead == '[')) {
     return false;
   }
   // The container the word decided. Recorded on the block rather than derived

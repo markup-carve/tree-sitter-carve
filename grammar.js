@@ -1465,7 +1465,7 @@ module.exports = grammar({
               ),
             ),
             // COMPOSITE FIGURE GROUP (PART 9 §4c): the fence, its separator,
-            // the word `figure`, and NOTHING else. `figure` is RESERVED among
+            // the word `figure`, and no title or label. `figure` is RESERVED among
             // the `:::` kind words, so a BARE opener is one figure of ordered
             // panels rather than an admonition - while `::: figure "T"` and
             // `::: figure [g]` do NOT match that production and stay an
@@ -1488,9 +1488,18 @@ module.exports = grammar({
             // named the line block and the local hard-break block
             // (markup-carve/carve-grammars#311): the marker that SELECTS the
             // container is the construct's name.
-            field(
-              "figure_group_marker",
-              alias($._figure_group_marker, $.figure_group_marker),
+            // Words or a brace block after the word are ignored (C2-B-122).
+            seq(
+              field(
+                "figure_group_marker",
+                alias($._figure_group_marker, $.figure_group_marker),
+              ),
+              optional(
+                field(
+                  "invalid_metadata",
+                  alias($._container_invalid_metadata, $.invalid_metadata),
+                ),
+              ),
             ),
             // ADMONITION, with an optional quoted custom title and an optional
             // bracketed [label] (a grouping id; PART 9 §12).
