@@ -11304,9 +11304,12 @@ static bool parse_open_curly_bracket(Scanner *s, TSLexer *lexer,
   // though the line's indent still reads what the line began with. A marker
   // attribute (`-{#k} {#h}`) counts zero toward that column, so the block can
   // sit past it; nothing else on a marker line reaches here in block position.
+  // Only a block attribute reads them: a column read rescans the line, once
+  // per `{` of an item's long line otherwise (#790).
+  bool block_attribute = valid_symbols[BLOCK_ATTRIBUTE_BEGIN];
   bool in_item = list_item_open(s);
-  uint32_t brace_column = in_item ? line_column(s, lexer) : 0;
-  bool on_marker_line =
+  uint32_t brace_column = in_item && block_attribute ? line_column(s, lexer) : 0;
+  bool on_marker_line = block_attribute &&
       s->marker_end_col != 0 && line_column(s, lexer) >= s->marker_end_col;
   uint8_t quote_markers = s->block_quote_level;
   // Only consume the `{`, if successful.
@@ -18364,6 +18367,18 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
       s->mid_line = false;
       s->past_opener = false;
     }
+    // A quote's prefix holds only `>` and blanks, so an inline token behind
+    // any other character is past the quote's content column for the rest of
+    // its line: the indent check would reread the column at every later space
+    // (#790). `_mid_line_space` clears the count the same way. A row keeps
+    // it: its cells are measured from the quote prefix.
+    TokenType emitted = (TokenType)lexer->result_symbol;
+    if (s->block_quote_level > 0 && !crossed && keeps_probe_notes(emitted) &&
+        !valid_symbols[ERROR] && !find_block(s, TABLE_ROW) &&
+        (last >= 0 ? last != ' ' && last != '\t' && last != '>' && last != '\n' && last != '\r'
+                   : behind_opener_char(emitted) || emitted == IN_FALLBACK ||
+                         emitted == BRACED_FALLBACK))
+      s->block_quote_level = 0;
     if (!keeps_inline_notes(lexer->result_symbol)) {
       s->caret_ordinary = 0;
       if (!s->open_inline->size) s->root_phantoms = 0;
