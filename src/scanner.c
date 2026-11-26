@@ -453,10 +453,8 @@ static const uint8_t BLOCK_FLAG_FENCE_UNCLOSED_IN_DIV = 1 << 1;
 static const uint8_t BLOCK_FLAG_RAW_FENCE = 1 << 2;
 // Lists only: three or more blank lines stand before the current line.
 static const uint8_t BLOCK_FLAG_LIST_HARD_BOUNDARY = 1 << 1;
-// Lists only, the comment ownership of PART 9 section 24 C3: the item's
-// paragraph was just closed by a comment line (an ordinary-line claim), or the
-// previous line was a comment consumed below the content column (retention).
-static const uint8_t BLOCK_FLAG_LIST_COMMENT_CLAIM = 1 << 3;
+// Lists only: the previous line was an unclosed comment block opened below
+// the content column (retention).
 static const uint8_t BLOCK_FLAG_LIST_COMMENT_RETAINS = 1 << 4;
 // Lists other than LIST_DEFINITION, sharing bit 0 with
 // `BLOCK_FLAG_BODY_OWNED_BY_FENCE`: the current line is a follower kept below
@@ -467,9 +465,9 @@ static const uint8_t BLOCK_FLAG_LIST_TEXT_LINE = 1 << 0;
 static const uint8_t BLOCK_FLAG_LIST_ATTACHED_ATTRIBUTE = 1 << 7;
 // A prefixed `+` at every open quote level belongs to this quoted item.
 static const uint8_t BLOCK_FLAG_LIST_FULL_QUOTE_PLUS = 1 << 6;
-// A literal, not the two names above: C (and MSVC) rejects a static const
+// A literal, not the name above: C (and MSVC) rejects a static const
 // initialized from other const objects.
-static const uint8_t LIST_COMMENT_FLAGS = (1 << 3) | (1 << 4);
+static const uint8_t LIST_COMMENT_FLAGS = 1 << 4;
 // TABLE_ROW only: raw cell capture may clear this after a later cell boundary.
 // Keep it separate from ATTACHED, which must survive until the row ends.
 static const uint8_t BLOCK_FLAG_TABLE_ROW_BOUNDARY_SAFE = 1 << 3;
@@ -11930,11 +11928,6 @@ static bool scan_fenced_comment_at_paragraph_end(Scanner *s, TSLexer *lexer) {
     if (!comment_line_is_erased(s, lexer)) return true;
     s->erasable_line = true;
     return false;
-  }
-  Block *top = peek_block(s);
-  if (top && is_list(top->type) &&
-      !(top->type == LIST_DEFINITION && (top->flags & BLOCK_FLAG_DEFINITION_TERM))) {
-    top->flags |= BLOCK_FLAG_LIST_COMMENT_CLAIM;
   }
   return true;
 }
