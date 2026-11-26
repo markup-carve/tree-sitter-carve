@@ -225,11 +225,6 @@ typedef enum {
   // decision needs the REST OF THE LINE - see `parse_caption_begin`.
   CAPTION_BEGIN,
 
-  // A SUBSTITUTION's three marks. Appended last for the same index reason as
-  // the tokens above them. See `substitution_arrow_ahead`.
-  SUBSTITUTION_BEGIN,
-  SUBSTITUTION_ARROW,
-  SUBSTITUTION_END,
   // The literal reading of a braced marker opener. See `braced_closer_ahead`.
   BRACED_FALLBACK,
   EM_DASH_IN_DELETE,
@@ -540,10 +535,6 @@ typedef enum {
   // A separate type keeps the note out of that count, which is right anyway:
   // the note is a construct, not a bracket run.
   INLINE_NOTE,
-  // `{~ from ~> to ~}`. Its own type rather than a strikethrough: the two share
-  // an opener, and which one a `{~` starts depends on whether a TOP-LEVEL arrow
-  // follows it (corpus 472).
-  SUBSTITUTION,
   EXTENSION,
 } InlineType;
 
@@ -582,7 +573,7 @@ enum {
 };
 
 // serialized inline types must fit in six bits
-CARVE_STATIC_ASSERT(SUBSTITUTION < 0x40);
+CARVE_STATIC_ASSERT(EXTENSION < 0x40);
 // serialized inline flags must fit in two bits
 CARVE_STATIC_ASSERT((INLINE_BRACED | INLINE_STOPS_AT_SPAN_CLOSER) < 0x04);
 
@@ -2792,9 +2783,6 @@ static char span_verbatim_stop_marker(const Inline *e) {
       (e->flags & (INLINE_BRACED | INLINE_EXTENSION_CUT)) ==
           (INLINE_BRACED | INLINE_EXTENSION_CUT) &&
       (e->literal_closes & INLINE_CUT_CODE)) return 2;
-  if (e->type == SUBSTITUTION) {
-    return '~';
-  }
   if (!(e->flags & INLINE_BRACED)) {
     return e->literal_closes && e->type >= EMPHASIS && e->type <= HIGHLIGHTED ? 3 : 0;
   }
@@ -4082,14 +4070,11 @@ typedef enum {
 
 /// Read a run to its end, from the character after its opening ticks.
 ///
-/// Two callers ask this, and THEY HAVE TO AGREE. `parse_verbatim_content`
-/// needs the answer before it starts scanning, because it marks as it goes and
+/// `parse_verbatim_content` needs the answer before it starts scanning, because it marks as it goes and
 /// a mark only ever moves forward: by the time a span closer turns out to be
 /// the end of the content, the position is behind it. A matching run still
 /// wins wherever one comes first - `{*`a*}`b*}` is one strong over the code
 /// span `a*}` - which is what rules out deciding it while scanning.
-/// `substitution_arrow_ahead` needs the same reading of the same run, or a
-/// `{~` commits to a substitution whose arrow no token can produce.
 static bool paragraph_block_opener_ahead(Scanner *s, TSLexer *lexer, int markers_seen);
 static bool scan_continuation_marker_at_paragraph_end(Scanner *s,
                                                       TSLexer *lexer,
@@ -15142,7 +15127,7 @@ static bool extension_payload_close(Scanner *s, TSLexer *host, uint32_t *remaini
   for (int i = s->open_inline->size - 1; i >= 0; --i) {
     Inline *span = *array_get(s->open_inline, i);
     if ((span->flags & INLINE_BRACED) &&
-        ((span->type >= EMPHASIS && span->type <= DELETE) || span->type == SUBSTITUTION)) {
+        span->type >= EMPHASIS && span->type <= DELETE) {
       enclosing_marker = inline_marker(span->type);
       break;
     }
@@ -15882,161 +15867,6 @@ static bool update_square_bracket_lookahead_states(Scanner *s, TSLexer *lexer,
   return balanced;
 }
 
-/// Does a TOP-LEVEL `~>` stand between here and this run's `~}`?
-///
-/// Asked at the character after a `{~`, which is where the construct is still
-/// undecided: corpus 472 makes `{~ ... ~}` a SUBSTITUTION when a top-level arrow
-/// splits it and an ordinary strikethrough when none does. Top-level means
-/// outside everything whose content is verbatim - a code span, a math run, an
-/// inline literal, an editorial or braced comment - and not behind a backslash.
-/// `{~`a~>b~}` is therefore a strikethrough over one code span, and
-/// `{~$`a~>b`~>c~}` a substitution split at its SECOND arrow.
-///
-/// A blank line ends the search, because the run does not cross one.
-///
-/// THIS READER AND THE INLINE GRAMMAR HAVE TO AGREE about what is verbatim and
-/// what is escaped. Where they do not, the opener commits to a substitution
-/// whose `~>` no token can then produce, and the parser churns through error
-/// recovery instead of building anything - measured by breaking either rule here
-/// on purpose. Both sides read the same two: a run of n backticks closes on the
-/// next run of n, and a backslash takes the character behind it.
-static bool probe_substitution_arrow_ahead(Scanner *s, TSLexer *lexer, bool *closed, BracketProbe *probe) {
-  bool in_bracket = find_inline(s, LITERAL_BRACKET) || find_inline(s, SQUARE_BRACKET_SPAN) || find_inline(s, INLINE_NOTE) || find_inline(s, EXTENSION);
-  bool arrow = false;
-  unsigned brackets = 0;
-  while (!lexer->eof(lexer)) {
-    if (at_line_end(lexer)) {
-      consume_line_end(s, lexer);
-      uint8_t indent = consume_whitespace(s, lexer);
-      if (lexer->eof(lexer) || at_line_end(lexer) ||
-          (probe && caption_line_ends_block(s, probe, indent))) {
-        return false;
-      }
-      continue;
-    }
-    if (lexer->lookahead == '\\') {
-      advance(s, lexer);
-      if (!lexer->eof(lexer) && !at_line_end(lexer)) {
-        advance(s, lexer);
-      }
-      continue;
-    }
-    if (lexer->lookahead == '`') {
-      // A run of n backticks closes on the next run of exactly n. An
-      // UNTERMINATED one ends at this run's own `~}`, which is what makes
-      // `{~`a~>b~}` a strikethrough: the arrow never comes back to top level.
-      // Read by the same function the content token uses, so the two cannot
-      // drift apart.
-      uint8_t width = consume_chars(s, lexer, '`');
-      VerbatimRunEnd end = read_verbatim_run(s, lexer, width, '~',
-                                              find_block(s, TABLE_ROW) != NULL);
-      if (end != VerbatimRunCloses) {
-        *closed = end == VerbatimRunReachesSpanCloser;
-        return false;
-      }
-      continue;
-    }
-    if (lexer->lookahead == '{') {
-      advance(s, lexer);
-      if (lexer->lookahead != '#' && lexer->lookahead != '%') {
-        continue;
-      }
-      char opener = (char)lexer->lookahead;
-      advance(s, lexer);
-      while (!lexer->eof(lexer)) {
-        if (probe && at_line_end(lexer)) {
-          consume_line_end(s, lexer);
-          uint8_t indent = consume_whitespace(s, lexer);
-          if (lexer->eof(lexer) || at_line_end(lexer) || caption_line_ends_block(s, probe, indent)) return false;
-          continue;
-        }
-        if (lexer->lookahead == opener) {
-          advance(s, lexer);
-          if (lexer->lookahead == '}') {
-            advance(s, lexer);
-            break;
-          }
-          continue;
-        }
-        advance(s, lexer);
-      }
-      continue;
-    }
-    if (lexer->lookahead == '<') {
-      advance(s, lexer);
-      bool crossref = false;
-      if (lexer->lookahead == '/') {
-        advance(s, lexer);
-        if (lexer->lookahead == '#') {
-          crossref = true;
-          advance(s, lexer);
-        }
-      }
-      bool body = false;
-      bool scheme = false;
-      bool email = false;
-      bool email_dot = false;
-      bool email_invalid = false;
-      bool inner_arrow = false;
-      bool inner_closer = false;
-      while (!lexer->eof(lexer) && !at_line_end(lexer) &&
-             lexer->lookahead != '>' && lexer->lookahead != ' ') {
-        int32_t current = lexer->lookahead;
-        body = true;
-        if (current == ':') scheme = true;
-        if (current == '@') email = true;
-        if (current == '.' && email) email_dot = true;
-        if (current == '~' && email) email_invalid = true;
-        advance(s, lexer);
-        if (current == '~' && lexer->lookahead == '>') inner_arrow = true;
-        if (current == '~' && lexer->lookahead == '}') inner_closer = true;
-      }
-      bool closed_angle = lexer->lookahead == '>';
-      if (closed_angle) advance(s, lexer);
-      if (closed_angle && body && (crossref || scheme || (email && email_dot && !email_invalid)))
-        continue;
-      if (inner_arrow) return true;
-      if (inner_closer) {
-        *closed = true;
-        return arrow;
-      }
-      continue;
-    }
-    if (lexer->lookahead == '[') ++brackets;
-    if (lexer->lookahead == ']') {
-      if (brackets) {
-        --brackets;
-        if (!brackets) arrow = false;
-      }
-      else if (in_bracket) return false;
-    }
-    if (lexer->lookahead == '~') {
-      advance(s, lexer);
-      if (lexer->lookahead == '>') {
-        if (!in_bracket && !brackets) return true;
-        arrow = true;
-      }
-      if (lexer->lookahead == '}') {
-        *closed = true;
-        return arrow;
-      }
-      continue;
-    }
-    advance(s, lexer);
-  }
-  return false;
-}
-
-static bool substitution_arrow_ahead(Scanner *s, TSLexer *lexer, bool *closed) {
-  if (!in_caption(s) && !find_inline(s, EXTENSION)) return probe_substitution_arrow_ahead(s, lexer, closed, NULL);
-  if (lexer->advance == bracket_probe_advance)
-    return probe_substitution_arrow_ahead(s, lexer, closed, (BracketProbe *)lexer);
-  BracketProbe probe = bracket_probe_new(s, lexer);
-  bool arrow = probe_substitution_arrow_ahead(s, &probe.lexer, closed, &probe);
-  array_delete(&probe.characters);
-  return arrow;
-}
-
 // Bare emphasis has no intervening strong closer before this cache ends.
 #define AFTER_COMBINED_CLOSER (UINT8_MAX - 4)
 // A note's column when only the token right behind its writer reads it: the
@@ -16136,60 +15966,6 @@ static bool parse_attributed_span_mark_begin(Scanner *s, TSLexer *lexer,
     push_inline_flagged(s, SQUARE_BRACKET_SPAN, 0, INLINE_BRACED);
   }
   lexer->result_symbol = SQUARE_BRACKET_SPAN_MARK_BEGIN;
-  return true;
-}
-
-/// WHICH RUN A `{~` OPENS, asked zero-width at the character behind it.
-///
-/// `_substitution_begin` is valid in exactly one place - right there - so the
-/// question and its two answers are settled in one call. The reader moves the
-/// lexer to the end of the run, which is why BOTH answers are given here rather
-/// than left to the probes further down: those would read from wherever this
-/// one stopped.
-static bool parse_substitution_or_strikethrough(Scanner *s, TSLexer *lexer,
-                                              const bool *valid_symbols) {
-  // Zero-width, whatever the reader below advances over.
-  mark_end(s, lexer);
-  if (carve_is_grapheme_extender(lexer->lookahead)) {
-    if (!valid_symbols[BRACED_FALLBACK]) return false;
-    lexer->result_symbol = BRACED_FALLBACK;
-    return true;
-  }
-  bool closed = false;
-  if (substitution_arrow_ahead(s, lexer, &closed)) {
-    push_inline_flagged(s, SUBSTITUTION, 0, INLINE_BRACED);
-    lexer->result_symbol = SUBSTITUTION_BEGIN;
-    return true;
-  }
-  if (!closed) {
-    if (!valid_symbols[BRACED_FALLBACK]) return false;
-    lexer->result_symbol = BRACED_FALLBACK;
-    return true;
-  }
-  return valid_symbols[STRIKETHROUGH_MARK_BEGIN] &&
-         mark_span_begin(s, lexer, valid_symbols, STRIKETHROUGH,
-                         STRIKETHROUGH_MARK_BEGIN);
-}
-
-/// The `~>` that splits the halves, and the `~}` that ends the run. Both are
-/// offered only while the substitution is the innermost open span, which is what
-/// keeps an arrow inside one of its own halves' constructs from reaching them.
-static bool parse_substitution_mark(Scanner *s, TSLexer *lexer, char second,
-                                    TokenType token) {
-  Inline *top = peek_inline(s);
-  if (!top || top->type != SUBSTITUTION || lexer->lookahead != '~') {
-    return false;
-  }
-  advance(s, lexer);
-  if (lexer->lookahead != second) {
-    return false;
-  }
-  advance(s, lexer);
-  mark_end(s, lexer);
-  if (token == SUBSTITUTION_END) {
-    remove_inline(s);
-  }
-  lexer->result_symbol = token;
   return true;
 }
 
@@ -16396,7 +16172,7 @@ static bool mark_span_begin(Scanner *s, TSLexer *lexer,
         return false;
       }
       Inline *around = innermost_braced(s);
-      bool in_braced = around != NULL && around->type != SUBSTITUTION;
+      bool in_braced = around != NULL;
 
       if (in_braced || find_block(s, TABLE_ROW) != NULL) {
         // The scan below only LOOKS; the mark pins this zero-width token where
@@ -16863,8 +16639,7 @@ static bool block_reading_ahead(int32_t c, const bool *valid_symbols) {
 static bool marker_of_open_inline(Scanner *s, int32_t c) {
   for (int i = s->open_inline->size - 1; i >= 0; --i) {
     Inline *e = *array_get(s->open_inline, i);
-    if ((int32_t)inline_marker(e->type) == c ||
-        (e->type == SUBSTITUTION && c == '~')) {
+    if ((int32_t)inline_marker(e->type) == c) {
       return true;
     }
   }
@@ -16874,24 +16649,17 @@ static bool marker_of_open_inline(Scanner *s, int32_t c) {
 /// Is this character the start of the closer of something that is open?
 ///
 /// The pass may only swallow a delimiter that opens and closes nothing. A
-/// bold-italic takes `*/`, a substitution `~>` and `~}`, a braced span `X}`,
+/// bold-italic takes `*/`, a braced span `X}`,
 /// and a bare span its own marker where no alphanumeric follows - so each of
 /// those characters belongs to its construct and not to this run.
 static bool open_closer_starts_here(Scanner *s, int32_t c, int32_t next) {
   for (int i = s->open_inline->size - 1; i >= 0; --i) {
     Inline *e = *array_get(s->open_inline, i);
-    if ((int32_t)inline_marker(e->type) != c &&
-        !(e->type == SUBSTITUTION && c == '~')) {
+    if ((int32_t)inline_marker(e->type) != c) {
       continue;
     }
     if (e->type == BOLD_ITALIC) {
       if (next == '/') {
-        return true;
-      }
-      continue;
-    }
-    if (e->type == SUBSTITUTION) {
-      if (next == '>' || next == '}') {
         return true;
       }
       continue;
@@ -16923,7 +16691,7 @@ static bool zero_width_mark_pending(const bool *valid_symbols) {
       DELETE_MARK_BEGIN,         BOLD_ITALIC_MARK_BEGIN,
       PARENS_SPAN_MARK_BEGIN,    CURLY_BRACKET_SPAN_MARK_BEGIN,
       SQUARE_BRACKET_SPAN_MARK_BEGIN, INLINE_NOTE_MARK_BEGIN,
-      SUBSTITUTION_BEGIN, ATTRIBUTED_SPAN_MARK_BEGIN,
+      ATTRIBUTED_SPAN_MARK_BEGIN,
   };
   for (size_t i = 0; i < sizeof(marks) / sizeof(marks[0]); ++i) {
     if (valid_symbols[marks[i]]) {
@@ -18578,21 +18346,8 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
        lexer->lookahead == '\t')) return parse_term_comment(s, lexer);
 
 
-  // FIRST, and it answers for the whole call: the reader it runs moves the
-  // lexer to the end of the run, so nothing below could read from where it
-  // started. See `parse_substitution_or_strikethrough`.
-  // Not in error recovery, where every symbol reads as valid: this branch
-  // pushes an inline entry and emits a zero-width token, so taking it there
-  // repeats at the same position without consuming input, the stack growing
-  // each time, and the parse never ends (#321). The ERROR branch below is what
-  // recovery must reach.
-  if (valid_symbols[SUBSTITUTION_BEGIN] && !valid_symbols[ERROR]) {
-    return parse_substitution_or_strikethrough(s, lexer, valid_symbols);
-  }
-
   // A BRACED marker opener, asked from the branch that would read it as text.
-  // `braced_closer_ahead` moves the lexer, so this answers for the whole call,
-  // the same way the substitution reader above does.
+  // `braced_closer_ahead` moves the lexer, so this answers for the whole call.
   // A dash run inside a braced delete, directly before its closer. Longest
   // match would take `--` or `---` and leave the `-}` without its `-`, so the
   // scanner places the token end itself: the run minus the closer's dash, as
@@ -19530,17 +19285,6 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   }
 
   if (valid_symbols[LANGUAGE_ATTRIBUTE] && parse_language_attribute(s, lexer)) {
-    return true;
-  }
-
-  // Before the spans: while a substitution is the innermost open run, its own
-  // `~>` and `~}` are its marks and not a strikethrough's.
-  if (valid_symbols[SUBSTITUTION_ARROW] &&
-      parse_substitution_mark(s, lexer, '>', SUBSTITUTION_ARROW)) {
-    return true;
-  }
-  if (valid_symbols[SUBSTITUTION_END] &&
-      parse_substitution_mark(s, lexer, '}', SUBSTITUTION_END)) {
     return true;
   }
 
