@@ -16713,11 +16713,10 @@ static void take_plain_pair_note(Scanner *s, BracketProbe *probe) {
   while (!lexer->eof(lexer) && !extension_closes_here(s, lexer)) {
     int32_t c = lexer->lookahead;
     if (at_line_end(lexer)) {
-      Block *host = peek_block(s);
-      if (host && (host->type == HEADING || disallow_newline(host))) break;
+      if (one_line_host(s)) break;
       consume_line_end(s, lexer);
-      while (lexer->lookahead == ' ' || lexer->lookahead == '\t') advance(s, lexer);
-      if (at_line_end(lexer)) break;
+      uint16_t indent = consume_whitespace(s, lexer);
+      if (at_line_end(lexer) || probe_line_ends_paragraph(s, probe, indent)) break;
       continue;
     }
     if (c == '\\') {
