@@ -2,7 +2,7 @@
 C2-I-059: a mark inside a code span is no opener
 ================================================================================
 
-*a ` b *a ` b *a ` b* c
+*a ` b *a ` b* c ` d *e ` f
 
 --------------------------------------------------------------------------------
 
@@ -15,4 +15,8 @@ C2-I-059: a mark inside a code span is no opener
           begin_marker: (verbatim_marker_begin)
           content: (content)
           end_marker: (verbatim_marker_end)))
-      end_marker: (strong_end))))
+      end_marker: (strong_end))
+    (verbatim
+      begin_marker: (verbatim_marker_begin)
+      content: (content)
+      end_marker: (verbatim_marker_end))))
