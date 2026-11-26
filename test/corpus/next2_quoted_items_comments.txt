@@ -175,7 +175,7 @@ C2-B-170: a quoted row short of the item ends the item's table
           (table_cell))))))
 
 ================================================================================
-C2-B-137: a column-0 comment line after a heading keeps the item
+C2-B-154: a column-0 comment line after a heading in an item is a child of the heading
 ================================================================================
 
 - # h
@@ -191,8 +191,8 @@ C2-B-137: a column-0 comment line after a heading keeps the item
       content: (list_item_content
         (heading
           marker: (marker)
-          content: (content))
-        (comment_line)
+          content: (content
+            (comment_line)))
         (paragraph)))))
 
 ================================================================================
@@ -241,7 +241,7 @@ C2-B-137: a column-0 comment line after a table keeps the item
         (paragraph)))))
 
 ================================================================================
-C2-B-137: a line short of the item after a heading and a comment line ends the item
+C2-B-154: a line short of the item after a heading and its comment line ends the item
 ================================================================================
 
 - # h
@@ -257,8 +257,8 @@ para
       content: (list_item_content
         (heading
           marker: (marker)
-          content: (content))
-        (comment_line))))
+          content: (content
+            (comment_line))))))
   (paragraph))
 
 ================================================================================

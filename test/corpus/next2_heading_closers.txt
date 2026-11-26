@@ -1,0 +1,104 @@
+================================================================================
+C2-B-154: a div directly below a heading opens after the heading
+================================================================================
+
+# H
+::: note
+x
+:::
+
+--------------------------------------------------------------------------------
+
+(document
+  (section
+    heading: (heading
+      marker: (marker)
+      content: (content))
+    content: (section_content
+      (div
+        (div_marker_begin)
+        type: (admonition_type)
+        content: (content
+          (paragraph))
+        (div_marker_end)))))
+
+================================================================================
+C2-B-154: a description list directly below a heading opens after the heading
+================================================================================
+
+# H
+:: t
+: d
+
+--------------------------------------------------------------------------------
+
+(document
+  (section
+    heading: (heading
+      marker: (marker)
+      content: (content))
+    content: (section_content
+      (definition_list
+        (list_item
+          marker: (list_marker_definition)
+          term: (term))
+        (list_item
+          marker: (list_marker_description)
+          definition: (definition))))))
+
+================================================================================
+C2-B-154: a line block directly below a heading opens after the heading
+================================================================================
+
+## H
+::: |
+l
+:::
+
+--------------------------------------------------------------------------------
+
+(document
+  (section
+    heading: (heading
+      marker: (marker)
+      content: (content))
+    content: (section_content
+      (div
+        (div_marker_begin)
+        line_block_marker: (line_block_marker)
+        content: (content
+          (paragraph))
+        (div_marker_end)))))
+
+================================================================================
+C2-B-154: a figure group directly below a heading in an item opens after the heading
+================================================================================
+
+- # H
+  ::: figure
+  ![a](i.png)
+  ^ (a) p
+  :::
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (heading
+          marker: (marker)
+          content: (content))
+        (div
+          (div_marker_begin)
+          figure_group_marker: (figure_group_marker)
+          content: (content
+            (paragraph
+              (inline_image
+                description: (image_description)
+                destination: (inline_link_destination)))
+            (caption
+              (caption_marker)
+              content: (caption_content)))
+          (div_marker_end))))))
