@@ -15333,9 +15333,20 @@ static bool probe_line_ends_paragraph(Scanner *s, BracketProbe *probe, uint16_t 
   if (in_caption(s)) return caption_line_ends_block(s, probe, indent);
   uint32_t restart = probe->position;
   Scanner saved = *s;
+  // `close_paragraph` may also mark open blocks and spans (a quote's lazy drop).
+  Array(Block) blocks = array_new();
+  Array(Inline) inlines = array_new();
+  for (uint32_t i = 0; i < s->open_blocks->size; ++i) array_push(&blocks, **array_get(s->open_blocks, i));
+  for (uint32_t i = 0; i < s->open_inline->size; ++i) array_push(&inlines, **array_get(s->open_inline, i));
   s->indent = indent;
   s->erasable_line = false;
   bool ends = close_paragraph(s, &probe->lexer);
+  for (uint32_t i = 0; i < blocks.size && i < s->open_blocks->size; ++i)
+    **array_get(s->open_blocks, i) = blocks.contents[i];
+  for (uint32_t i = 0; i < inlines.size && i < s->open_inline->size; ++i)
+    **array_get(s->open_inline, i) = inlines.contents[i];
+  array_delete(&blocks);
+  array_delete(&inlines);
   // The host moved only where the probe pulled characters from it.
   Scanner read = *s;
   *s = saved;
