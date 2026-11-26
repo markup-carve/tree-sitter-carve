@@ -15441,6 +15441,17 @@ static bool probe_open_holds_note(const BracketProbe *probe, const uint32_t *ope
   return false;
 }
 
+// Bit of `bracket_pair_span`: the probe read a stretch holding a `[` as one
+// atom (a comment, a code span, a caret pair's label). A token stream that
+// reads it as text opens there, so the note does not outlive a comment token.
+#define BRACKET_NOTE_ATOM_OPEN (UINT32_C(1) << 31)
+
+static bool probe_holds_open(const BracketProbe *probe, uint32_t from, uint32_t to) {
+  for (uint32_t i = from; i < to && i < probe->characters.size; ++i)
+    if (probe->characters.contents[i].character == '[') return true;
+  return false;
+}
+
 static bool scan_qualified_bracket_close(Scanner *s, BracketProbe *probe, InlineType *top) {
   TSLexer *lexer = &probe->lexer;
   bool in_row = find_block(s, TABLE_ROW) != NULL;
@@ -15452,6 +15463,9 @@ static bool scan_qualified_bracket_close(Scanner *s, BracketProbe *probe, Inline
   uint32_t widest = 0;
   bool line_read = false;
   bool natural_end = false;
+  // A stretch read as one atom held a `[`, which the token stream may read
+  // as text (a mid-paragraph line comment): see `BRACKET_NOTE_ATOM_OPEN`.
+  bool hidden_open = false;
   uint32_t root = probe->position &&
       probe->characters.contents[probe->position - 1].character == '['
       ? probe->position - 1 : UINT32_MAX;
@@ -15471,7 +15485,7 @@ static bool scan_qualified_bracket_close(Scanner *s, BracketProbe *probe, Inline
   while (!lexer->eof(lexer)) {
     // Past the noted span no `]` can close the opener: what lies between
     // holds openers whose answers the note does not give, so none is cached.
-    if (span_bound && probe->position - start > s->bracket_pair_span) {
+    if (span_bound && probe->position - start > (s->bracket_pair_span & ~BRACKET_NOTE_ATOM_OPEN)) {
       --probe->bracket_scans;
       array_delete(&open);
       return false;
@@ -15523,6 +15537,7 @@ static bool scan_qualified_bracket_close(Scanner *s, BracketProbe *probe, Inline
         if (footnote_label_ahead(s, lexer)) {
           // The label's own scan from behind its `[^` is bounded by the note.
           if (probe->position - 1 - at > widest) widest = probe->position - 1 - at;
+          hidden_open = hidden_open || probe_holds_open(probe, at + 1, probe->position);
           continue;
         }
         if (lexer->lookahead == ']') continue;
@@ -15539,7 +15554,9 @@ static bool scan_qualified_bracket_close(Scanner *s, BracketProbe *probe, Inline
       // an image's alt text is source (C2-I-074).
       advance(s, lexer);
       if (lexer->lookahead == '%') {
+        uint32_t from = probe->position;
         while (!lexer->eof(lexer) && !at_line_end(lexer)) advance(s, lexer);
+        hidden_open = hidden_open || probe_holds_open(probe, from, probe->position);
       }
     } else if (c == '`') {
       uint8_t width = consume_chars(s, lexer, '`');
@@ -15550,6 +15567,8 @@ static bool scan_qualified_bracket_close(Scanner *s, BracketProbe *probe, Inline
         // An unclosed run is text and the scan goes on behind it (C2-I-119).
         bracket_probe_rewind(probe, behind);
         s->col_base = base;
+      } else {
+        hidden_open = hidden_open || probe_holds_open(probe, behind, probe->position);
       }
     } else if (c == '{') {
       advance(s, lexer);
@@ -15591,6 +15610,8 @@ static bool scan_qualified_bracket_close(Scanner *s, BracketProbe *probe, Inline
         probe->no_comment_close_from[comment] = restart;
         bracket_probe_rewind(probe, restart);
         s->col_base = base;
+      } else {
+        hidden_open = hidden_open || probe_holds_open(probe, restart, probe->position);
       }
     } else if (c == '|' && in_row) {
       const BracketProbeCharacter *current = &probe->characters.contents[probe->position];
@@ -15619,7 +15640,7 @@ failed:
   // leaves no note: the token at the host may carry it to earlier openers.
   if (noted && start == 0 && line_read && open.size && (!in_row || row_probe_end_shared(probe, start))) {
     s->bracket_span_note = true;
-    s->bracket_pair_span = widest;
+    s->bracket_pair_span = widest | (hidden_open ? BRACKET_NOTE_ATOM_OPEN : 0);
     // A row probe ends at a pipe or the line end, past any end marker's reach.
     s->bracket_note_natural = in_row || natural_end;
     s->bracket_note_scope = bracket_note_scope(s, s->bracket_note_natural, top);
@@ -18162,6 +18183,20 @@ static bool keeps_probe_notes(TokenType token) {
   }
 }
 
+// A comment that closes on its opening line is one atom to a bracket probe
+// too, so its tokens change no text a later probe reads (#791).
+static bool comment_token_on_one_line(const Scanner *s, TokenType token) {
+  if (s->bracket_pair_span & BRACKET_NOTE_ATOM_OPEN) return false;
+  switch (token) {
+  case BRACED_COMMENT_BEGIN: case EDITORIAL_COMMENT_BEGIN: case COMMENT_BODY_PERCENT:
+  case COMMENT_BODY_HASH: case COMMENT_HASH_END_MARKER: case COMMENT_END_MARKER:
+  case COMMENT_CLOSE:
+    return s->comment_one_line;
+  default:
+    return false;
+  }
+}
+
 // The column the host started this scan call at, from where it stands now.
 static uint32_t scan_start_column(Scanner *s, TSLexer *lexer) {
   if (s->host_crossed_line || s->host_jumped) return UINT32_MAX >> 1;
@@ -18388,7 +18423,7 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
       // A note's own tokens change no text a bracket probe reads; whether a
       // note is open is part of the probe's scope (`bracket_note_scope`).
       if (lexer->result_symbol != INLINE_NOTE_MARK_BEGIN && lexer->result_symbol != INLINE_NOTE_BEGIN &&
-          lexer->result_symbol != INLINE_NOTE_END)
+          lexer->result_symbol != INLINE_NOTE_END && !comment_token_on_one_line(s, emitted))
         s->bracket_span_note = s->plain_run_note = false;
     }
     if (!keeps_probe_notes(lexer->result_symbol)) {
