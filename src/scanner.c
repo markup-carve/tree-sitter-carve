@@ -18507,10 +18507,14 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
       // A note's own tokens change no text a bracket probe reads; whether a
       // note is open is part of the probe's scope (`bracket_note_scope`).
       if (lexer->result_symbol != INLINE_NOTE_MARK_BEGIN && lexer->result_symbol != INLINE_NOTE_BEGIN &&
-          lexer->result_symbol != INLINE_NOTE_END && !comment_token_on_one_line(s, emitted))
+          lexer->result_symbol != INLINE_NOTE_END && !comment_token_on_one_line(s, emitted) &&
+          emitted != BLOCK_QUOTE_CONTINUATION)
         s->bracket_span_note = s->plain_run_note = false;
     }
-    if (!keeps_probe_notes(lexer->result_symbol)) {
+    // A probe reads a continuation line's quote prefix as text, so the prefix
+    // token changes nothing a probe read; a paragraph end before it has
+    // cleared the notes already (#790).
+    if (!keeps_probe_notes(lexer->result_symbol) && emitted != BLOCK_QUOTE_CONTINUATION) {
       s->note_probe_note[0] = s->note_probe_note[1] = false;
       s->plain_pair_note = false;
     }
