@@ -32,6 +32,9 @@ static const Shape SHAPES[] = {
     {"[ run in a cell", "| a | ", "[", " |\n"},
     {"[ run in a cell, then a] (x)", "| a | ", "[", "a] (x) |\n"},
     {"[! run in a cell", "| a | ", "[!", " |\n"},
+    {"refused ^[ [b] notes", "", "^[ [b] x ", "\n"},
+    {"refused ^[ [^[b]] notes", "", "^[ [^[b]] x ", "\n"},
+    {"refused ^[ notes, one per line", "", "^[ b x\n", "\n"},
 };
 
 static char *build(const Shape *shape, size_t chars, uint32_t *length) {

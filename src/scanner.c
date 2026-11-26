@@ -754,6 +754,17 @@ typedef struct {
   // plain. Serialized behind bit 13 of `no_closer_kinds`.
   bool plain_run_note;
   uint32_t plain_run_drop;
+  // A note's tie-break probe (index 0 plain, 1 with caret pairs atomic) read
+  // to the paragraph end unclosed, and no pair it closed spans more than
+  // `note_probe_span`: a later `^[` closes within that many characters or not
+  // at all. Paragraph-scoped like `no_closer_kinds`; serialized behind bit 11.
+  bool note_probe_note[2];
+  uint32_t note_probe_span[2];
+  // The same unclosed probe's text paired as `parse_plain_bracket_run` counts
+  // it: no pair spans more than `plain_pair_span`, so a later run that is not
+  // plain and has not closed within that many characters never does.
+  bool plain_pair_note;
+  uint32_t plain_pair_span;
   // Transient: the character behind the host lexer (-1 unknown), the same at
   // the last host `mark_end`, and whether a probe reached a paragraph end.
   int32_t host_previous;
@@ -14998,6 +15009,9 @@ static uint16_t closer_probe_scope(Scanner *s);
 static uint16_t bracket_note_scope(Scanner *s, bool natural, bool top) {
   if (!natural) return (uint16_t)(closer_probe_scope(s) ^ (top ? 0x5a5au : 0));
   uint32_t hash = 2166136261u;
+  // Inside a note a caret pair is no atom (C2-I-089), so the probe reads its
+  // brackets differently there.
+  hash = (hash ^ (find_inline(s, INLINE_NOTE) ? 1u : 0u) ^ (s->caret_ordinary ? 2u : 0u)) * 16777619u;
   hash = (hash ^ s->open_blocks->size) * 16777619u;
   for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
     Block *b = *array_get(s->open_blocks, i);
@@ -15071,6 +15085,7 @@ static bool parse_plain_bracket_run(Scanner *s, TSLexer *lexer) {
   unsigned prefix = 0;
   bool noted = s->plain_run_note && s->bracket_span_note && s->bracket_note_natural &&
                s->bracket_note_scope == bracket_note_scope(s, true, false);
+  uint32_t run_start = s->advances;
   while (lexer->lookahead == '[') {
     mark_end(s, lexer);
     remainder_advances = s->advances;
@@ -15086,6 +15101,10 @@ static bool parse_plain_bracket_run(Scanner *s, TSLexer *lexer) {
   bool punctuation = false;
   bool continued = false;
   while (!lexer->eof(lexer) && !extension_closes_here(s, lexer)) {
+    // See `plain_pair_note`: past it the first `[` closes nothing, and a run
+    // that is not plain then reads as nothing.
+    if (!plain && !have_remainder_column && s->plain_pair_note &&
+        s->advances - run_start > s->plain_pair_span) return false;
     if (at_line_end(lexer)) {
       Block *host = peek_block(s);
       if (host && (host->type == HEADING || disallow_newline(host))) return false;
@@ -15222,39 +15241,78 @@ static bool footnote_label_scan(Scanner *s, TSLexer *lexer, bool *bracket) {
   return false;
 }
 
+// What a note's tie-break probe learns for the `^[` behind it. The probe is a
+// left-to-right reader of the text after its `[`, so every opener it passes
+// pairs with the `]` that opener's own probe would find. Unclosed at the
+// paragraph end, it bounds a later opener's probe by the widest pair it closed
+// (`note_probe_span`), unless it skipped a `[` or read one differently than
+// that opener's own probe would (`hidden`).
+typedef struct {
+  BracketProbe *probe;
+  Array(uint32_t) open;
+  uint32_t widest;
+  bool hidden;
+  bool bounded;
+  uint32_t bound;
+} NoteProbeTrack;
+
+static bool probe_skipped_bracket(const NoteProbeTrack *track, uint32_t from) {
+  for (uint32_t i = from; i < track->probe->position; ++i)
+    if (track->probe->characters.contents[i].character == '[') return true;
+  return false;
+}
+
 static bool probe_scan_until_bracket_close(Scanner *s, TSLexer *lexer,
-                                     InlineType *top, BracketProbe *probe) {
+                                     InlineType *top, BracketProbe *probe,
+                                     NoteProbeTrack *track) {
   // The opening `[` is already consumed by the caller, so we start one level
   // in and are looking for the `]` that brings us back out.
   unsigned depth = 0;
   int32_t last = '[';
   while (!lexer->eof(lexer)) {
+    if (track && track->bounded && track->probe->position > track->bound) return false;
     if (top && scan_span_end_marker(s, lexer, *top)) {
       return false;
     }
     bool after_space = last == ' ' || last == '\t' || last == '\n';
     last = lexer->lookahead;
     if (lexer->lookahead == '%' && after_space) {
+      uint32_t from = track ? track->probe->position : 0;
       // A line comment takes the rest of its line, closers included (C2-I-024).
       advance(s, lexer);
       if (lexer->lookahead == '%') {
         while (!lexer->eof(lexer) && !at_line_end(lexer)) advance(s, lexer);
+        if (track && probe_skipped_bracket(track, from)) track->hidden = true;
       }
     } else if (lexer->lookahead == ']') {
       if (depth == 0) {
         return true;
       }
       depth--;
+      if (track && track->open.size) {
+        uint32_t opener = array_pop(&track->open);
+        if (track->probe->position - opener > track->widest)
+          track->widest = track->probe->position - opener;
+      }
       advance(s, lexer);
     } else if (lexer->lookahead == '[') {
       depth++;
+      uint32_t at = track ? track->probe->position : 0;
+      if (track) array_push(&track->open, at);
       advance(s, lexer);
+      // A `^[^`: the probe of that note starts at the second caret, which it
+      // reads as text, not as a caret pair.
+      if (track && s->probe_footnotes && lexer->lookahead == '^' && at > 0 &&
+          track->probe->characters.contents[at - 1].character == '^')
+        track->hidden = true;
       // A caret pair is atomic, and one with no label opens no pair (C2-I-087).
       if (s->probe_footnotes && lexer->lookahead == '^' &&
           (probe_footnote_label(s, lexer) || lexer->lookahead == ']')) {
         depth--;
         ++s->probe_carets;
+        if (track) array_pop(&track->open);
       }
+      if (track && s->probe_footnotes && probe_skipped_bracket(track, at + 1)) track->hidden = true;
     } else if (lexer->lookahead == '\\') {
       advance(s, lexer);
       advance(s, lexer);
@@ -15274,11 +15332,11 @@ static bool probe_scan_until_bracket_close(Scanner *s, TSLexer *lexer,
 }
 
 static bool scan_until_bracket_close(Scanner *s, TSLexer *lexer, InlineType *top) {
-  if (!in_caption(s) && !find_inline(s, EXTENSION)) return probe_scan_until_bracket_close(s, lexer, top, NULL);
+  if (!in_caption(s) && !find_inline(s, EXTENSION)) return probe_scan_until_bracket_close(s, lexer, top, NULL, NULL);
   if (lexer->advance == bracket_probe_advance)
-    return probe_scan_until_bracket_close(s, lexer, top, (BracketProbe *)lexer);
+    return probe_scan_until_bracket_close(s, lexer, top, (BracketProbe *)lexer, NULL);
   BracketProbe probe = bracket_probe_new(s, lexer);
-  bool closed = probe_scan_until_bracket_close(s, &probe.lexer, top, &probe);
+  bool closed = probe_scan_until_bracket_close(s, &probe.lexer, top, &probe, NULL);
   array_delete(&probe.characters);
   return closed;
 }
@@ -16485,10 +16543,31 @@ static bool probe_square_bracket_lookahead_states(Scanner *s, BracketProbe *prob
   return true;
 }
 
+static bool note_probe(Scanner *s, BracketProbe *probe, unsigned mode);
+
+// `notes`: when the bracket is unbalanced and no note probe has left a note in
+// this paragraph, read its text as a note's `^[` would be read too. A refused
+// `^[` emits no token, so the notes its own probe takes are lost with it; the
+// token of the `[` behind it carries the same notes on to the next `^[` (#787).
 static bool update_square_bracket_lookahead_states(Scanner *s, TSLexer *lexer,
-                                                   Inline *top) {
+                                                   Inline *top, bool notes) {
   BracketProbe probe = bracket_probe_new(s, lexer);
   bool balanced = probe_square_bracket_lookahead_states(s, &probe, top);
+  if (!balanced && notes && !s->note_probe_note[0] && !probe.extension_cut) {
+    uint32_t base = s->col_base;
+    probe.cell_tail = false;
+    bracket_probe_rewind(&probe, 0);
+    bool closed = note_probe(s, &probe, 0);
+    s->col_base = base;
+    if (!closed) {
+      bracket_probe_rewind(&probe, 0);
+      s->probe_footnotes = true;
+      s->probe_carets = 0;
+      note_probe(s, &probe, 1);
+      s->probe_footnotes = false;
+      s->col_base = base;
+    }
+  }
   array_delete(&probe.characters);
   return balanced;
 }
@@ -16567,8 +16646,16 @@ static bool parse_attributed_span_mark_begin(Scanner *s, TSLexer *lexer,
   }
   s->behind_internal_opener = s->host_advances == 0;
   Inline *top = peek_inline(s);
+  // A token follows only in the fallback, and only a root-scope `^[` asks. In
+  // root-scope paragraph text an unbalanced bracket's own probe reads to the
+  // paragraph end as the note probe does, so the note costs no more than it.
+  Block *host = peek_block(s);
+  bool notes = valid_symbols[SQUARE_BRACKET_SPAN_MARK_BEGIN] && valid_symbols[IN_FALLBACK] &&
+               !valid_symbols[ERROR] && !top && !in_caption(s) &&
+               !(host && (host->type == HEADING || host->type == TABLE_ROW ||
+                          disallow_newline(host)));
   bool balanced = update_square_bracket_lookahead_states(s, lexer,
-      top && (top->flags & INLINE_BRACED) && top->type != INLINE_NOTE ? top : NULL);
+      top && (top->flags & INLINE_BRACED) && top->type != INLINE_NOTE ? top : NULL, notes);
   if (balanced && (s->state & STATE_BRACKET_STARTS_SPAN)) {
     push_inline_flagged(s, SQUARE_BRACKET_SPAN, 0, INLINE_BRACED);
     // Qualification belongs to the opener; its content may contain braces.
@@ -17254,6 +17341,46 @@ static bool parse_inline_note_begin(Scanner *s, TSLexer *lexer, const bool *vali
   return parse_inline_note_tie_break(s, lexer, valid_symbols);
 }
 
+// The widest pair of the probed text with only escapes reading differently,
+// which is how `parse_plain_bracket_run` pairs brackets.
+static uint32_t plain_pair_widest(const BracketProbe *probe) {
+  Array(uint32_t) open;
+  array_init(&open);
+  uint32_t widest = 0;
+  for (uint32_t i = 0; i < probe->position && i < probe->characters.size; ++i) {
+    int32_t c = probe->characters.contents[i].character;
+    if (c == '\\') ++i;
+    else if (c == '[') array_push(&open, i);
+    else if (c == ']' && open.size) {
+      uint32_t at = array_pop(&open);
+      if (i - at > widest) widest = i - at;
+    }
+  }
+  array_delete(&open);
+  return widest;
+}
+
+// The tie-break probe of one mode, bounded by the note an earlier unclosed
+// probe in the paragraph left, and leaving one when it reads to the end itself.
+static bool note_probe(Scanner *s, BracketProbe *probe, unsigned mode) {
+  NoteProbeTrack track = {.probe = probe};
+  array_init(&track.open);
+  track.bounded = s->note_probe_note[mode];
+  track.bound = s->note_probe_span[mode];
+  bool closed = probe_scan_until_bracket_close(s, &probe->lexer, NULL, NULL, &track);
+  if (!closed && !track.bounded && !track.hidden) {
+    s->note_probe_note[mode] = true;
+    s->note_probe_span[mode] = track.widest;
+  }
+  // The plain probe read the text to the paragraph end.
+  if (!closed && !track.bounded && mode == 0) {
+    s->plain_pair_note = true;
+    s->plain_pair_span = plain_pair_widest(probe);
+  }
+  array_delete(&track.open);
+  return closed;
+}
+
 static bool parse_inline_note_tie_break(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   // An opener read while 200 entries are open is text (C2-I-118).
   if (inline_depth(s) >= MAX_NESTING_DEPTH) return false;
@@ -17269,7 +17396,7 @@ static bool parse_inline_note_tie_break(Scanner *s, TSLexer *lexer, const bool *
   if (lexer->lookahead == ']') return false;
   BracketProbe probe = bracket_probe_new(s, lexer);
   uint32_t base = s->col_base;
-  bool closed = probe_scan_until_bracket_close(s, &probe.lexer, NULL, NULL);
+  bool closed = note_probe(s, &probe, 0);
   s->col_base = base;
   if (closed) {
     array_delete(&probe.characters);
@@ -17282,7 +17409,7 @@ static bool parse_inline_note_tie_break(Scanner *s, TSLexer *lexer, const bool *
   bracket_probe_rewind(&probe, 0);
   s->probe_footnotes = true;
   s->probe_carets = 0;
-  closed = probe_scan_until_bracket_close(s, &probe.lexer, NULL, NULL);
+  closed = note_probe(s, &probe, 1);
   s->probe_footnotes = false;
   s->col_base = base;
   array_delete(&probe.characters);
@@ -18015,6 +18142,23 @@ static bool keeps_inline_notes(TokenType token) {
   }
 }
 
+// The note probe's notes describe the text to the paragraph end whatever the
+// inline scope, so the tokens that only open or close inline content keep
+// them too. A paragraph ends on a block token, which clears them.
+static bool keeps_probe_notes(TokenType token) {
+  if (keeps_inline_notes(token)) return true;
+  switch (token) {
+  case INLINE_NOTE_MARK_BEGIN: case INLINE_NOTE_BEGIN: case INLINE_NOTE_END:
+  case BOLD_ITALIC_END: case HARD_LINE_BREAK:
+  case BRACED_COMMENT_BEGIN: case EDITORIAL_COMMENT_BEGIN: case COMMENT_BODY_PERCENT:
+  case COMMENT_BODY_HASH: case COMMENT_HASH_END_MARKER: case COMMENT_END_MARKER:
+  case COMMENT_CLOSE:
+    return true;
+  default:
+    return false;
+  }
+}
+
 // The column the host started this scan call at, from where it stands now.
 static uint32_t scan_start_column(Scanner *s, TSLexer *lexer) {
   if (s->host_crossed_line || s->host_jumped) return UINT32_MAX >> 1;
@@ -18226,12 +18370,26 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
       s->no_closer_kinds = 0;
       s->closer_ahead_kinds = 0;
       s->link_tail_open_line = false;
-      s->bracket_span_note = s->plain_run_note = false;
+      // A note's own tokens change no text a bracket probe reads; whether a
+      // note is open is part of the probe's scope (`bracket_note_scope`).
+      if (lexer->result_symbol != INLINE_NOTE_MARK_BEGIN && lexer->result_symbol != INLINE_NOTE_BEGIN &&
+          lexer->result_symbol != INLINE_NOTE_END)
+        s->bracket_span_note = s->plain_run_note = false;
+    }
+    if (!keeps_probe_notes(lexer->result_symbol)) {
+      s->note_probe_note[0] = s->note_probe_note[1] = false;
+      s->plain_pair_note = false;
     }
     if (crossed || lexer->result_symbol == NEWLINE_INLINE) {
       s->link_tail_open_line = false;
       s->closer_ahead_kinds = 0;
-      s->bracket_span_note = s->plain_run_note = false;
+      // A span probe reads on to the paragraph end, so a later line reads a
+      // suffix of its text; the block stack is part of its scope. Where it
+      // stops at the line end, the note holds for that line only.
+      Block *host = peek_block(s);
+      if (find_block(s, TABLE_ROW) || (host && (host->type == HEADING || disallow_newline(host))))
+        s->bracket_span_note = false;
+      s->plain_run_note = false;
     }
   }
   return found;
@@ -18471,11 +18629,15 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       return false;
     }
   }
+  Block *metadata_host = peek_block(s);
+  // The tail is an opener's: error recovery offers it everywhere, and read on
+  // every line of prose it costs the rest of the line per token (#787).
   if (valid_symbols[CONTAINER_INVALID_METADATA] &&
+      (!valid_symbols[ERROR] || metadata_host || !s->mid_line) &&
       !at_line_end(lexer) && !lexer->eof(lexer)) {
     // Let a valid first info token win before the fallback consumes its tail.
     int32_t lead = lexer->lookahead;
-    Block *fence = peek_block(s);
+    Block *fence = metadata_host;
     bool sigil_tail = fence && fence->type == DIV &&
         (fence->flags & (BLOCK_FLAG_QUOTE_FENCE | BLOCK_FLAG_LINE_BLOCK)) &&
         line_column(s, lexer) > fence->content_col + fence->data + 1;
@@ -20325,7 +20487,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     // Otherwise a pair of literal brackets: its `]` closes nothing around it.
     bracket_probe_rewind(&probe, 0);
     s->col_base = base;
-    bool closed = probe_scan_until_bracket_close(s, &probe.lexer, NULL, &probe);
+    bool closed = probe_scan_until_bracket_close(s, &probe.lexer, NULL, &probe, NULL);
     s->col_base = base;
     array_delete(&probe.characters);
     if (closed) push_inline_flagged(s, LITERAL_BRACKET, 0, 0);
@@ -20345,7 +20507,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     // the pair is literal text, so its `]` closes no bracket around it.
     mark_end(s, lexer);
     BracketProbe probe = bracket_probe_new(s, lexer);
-    bool closed = probe_scan_until_bracket_close(s, &probe.lexer, NULL, &probe);
+    bool closed = probe_scan_until_bracket_close(s, &probe.lexer, NULL, &probe, NULL);
     array_delete(&probe.characters);
     if (closed) push_inline_flagged(s, LITERAL_BRACKET, 0, 0);
     lexer->result_symbol = IN_FALLBACK;
@@ -20596,6 +20758,10 @@ static void init_scalars(Scanner *s) {
   s->bracket_note_natural = false;
   s->plain_run_note = false;
   s->plain_run_drop = 0;
+  s->note_probe_note[0] = s->note_probe_note[1] = false;
+  s->note_probe_span[0] = s->note_probe_span[1] = 0;
+  s->plain_pair_note = false;
+  s->plain_pair_span = 0;
   s->host_previous = -1;
   s->host_previous_at_mark = -1;
   s->host_marked = false;
@@ -20828,14 +20994,28 @@ unsigned tree_sitter_carve_external_scanner_serialize(void *payload,
   bool ahead = s->closer_ahead_kinds != 0 || bounded;
   bool span_note = s->bracket_span_note;
   bool plain_note = span_note && s->plain_run_note;
-  bool notes = (s->no_closer_kinds || ahead || s->link_tail_open_line || span_note) &&
-               size + 4 + (ahead ? 2 : 0) + (bounded ? 2 : 0) + (span_note ? 6 : 0) + (plain_note ? 4 : 0) + (plus_extension ? 3 : 0) +
+  bool probe_note = s->note_probe_note[0] || s->note_probe_note[1] || s->plain_pair_note;
+  bool notes = (s->no_closer_kinds || ahead || s->link_tail_open_line || span_note || probe_note) &&
+               size + 4 + (ahead ? 2 : 0) + (bounded ? 2 : 0) + (span_note ? 6 : 0) + (plain_note ? 4 : 0) +
+                   (probe_note ? 12 : 0) + (plus_extension ? 3 : 0) +
                    (row_extension ? 1 : 0) + (chain_extension ? 1 : 0) + ext_bytes + 3 <=
                    TREE_SITTER_SERIALIZATION_BUFFER_SIZE;
   if (notes) {
     uint16_t kinds = s->no_closer_kinds | (ahead ? 1u << 15 : 0) | (span_note ? 1u << 14 : 0) |
                      (plain_note ? 1u << 13 : 0) |
-                     (span_note && s->bracket_note_natural ? 1u << 12 : 0);
+                     (span_note && s->bracket_note_natural ? 1u << 12 : 0) |
+                     (probe_note ? 1u << 11 : 0);
+    if (probe_note) {
+      // Each span is stored plus one; zero means no note. The third word is
+      // `plain_pair_span`.
+      for (unsigned mode = 0; mode < 3; ++mode) {
+        bool note = mode < 2 ? s->note_probe_note[mode] : s->plain_pair_note;
+        uint32_t span = mode < 2 ? s->note_probe_span[mode] : s->plain_pair_span;
+        uint32_t word = note ? (span < UINT32_MAX ? span + 1 : span) : 0;
+        for (unsigned shift = 0; shift < 32; shift += 8)
+          buffer[size++] = (char)(word >> shift);
+      }
+    }
     if (plain_note) {
       for (unsigned shift = 0; shift < 32; shift += 8)
         buffer[size++] = (char)(s->plain_run_drop >> shift);
@@ -20995,6 +21175,23 @@ void tree_sitter_carve_external_scanner_deserialize(void *payload, char *buffer,
         for (unsigned i = 0; i < 4; ++i)
           s->plain_run_drop |= (uint32_t)(uint8_t)buffer[length - 4 + i] << (8 * i);
         length -= 4;
+      }
+      if (s->no_closer_kinds & 1u << 11) {
+        s->no_closer_kinds &= ~(1u << 11);
+        if (length < 12) return;
+        for (unsigned mode = 0; mode < 3; ++mode) {
+          uint32_t word = 0;
+          for (unsigned i = 0; i < 4; ++i)
+            word |= (uint32_t)(uint8_t)buffer[length - 12 + 4 * mode + i] << (8 * i);
+          if (mode < 2) {
+            s->note_probe_note[mode] = word != 0;
+            s->note_probe_span[mode] = word ? word - 1 : 0;
+          } else {
+            s->plain_pair_note = word != 0;
+            s->plain_pair_span = word ? word - 1 : 0;
+          }
+        }
+        length -= 12;
       }
     }
     size_t size = 0;
