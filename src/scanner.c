@@ -14552,10 +14552,11 @@ static bool probe_braced_closer_ahead(Scanner *s, TSLexer *lexer, char marker, B
       int32_t next = lexer->lookahead;
       InlineType kind;
       Inline *open = is_bare_delim_kind(c, &kind) ? find_inline_in_scope(s, kind) : NULL;
-      bool closes = next == '}' ? open_braced_of_marker(s, c)
-                    : open && !(open->flags & INLINE_BRACED) && (c == '*' || c == '/') &&
-                          !after_space && before_c != c && next != c &&
-                          !carve_is_alnum_ascii(next) && !carve_is_grapheme_extender(next);
+      // `X}` is a braced closer only while a braced X is open (C2-I-057).
+      bool closes = (next == '}' && open_braced_of_marker(s, c)) ||
+                    (open && !(open->flags & INLINE_BRACED) && (c == '*' || c == '/') &&
+                     !after_space && before_c != c && next != c &&
+                     !carve_is_alnum_ascii(next) && !carve_is_grapheme_extender(next));
       if (closes) {
         s->braced_probe_raw_closer = true;
         return false;
