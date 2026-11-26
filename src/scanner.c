@@ -2701,9 +2701,12 @@ static bool at_nesting_cap(Scanner *s) {
 }
 
 static bool colon_fence_tail_opens_block(Scanner *s, TSLexer *lexer, bool bare,
-                                         bool spaced, bool tabbed, int32_t c) {
-  // Past the nesting cap an opener is paragraph text.
-  if (!bare && at_nesting_cap(s)) return false;
+                                         bool spaced, bool tabbed, int32_t c,
+                                         uint16_t colons) {
+  // Past the nesting cap an opener is paragraph text (C2-B-190); a bare
+  // fence that closes an open one still closes it.
+  if (at_nesting_cap(s) && !(bare && number_of_colon_fence_blocks_from_top(s, colons) > 0))
+    return false;
   // A BARE fence is decided before the separator's SPELLING is read, and
   // deliberately: a whitespace-only tail is trailing whitespace, not a
   // separator, so `:::` + tab + newline is the same bare fence as `:::` and
@@ -6662,7 +6665,7 @@ static bool scan_paragraph_closing_marker(Scanner *s, TSLexer *lexer) {
       }
       int32_t c = lexer->lookahead;
       bool bare = c == '\n' || c == '\r' || lexer->eof(lexer);
-      if (!colon_fence_tail_opens_block(s, lexer, bare, spaced, tabbed, c)) {
+      if (!colon_fence_tail_opens_block(s, lexer, bare, spaced, tabbed, c, colons)) {
         // Paragraph text - and from here the paragraph is "expecting a
         // closer": a later BARE fence is text too (PART 9 §12).
         s->state |= STATE_FENCE_ABSORBS;
@@ -8534,7 +8537,7 @@ static bool parse_colon(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     // (`local_hard_break_marker`), so it marks here with the other three and
     // the tail test reads past the mark exactly as it does for `|`.
     mark_end(s, lexer);
-    bool ok = colon_fence_tail_opens_block(s, lexer, bare, spaced, tabbed, c);
+    bool ok = colon_fence_tail_opens_block(s, lexer, bare, spaced, tabbed, c, colons);
     // ...and a bare fence is not an opener at all while the open paragraph is
     // absorbing: after a malformed `::: {.x}` the trailing `:::` is text, at
     // any width (PART 9 §12). The peek above normally keeps the parser inside
