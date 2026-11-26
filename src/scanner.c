@@ -5960,18 +5960,29 @@ static bool attribute_line_taken(Scanner *s, TSLexer *lexer) {
   uint32_t col_base = s->col_base;
   bool saw_table = s->attribute_saw_table;
   bool taken = false;
+  bool after_comment = false;
   for (;;) {
-    if (lexer->eof(lexer)) break;
+    if (lexer->eof(lexer)) {
+      // Comment-only lines up to the end leave the run nothing to take.
+      if (after_comment) s->attribute_run_ends = !proven;
+      break;
+    }
     consume_line_end(s, lexer);
     AttributeRunLine line = attribute_run_line(s, lexer);
-    if (line == RUN_LINE_BLANK) break;
+    if (line == RUN_LINE_BLANK) {
+      if (after_comment) s->attribute_run_ends = !proven;
+      break;
+    }
     // A caption takes no attribute line (C2-B-096), so the run is a closed
     // paragraph above it, as at the end of its container.
     if (line == RUN_LINE_ENDS_CONTAINER || line == RUN_LINE_CAPTION) {
       s->attribute_run_ends = !proven;
       break;
     }
-    if (line == RUN_LINE_COMMENT) continue;
+    if (line == RUN_LINE_COMMENT) {
+      after_comment = true;
+      continue;
+    }
     if (line == RUN_LINE_OTHER) {
       taken = true;
       break;
@@ -13440,11 +13451,17 @@ static bool emit_newline_inline(Scanner *s, TSLexer *lexer,
     uint8_t level = s->block_quote_level;
     uint32_t col_base = s->col_base;
     AttributeRunLine line = attribute_run_line(s, lexer);
+    bool comment = line == RUN_LINE_COMMENT;
+    // Comment lines below the run's last attribute line are not the run's.
+    while (line == RUN_LINE_COMMENT && !lexer->eof(lexer)) {
+      consume_line_end(s, lexer);
+      line = attribute_run_line(s, lexer);
+    }
     s->indent = indent;
     s->block_quote_level = level;
     s->col_base = col_base;
-    if (line != RUN_LINE_ATTRIBUTE && line != RUN_LINE_COMMENT) return false;
-    if (line == RUN_LINE_COMMENT) s->erasable_line = true;
+    if (line != RUN_LINE_ATTRIBUTE) return false;
+    if (comment) s->erasable_line = true;
     lexer->result_symbol = NEWLINE_INLINE;
     return true;
   }
