@@ -17590,8 +17590,47 @@ static bool caption_host_line_ahead(Scanner *s, TSLexer *lexer) {
       }
     }
     uint32_t parens = 1;
+    // A tail is a destination with no whitespace, then one space and a quoted
+    // title, then spaces: a tab or a second space before the title is no tail.
+    int32_t title_quote = 0;
+    bool past_destination = false;
     while (parens > 0) {
       if (at_line_end(lexer) || lexer->eof(lexer)) return false;
+      int32_t c = lexer->lookahead;
+      if (close == ')' && title_quote) {
+        if (c == '\\') {
+          advance(s, lexer);
+          if (at_line_end(lexer) || lexer->eof(lexer)) return false;
+        } else if (c == title_quote) {
+          title_quote = 0;
+        }
+        advance(s, lexer);
+        continue;
+      }
+      if (close == ')' && (c == ' ' || c == '\t')) {
+        if (c == '\t') return false;
+        if (!past_destination) {
+          past_destination = true;
+          advance(s, lexer);
+          if (lexer->lookahead == '"' || lexer->lookahead == '\'') {
+            title_quote = lexer->lookahead;
+            advance(s, lexer);
+          } else if (lexer->lookahead != ' ' && lexer->lookahead != ')') {
+            return false;
+          }
+          continue;
+        }
+      } else if (close == ')' && past_destination && c != ')') {
+        return false;
+      } else if (close == ']' && (c == ' ' || c == '\t')) {
+        // A line comment in the label takes its `]` (C2-I-077).
+        advance(s, lexer);
+        if (lexer->lookahead == '%') {
+          advance(s, lexer);
+          if (lexer->lookahead == '%') return false;
+        }
+        continue;
+      }
       if (lexer->lookahead == '\\') {
         advance(s, lexer);
         if (at_line_end(lexer) || lexer->eof(lexer)) return false;
