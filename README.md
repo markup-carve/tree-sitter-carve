@@ -26,6 +26,10 @@ The [Carve specification](https://markup-carve.github.io/carve/) defines the
 language; engine conformance and rendered output are checked in their
 respective implementation repositories.
 
+Block nesting stops at depth 200, as C2-B-190 says. List columns are stored in
+one byte, so a list marker past column 240 is text here, where an engine still
+opens the list. This shows only in quotes nested about 120 deep.
+
 ## Browser use
 
 Each release ships `tree-sitter-carve.wasm` in the npm package and as a GitHub
