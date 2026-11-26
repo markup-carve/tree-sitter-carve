@@ -1,0 +1,134 @@
+================================================================================
+C2-I-089: a note that closes only over a footnote reference is text
+================================================================================
+
+^[ \]} [^[b]\]][]
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (backslash_escape)
+    (collapsed_reference_link
+      text: (link_text
+        (backslash_escape)))))
+
+================================================================================
+C2-I-089: the caret pair of a text note is link text mid-line
+================================================================================
+
+x ^[a \] b \] [^[b] c][] z
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (backslash_escape)
+    (backslash_escape)
+    (collapsed_reference_link
+      text: (link_text))))
+
+================================================================================
+C2-I-089: the caret pair of a text note is link text in a list item
+================================================================================
+
+- ^[ [x] \]} [^a[b]][].
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph
+          (backslash_escape)
+          (collapsed_reference_link
+            text: (link_text)))))))
+
+================================================================================
+C2-I-089: the caret pair of a text note is an ordinary bracket pair
+================================================================================
+
+^[/\`[`[/[^]]][<]
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (backslash_escape)
+    (full_reference_link
+      text: (link_text)
+      label: (link_label))))
+
+================================================================================
+C2-I-089: a note inside a text note is text
+================================================================================
+
+^[^[[^]\[]
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (backslash_escape)))
+
+================================================================================
+C2-I-089: a note that closes under neither reading is text
+================================================================================
+
+^[ a [^b]
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (footnote_reference
+      (footnote_marker_begin)
+      (reference_label)
+      (footnote_marker_end))))
+
+================================================================================
+C2-I-089: the caret pair of a text note takes an inline link tail
+================================================================================
+
+^[ x [^[b] y](u) \]
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (inline_link
+      text: (link_text)
+      destination: (inline_link_destination))
+    (backslash_escape)))
+
+================================================================================
+C2-I-087: a footnote label holding a bracket is one reference
+================================================================================
+
+[^a[b] z
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (footnote_reference
+      (footnote_marker_begin)
+      (reference_label)
+      (footnote_marker_end))))
+
+================================================================================
+C2-I-087: a footnote label holding a bracket takes no attribute
+================================================================================
+
+[^[b]{.c}
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (footnote_reference
+      (footnote_marker_begin)
+      (reference_label)
+      (footnote_marker_end))))

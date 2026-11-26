@@ -1,5 +1,5 @@
 ================================================================================
-C2-I-087: a footnote label holding a bracket before a link tail parses
+C2-I-087: a footnote label holding a bracket ends at its first bracket
 ================================================================================
 
 [^[x]]() and [x [^[]] y]()
@@ -8,9 +8,14 @@ C2-I-087: a footnote label holding a bracket before a link tail parses
 
 (document
   (paragraph
-    (inline_link
-      text: (link_text)
-      destination: (inline_link_destination))))
+    (footnote_reference
+      (footnote_marker_begin)
+      (reference_label)
+      (footnote_marker_end))
+    (footnote_reference
+      (footnote_marker_begin)
+      (reference_label)
+      (footnote_marker_end))))
 
 ================================================================================
 C2-I-089: a parenthesis in a note inside link text is no tail

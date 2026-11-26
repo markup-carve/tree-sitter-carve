@@ -167,7 +167,8 @@ function inlineElement($, options) {
           ...(notes
             ? [
                 prec.dynamic(ELEMENT_PRECEDENCE, $.inline_note),
-                prec.dynamic(ELEMENT_PRECEDENCE, $.footnote_reference),
+                prec.dynamic(2 * ELEMENT_PRECEDENCE, $.footnote_reference),
+                prec.dynamic(ELEMENT_PRECEDENCE, $._caret_link),
               ]
             : []),
           prec.dynamic(ELEMENT_PRECEDENCE, $._image),
@@ -333,7 +334,16 @@ function symbolFallback($, options) {
     // opener there either: taken as one it swallows the caret and
     // `[^1]{.k}` comes back as a span over `1` where the spec wants `^1`.
     ...(notes
-      ? [seq("[^", choice($._square_bracket_span_mark_begin, $._in_fallback))]
+      ? [
+          seq(
+            "[^",
+            choice(
+              $._square_bracket_span_mark_begin,
+              $._in_fallback,
+              $._caret_bracket_mark_begin,
+            ),
+          ),
+        ]
       : []),
     seq("![", choice($._image_span_mark_begin, $._in_fallback)),
     seq("[", choice($._square_bracket_span_mark_begin, $._in_fallback)),
@@ -549,6 +559,7 @@ module.exports = grammar({
     [$._image_description_begin, $._symbol_fallback],
     [$._image_description_begin, $._note_symbol_fallback],
     [$.footnote_marker_begin, $._symbol_fallback],
+    [$._caret_link_text, $._symbol_fallback],
     [$.inline_math, $._symbol_fallback],
     [$.inline_math, $._note_symbol_fallback],
     [$.block_math, $.inline_math, $._symbol_fallback],
@@ -2850,13 +2861,15 @@ module.exports = grammar({
     footnote_reference: ($) =>
       seq(
         $.footnote_marker_begin,
-        $._square_bracket_span_mark_begin,
+        // The scanner's own mark where the label holds a `[`, which no
+        // fallback reading of the `[^` takes.
+        choice($._square_bracket_span_mark_begin, $._footnote_label_mark_begin),
         // Characters up to the next unescaped `]`, not all blank, across at
-        // most one line break (C2-I-079, C2-I-080, C2-I-087). A `[` is left
-        // out: a note's `[^` opens no reference, which a bracket here would.
+        // most one line break (C2-I-079, C2-I-080, C2-I-087); a `[` in it is
+        // no bracket (C2-I-076).
         alias(
           token(
-            /([^\]\[\\\r\n]|\\[^\r\n])*([^\]\[\\\r\n \t]|\\[^\r\n])([^\]\[\\\r\n]|\\[^\r\n])*(\r?\n([^\]\[\\\r\n]|\\[^\r\n])+)?|[ \t]*\r?\n([^\]\[\\\r\n]|\\[^\r\n])*([^\]\[\\\r\n \t]|\\[^\r\n])([^\]\[\\\r\n]|\\[^\r\n])*/,
+            /([^\]\\\r\n]|\\[^\r\n])*([^\]\\\r\n \t]|\\[^\r\n])([^\]\\\r\n]|\\[^\r\n])*(\r?\n([^\]\\\r\n]|\\[^\r\n])+)?|[ \t]*\r?\n([^\]\\\r\n]|\\[^\r\n])*([^\]\\\r\n \t]|\\[^\r\n])([^\]\\\r\n]|\\[^\r\n])*/,
           ),
           $.reference_label,
         ),
@@ -2902,6 +2915,36 @@ module.exports = grammar({
 
     _link: ($) =>
       choice($.full_reference_link, $.collapsed_reference_link, $.inline_link),
+    // A caret pair that C2-I-089 makes an ordinary bracket: its caret is text
+    // of the link. The scanner gives the mark only there.
+    _caret_link_text: ($) =>
+      prec.dynamic(
+        ELEMENT_PRECEDENCE,
+        seq(
+          alias("[^", "["),
+          $._caret_bracket_mark_begin,
+          $._inline,
+          alias($._square_bracket_span_end, "]"),
+        ),
+      ),
+    _caret_link: ($) =>
+      choice(
+        alias($._caret_full_reference_link, $.full_reference_link),
+        alias($._caret_collapsed_reference_link, $.collapsed_reference_link),
+        alias($._caret_inline_link, $.inline_link),
+      ),
+    _caret_full_reference_link: ($) =>
+      seq(field("text", alias($._caret_link_text, $.link_text)), $._link_label),
+    _caret_collapsed_reference_link: ($) =>
+      seq(
+        field("text", alias($._caret_link_text, $.link_text)),
+        token.immediate("[]"),
+      ),
+    _caret_inline_link: ($) =>
+      seq(
+        field("text", alias($._caret_link_text, $.link_text)),
+        field("destination", $.inline_link_destination),
+      ),
     full_reference_link: ($) => seq(field("text", $.link_text), $._link_label),
     // Its text is its label, and an empty label is none (C2-I-079).
     collapsed_reference_link: ($) =>
@@ -3741,5 +3784,8 @@ module.exports = grammar({
     // The image opener's mark: its alt text is source, so no line comment
     // starts in it (C2-I-074).
     $._image_span_mark_begin,
+    // The bracket mark behind a caret pair that C2-I-089 makes ordinary.
+    $._caret_bracket_mark_begin,
+    $._footnote_label_mark_begin,
   ],
 });
