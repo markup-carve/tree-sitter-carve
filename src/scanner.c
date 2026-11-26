@@ -16926,6 +16926,28 @@ static bool open_closer_starts_here(Scanner *s, int32_t c, int32_t next) {
 /// A zero-width mark or check the parser is waiting for right here. Every one
 /// of them stands between an opener character and its span, so a reader that
 /// answered the call instead would kill the span before it formed.
+// Where a mid-line `#` can only be text or a tag, which needs a name behind it.
+static bool plain_hash_reader(const bool *v) {
+  return v[LITERAL_RUN] && !v[ERROR] && !v[BLOCK_CLOSE] && !v[HEADING_BEGIN] &&
+         !v[COMMENT_BODY_HASH] && !v[COMMENT_HASH_END_MARKER] && !v[COMMENT_END_MARKER] &&
+         !v[COMMENT_BODY_PERCENT] && !v[EDITORIAL_COMMENT_BEGIN] && !v[COMMENT_CLOSE];
+}
+
+// The zero-width marks below, as a result: each follows its opener character.
+static bool behind_opener_char(TokenType token) {
+  switch (token) {
+  case NON_WHITESPACE_CHECK: case HIGHLIGHTED_OPEN_CHECK:
+  case EMPHASIS_MARK_BEGIN: case STRONG_MARK_BEGIN: case UNDERLINE_MARK_BEGIN:
+  case STRIKETHROUGH_MARK_BEGIN: case SUPERSCRIPT_MARK_BEGIN: case SUBSCRIPT_MARK_BEGIN:
+  case HIGHLIGHTED_MARK_BEGIN: case INSERT_MARK_BEGIN: case DELETE_MARK_BEGIN:
+  case BOLD_ITALIC_MARK_BEGIN: case PARENS_SPAN_MARK_BEGIN: case CURLY_BRACKET_SPAN_MARK_BEGIN:
+  case SQUARE_BRACKET_SPAN_MARK_BEGIN: case INLINE_NOTE_MARK_BEGIN: case ATTRIBUTED_SPAN_MARK_BEGIN:
+    return true;
+  default:
+    return false;
+  }
+}
+
 static bool zero_width_mark_pending(const bool *valid_symbols) {
   static const TokenType marks[] = {
       NON_WHITESPACE_CHECK,      HIGHLIGHTED_OPEN_CHECK,
@@ -17672,6 +17694,10 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
     bool crossed = s->host_marked ? s->host_crossed_line_at_mark : s->host_crossed_line;
     if (last >= 0) {
       s->mid_line = last != '\n' && last != '\r';
+      s->past_opener = false;
+    } else if (behind_opener_char((TokenType)lexer->result_symbol)) {
+      // Known mid-line without a column read, which rescans the line.
+      s->mid_line = true;
       s->past_opener = false;
     } else if (s->behind_internal_opener) {
       if (!s->mid_line) s->past_opener = true;
@@ -18811,6 +18837,17 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   bool at_line_start = s->after_closer_char != NO_COMBINED_CLOSER_LINE &&
                        (valid_symbols[ERROR] || !find_block(s, TABLE_ROW)) &&
                        !known_mid_line && !(s->read_mid_line = line_column(s, lexer) != 0);
+  if (s->read_mid_line && lexer->lookahead == '#' && plain_hash_reader(valid_symbols) &&
+      !find_block(s, TABLE_ROW)) {
+    // A `#` that opens nothing, taken as a token so the line counts as begun:
+    // every later scan would otherwise reread the column from the line start.
+    advance(s, lexer);
+    int32_t c = lexer->lookahead;
+    if (c != '.' && c != ',' && c != ';' && c != '!' && c != '?' && c != ' ') return false;
+    mark_end(s, lexer);
+    lexer->result_symbol = LITERAL_RUN;
+    return true;
+  }
   if (at_line_start) {
     s->indent = consume_whitespace(s, lexer);
     // A new line starts a new marker chain (see `marker_end_col`).
