@@ -7835,7 +7835,7 @@ static bool parse_footnote_after_caret(Scanner *s, TSLexer *lexer,
     // The body owns every line indented past the marker (C2-B-025).
     uint32_t margin = marker_col >= quote_prefix
                           ? marker_col - quote_prefix + 1
-                          : s->indent + 1;
+                          : s->indent + 1u;
     push_block(s, FOOTNOTE, (uint16_t)margin);
     // The body can begin with a fence on the definition's marker line.
     s->marker_end_col = (uint16_t)line_column(s, lexer);
@@ -14175,7 +14175,8 @@ static bool parse_trailing_comment(Scanner *s, TSLexer *lexer,
   if (bounded != require_bounded) {
     return false;
   }
-  bool unspaced = valid_symbols[LABEL_START_COMMENT] && bound_marker == ']' &&
+  // Unbounded, the token is a term's whole content right behind its marker.
+  bool unspaced = valid_symbols[LABEL_START_COMMENT] && (bound_marker == ']' || !bounded) &&
                   lexer->lookahead == '%' && s->advances == advances_at_entry;
   TokenType comment_token = unspaced ? LABEL_START_COMMENT : TRAILING_COMMENT;
   if (!unspaced && lexer->lookahead != ' ' && lexer->lookahead != '\t') {

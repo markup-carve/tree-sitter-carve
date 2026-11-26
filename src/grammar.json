@@ -7839,8 +7839,22 @@
           ]
         },
         {
-          "type": "SYMBOL",
-          "name": "_inline"
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "_inline"
+            },
+            {
+              "type": "ALIAS",
+              "content": {
+                "type": "SYMBOL",
+                "name": "_label_start_comment"
+              },
+              "named": true,
+              "value": "trailing_comment"
+            }
+          ]
         },
         {
           "type": "REPEAT",

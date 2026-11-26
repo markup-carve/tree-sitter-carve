@@ -2249,7 +2249,8 @@ module.exports = grammar({
     _term_content: ($) =>
       seq(
         optional($._block_quote_prefix),
-        $._inline,
+        // A term may be only a line comment (C2-I-024).
+        choice($._inline, alias($._label_start_comment, $.trailing_comment)),
         repeat(
           seq(
             $._newline_inline,
