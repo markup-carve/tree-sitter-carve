@@ -9776,79 +9776,6 @@
       "type": "STRING",
       "value": "{-"
     },
-    "substitution": {
-      "type": "SEQ",
-      "members": [
-        {
-          "type": "STRING",
-          "value": "{~"
-        },
-        {
-          "type": "SYMBOL",
-          "name": "_substitution_begin"
-        },
-        {
-          "type": "CHOICE",
-          "members": [
-            {
-              "type": "FIELD",
-              "name": "from",
-              "content": {
-                "type": "ALIAS",
-                "content": {
-                  "type": "SYMBOL",
-                  "name": "_inline"
-                },
-                "named": true,
-                "value": "content"
-              }
-            },
-            {
-              "type": "BLANK"
-            }
-          ]
-        },
-        {
-          "type": "ALIAS",
-          "content": {
-            "type": "SYMBOL",
-            "name": "_substitution_arrow"
-          },
-          "named": false,
-          "value": "~>"
-        },
-        {
-          "type": "CHOICE",
-          "members": [
-            {
-              "type": "FIELD",
-              "name": "to",
-              "content": {
-                "type": "ALIAS",
-                "content": {
-                  "type": "SYMBOL",
-                  "name": "_inline"
-                },
-                "named": true,
-                "value": "content"
-              }
-            },
-            {
-              "type": "BLANK"
-            }
-          ]
-        },
-        {
-          "type": "ALIAS",
-          "content": {
-            "type": "SYMBOL",
-            "name": "_substitution_end"
-          },
-          "named": false,
-          "value": "~}"
-        }
-      ]
-    },
     "editorial_comment": {
       "type": "SEQ",
       "members": [
@@ -13457,18 +13384,6 @@
     {
       "type": "SYMBOL",
       "name": "_caption_begin"
-    },
-    {
-      "type": "SYMBOL",
-      "name": "_substitution_begin"
-    },
-    {
-      "type": "SYMBOL",
-      "name": "_substitution_arrow"
-    },
-    {
-      "type": "SYMBOL",
-      "name": "_substitution_end"
     },
     {
       "type": "SYMBOL",

@@ -1,0 +1,91 @@
+===============================================================================
+C2-I-062: an arrow inside braced tildes is text in a strike
+===============================================================================
+a {~old~>new~} b
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (strikethrough
+      (strikethrough_begin)
+      (content)
+      (strikethrough_end))))
+
+===============================================================================
+C2-I-062: an arrow before the closer is strike content
+===============================================================================
+{~a~>~}
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (strikethrough
+      (strikethrough_begin)
+      (content)
+      (strikethrough_end))))
+
+===============================================================================
+C2-I-062: an arrow after the opener is strike content
+===============================================================================
+{~~>b~}
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (strikethrough
+      (strikethrough_begin)
+      (content)
+      (strikethrough_end))))
+
+===============================================================================
+C2-I-062: a lone arrow is strike content
+===============================================================================
+{~~>~}
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (strikethrough
+      (strikethrough_begin)
+      (content)
+      (strikethrough_end))))
+
+===============================================================================
+C2-I-062: a spaced arrow leaves the next strike alone
+===============================================================================
+{~a ~> b~} and {~c~}
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (strikethrough
+      (strikethrough_begin)
+      (content)
+      (strikethrough_end))
+    (strikethrough
+      (strikethrough_begin)
+      (content)
+      (strikethrough_end))))
+
+===============================================================================
+C2-I-062: a replacement is a delete followed by an insert
+===============================================================================
+{-old-}{+new+}
+
+-------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (delete
+      (delete_begin)
+      (content)
+      (delete_end))
+    (insert
+      (insert_begin)
+      (content)
+      (insert_end))))
