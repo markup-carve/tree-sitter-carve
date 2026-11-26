@@ -15630,11 +15630,14 @@ static bool plain_run_cannot_close(const BracketProbe *probe, uint32_t start, ui
 
 // In a row the probe ends at the cell's boundary pipe or the line end. A later
 // opener's probe ends at the same place when the text between holds no line
-// terminator, escape or tick: pipes are then judged by their column alone.
+// terminator, escaped pipe or tick: pipes are then judged by their column
+// alone. Other escapes pair alike from every opener on (#796).
 static bool row_probe_end_shared(const BracketProbe *probe, uint32_t start) {
   for (uint32_t i = start; i < probe->position && i < probe->characters.size; ++i) {
     int32_t c = probe->characters.contents[i].character;
-    if (c == '\\' || c == '`' || c == '\n' || c == '\r') return false;
+    if (c == '`' || c == '\n' || c == '\r') return false;
+    if (c == '\\' && (i + 1 >= probe->characters.size || probe->characters.contents[++i].character == '|'))
+      return false;
   }
   return true;
 }
