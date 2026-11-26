@@ -15645,7 +15645,13 @@ static bool probe_bare_closer_skips_brackets(Scanner *s, BracketProbe *probe, ch
     }
     if (c == '%' && (previous == ' ' || previous == '\t')) {
       advance(s, lexer);
-      if (lexer->lookahead == '%') return false;
+      // A line comment takes the rest of its line, closers included, and the
+      // span stays open past it (C2-I-024).
+      if (lexer->lookahead == '%') {
+        while (!lexer->eof(lexer) && !at_line_end(lexer)) advance(s, lexer);
+        previous = ' ';
+        continue;
+      }
       previous = c;
       ++characters;
       continue;
@@ -17603,6 +17609,7 @@ static bool keeps_inline_notes(TokenType token) {
   case EMPHASIS_QUALIFIED_MARK_BEGIN: case WORD_END:
   case HIGHLIGHTED_QUALIFIED_MARK_BEGIN: case LITERAL_STAR: case LITERAL_SLASH:
   case LITERAL_SLASH_BOUNDARY: case AFTER_BARE_CLOSER: case IMAGE_SPAN_MARK_BEGIN:
+  case TRAILING_COMMENT:
     return true;
   default:
     return false;
