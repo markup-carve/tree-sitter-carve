@@ -1,0 +1,34 @@
+================================================================================
+C2-I-069: four nested inline links with strong text parse without an error
+================================================================================
+
+^*[*[[*^*[*[[*^*[*[[*^*[*x](u)^]]](u)^]]](u)^]]](u)
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (inline_link
+      text: (link_text
+        (strong
+          begin_marker: (strong_begin)
+          content: (content)
+          end_marker: (strong_end))
+        (inline_link
+          text: (link_text
+            (strong
+              begin_marker: (strong_begin)
+              content: (content)
+              end_marker: (strong_end))
+            (inline_link
+              text: (link_text
+                (strong
+                  begin_marker: (strong_begin)
+                  content: (content)
+                  end_marker: (strong_end))
+                (inline_link
+                  text: (link_text)
+                  destination: (inline_link_destination)))
+              destination: (inline_link_destination)))
+          destination: (inline_link_destination)))
+      destination: (inline_link_destination))))

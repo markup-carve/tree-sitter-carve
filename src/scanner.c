@@ -349,10 +349,13 @@ typedef enum {
   LINK_ATTRIBUTE_CONTINUATION,
   INLINE_LINK_URL,
   IMAGE_SPAN_MARK_BEGIN,
+  CARET_BRACKET_MARK_BEGIN,
+  FOOTNOTE_LABEL_MARK_BEGIN,
+  LINK_TEXT_MARK_BEGIN,
 } TokenType;
 
 // The size of `valid_symbols`, for the copies that edit one entry.
-#define EXTERNAL_TOKEN_COUNT (IMAGE_SPAN_MARK_BEGIN + 1)
+#define EXTERNAL_TOKEN_COUNT (LINK_TEXT_MARK_BEGIN + 1)
 
 // The different blocks in Carve that we track,
 // in order to match or close them properly.
@@ -604,6 +607,9 @@ typedef struct {
   // literal brackets inside this one (`[t[z]](/u)`) rather than this span.
   // Formatting spans store residual extension closes plus 1; zero means no cut.
   uint32_t literal_closes;
+  // Openers read while this entry was the top that never form (C2-I-118):
+  // they count toward the depth cap until this entry closes.
+  uint8_t phantoms;
 } Inline;
 
 static const uint32_t INLINE_CUT_CODE = UINT32_C(1) << 31;
@@ -780,6 +786,14 @@ typedef struct {
   // A skipped opaque run held the probed marker, so a later opener of the
   // kind may stand inside one and read differently. Transient.
   bool probe_opaque_holds_bare;
+  // The caret pairs a failed note's tie-break made ordinary brackets
+  // (C2-I-089), still ahead in this content. Serialized in the trailer.
+  uint8_t caret_ordinary;
+  // Openers that never form read with no entry open (C2-I-118).
+  uint8_t root_phantoms;
+  // A bracket probe reads `[^label]` as one footnote reference, counted here.
+  bool probe_footnotes;
+  uint32_t probe_carets;
   // A bare closer pinned its end before a probe read past a comment behind it.
   bool span_end_marked;
   // The bare probe stopped at a closer of the enclosing span.
@@ -1533,6 +1547,7 @@ static Inline *create_inline(InlineType type, uint8_t data) {
   res->data = data;
   res->flags = 0;
   res->literal_closes = 0;
+  res->phantoms = 0;
   return res;
 }
 
@@ -1576,6 +1591,33 @@ static void push_inline_flagged(Scanner *s, InlineType type, uint8_t data,
   Inline *x = create_inline(type, data);
   x->flags = flags;
   stack_push(s->open_inline, x);
+}
+
+// An opener that never forms still counts toward the depth cap until the entry
+// it was read in closes (C2-I-118).
+static uint32_t inline_depth(Scanner *s);
+static void push_phantom(Scanner *s) {
+  // Past the cap an opener is not pushed at all.
+  if (inline_depth(s) >= MAX_NESTING_DEPTH) return;
+  Inline *top = s->open_inline->size ? *array_back(s->open_inline) : NULL;
+  uint8_t *count = top ? &top->phantoms : &s->root_phantoms;
+  if (*count < UINT8_MAX) ++*count;
+}
+
+// The entries open on the bracket and delimiter stacks together (C2-I-118).
+static uint32_t inline_depth(Scanner *s) {
+  uint32_t depth = s->open_inline->size + s->root_phantoms;
+  for (uint32_t i = 0; i < s->open_inline->size; ++i) {
+    Inline *e = *array_get(s->open_inline, i);
+    depth += e->phantoms;
+    // A label's balanced inner pairs are open brackets too, and a literal
+    // entry stands for as many brackets as it closes.
+    if (e->type == SQUARE_BRACKET_SPAN && (e->flags & (INLINE_LABEL | INLINE_BRACED)) == INLINE_LABEL)
+      depth += e->literal_closes;
+    else if (e->type == LITERAL_BRACKET && e->literal_closes > 1)
+      depth += e->literal_closes - 1;
+  }
+  return depth;
 }
 
 static void remove_block(Scanner *s) {
@@ -4751,8 +4793,9 @@ static bool parse_code_fence(Scanner *s, TSLexer *lexer,
       if (marker != 0 && end == VerbatimRunReachesSpanCloser) {
         flags = INLINE_STOPS_AT_SPAN_CLOSER;
       }
-      // A run with no closing run in its content is text (C2-I-017).
-      if (end == VerbatimRunReachesBlockEnd && valid_symbols[LITERAL_RUN]) {
+      // A run with no closing run in its content is text (C2-I-017), the
+      // content of the span around it included.
+      if ((end == VerbatimRunReachesBlockEnd || flags) && valid_symbols[LITERAL_RUN]) {
         lexer->result_symbol = LITERAL_RUN;
         return true;
       }
@@ -9006,6 +9049,7 @@ static bool parse_heading(Scanner *s, TSLexer *lexer,
 /// the one ERROR into two rather than into a paragraph. Refusing here happens
 /// before anything is committed, so the line falls back cleanly.
 static bool parse_inline_note_after_caret(Scanner *s, TSLexer *lexer);
+static bool parse_inline_note_tie_break(Scanner *s, TSLexer *lexer, const bool *valid_symbols);
 
 static bool parse_caption_begin(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   if (lexer->lookahead != '^') {
@@ -9024,7 +9068,7 @@ static bool parse_caption_begin(Scanner *s, TSLexer *lexer, const bool *valid_sy
   }
   advance(s, lexer);
   if (lexer->lookahead == '[' && valid_symbols[INLINE_NOTE_BEGIN]) {
-    return parse_inline_note_after_caret(s, lexer);
+    return parse_inline_note_tie_break(s, lexer, valid_symbols);
   }
   if (lexer->lookahead != ' ' || s->caption_gap != CAPTION_HOST_HERE) {
     return false;
@@ -11300,6 +11344,7 @@ static bool parse_open_curly_bracket(Scanner *s, TSLexer *lexer,
     Inline *top_inline = peek_inline(s);
     bool row = find_block(s, TABLE_ROW) != NULL || (top_inline && keeps_missing_closers(top_inline->type));
     if (!row && (s->missing_closers & bit) && !braced_same_kind_blocked(s, brace_kind)) {
+      push_phantom(s);
       lexer->result_symbol = LITERAL_RUN;
       return true;
     }
@@ -11335,6 +11380,7 @@ static bool parse_open_curly_bracket(Scanner *s, TSLexer *lexer,
       *literal_curly = false;
       return false;
     }
+    push_phantom(s);
     lexer->result_symbol = LITERAL_RUN;
     return true;
   }
@@ -15089,6 +15135,48 @@ static bool parse_plain_bracket_run(Scanner *s, TSLexer *lexer) {
 // (attribute detached) and `x [^1]{.k}` (not nested) both parse fine.
 // Counting depth means the outer lookahead only ever tests the `]` that
 // actually belongs to it.
+// Past the caret of `[^`: reads a footnote label to its `]`, not blank, across
+// at most one line break (C2-I-087). False leaves the lexer inside the label.
+static bool footnote_label_ahead(Scanner *s, TSLexer *lexer);
+static bool probe_footnote_label(Scanner *s, TSLexer *lexer) {
+  advance(s, lexer);
+  return footnote_label_ahead(s, lexer);
+}
+
+static bool footnote_label_scan(Scanner *s, TSLexer *lexer, bool *bracket);
+static bool footnote_label_ahead(Scanner *s, TSLexer *lexer) {
+  bool bracket = false;
+  return footnote_label_scan(s, lexer, &bracket);
+}
+
+static bool footnote_label_scan(Scanner *s, TSLexer *lexer, bool *bracket) {
+  bool filled = false, wrapped = false;
+  while (!lexer->eof(lexer)) {
+    int32_t c = lexer->lookahead;
+    if (c == ']') {
+      if (!filled) return false;
+      advance(s, lexer);
+      return true;
+    }
+    if (at_line_end(lexer)) {
+      if (wrapped) return false;
+      wrapped = true;
+      consume_line_end(s, lexer);
+      if (at_line_end(lexer) || lexer->eof(lexer)) return false;
+      continue;
+    }
+    if (c == '\\') {
+      advance(s, lexer);
+      if (at_line_end(lexer) || lexer->eof(lexer)) return false;
+      c = 'x';
+    }
+    if (c != ' ' && c != '\t') filled = true;
+    if (c == '[') *bracket = true;
+    advance(s, lexer);
+  }
+  return false;
+}
+
 static bool probe_scan_until_bracket_close(Scanner *s, TSLexer *lexer,
                                      InlineType *top, BracketProbe *probe) {
   // The opening `[` is already consumed by the caller, so we start one level
@@ -15116,6 +15204,12 @@ static bool probe_scan_until_bracket_close(Scanner *s, TSLexer *lexer,
     } else if (lexer->lookahead == '[') {
       depth++;
       advance(s, lexer);
+      // A caret pair is atomic, and one with no label opens no pair (C2-I-087).
+      if (s->probe_footnotes && lexer->lookahead == '^' &&
+          (probe_footnote_label(s, lexer) || lexer->lookahead == ']')) {
+        depth--;
+        ++s->probe_carets;
+      }
     } else if (lexer->lookahead == '\\') {
       advance(s, lexer);
       advance(s, lexer);
@@ -15229,6 +15323,18 @@ static bool iswspace_ascii(int32_t c) {
   return c == ' ' || c == '\t' || c == '\n' || c == '\r';
 }
 
+static bool footnote_label_ahead(Scanner *s, TSLexer *lexer);
+// Whether one of these openers is a note's `^[`.
+static bool probe_open_holds_note(const BracketProbe *probe, const uint32_t *open, uint32_t count) {
+  for (uint32_t i = 0; i < count; ++i) {
+    uint32_t at = open[i];
+    if (at != UINT32_MAX && at > 0 && probe->characters.contents[at - 1].character == '^' &&
+        (at < 2 || probe->characters.contents[at - 2].character != '\\'))
+      return true;
+  }
+  return false;
+}
+
 static bool scan_qualified_bracket_close(Scanner *s, BracketProbe *probe, InlineType *top) {
   TSLexer *lexer = &probe->lexer;
   bool in_row = find_block(s, TABLE_ROW) != NULL;
@@ -15250,6 +15356,8 @@ static bool scan_qualified_bracket_close(Scanner *s, BracketProbe *probe, Inline
     s->col_base = cached.bracket_close_base;
     return true;
   }
+  bool footnotes_atomic = !find_inline(s, INLINE_NOTE) && !s->caret_ordinary &&
+                          !probe_open_holds_note(probe, &root, 1);
   Array(uint32_t) open;
   array_init(&open);
   array_push(&open, root);
@@ -15297,8 +15405,25 @@ static bool scan_qualified_bracket_close(Scanner *s, BracketProbe *probe, Inline
         }
       }
     } else if (c == '[') {
-      array_push(&open, probe->position);
+      uint32_t at = probe->position;
       advance(s, lexer);
+      // Outside a note a caret pair is atomic, and one with no label opens no
+      // pair (C2-I-087).
+      if (lexer->lookahead == '^' && footnotes_atomic &&
+          !probe_open_holds_note(probe, open.contents, open.size)) {
+        uint32_t restart = probe->position;
+        uint32_t base = s->col_base;
+        advance(s, lexer);
+        if (footnote_label_ahead(s, lexer)) {
+          // The label's own scan from behind its `[^` is bounded by the note.
+          if (probe->position - 1 - at > widest) widest = probe->position - 1 - at;
+          continue;
+        }
+        if (lexer->lookahead == ']') continue;
+        bracket_probe_rewind(probe, restart);
+        s->col_base = base;
+      }
+      array_push(&open, at);
     } else if (c == '\\') {
       advance(s, lexer);
       if (!lexer->eof(lexer)) advance(s, lexer);
@@ -15312,7 +15437,14 @@ static bool scan_qualified_bracket_close(Scanner *s, BracketProbe *probe, Inline
       }
     } else if (c == '`') {
       uint8_t width = consume_chars(s, lexer, '`');
-      if (!bracket_probe_verbatim(s, probe, width)) goto failed;
+      uint32_t behind = probe->position;
+      uint32_t base = s->col_base;
+      if (!bracket_probe_verbatim(s, probe, width)) {
+        if (in_row) goto failed;
+        // An unclosed run is text and the scan goes on behind it (C2-I-119).
+        bracket_probe_rewind(probe, behind);
+        s->col_base = base;
+      }
     } else if (c == '{') {
       advance(s, lexer);
       if (lexer->lookahead != '#' && lexer->lookahead != '%') continue;
@@ -15409,9 +15541,20 @@ failed:
   return false;
 }
 
-static bool qualified_bracket_balanced(Scanner *s, TSLexer *lexer) {
+static bool footnote_label_bracket_ahead(Scanner *s, TSLexer *lexer);
+// `footnote` is the state behind a footnote's `[^`, where a label holding a
+// `[` reads as balanced: it runs to the next `]` (C2-I-087).
+static bool qualified_bracket_balanced(Scanner *s, TSLexer *lexer, bool footnote) {
   if (first_bracket_extension(s)) return false;
   BracketProbe probe = bracket_probe_new(s, lexer);
+  uint32_t base = s->col_base;
+  if (footnote && footnote_label_bracket_ahead(s, &probe.lexer)) {
+    array_delete(&probe.characters);
+    s->col_base = base;
+    return true;
+  }
+  bracket_probe_rewind(&probe, 0);
+  s->col_base = base;
   bool balanced = scan_qualified_bracket_close(s, &probe, NULL);
   if (balanced) {
     bool blank = true;
@@ -16347,31 +16490,22 @@ static bool mark_span_begin(Scanner *s, TSLexer *lexer,
                             TokenType token);
 
 
+// Whether a footnote label closes here and holds a `[`.
+static bool footnote_label_bracket_ahead(Scanner *s, TSLexer *lexer) {
+  bool bracket = false;
+  return footnote_label_scan(s, lexer, &bracket) && bracket;
+}
+
 // Qualify an attributed span before its content branches merge. The shared
 // bracket mark remains available for links and literal bracket fallback.
-static bool footnote_label_bracket_ahead(Scanner *s, TSLexer *lexer);
-// Whether a `[` comes before the `]` that ends a footnote label here; reads
-// through a bracket probe, so the caller's position stays put.
-static bool footnote_label_holds_bracket(Scanner *s, TSLexer *lexer) {
-  BracketProbe probe = bracket_probe_new(s, lexer);
-  bool holds = footnote_label_bracket_ahead(s, &probe.lexer);
-  array_delete(&probe.characters);
-  return holds;
-}
-
-static bool footnote_label_bracket_ahead(Scanner *s, TSLexer *lexer) {
-  while (!lexer->eof(lexer) && !at_line_end(lexer)) {
-    if (lexer->lookahead == ']') return false;
-    if (lexer->lookahead == '[') return true;
-    if (lexer->lookahead == '\\') advance(s, lexer);
-    advance(s, lexer);
-  }
-  return false;
-}
-
 static bool parse_attributed_span_mark_begin(Scanner *s, TSLexer *lexer,
                                              const bool *valid_symbols) {
   mark_end(s, lexer);
+  if (inline_depth(s) >= MAX_NESTING_DEPTH) {
+    if (!valid_symbols[IN_FALLBACK]) return false;
+    lexer->result_symbol = IN_FALLBACK;
+    return true;
+  }
   s->behind_internal_opener = s->host_advances == 0;
   Inline *top = peek_inline(s);
   bool balanced = update_square_bracket_lookahead_states(s, lexer,
@@ -16387,6 +16521,11 @@ static bool parse_attributed_span_mark_begin(Scanner *s, TSLexer *lexer,
   if (valid_symbols[IN_FALLBACK]) {
     if (balanced && (s->state & STATE_BRACKET_STARTS_INLINE_LINK)) {
       push_inline_flagged(s, SQUARE_BRACKET_SPAN, 0, INLINE_BRACED);
+      // Only link text reads on, as in `mark_span_begin`.
+      if (valid_symbols[LINK_TEXT_MARK_BEGIN]) {
+        lexer->result_symbol = LINK_TEXT_MARK_BEGIN;
+        return true;
+      }
     } else if (balanced) {
       if (top && top->type == SQUARE_BRACKET_SPAN && ((top->flags & (INLINE_LABEL | INLINE_BRACED)) == INLINE_LABEL)) {
         if (top->literal_closes < UINT32_MAX) ++top->literal_closes;
@@ -16396,6 +16535,7 @@ static bool parse_attributed_span_mark_begin(Scanner *s, TSLexer *lexer,
     } else {
       Inline *open = find_inline_in_scope(s, SQUARE_BRACKET_SPAN);
       if (open) ++open->data;
+      push_phantom(s);
     }
   } else {
     if (!balanced || s->blank_collapsed) return false;
@@ -16453,16 +16593,43 @@ static bool mark_span_begin(Scanner *s, TSLexer *lexer,
     // we can abort and prune that branch (since we should parse it as a
     // link).
     if (inline_type == SQUARE_BRACKET_SPAN) {
+      // A bracket read while 200 entries are open is text and pairs with
+      // nothing (C2-I-118).
+      if (inline_depth(s) >= MAX_NESTING_DEPTH) {
+        lexer->result_symbol = IN_FALLBACK;
+        return true;
+      }
       // A `[` whose own `]` closes inside the enclosing bracket is a balanced
       // pair of literal brackets there (`[t[z]](/u)`), not a competing opener,
       // and that `]` is text rather than the enclosing close.
-      bool balanced = update_square_bracket_lookahead_states(s, lexer, top);
+      BracketProbe probe = bracket_probe_new(s, lexer);
+      uint32_t base = s->col_base;
+      if (valid_symbols[FOOTNOTE_LABEL_MARK_BEGIN] && !s->caret_ordinary &&
+          !find_inline(s, INLINE_NOTE) && footnote_label_bracket_ahead(s, &probe.lexer)) {
+        // A footnote label runs to the next `]`, a `[` in it included
+        // (C2-I-087); this mark ends the fallback reading of its `[^`.
+        s->col_base = base;
+        array_delete(&probe.characters);
+        push_inline_flagged(s, SQUARE_BRACKET_SPAN, 0, 0);
+        lexer->result_symbol = FOOTNOTE_LABEL_MARK_BEGIN;
+        return true;
+      }
+      bracket_probe_rewind(&probe, 0);
+      s->col_base = base;
+      bool balanced = probe_square_bracket_lookahead_states(s, &probe, top);
+      array_delete(&probe.characters);
       if (balanced && (s->state & (STATE_BRACKET_STARTS_SPAN | STATE_BRACKET_STARTS_INLINE_LINK))) {
         push_inline_flagged(s, SQUARE_BRACKET_SPAN, 0, INLINE_BRACED);
         lexer->result_symbol = token;
+        // Only link text reads on: the fallback reading would end at the
+        // tail's `(` anyway, and each nested link would double the versions.
+        if ((s->state & STATE_BRACKET_STARTS_INLINE_LINK) && valid_symbols[LINK_TEXT_MARK_BEGIN])
+          lexer->result_symbol = LINK_TEXT_MARK_BEGIN;
         return true;
       }
       balanced_bracket = balanced;
+      // Unclosed, it stays open on the bracket stack (C2-I-118).
+      if (!balanced) push_phantom(s);
     }
 
     // This is where we've reached the `(` in:
@@ -16555,6 +16722,7 @@ static bool mark_span_begin(Scanner *s, TSLexer *lexer,
   } else {
     // Reset blocking states when the correct branch was chosen.
     if (inline_type == SQUARE_BRACKET_SPAN) {
+      if (inline_depth(s) >= MAX_NESTING_DEPTH) return false;
       // A `[` with no matching `]` ahead of it in this paragraph is never
       // going to be a real span - refuse it here rather than keep an
       // unclosable branch alive (tree-sitter-carve#435). `top` is NULL,
@@ -16563,7 +16731,7 @@ static bool mark_span_begin(Scanner *s, TSLexer *lexer,
       // that span's own closer. Pin the zero-width mark first, since the
       // lookahead advances the lexer past it.
       mark_end(s, lexer);
-      if (!qualified_bracket_balanced(s, lexer)) {
+      if (!qualified_bracket_balanced(s, lexer, !valid_symbols[ATTRIBUTED_SPAN_MARK_BEGIN])) {
         return false;
       }
     } else if (inline_type == PARENS_SPAN) {
@@ -17018,12 +17186,51 @@ static bool parse_inline_note_mark_begin(Scanner *s, TSLexer *lexer,
 /// that, because the lexer takes the longest match and the decision is over by
 /// the time anything can look at what follows. Refusing leaves the caret to
 /// the fallback, which is the reading the spec wants.
-static bool parse_inline_note_begin(Scanner *s, TSLexer *lexer) {
+static bool parse_inline_note_tie_break(Scanner *s, TSLexer *lexer, const bool *valid_symbols);
+static bool parse_inline_note_begin(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   if (lexer->lookahead != '^') {
     return false;
   }
   advance(s, lexer);
-  return parse_inline_note_after_caret(s, lexer);
+  return parse_inline_note_tie_break(s, lexer, valid_symbols);
+}
+
+static bool parse_inline_note_tie_break(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
+  // An opener read while 200 entries are open is text (C2-I-118).
+  if (inline_depth(s) >= MAX_NESTING_DEPTH) return false;
+  bool tie_break = valid_symbols[LITERAL_RUN] && !valid_symbols[ERROR] && !s->caret_ordinary &&
+                   !in_caption(s) && !find_inline(s, EXTENSION) && !find_inline(s, INLINE_NOTE);
+  // Inside a note that is text, a `^[` opens no note either.
+  if (s->caret_ordinary && valid_symbols[LITERAL_RUN]) return false;
+  if (!tie_break) return parse_inline_note_after_caret(s, lexer);
+  if (lexer->lookahead != '[') return false;
+  advance(s, lexer);
+  mark_end(s, lexer);
+  while (lexer->lookahead == ' ' || lexer->lookahead == '\t') advance(s, lexer);
+  if (lexer->lookahead == ']') return false;
+  BracketProbe probe = bracket_probe_new(s, lexer);
+  uint32_t base = s->col_base;
+  bool closed = probe_scan_until_bracket_close(s, &probe.lexer, NULL, NULL);
+  s->col_base = base;
+  if (closed) {
+    array_delete(&probe.characters);
+    lexer->result_symbol = INLINE_NOTE_BEGIN;
+    return true;
+  }
+  // A note that would close only because a caret pair in it opens a footnote
+  // reference is text, and those caret pairs are ordinary brackets (C2-I-089).
+  // The note's two characters become a token that carries their count.
+  bracket_probe_rewind(&probe, 0);
+  s->probe_footnotes = true;
+  s->probe_carets = 0;
+  closed = probe_scan_until_bracket_close(s, &probe.lexer, NULL, NULL);
+  s->probe_footnotes = false;
+  s->col_base = base;
+  array_delete(&probe.characters);
+  if (!closed || !s->probe_carets) return false;
+  s->caret_ordinary = s->probe_carets > UINT8_MAX ? UINT8_MAX : (uint8_t)s->probe_carets;
+  lexer->result_symbol = LITERAL_RUN;
+  return true;
 }
 
 static bool parse_inline_note_after_caret(Scanner *s, TSLexer *lexer) {
@@ -17737,6 +17944,7 @@ static bool keeps_inline_notes(TokenType token) {
   case EMPHASIS_QUALIFIED_MARK_BEGIN: case WORD_END:
   case HIGHLIGHTED_QUALIFIED_MARK_BEGIN: case LITERAL_STAR: case LITERAL_SLASH:
   case LITERAL_SLASH_BOUNDARY: case AFTER_BARE_CLOSER: case IMAGE_SPAN_MARK_BEGIN:
+  case CARET_BRACKET_MARK_BEGIN: case FOOTNOTE_LABEL_MARK_BEGIN: case LINK_TEXT_MARK_BEGIN:
   case TRAILING_COMMENT:
   // A code span holds no delimiter, so it changes no closer probe's answer.
   case VERBATIM_BEGIN: case VERBATIM_CONTENT: case VERBATIM_END:
@@ -17952,6 +18160,8 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
       s->past_opener = false;
     }
     if (!keeps_inline_notes(lexer->result_symbol)) {
+      s->caret_ordinary = 0;
+      if (!s->open_inline->size) s->root_phantoms = 0;
       s->no_closer_kinds = 0;
       s->closer_ahead_kinds = 0;
       s->link_tail_open_line = false;
@@ -18376,6 +18586,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     if (!valid_symbols[IN_FALLBACK]) return false;
     s->after_closer_char = '=';
     s->after_closer_col = deferred_column(s, lexer);
+    push_phantom(s);
     lexer->result_symbol = IN_FALLBACK;
     return true;
   }
@@ -18391,6 +18602,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     s->state &= ~STATE_BARE_SPAN_OPENER;
     if (!valid_symbols[IN_FALLBACK]) return false;
     note_behind_fallback(s, lexer, '/');
+    push_phantom(s);
     lexer->result_symbol = IN_FALLBACK;
     return true;
   }
@@ -18407,6 +18619,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     s->state &= ~STATE_BARE_SPAN_OPENER;
     if (!valid_symbols[IN_FALLBACK]) return false;
     note_behind_fallback(s, lexer, '*');
+    push_phantom(s);
     lexer->result_symbol = IN_FALLBACK;
     return true;
   }
@@ -20018,6 +20231,36 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       lexer->result_symbol = IMAGE_SPAN_MARK_BEGIN;
     }
     if (found) return true;
+  } else if (valid_symbols[CARET_BRACKET_MARK_BEGIN] && !valid_symbols[ERROR] &&
+             s->caret_ordinary) {
+    // A caret pair the tie-break of a failed note made an ordinary bracket.
+    // The zero-width end is the one marked before the readers above.
+    --s->caret_ordinary;
+    BracketProbe probe = bracket_probe_new(s, lexer);
+    uint32_t base = s->col_base;
+    bool link = lexer->lookahead != ']' && footnote_label_ahead(s, &probe.lexer);
+    s->col_base = base;
+    if (link) {
+      bracket_probe_rewind(&probe, 0);
+      link = probe_square_bracket_lookahead_states(s, &probe, peek_inline(s)) &&
+             (s->state & STATE_BRACKET_STARTS_INLINE_LINK || !(s->state & STATE_BRACKET_STARTS_SPAN));
+      s->col_base = base;
+    }
+    if (link) {
+      array_delete(&probe.characters);
+      push_inline_flagged(s, SQUARE_BRACKET_SPAN, 0, INLINE_BRACED);
+      lexer->result_symbol = CARET_BRACKET_MARK_BEGIN;
+      return true;
+    }
+    // Otherwise a pair of literal brackets: its `]` closes nothing around it.
+    bracket_probe_rewind(&probe, 0);
+    s->col_base = base;
+    bool closed = probe_scan_until_bracket_close(s, &probe.lexer, NULL, &probe);
+    s->col_base = base;
+    array_delete(&probe.characters);
+    if (closed) push_inline_flagged(s, LITERAL_BRACKET, 0, 0);
+    lexer->result_symbol = IN_FALLBACK;
+    return true;
   } else if (valid_symbols[SQUARE_BRACKET_SPAN_MARK_BEGIN] && valid_symbols[IN_FALLBACK] &&
              !valid_symbols[ERROR] && lexer->lookahead == ']') {
     // Only `[^` leaves a bracket mark before `]`: an empty label, so the
@@ -20027,10 +20270,9 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     return true;
   } else if (valid_symbols[SQUARE_BRACKET_SPAN_MARK_BEGIN] && valid_symbols[IN_FALLBACK] &&
              !valid_symbols[ERROR] && !valid_symbols[ATTRIBUTED_SPAN_MARK_BEGIN] &&
-             (find_inline(s, INLINE_NOTE) || footnote_label_holds_bracket(s, lexer))) {
-    // In a note, at any depth, `[^` opens no footnote reference (C2-I-089). A
-    // `[^` label with a `[` is not read as one yet. Either way the pair is
-    // literal text, so its `]` closes no bracket around it.
+             find_inline(s, INLINE_NOTE)) {
+    // In a note, at any depth, `[^` opens no footnote reference (C2-I-089):
+    // the pair is literal text, so its `]` closes no bracket around it.
     mark_end(s, lexer);
     BracketProbe probe = bracket_probe_new(s, lexer);
     bool closed = probe_scan_until_bracket_close(s, &probe.lexer, NULL, &probe);
@@ -20176,7 +20418,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   // caption it turned `^ Fruit prices` into a document-level caption instead
   // of the table's own, because the caption scanner never got the character.
   if (valid_symbols[INLINE_NOTE_BEGIN] && lexer->lookahead == '^') {
-    return parse_inline_note_begin(s, lexer);
+    return parse_inline_note_begin(s, lexer, valid_symbols);
   }
 
   if (valid_symbols[HARD_LINE_BREAK] && parse_hard_line_break(s, lexer)) {
@@ -20239,6 +20481,9 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
 /// `ts_malloc` memory that must be initialized, `deserialize` gets live state
 /// that must be released first.
 static void init_scalars(Scanner *s) {
+  s->caret_ordinary = 0;
+  s->root_phantoms = 0;
+  s->probe_footnotes = false;
   s->blocks_to_close = 0;
   s->block_quote_level = 0;
   s->indent = 0;
@@ -20400,7 +20645,14 @@ unsigned tree_sitter_carve_external_scanner_serialize(void *payload,
                         s->refused_plus_column;
   bool row_extension = s->attached_row_prefix != UINT8_MAX;
   bool chain_extension = s->chain_col != UINT8_MAX;
-  const size_t scalar_bytes = 19 + (s->indent >= UINT8_MAX ? 2 : 0) +
+  // Trailing extension: k bytes, then k; flagged by header bit 0x10.
+  unsigned phantom_pairs = 0;
+  for (uint32_t i = 0; i < s->open_inline->size && i < UINT8_MAX; ++i)
+    if ((*array_get(s->open_inline, i))->phantoms) ++phantom_pairs;
+  if (phantom_pairs > 100) phantom_pairs = 100;
+  const unsigned ext_bytes = s->caret_ordinary || s->root_phantoms || phantom_pairs
+                                 ? 3 + 2 * phantom_pairs : 0;
+  const size_t scalar_bytes = 19 + ext_bytes + (s->indent >= UINT8_MAX ? 2 : 0) +
                               (s->marker_end_col >= UINT8_MAX ? 2 : 0) +
                               (plus_extension ? 3 : 0) +
                               (row_extension ? 1 : 0) + (chain_extension ? 1 : 0);
@@ -20444,7 +20696,7 @@ unsigned tree_sitter_carve_external_scanner_serialize(void *payload,
   // gap, and the high bit carries the box flag.
   buffer[size++] = (char)(s->table_attribute_pending |
                           (s->metadata_gap ? 0x04 : 0) | (s->past_opener ? 0x08 : 0) |
-                          (s->task_box_next ? 0x80 : 0));
+                          (ext_bytes ? 0x10 : 0) | (s->task_box_next ? 0x80 : 0));
   buffer[size++] = (char)(s->state & 0xff);
   buffer[size++] = (char)((s->state >> 8) & 0xff);
   buffer[size++] = (char)(s->col_base & 0xff);
@@ -20508,7 +20760,7 @@ unsigned tree_sitter_carve_external_scanner_serialize(void *payload,
   bool plain_note = span_note && s->plain_run_note;
   bool notes = (s->no_closer_kinds || ahead || s->link_tail_open_line || span_note) &&
                size + 4 + (ahead ? 2 : 0) + (bounded ? 2 : 0) + (span_note ? 6 : 0) + (plain_note ? 4 : 0) + (plus_extension ? 3 : 0) +
-                   (row_extension ? 1 : 0) + (chain_extension ? 1 : 0) + 3 <=
+                   (row_extension ? 1 : 0) + (chain_extension ? 1 : 0) + ext_bytes + 3 <=
                    TREE_SITTER_SERIALIZATION_BUFFER_SIZE;
   if (notes) {
     uint16_t kinds = s->no_closer_kinds | (ahead ? 1u << 15 : 0) | (span_note ? 1u << 14 : 0) |
@@ -20546,6 +20798,19 @@ unsigned tree_sitter_carve_external_scanner_serialize(void *payload,
   }
   if (row_extension) buffer[size++] = (char)s->attached_row_prefix;
   if (chain_extension) buffer[size++] = (char)s->chain_col;
+  if (ext_bytes) {
+    unsigned written = 0;
+    for (uint32_t i = 0; i < s->open_inline->size && i < UINT8_MAX && written < phantom_pairs; ++i) {
+      uint8_t count = (*array_get(s->open_inline, i))->phantoms;
+      if (!count) continue;
+      buffer[size++] = (char)i;
+      buffer[size++] = (char)count;
+      ++written;
+    }
+    buffer[size++] = (char)s->root_phantoms;
+    buffer[size++] = (char)s->caret_ordinary;
+    buffer[size++] = (char)(ext_bytes - 1);
+  }
   buffer[size++] = (char)((s->mid_line ? 1 : 0) | (notes ? 2 : 0) |
                           (notes && s->link_tail_open_line ? 4 : 0) |
                           (plus_extension ? 8 : 0) | (row_extension ? 16 : 0) |
@@ -20569,6 +20834,8 @@ unsigned tree_sitter_carve_external_scanner_serialize(void *payload,
 void tree_sitter_carve_external_scanner_deserialize(void *payload, char *buffer,
                                                    unsigned length) {
   Scanner *s = (Scanner *)payload;
+  size_t phantom_at = 0;
+  unsigned phantom_pairs = 0;
   if (length > sizeof(s->entry_state)) length = 0;
   if (buffer != s->entry_state && length) memcpy(s->entry_state, buffer, length);
   if (!length) ++s->parse_generation;
@@ -20591,6 +20858,21 @@ void tree_sitter_carve_external_scanner_deserialize(void *payload, char *buffer,
     s->mid_line = (notes & 1) != 0;
     s->band_prefix = (notes & 64) != 0;
     s->band_sticky = (notes & 128) != 0;
+    size_t head = 2;
+    phantom_pairs = 0;
+    read_wide_column(buffer, &head, length);
+    read_wide_column(buffer, &head, length);
+    if (head < length && ((uint8_t)buffer[head] & 0x10)) {
+      uint8_t k = (uint8_t)buffer[length - 1];
+      if (length < 18u + k) return;
+      if (k >= 2) {
+        s->caret_ordinary = (uint8_t)buffer[length - 2];
+        s->root_phantoms = (uint8_t)buffer[length - 3];
+        phantom_at = length - 1 - k;
+        phantom_pairs = (uint8_t)(k - 2) / 2;
+      }
+      length -= k + 1;
+    }
     if (notes & 32) {
       if (length < 18) return;
       s->chain_col = (uint8_t)buffer[--length];
@@ -20726,6 +21008,11 @@ void tree_sitter_carve_external_scanner_deserialize(void *payload, char *buffer,
       s->bounded_kinds = bounded;
       s->no_closer_kinds = kinds;
       (*array_back(s->open_inline))->literal_closes = literal_closes;
+    }
+    for (unsigned i = 0; i < phantom_pairs; ++i) {
+      uint8_t index = (uint8_t)buffer[phantom_at + 2 * i];
+      if (index < s->open_inline->size)
+        (*array_get(s->open_inline, index))->phantoms = (uint8_t)buffer[phantom_at + 2 * i + 1];
     }
     s->missing_closers = tail & ((1 << 14) - 1) & ~(3 << 9);
     s->caption_gap = (uint8_t)((tail >> 9) & 3);
