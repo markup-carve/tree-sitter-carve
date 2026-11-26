@@ -1,5 +1,5 @@
 ================================================================================
-C2-I-045: openers inside a span stop at its closer
+C2-I-059: openers inside a span stop at its closer
 ================================================================================
 
 *a ~b ~c* d~ and *e {~f g* {~h~}
@@ -22,7 +22,7 @@ C2-I-045: openers inside a span stop at its closer
       end_marker: (strikethrough_end))))
 
 ================================================================================
-C2-I-045: a closer inside link text stays hidden from the outer opener
+C2-I-059: a closer inside link text stays hidden from the outer opener
 ================================================================================
 
 *a {~b [ {~x ~} ](u) d*

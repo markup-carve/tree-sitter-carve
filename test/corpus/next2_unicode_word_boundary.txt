@@ -1,5 +1,5 @@
 ================================================================================
-C2-I-127: a non-ASCII letter before an opener is a word character
+C2-I-047: a non-ASCII letter before an opener is a word character
 ================================================================================
 
 é*a* b and x é*a*
@@ -10,7 +10,7 @@ C2-I-127: a non-ASCII letter before an opener is a word character
   (paragraph))
 
 ================================================================================
-C2-I-127: a non-ASCII letter after a closer is a word character
+C2-I-048: a non-ASCII letter after a closer is a word character
 ================================================================================
 
 *a*é and *a* é

@@ -17,7 +17,7 @@ C2-I-026: a braced comment is transparent to the closer boundary
       content: (content))))
 
 ================================================================================
-C2-I-025: an unclosed braced comment opener is text
+C2-I-043: an unclosed braced comment opener is text
 ================================================================================
 
 *a*{%x b and {% c
