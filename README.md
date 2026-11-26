@@ -26,6 +26,19 @@ The [Carve specification](https://markup-carve.github.io/carve/) defines the
 language; engine conformance and rendered output are checked in their
 respective implementation repositories.
 
+### Known differences
+
+A few inputs parse differently from the reference engine:
+
+- A shortcut image such as `![later]` is an image only when a definition of
+  `later` exists, and the definition may come later in the document. The
+  grammar reads in one pass and knows no definitions, so the brackets stay
+  text.
+- A bare delimiter inside an open span of its own kind, such as the inner `/`
+  in `/a /b/ c/`, is text here, while the specification nests the kind in
+  itself (C2-I-051). The closer probes that keep long paragraphs linear store
+  one answer per delimiter kind, and nesting needs one per depth.
+
 ## Browser use
 
 Each release ships `tree-sitter-carve.wasm` in the npm package and as a GitHub
