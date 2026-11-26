@@ -15742,7 +15742,9 @@ static bool probe_bare_closer_skips_brackets(Scanner *s, BracketProbe *probe, ch
     if (c == (int32_t)(unsigned char)bare &&
         (previous != 0 && previous != ' ' && previous != '\t' && previous != '\n')) {
       advance(s, lexer);
-      if (carve_is_alnum_ascii(lexer->lookahead) ||
+      // A mark of a bare run of two is text (C2-I-049).
+      bool in_run = (bare == '*' || bare == '/') && (previous == c || lexer->lookahead == c);
+      if (in_run || carve_is_alnum_ascii(lexer->lookahead) ||
           carve_is_grapheme_extender(lexer->lookahead)) {
         previous = c;
         ++characters;
@@ -16656,7 +16658,8 @@ static bool scan_span_end_by_form(Scanner *s, TSLexer *lexer,
     advance(s, lexer);
     // bare_closer(d) = <&(non_ws), d, !(alnum). A bare marker glued to
     // the word that follows it closes nothing: `/usr/local/` is one emphasis.
-    if (carve_is_alnum_ascii(lexer->lookahead) ||
+    // A run of two marks is text (C2-I-049).
+    if (lexer->lookahead == marker || carve_is_alnum_ascii(lexer->lookahead) ||
         carve_is_grapheme_extender(lexer->lookahead)) {
       return false;
     }
@@ -17195,10 +17198,12 @@ static int parse_literal_run(Scanner *s, TSLexer *lexer,
     Inline *open = find_inline_in_scope(s, k);
     bool open_bare = open != NULL && (open->flags & INLINE_BRACED) == 0;
     bool open_braced = open != NULL && (open->flags & INLINE_BRACED) != 0;
-    bool may_close = prev != 0 && ((open_bare && !carve_is_alnum_ascii(next) &&
+    // A mark of a bare run of two is text (C2-I-049).
+    bool in_run = (c == '*' || c == '/') && (prev == c || next == c);
+    bool may_close = prev != 0 && ((open_bare && !in_run && !carve_is_alnum_ascii(next) &&
                                     !carve_is_grapheme_extender(next)) ||
                                    (open_braced && next == '}') ||
-                                   open_closer_starts_here(s, c, next));
+                                   (!in_run && open_closer_starts_here(s, c, next)));
     // bare_opener(d) = <!(alnum | d | slash_if(d)), d, !(ws | d)
     bool path_guard = (c == '/' || c == '_') && (prev == '/' || prev == '_') &&
                       prev2 != 0;
