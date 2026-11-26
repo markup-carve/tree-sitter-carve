@@ -1,0 +1,100 @@
+================================================================================
+C2-B-108: a comment block directly below a table opens after the table
+================================================================================
+
+| a |
+%%%
+hidden
+%%%
+
+--------------------------------------------------------------------------------
+
+(document
+  (table
+    (table_row
+      (table_cell)))
+  (fenced_comment_block
+    (comment_fence_marker_begin)
+    content: (content)
+    (comment_fence_marker_end)))
+
+================================================================================
+C2-B-108: a comment block below a table row before another row
+================================================================================
+
+| a |
+%%%
+hidden
+%%%
+| b |
+
+--------------------------------------------------------------------------------
+
+(document
+  (table
+    (table_row
+      (table_cell)))
+  (fenced_comment_block
+    (comment_fence_marker_begin)
+    content: (content)
+    (comment_fence_marker_end))
+  (table
+    (table_row
+      (table_cell))))
+
+================================================================================
+C2-B-026: a comment block at an outer item's column closes the inner item
+================================================================================
+
+- a
+  - b
+  %%%
+  x
+  %%%
+  c
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)
+        (list
+          (list_item
+            marker: (list_marker_dash)
+            content: (list_item_content
+              (paragraph))))
+        (fenced_comment_block
+          (comment_fence_marker_begin)
+          content: (content)
+          (comment_fence_marker_end))
+        (paragraph)))))
+
+================================================================================
+C2-B-026: a comment block indented past the marker stays in the item
+================================================================================
+
+- a
+ %%%
+ x
+ %%%
+- b
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)
+        (fenced_comment_block
+          (comment_fence_marker_begin)
+          content: (content)
+          (comment_fence_marker_end))))
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (paragraph)))))

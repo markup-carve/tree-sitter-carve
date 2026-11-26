@@ -2003,9 +2003,10 @@ module.exports = grammar({
         choice($._newline, $._eof_or_newline),
       ),
 
+    // A third `%` opens a comment block (C2-B-108), never a comment line.
     comment_line: ($) =>
       seq(
-        token(seq(/[ \t]*/, "%%", /[^\r\n]*/)),
+        token(seq(/[ \t]*/, "%%", optional(seq(/[^%\r\n]/, /[^\r\n]*/)))),
         choice($._newline, $._eof_or_newline),
       ),
 

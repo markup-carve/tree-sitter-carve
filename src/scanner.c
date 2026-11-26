@@ -3967,8 +3967,19 @@ static bool parse_comment_fence(Scanner *s, TSLexer *lexer,
   return true;
 }
 
+static bool comment_fence_begin_after(Scanner *s, TSLexer *lexer,
+                                      const bool *valid_symbols,
+                                      uint16_t consumed);
 static bool parse_comment_fence_begin(Scanner *s, TSLexer *lexer,
                                       const bool *valid_symbols) {
+  return comment_fence_begin_after(s, lexer, valid_symbols, 0);
+}
+
+/// The opener of a comment block whose first `consumed` percent signs a
+/// caller has read already.
+static bool comment_fence_begin_after(Scanner *s, TSLexer *lexer,
+                                      const bool *valid_symbols,
+                                      uint16_t consumed) {
   if (!valid_symbols[COMMENT_FENCE_BEGIN]) {
     return false;
   }
@@ -3980,7 +3991,7 @@ static bool parse_comment_fence_begin(Scanner *s, TSLexer *lexer,
   bool below_content = host_list && host_list->type != LIST_DEFINITION &&
       s->indent >= host_list->data &&
       s->indent < list_item_margin(s, host_list);
-  uint16_t percents = consume_percents(s, lexer);
+  uint16_t percents = consumed + consume_percents(s, lexer);
   if (percents < 3 || percents == COMMENT_FENCE_CAP) {
     return false;
   }
@@ -5830,7 +5841,16 @@ static bool parse_table_comment_line(Scanner *s, TSLexer *lexer,
     return false;
   }
   consume_whitespace(s, lexer);
-  if (!scan_comment_only_line(s, lexer)) return false;
+  // A third `%` below a row opens a comment block (C2-B-108); the two read
+  // here are its own, so the opener is answered from this reader.
+  if (lexer->lookahead != '%') return false;
+  advance(s, lexer);
+  if (lexer->lookahead != '%') return false;
+  advance(s, lexer);
+  if (lexer->lookahead == '%') {
+    return comment_fence_begin_after(s, lexer, valid_symbols, 2);
+  }
+  if (!scan_comment_line_tail(s, lexer)) return false;
   consume_line_end(s, lexer);
   mark_end(s, lexer);
   lexer->result_symbol = TABLE_COMMENT_LINE;
@@ -19248,28 +19268,10 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     s->block_quote_level = level;
     s->state = state;
     s->col_base = col_base;
-    // A comment below the content column stays in the item while a claim or
-    // a retention admits it, except a closed fence at the column the enclosing
-    // context opens blocks at (PART 9 section 24 C3).
-    uint8_t flags = comment_list->flags;
-    bool at_base = indent < comment_list->data;
-    bool admitted = width >= 2 &&
-        (flags & (BLOCK_FLAG_LIST_COMMENT_CLAIM |
-                  BLOCK_FLAG_LIST_COMMENT_RETAINS));
-    uint32_t opener_col = 0;
-    for (int i = (int)s->open_blocks->size - 2; i >= 0; --i) {
-      Block *b = *array_get(s->open_blocks, i);
-      if (is_list(b->type)) {
-        opener_col = list_item_margin(s, b);
-        break;
-      }
-    }
+    // A comment block opener is a line like any other: the item owns it when
+    // it is indented past the item's marker (C2-B-025, C2-B-026).
+    bool admitted = width >= 3 && indent > comment_list->data;
     comment_list->flags &= (uint8_t)~LIST_COMMENT_FLAGS;
-    if (closed && indent == opener_col) {
-      admitted = false;
-    } else if (closed && !at_base) {
-      admitted = true;
-    }
     if (admitted || comment_only) {
       // A closed fence leaves no paragraph open, so the line after it is
       // measured against the item as usual (PART 9 section 24 C3, P9-051).

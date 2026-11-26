@@ -7123,8 +7123,25 @@
                 "value": "%%"
               },
               {
-                "type": "PATTERN",
-                "value": "[^\\r\\n]*"
+                "type": "CHOICE",
+                "members": [
+                  {
+                    "type": "SEQ",
+                    "members": [
+                      {
+                        "type": "PATTERN",
+                        "value": "[^%\\r\\n]"
+                      },
+                      {
+                        "type": "PATTERN",
+                        "value": "[^\\r\\n]*"
+                      }
+                    ]
+                  },
+                  {
+                    "type": "BLANK"
+                  }
+                ]
               }
             ]
           }
