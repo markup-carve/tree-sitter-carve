@@ -2902,14 +2902,25 @@ module.exports = grammar({
     _link: ($) =>
       choice($.full_reference_link, $.collapsed_reference_link, $.inline_link),
     full_reference_link: ($) => seq(field("text", $.link_text), $._link_label),
+    // Its text is its label, and an empty label is none (C2-I-079).
     collapsed_reference_link: ($) =>
-      seq(field("text", $.link_text), token.immediate("[]")),
+      seq(field("text", alias($._filled_link_text, $.link_text)), token.immediate("[]")),
     inline_link: ($) =>
       seq(
         field("text", $.link_text),
         field("destination", $.inline_link_destination),
       ),
 
+    _filled_link_text: ($) =>
+      prec.dynamic(
+        ELEMENT_PRECEDENCE,
+        seq(
+          $._bracketed_text_begin,
+          $._square_bracket_span_mark_begin,
+          $._inline,
+          alias($._square_bracket_span_end, "]"),
+        ),
+      ),
     link_text: ($) =>
       prec.dynamic(
         ELEMENT_PRECEDENCE,
