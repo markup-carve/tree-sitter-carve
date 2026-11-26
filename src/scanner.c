@@ -5628,6 +5628,14 @@ static bool parse_block_quote(Scanner *s, TSLexer *lexer,
     if (!marker_end_pinned) {
       mark_end(s, lexer);
     }
+    // The blank line of a kept comment takes all of its markers in one token,
+    // as a single quote's does.
+    Block *kept = find_list(s);
+    if (!ending_newline && kept && (kept->flags & BLOCK_FLAG_LIST_QUOTED_COMMENT)) {
+      bool rest_newline = false;
+      scan_block_quote_markers(s, lexer, &rest_newline);
+      if (rest_newline && line_column(s, lexer) == 0) ending_newline = true;
+    }
     // A blank quoted line's token already ends at the next line, which is the
     // only place a short line after an open div can still be announced.
     if (ending_newline && line_column(s, lexer) == 0) {
