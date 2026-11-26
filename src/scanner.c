@@ -452,6 +452,9 @@ static const uint8_t BLOCK_FLAG_LIST_HARD_BOUNDARY = 1 << 1;
 // Lists only: the previous line was an unclosed comment block opened below
 // the content column (retention).
 static const uint8_t BLOCK_FLAG_LIST_COMMENT_RETAINS = 1 << 4;
+// Lists only: the item kept a line comment after a blank quoted line, so that
+// line's token ends past the comment line's markers.
+static const uint8_t BLOCK_FLAG_LIST_QUOTED_COMMENT = 1 << 3;
 // Lists other than LIST_DEFINITION, sharing bit 0 with
 // `BLOCK_FLAG_BODY_OWNED_BY_FENCE`: the current line is a follower kept below
 // the content column, so it is paragraph text and opens no list.
@@ -5597,6 +5600,17 @@ static bool parse_block_quote(Scanner *s, TSLexer *lexer,
     // only place a short line after an open div can still be announced.
     if (ending_newline && line_column(s, lexer) == 0) {
       s->state &= ~STATE_QUOTED_LINE_SHORT_OF_ITEM;
+      Block *comment_list = find_list(s);
+      if (comment_list && (comment_list->flags & BLOCK_FLAG_LIST_QUOTED_COMMENT)) {
+        comment_list->flags &= (uint8_t)~BLOCK_FLAG_LIST_QUOTED_COMMENT;
+        bool next_newline;
+        uint8_t next_markers = scan_block_quote_markers(s, lexer, &next_newline);
+        s->indent = consume_whitespace(s, lexer);
+        mark_end(s, lexer);
+        output_block_quote_continuation(s, lexer, next_markers, true);
+        s->block_quote_level = next_markers;
+        return true;
+      }
       scan_quoted_code_fence_closer(s, lexer);
     }
     output_block_quote_continuation(s, lexer, marker_count, ending_newline);
@@ -8172,6 +8186,22 @@ static bool parse_list_item_end(Scanner *s, TSLexer *lexer,
         // markers, which the item's continuation is measured by.
         s->block_quote_level = block_quote_markers;
         return true;
+      }
+      // A line comment after the blank quoted line stays in the item, as a
+      // comment line does after an unquoted blank; the token ends before the
+      // blank line, so the rest is read as the item's next lines.
+      if (ending_newline && valid_symbols[LIST_ITEM_CONTINUATION] &&
+          lexer->lookahead == '%') {
+        advance(s, lexer);
+        if (lexer->lookahead == '%') {
+          advance(s, lexer);
+          // A region marker line is the quote's line (C2-B-137, C2-B-217).
+          if (lexer->lookahead != '%' && scan_comment_line_tail(s, lexer)) {
+            list->flags |= BLOCK_FLAG_LIST_QUOTED_COMMENT;
+            lexer->result_symbol = LIST_ITEM_CONTINUATION;
+            return true;
+          }
+        }
       }
     }
   }
