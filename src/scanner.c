@@ -2174,6 +2174,24 @@ static uint32_t quoted_list_margin(Scanner *s, Block *list) {
   return list->content_col;
 }
 
+/// A description list's marker column plus one, absolute. A list opened at
+/// the start of a quoted line records it behind the quote's marks; one opened
+/// on an item's marker line records the absolute column.
+static uint32_t definition_list_margin(Scanner *s, Block *list) {
+  bool below_list = false;
+  for (int i = s->open_blocks->size - 1; i >= 0; --i) {
+    Block *b = *array_get(s->open_blocks, i);
+    if (b == list) {
+      below_list = true;
+    } else if (below_list && is_list(b->type)) {
+      return list->data;
+    } else if (below_list && b->type == BLOCK_QUOTE) {
+      return (uint32_t)b->content_col + list->data;
+    }
+  }
+  return list->data;
+}
+
 /// How many quotes hold `b`?
 static uint8_t quotes_below(Scanner *s, Block *b) {
   uint8_t n = 0;
@@ -6724,7 +6742,8 @@ static bool scan_paragraph_closing_marker(Scanner *s, TSLexer *lexer) {
       }
       // C2-B-016: only at an open description list's column.
       Block *terms = find_block(s, LIST_DEFINITION);
-      if (!terms || marker_column + 1u != terms->data) return false;
+      if (!terms) return false;
+      if (marker_column + 1u != definition_list_margin(s, terms)) return false;
       advance(s, lexer);
       // In a description body an empty term marker is text (corpus 483).
       bool in_term = in_definition_list &&
@@ -6773,7 +6792,7 @@ static bool scan_paragraph_closing_marker(Scanner *s, TSLexer *lexer) {
     // C2-B-015: only past the description's mark, and only a bullet, a bare
     // dot or a value of 1; otherwise the line is lazy.
     uint32_t column = paragraph_end_line_column(s, lexer);
-    if (column < body->data) {
+    if (column < definition_list_margin(s, body)) {
       if (!item_list_outside(s, body, column)) return false;
       return scan_list_marker(s, lexer) && marker_line_has_content(s, lexer);
     }
@@ -12795,7 +12814,7 @@ static bool scan_row_or_break_at_paragraph_end(Scanner *s, TSLexer *lexer) {
   Block *body = peek_block(s);
   if (body && body->type == LIST_DEFINITION &&
       !(body->flags & BLOCK_FLAG_DEFINITION_TERM)) {
-    return column >= body->data || item_list_outside(s, body, column);
+    return column >= definition_list_margin(s, body) || item_list_outside(s, body, column);
   }
   if (body && body->type == FOOTNOTE) {
     return true;

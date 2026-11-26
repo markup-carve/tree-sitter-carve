@@ -1,0 +1,122 @@
+================================================================================
+C2-B-015: a bullet at a quoted description's column is a lazy line
+================================================================================
+
+> :: t
+> : d
+> - a
+> - b
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (definition_list
+        (list_item
+          marker: (list_marker_definition)
+          term: (term))
+        (list_item
+          (block_quote_marker)
+          marker: (list_marker_description)
+          definition: (definition
+            (block_quote_marker)
+            (block_quote_marker)))))))
+
+================================================================================
+C2-B-015: a bullet past a quoted description's marker opens a list in it
+================================================================================
+
+> :: t
+> : d
+>   - a
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (definition_list
+        (list_item
+          marker: (list_marker_definition)
+          term: (term))
+        (list_item
+          (block_quote_marker)
+          marker: (list_marker_description)
+          definition: (definition)
+          (block_quote_marker)
+          (list
+            (list_item
+              marker: (list_marker_dash)
+              content: (list_item_content
+                (paragraph)))))))))
+
+================================================================================
+C2-B-016: a term at a quoted description list's column interrupts the description
+================================================================================
+
+> :: t
+> : d
+> :: u
+> : e
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (definition_list
+        (list_item
+          marker: (list_marker_definition)
+          term: (term))
+        (list_item
+          (block_quote_marker)
+          marker: (list_marker_description)
+          definition: (definition))
+        (list_item
+          (block_quote_marker)
+          marker: (list_marker_definition)
+          term: (term))
+        (list_item
+          (block_quote_marker)
+          marker: (list_marker_description)
+          definition: (definition))))))
+
+================================================================================
+C2-B-016: a term at the column of a description list in a quoted item interrupts
+================================================================================
+
+> - :: t
+>   : d
+>   :: u
+>   : e
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (definition_list
+              (list_item
+                marker: (list_marker_definition)
+                term: (term))
+              (list_item
+                (block_quote_marker)
+                marker: (list_marker_description)
+                definition: (definition))
+              (list_item
+                (block_quote_marker)
+                marker: (list_marker_definition)
+                term: (term))
+              (list_item
+                (block_quote_marker)
+                marker: (list_marker_description)
+                definition: (definition)))))))))
