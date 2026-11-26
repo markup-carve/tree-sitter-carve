@@ -3124,15 +3124,17 @@ module.exports = grammar({
     // literal (#335).
     _link_label: ($) =>
       seq(
+        // The scanner offers the label only where one matches.
+        $._link_label_start,
         token.immediate("["),
         field(
           "label",
           // A line comment in the label takes its `]` (C2-I-077); a blank
-          // label is none (C2-I-079); it may wrap once (C2-I-080); a backslash
+          // label is none (C2-I-079), and one led by `@` or `^` too (C2-I-078); it may wrap once (C2-I-080); a backslash
           // escapes a `]` (C2-I-076).
           alias(
             token.immediate(
-              /(?:(?:[^\]@\\\r\n \t]|\\[^\r\n])|[ \t]+(?:[^\]\\\r\n \t]|\\[^\r\n]))(?:(?:[^\]\\\r\n \t]|\\[^\r\n])|[ \t]+(?:(?:[^\]\\\r\n \t%]|\\[^\r\n])|%(?:[^\]\\\r\n%]|\\[^\r\n])))*(?:[ \t]+%?)?(?:\r?\n[ \t]*(?:[^\]\\\r\n \t]|\\[^\r\n])(?:(?:[^\]\\\r\n \t]|\\[^\r\n])|[ \t]+(?:[^\]\\\r\n \t]|\\[^\r\n]))*[ \t]*)?/,
+              /(?:(?:[^\]@^\\\r\n \t]|\\[^\r\n])|[ \t]+(?:[^\]\\\r\n \t]|\\[^\r\n]))(?:(?:[^\]\\\r\n \t]|\\[^\r\n])|[ \t]+(?:(?:[^\]\\\r\n \t%]|\\[^\r\n])|%(?:[^\]\\\r\n%]|\\[^\r\n])))*(?:[ \t]+%?)?(?:\r?\n[ \t]*(?:[^\]\\\r\n \t]|\\[^\r\n])(?:(?:[^\]\\\r\n \t]|\\[^\r\n])|[ \t]+(?:[^\]\\\r\n \t]|\\[^\r\n]))*[ \t]*)?/,
             ),
             $.link_label,
           ),
@@ -3790,5 +3792,6 @@ module.exports = grammar({
     $._caret_bracket_mark_begin,
     $._footnote_label_mark_begin,
     $._link_text_mark_begin,
+    $._link_label_start,
   ],
 });
