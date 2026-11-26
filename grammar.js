@@ -3064,10 +3064,10 @@ module.exports = grammar({
         field(
           "label",
           // A line comment in the label takes its `]` (C2-I-077); a blank
-          // label is none (C2-I-079).
+          // label is none (C2-I-079); it may wrap once (C2-I-080).
           alias(
             token.immediate(
-              /(?:[^\]@\r\n \t]|[ \t]+[^\]\r\n \t])(?:[^\]\r\n \t]|[ \t]+(?:[^\]\r\n \t%]|%[^\]\r\n%]))*(?:[ \t]+%?)?/,
+              /(?:[^\]@\r\n \t]|[ \t]+[^\]\r\n \t])(?:[^\]\r\n \t]|[ \t]+(?:[^\]\r\n \t%]|%[^\]\r\n%]))*(?:[ \t]+%?)?(?:\r?\n[ \t]*[^\]\r\n \t](?:[^\]\r\n \t]|[ \t]+[^\]\r\n \t])*[ \t]*)?/,
             ),
             $.link_label,
           ),
