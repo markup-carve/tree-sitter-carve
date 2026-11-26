@@ -15725,7 +15725,19 @@ static bool probe_bare_closer_skips_brackets(Scanner *s, BracketProbe *probe, ch
     if (c == '`') {
       uint32_t start = probe->position;
       uint8_t width = consume_chars(s, lexer, '`');
-      if (read_verbatim_run(s, lexer, width, 0, in_row) != VerbatimRunCloses) {
+      uint32_t behind = probe->position;
+      uint32_t base = s->col_base;
+      VerbatimRunEnd end = read_verbatim_run(s, lexer, width, 0, in_row);
+      // An unclosed run is text and the scan goes on behind it (C2-I-119). The
+      // host reads a run of three or more as a fence first and keeps it open.
+      if (end == VerbatimRunReachesBlockEnd && width < 3) {
+        bracket_probe_rewind(probe, behind);
+        s->col_base = base;
+        previous = '`';
+        ++characters;
+        continue;
+      }
+      if (end != VerbatimRunCloses) {
         return false;
       }
       skipped_opaque_run(s, probe, start, bare);
