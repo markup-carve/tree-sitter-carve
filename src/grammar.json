@@ -3810,6 +3810,10 @@
               },
               {
                 "type": "SYMBOL",
+                "name": "_attribute_atom_text"
+              },
+              {
+                "type": "SYMBOL",
                 "name": "_symbol_fallback"
               },
               {
@@ -5178,6 +5182,10 @@
               {
                 "type": "SYMBOL",
                 "name": "_sigil_run_text"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "_attribute_atom_text"
               },
               {
                 "type": "SYMBOL",
@@ -8201,6 +8209,10 @@
               },
               {
                 "type": "SYMBOL",
+                "name": "_attribute_atom_text"
+              },
+              {
+                "type": "SYMBOL",
                 "name": "_symbol_fallback"
               },
               {
@@ -8603,6 +8615,10 @@
               {
                 "type": "SYMBOL",
                 "name": "_sigil_run_text"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "_attribute_atom_text"
               },
               {
                 "type": "SYMBOL",
@@ -9129,6 +9145,17 @@
         "type": "PATTERN",
         "value": "[#@][a-zA-Z0-9_.-]*[^\\x00-\\x7F\\p{Z}\\p{P}\\p{S}\\p{C}\\u{1F000}-\\u{1FFFF}]",
         "flags": "u"
+      }
+    },
+    "_attribute_atom_text": {
+      "type": "TOKEN",
+      "content": {
+        "type": "PREC",
+        "value": -1,
+        "content": {
+          "type": "PATTERN",
+          "value": "\\{[ \\t]*(?:\\.[A-Za-z0-9_][A-Za-z0-9_-]*|#[A-Za-z0-9_][A-Za-z0-9_-]*|:[A-Za-z][A-Za-z0-9-]*|[A-Za-z_][A-Za-z0-9_-]*(?:=(?:\"[^\"\\r\\n]*\"|'[^'\\r\\n]*'|[^\\s\"'{}]+))?)(?:[ \\t]+(?:\\.[A-Za-z0-9_][A-Za-z0-9_-]*|#[A-Za-z0-9_][A-Za-z0-9_-]*|:[A-Za-z][A-Za-z0-9-]*|[A-Za-z_][A-Za-z0-9_-]*(?:=(?:\"[^\"\\r\\n]*\"|'[^'\\r\\n]*'|[^\\s\"'{}]+))?))*[ \\t]*\\}"
+        }
       }
     },
     "_extension_marker": {

@@ -43,6 +43,9 @@ const CELL_ALIGNMENT = "(?:[<>~][\\^~v]?|\\?[\\^~v])";
 const CELL_ATTR_LIST = CELL_ATTR_ITEM + "(?: +" + CELL_ATTR_ITEM + ")*";
 // In 0.2 alignment is inside the first brace block, directly before any
 // attributes. A mark outside braces is cell text (C2-B-171, C2-B-182).
+const ATTRIBUTE_ATOM = new RegExp(
+  "\\{[ \\t]*" + CELL_ATTR_LIST.replace(/ \+/g, "[ \\t]+") + "[ \\t]*\\}",
+);
 const CELL_MARKER_RUN = new RegExp(
   "=?\\{(?:" +
     CELL_ALIGNMENT +
@@ -93,6 +96,7 @@ function inlineElement($, options) {
         seq($._glued_tag, repeat($._glued_marker)),
         $._glued_symbol,
         $._sigil_run_text,
+        $._attribute_atom_text,
         // Text and the symbol fallback matches everything not matched elsewhere.
         notes ? $._symbol_fallback : $._note_symbol_fallback,
         $._literal_run,
@@ -2423,6 +2427,9 @@ module.exports = grammar({
     tag: ($) => seq(token(seq("#", NAME_WITH_LETTER)), $._word_end),
 
     _sigil_run_text: (_) => token(SIGIL_RUN_BEFORE_LETTER),
+    // An attribute block that attaches to nothing is one atom of text
+    // (C2-I-035); every opener token outranks it.
+    _attribute_atom_text: (_) => token(prec(-1, ATTRIBUTE_ATOM)),
 
     // `extension = ":" extName "[" extContent "]"` (resources/carve-core.ohm).
     // The bracket holds INLINE content: `:code[*b*]` renders the strong inside

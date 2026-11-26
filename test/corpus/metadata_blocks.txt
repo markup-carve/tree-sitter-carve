@@ -299,7 +299,6 @@ k: v
 
 (document
   (paragraph
-    (tag)
     (em_dash)
     (em_dash)))
 
@@ -537,7 +536,6 @@ key: x
 
 (document
   (paragraph
-    (tag)
     (em_dash)
     (em_dash)))
 
