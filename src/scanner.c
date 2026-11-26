@@ -352,10 +352,13 @@ typedef enum {
   CARET_BRACKET_MARK_BEGIN,
   FOOTNOTE_LABEL_MARK_BEGIN,
   LINK_TEXT_MARK_BEGIN,
+  // Zero width before a reference label that will match. See
+  // `link_label_ahead`.
+  LINK_LABEL_START,
 } TokenType;
 
 // The size of `valid_symbols`, for the copies that edit one entry.
-#define EXTERNAL_TOKEN_COUNT (LINK_TEXT_MARK_BEGIN + 1)
+#define EXTERNAL_TOKEN_COUNT (LINK_LABEL_START + 1)
 
 // The different blocks in Carve that we track,
 // in order to match or close them properly.
@@ -794,6 +797,9 @@ typedef struct {
   // A bracket probe reads `[^label]` as one footnote reference, counted here.
   bool probe_footnotes;
   uint32_t probe_carets;
+  // The last bracket lookahead found a reference label, or `[]`, glued
+  // behind its `]`. Transient.
+  bool bracket_label_follows;
   // A bare closer pinned its end before a probe read past a comment behind it.
   bool span_end_marked;
   // The bare probe stopped at a closer of the enclosing span.
@@ -15001,6 +15007,45 @@ static uint16_t bracket_note_scope(Scanner *s, bool natural, bool top) {
   return (uint16_t)(hash ^ hash >> 16 ^ 0xa5a5u);
 }
 
+/// From a `[` glued to a link's text: does a reference label follow, as the
+/// grammar's label token reads one? Not blank, not led by `@` or `^`
+/// (C2-I-078, C2-I-079), up to the next unescaped `]`, wrapping once
+/// (C2-I-080), with no line comment in it (C2-I-077). Without this the label's
+/// `[` and an ordinary bracket compete for one token.
+static bool link_label_ahead(Scanner *s, TSLexer *lexer) {
+  advance(s, lexer);
+  if (lexer->lookahead == '@' || lexer->lookahead == '^') return false;
+  bool filled = false, wrapped = false;
+  int32_t previous = '[';
+  while (!lexer->eof(lexer)) {
+    int32_t c = lexer->lookahead;
+    if (c == ']') return filled;
+    if (at_line_end(lexer)) {
+      if (wrapped) return false;
+      wrapped = true;
+      consume_line_end(s, lexer);
+      consume_whitespace(s, lexer);
+      if (at_line_end(lexer) || lexer->eof(lexer) || lexer->lookahead == ']') return false;
+      previous = '\n';
+      continue;
+    }
+    if (c == '%' && (previous == ' ' || previous == '\t')) {
+      advance(s, lexer);
+      if (lexer->lookahead == '%') return false;
+    } else if (c == '\\') {
+      advance(s, lexer);
+      if (lexer->eof(lexer) || at_line_end(lexer)) return false;
+      c = 'x';
+      advance(s, lexer);
+    } else {
+      advance(s, lexer);
+    }
+    if (c != ' ' && c != '\t') filled = true;
+    previous = c;
+  }
+  return false;
+}
+
 static bool parse_plain_bracket_run(Scanner *s, TSLexer *lexer) {
   if (first_bracket_extension(s)) {
     while (lexer->lookahead == '[') advance(s, lexer);
@@ -16342,6 +16387,8 @@ static bool scan_inline_link_tail(Scanner *s, TSLexer *lexer, char bare, bool *c
   return closed;
 }
 
+static bool link_label_ahead(Scanner *s, TSLexer *lexer);
+
 static bool probe_square_bracket_lookahead_states(Scanner *s, BracketProbe *probe,
                                                   Inline *top) {
   TSLexer *lexer = &probe->lexer;
@@ -16375,6 +16422,18 @@ static bool probe_square_bracket_lookahead_states(Scanner *s, BracketProbe *prob
     blank_text = c == ' ' || c == '\t';
   }
   advance(s, lexer);
+  s->bracket_label_follows = false;
+  if (lexer->lookahead == '[') {
+    uint32_t label = probe->position;
+    uint32_t base = s->col_base;
+    advance(s, lexer);
+    bool collapsed = lexer->lookahead == ']';
+    bracket_probe_rewind(probe, label);
+    s->col_base = base;
+    s->bracket_label_follows = collapsed || link_label_ahead(s, lexer);
+    bracket_probe_rewind(probe, label);
+    s->col_base = base;
+  }
   probe->cell_tail = find_block(s, TABLE_ROW) != NULL;
   if (blank_text && lexer->lookahead == '[') {
     uint32_t tail = probe->position;
@@ -17387,6 +17446,8 @@ static bool behind_opener_char(TokenType token) {
   case HIGHLIGHTED_MARK_BEGIN: case INSERT_MARK_BEGIN: case DELETE_MARK_BEGIN:
   case BOLD_ITALIC_MARK_BEGIN: case PARENS_SPAN_MARK_BEGIN: case CURLY_BRACKET_SPAN_MARK_BEGIN:
   case SQUARE_BRACKET_SPAN_MARK_BEGIN: case INLINE_NOTE_MARK_BEGIN: case ATTRIBUTED_SPAN_MARK_BEGIN:
+  // Glued to the `]` of a link's text.
+  case LINK_LABEL_START:
     return true;
   default:
     return false;
@@ -17945,7 +18006,7 @@ static bool keeps_inline_notes(TokenType token) {
   case HIGHLIGHTED_QUALIFIED_MARK_BEGIN: case LITERAL_STAR: case LITERAL_SLASH:
   case LITERAL_SLASH_BOUNDARY: case AFTER_BARE_CLOSER: case IMAGE_SPAN_MARK_BEGIN:
   case CARET_BRACKET_MARK_BEGIN: case FOOTNOTE_LABEL_MARK_BEGIN: case LINK_TEXT_MARK_BEGIN:
-  case TRAILING_COMMENT:
+  case TRAILING_COMMENT: case LINK_LABEL_START:
   // A code span holds no delimiter, so it changes no closer probe's answer.
   case VERBATIM_BEGIN: case VERBATIM_CONTENT: case VERBATIM_END:
     return true;
@@ -20043,6 +20104,13 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   int32_t declined_marker = 0;
   switch (lexer->lookahead) {
   case '[':
+    // A refusal stands past the `[`, so it ends the scan.
+    if (valid_symbols[LINK_LABEL_START] && !valid_symbols[ERROR] && s->host_advances == 0) {
+      mark_end(s, lexer);
+      if (!link_label_ahead(s, lexer)) return false;
+      lexer->result_symbol = LINK_LABEL_START;
+      return true;
+    }
     if (valid_symbols[LITERAL_RUN] && !valid_symbols[ERROR] &&
         !zero_width_mark_pending(valid_symbols) &&
         !valid_symbols[LINK_REF_DEF_MARK_BEGIN] &&
@@ -20242,8 +20310,10 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     s->col_base = base;
     if (link) {
       bracket_probe_rewind(&probe, 0);
+      // Link text needs a tail or a label behind its `]`; a pair with
+      // neither is a literal pair, as a span-forming one is.
       link = probe_square_bracket_lookahead_states(s, &probe, peek_inline(s)) &&
-             (s->state & STATE_BRACKET_STARTS_INLINE_LINK || !(s->state & STATE_BRACKET_STARTS_SPAN));
+             (s->state & STATE_BRACKET_STARTS_INLINE_LINK || s->bracket_label_follows);
       s->col_base = base;
     }
     if (link) {
