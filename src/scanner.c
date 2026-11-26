@@ -1031,6 +1031,7 @@ static const uint32_t MAX_NESTING_DEPTH = 200;
 static const uint32_t MAX_LIST_MARKER_COLUMN = 240;
 
 static TokenType scan_list_marker_token(Scanner *s, TSLexer *lexer);
+static bool scan_comment_line_tail(Scanner *s, TSLexer *lexer);
 static uint8_t scan_quote_marker_run(Scanner *s, TSLexer *lexer,
                                      bool *ending_newline,
                                      bool *skipped_indent, bool in_paragraph);
@@ -5553,6 +5554,20 @@ static bool parse_block_quote(Scanner *s, TSLexer *lexer,
     plus_list->flags &= (uint8_t)~BLOCK_FLAG_LIST_SHORT_PLUS;
   }
   int32_t lead = lexer->lookahead;
+  // An unmarked comment-only line closes no quote (C2-B-137), though an
+  // unmarked blank line before it has; a region marker line is the
+  // enclosing container's (C2-B-217).
+  bool comment_only_line = false;
+  if (lead == '%' && marker_count == 0 && !has_marker && highest_block_quote &&
+      valid_symbols[BLOCK_CLOSE] && !run_continues && !any_open_inline &&
+      !(s->state & STATE_AFTER_BLANK_LINE)) {
+    advance(s, lexer);
+    if (lexer->lookahead == '%') {
+      advance(s, lexer);
+      comment_only_line = lexer->lookahead != '%' && scan_comment_line_tail(s, lexer);
+    }
+    if (comment_only_line) return false;
+  }
   if (highest_block_quote && marker_count < highest_block_quote->data &&
       !run_continues && !run_stopped_short && !attached_table_prefix &&
       !attached_code_prefix && !lazy_drop &&

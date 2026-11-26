@@ -1776,6 +1776,8 @@ module.exports = grammar({
                 ),
               ),
             ),
+            // A comment-only line closes no quote, marked or not (C2-B-137).
+            $.comment_line,
             // A `+` continuation marker can attach a block after a surviving
             // outer quote prefix.
             seq(

@@ -6417,6 +6417,10 @@
                 ]
               },
               {
+                "type": "SYMBOL",
+                "name": "comment_line"
+              },
+              {
                 "type": "SEQ",
                 "members": [
                   {
