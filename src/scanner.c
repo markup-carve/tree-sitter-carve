@@ -18837,6 +18837,19 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   bool at_line_start = s->after_closer_char != NO_COMBINED_CLOSER_LINE &&
                        (valid_symbols[ERROR] || !find_block(s, TABLE_ROW)) &&
                        !known_mid_line && !(s->read_mid_line = line_column(s, lexer) != 0);
+  // The rest of a refused attribute run behind its brace is text too, one atom
+  // (C2-I-035): a `#id` in it is no tag.
+  if ((s->state & STATE_CLOSED_ATTRIBUTE_RUN) && !at_line_start && valid_symbols[LITERAL_RUN] &&
+      !valid_symbols[ERROR] && lexer->lookahead != ' ' && lexer->lookahead != '\t' &&
+      !at_line_end(lexer) && !lexer->eof(lexer)) {
+    while (!at_line_end(lexer) && !lexer->eof(lexer)) {
+      bool blank = lexer->lookahead == ' ' || lexer->lookahead == '\t';
+      advance(s, lexer);
+      if (!blank) mark_end(s, lexer);
+    }
+    lexer->result_symbol = LITERAL_RUN;
+    return true;
+  }
   if (s->read_mid_line && lexer->lookahead == '#' && plain_hash_reader(valid_symbols) &&
       !find_block(s, TABLE_ROW)) {
     // A `#` that opens nothing, taken as a token so the line counts as begun:
