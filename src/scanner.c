@@ -5549,7 +5549,7 @@ static bool parse_block_quote(Scanner *s, TSLexer *lexer,
       (!list_between_quotes(s, marker_count) ||
        (plus_list && (plus_list->flags & BLOCK_FLAG_PLUS_AHEAD) &&
         highest_block_quote->content_col >= 2 &&
-        line_column(s, lexer) == highest_block_quote->content_col - 2 &&
+        line_column(s, lexer) == (uint32_t)highest_block_quote->content_col - 2u &&
         plus_list->content_col == line_column(s, lexer)));
   if (plus_one_deeper) {
     Block *own = nth_quote(s, marker_count);
@@ -15148,6 +15148,10 @@ static bool scan_qualified_bracket_close(Scanner *s, BracketProbe *probe, Inline
     int32_t c = lexer->lookahead;
     if (c == ']') {
       uint32_t opener = array_pop(&open);
+      // A note takes no link tail (C2-I-089): `^[x](b]` closes at that `]`.
+      bool note = opener != UINT32_MAX && opener > 0 && probe->position > opener + 1 &&
+          probe->characters.contents[opener - 1].character == '^' &&
+          (opener < 2 || probe->characters.contents[opener - 2].character != '\\');
       if (opener != UINT32_MAX) {
         BracketProbeCharacter *cached = &probe->characters.contents[opener];
         cached->bracket_known = true;
@@ -15163,7 +15167,7 @@ static bool scan_qualified_bracket_close(Scanner *s, BracketProbe *probe, Inline
       advance(s, lexer);
       // An inner pair's link tail is an atom (C2-I-069): a `]` in its
       // destination closes nothing here.
-      if (lexer->lookahead == '(') {
+      if (lexer->lookahead == '(' && !note) {
         uint32_t restart = probe->position;
         uint32_t base = s->col_base;
         advance(s, lexer);
@@ -16134,6 +16138,26 @@ static bool mark_span_begin(Scanner *s, TSLexer *lexer,
 
 // Qualify an attributed span before its content branches merge. The shared
 // bracket mark remains available for links and literal bracket fallback.
+static bool footnote_label_bracket_ahead(Scanner *s, TSLexer *lexer);
+// Whether a `[` comes before the `]` that ends a footnote label here; reads
+// through a bracket probe, so the caller's position stays put.
+static bool footnote_label_holds_bracket(Scanner *s, TSLexer *lexer) {
+  BracketProbe probe = bracket_probe_new(s, lexer);
+  bool holds = footnote_label_bracket_ahead(s, &probe.lexer);
+  array_delete(&probe.characters);
+  return holds;
+}
+
+static bool footnote_label_bracket_ahead(Scanner *s, TSLexer *lexer) {
+  while (!lexer->eof(lexer) && !at_line_end(lexer)) {
+    if (lexer->lookahead == ']') return false;
+    if (lexer->lookahead == '[') return true;
+    if (lexer->lookahead == '\\') advance(s, lexer);
+    advance(s, lexer);
+  }
+  return false;
+}
+
 static bool parse_attributed_span_mark_begin(Scanner *s, TSLexer *lexer,
                                              const bool *valid_symbols) {
   mark_end(s, lexer);
@@ -16254,10 +16278,10 @@ static bool mark_span_begin(Scanner *s, TSLexer *lexer,
     // and if `STATE_BRACKET_CAN_START_INLINE_LINK` is true then we should
     // prune the branch and instead treat it as a link.
     // Only the tail itself: not a `(` inside the bracket's text (`[(b)](u)`)
-    // or behind a pair that has no tail (`[[[](]]()`).
+    // or behind a pair that has no tail (`[[[](]]()`), nor one in a note.
     if (inline_type == PARENS_SPAN &&
         (s->state & STATE_BRACKET_STARTS_INLINE_LINK) &&
-        !(top && top->type == SQUARE_BRACKET_SPAN)) {
+        !(top && (top->type == SQUARE_BRACKET_SPAN || top->type == INLINE_NOTE))) {
       mark_end(s, lexer);
       if (scan_inline_link_tail(s, lexer, 0, NULL, NULL)) return false;
     }
@@ -19672,6 +19696,18 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
     // Only `[^` leaves a bracket mark before `]`: an empty label, so the
     // bracket is text and opens no pair (C2-I-087).
     mark_end(s, lexer);
+    lexer->result_symbol = IN_FALLBACK;
+    return true;
+  } else if (valid_symbols[SQUARE_BRACKET_SPAN_MARK_BEGIN] && valid_symbols[IN_FALLBACK] &&
+             !valid_symbols[ERROR] && !valid_symbols[ATTRIBUTED_SPAN_MARK_BEGIN] &&
+             !find_inline(s, INLINE_NOTE) && footnote_label_holds_bracket(s, lexer)) {
+    // A `[^` label with a `[` is not read as one yet: the pair is literal
+    // text, so its `]` closes no bracket around it.
+    mark_end(s, lexer);
+    BracketProbe probe = bracket_probe_new(s, lexer);
+    bool closed = probe_scan_until_bracket_close(s, &probe.lexer, NULL, &probe);
+    array_delete(&probe.characters);
+    if (closed) push_inline_flagged(s, LITERAL_BRACKET, 0, 0);
     lexer->result_symbol = IN_FALLBACK;
     return true;
   } else if (parse_span(s, lexer, valid_symbols, SQUARE_BRACKET_SPAN)) {
