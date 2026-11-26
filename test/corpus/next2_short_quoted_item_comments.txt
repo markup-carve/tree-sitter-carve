@@ -1,0 +1,76 @@
+================================================================================
+C2-B-137: a comment line short of quote markers after a blank line stays in the item
+================================================================================
+
+> > - a
+> >
+> %% c
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (block_quote
+        (block_quote_marker)
+        content: (content
+          (list
+            (list_item
+              marker: (list_marker_dash)
+              content: (list_item_content
+                (paragraph)
+                (comment_line)))))))))
+
+================================================================================
+C2-B-137: an unquoted comment line after a blank quoted line stays in the item
+================================================================================
+
+> - a
+>
+%% c
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (paragraph)
+            (comment_line)))))))
+
+================================================================================
+C2-B-137: three quotes deep, a comment line with two markers stays in the item
+================================================================================
+
+> > > - a
+> > >
+> > %% c
+> > > b
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (block_quote
+        (block_quote_marker)
+        content: (content
+          (block_quote
+            (block_quote_marker)
+            content: (content
+              (list
+                (list_item
+                  marker: (list_marker_dash)
+                  content: (list_item_content
+                    (paragraph)
+                    (comment_line))))
+              (block_quote_marker)
+              (block_quote_marker)
+              (block_quote_marker)
+              (paragraph))))))))

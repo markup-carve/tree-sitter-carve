@@ -8202,6 +8202,23 @@ static bool parse_list_item_end(Scanner *s, TSLexer *lexer,
       uint8_t second_block_quote_markers =
           scan_block_quote_markers(s, lexer, &second_newline);
 
+      // A comment-only line closes no container, short of markers too
+      // (C2-B-137): it stays in the item like a fully marked one.
+      if (block_quotes > second_block_quote_markers && !second_newline &&
+          valid_symbols[LIST_ITEM_CONTINUATION]) {
+        consume_whitespace(s, lexer);
+        if (lexer->lookahead == '%') {
+          advance(s, lexer);
+          if (lexer->lookahead == '%') {
+            advance(s, lexer);
+            if (lexer->lookahead != '%' && scan_comment_line_tail(s, lexer)) {
+              list->flags |= BLOCK_FLAG_LIST_QUOTED_COMMENT;
+              lexer->result_symbol = LIST_ITEM_CONTINUATION;
+              return true;
+            }
+          }
+        }
+      }
       if (block_quotes != second_block_quote_markers) {
         lexer->result_symbol = LIST_ITEM_END;
         s->blocks_to_close = 1;
