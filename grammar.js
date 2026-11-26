@@ -3064,7 +3064,13 @@ module.exports = grammar({
         token.immediate("["),
         field(
           "label",
-          alias(token.immediate(/[^\]@\r\n][^\]\r\n]*/), $.link_label),
+          // A line comment in the label takes its `]` (C2-I-077).
+          alias(
+            token.immediate(
+              /[^\]@\r\n](?:[^\]\r\n \t]|[ \t]+(?:[^\]\r\n \t%]|%[^\]\r\n%]))*(?:[ \t]+%?)?/,
+            ),
+            $.link_label,
+          ),
         ),
         token.immediate("]"),
       ),

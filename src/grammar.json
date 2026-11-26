@@ -11052,7 +11052,7 @@
               "type": "IMMEDIATE_TOKEN",
               "content": {
                 "type": "PATTERN",
-                "value": "[^\\]@\\r\\n][^\\]\\r\\n]*"
+                "value": "[^\\]@\\r\\n](?:[^\\]\\r\\n \\t]|[ \\t]+(?:[^\\]\\r\\n \\t%]|%[^\\]\\r\\n%]))*(?:[ \\t]+%?)?"
               }
             },
             "named": true,

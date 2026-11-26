@@ -15255,6 +15255,13 @@ static bool extension_payload_close(Scanner *s, TSLexer *host, uint32_t *remaini
       if (at_line_end(lexer) || extension_line_ends_block(s, &probe, indent)) break;
     } else if (find_block(s, TABLE_ROW) && lexer->lookahead == '|') {
       if (!bracket_probe_pipe(s, &probe, false)) break;
+    } else if (lexer->lookahead == '%' && probe.position > 0 &&
+               iswspace_ascii(probe.characters.contents[probe.position - 1].character)) {
+      // A line comment takes every closer on its line (C2-I-024).
+      advance(s, lexer);
+      if (lexer->lookahead == '%') {
+        while (!lexer->eof(lexer) && !at_line_end(lexer)) advance(s, lexer);
+      }
     } else advance(s, lexer);
   }
   uint32_t closer = depth_zero != UINT32_MAX ? depth_zero : first_unescaped;
