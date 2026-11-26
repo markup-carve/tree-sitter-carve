@@ -1,0 +1,18 @@
+================================================================================
+C2-I-017: an unclosed run of three backticks inside a span is text
+================================================================================
+
+*a ``` b* c and /d ```` e/ f
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (strong
+      begin_marker: (strong_begin)
+      content: (content)
+      end_marker: (strong_end))
+    (emphasis
+      begin_marker: (emphasis_begin)
+      content: (content)
+      end_marker: (emphasis_end))))

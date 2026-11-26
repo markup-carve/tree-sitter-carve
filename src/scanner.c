@@ -4756,7 +4756,7 @@ static bool parse_code_fence(Scanner *s, TSLexer *lexer,
         lexer->result_symbol = LITERAL_RUN;
         return true;
       }
-    } else if (valid_symbols[LITERAL_RUN] && !top) {
+    } else if (valid_symbols[LITERAL_RUN]) {
       // The fence probe stopped in the info string, short of any closing run.
       char marker = span_verbatim_stop_marker(peek_inline(s));
       bool in_table_row = valid_symbols[TABLE_CELL_END] ||
@@ -15802,9 +15802,8 @@ static bool probe_bare_closer_skips_brackets(Scanner *s, BracketProbe *probe, ch
       uint32_t behind = probe->position;
       uint32_t base = s->col_base;
       VerbatimRunEnd end = read_verbatim_run(s, lexer, width, 0, in_row);
-      // An unclosed run is text and the scan goes on behind it (C2-I-119). The
-      // host reads a run of three or more as a fence first and keeps it open.
-      if (end == VerbatimRunReachesBlockEnd && width < 3) {
+      // An unclosed run is text and the scan goes on behind it (C2-I-119).
+      if (end == VerbatimRunReachesBlockEnd) {
         bracket_probe_rewind(probe, behind);
         s->col_base = base;
         previous = '`';
