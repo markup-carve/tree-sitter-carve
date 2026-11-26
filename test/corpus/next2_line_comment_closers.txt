@@ -38,3 +38,44 @@ C2-I-024: a closer after a comment inside a bracket is no closer
 (document
   (paragraph
     (trailing_comment)))
+================================================================================
+C2-I-024: a line comment in an inline note takes its closer
+================================================================================
+
+^[a %% c] d
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (trailing_comment)))
+
+================================================================================
+C2-I-024: an inline note open at a line comment closes on a later line
+================================================================================
+
+^[a %% c
+d] e
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (inline_note
+      content: (content
+        (trailing_comment)))))
+
+================================================================================
+C2-I-024: a line comment in a quoted inline note takes its closer
+================================================================================
+
+> ^[a %% c] d
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (paragraph
+        (trailing_comment)))))

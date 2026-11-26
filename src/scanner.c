@@ -14815,11 +14815,20 @@ static bool probe_scan_until_bracket_close(Scanner *s, TSLexer *lexer,
   // The opening `[` is already consumed by the caller, so we start one level
   // in and are looking for the `]` that brings us back out.
   unsigned depth = 0;
+  int32_t last = '[';
   while (!lexer->eof(lexer)) {
     if (top && scan_span_end_marker(s, lexer, *top)) {
       return false;
     }
-    if (lexer->lookahead == ']') {
+    bool after_space = last == ' ' || last == '\t' || last == '\n';
+    last = lexer->lookahead;
+    if (lexer->lookahead == '%' && after_space) {
+      // A line comment takes the rest of its line, closers included (C2-I-024).
+      advance(s, lexer);
+      if (lexer->lookahead == '%') {
+        while (!lexer->eof(lexer) && !at_line_end(lexer)) advance(s, lexer);
+      }
+    } else if (lexer->lookahead == ']') {
       if (depth == 0) {
         return true;
       }
@@ -14832,6 +14841,7 @@ static bool probe_scan_until_bracket_close(Scanner *s, TSLexer *lexer,
       advance(s, lexer);
       advance(s, lexer);
     } else if (at_line_end(lexer)) {
+      last = '\n';
       // One newline is ok in inline spans, but not several in a row.
       consume_line_end(s, lexer);
       uint8_t indent = consume_whitespace(s, lexer);
