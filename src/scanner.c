@@ -14280,6 +14280,8 @@ static bool probe_braced_closer_ahead(Scanner *s, TSLexer *lexer, char marker, B
       }
       continue;
     }
+    // Cells are split before their content is read (C2-B-169).
+    if (c == '|' && in_row) return braced_closer_in_open_run(s, probe, capped ? 0 : pending, pending_position, pending_col_base, close_position);
     if (c == '[') ++bracket_depth;
     if (c == ']') {
       if (bracket_depth) {
