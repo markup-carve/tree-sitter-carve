@@ -5994,6 +5994,8 @@ static bool parse_table_quote_continuation(Scanner *s, TSLexer *lexer,
   if (lexer->result_symbol != BLOCK_QUOTE_CONTINUATION) {
     return valid_symbols[lexer->result_symbol];
   }
+  // A blank quoted line: what follows is the next line's, and it ends the table.
+  if (s->host_crossed_line) return valid_symbols[BLOCK_QUOTE_CONTINUATION];
   bool ending = false;
   uint8_t rest = scan_block_quote_markers(s, lexer, &ending);
   consume_whitespace(s, lexer);
