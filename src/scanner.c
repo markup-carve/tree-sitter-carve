@@ -19509,6 +19509,13 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
       lexer->result_symbol = IMAGE_SPAN_MARK_BEGIN;
     }
     if (found) return true;
+  } else if (valid_symbols[SQUARE_BRACKET_SPAN_MARK_BEGIN] && valid_symbols[IN_FALLBACK] &&
+             !valid_symbols[ERROR] && lexer->lookahead == ']') {
+    // Only `[^` leaves a bracket mark before `]`: an empty label, so the
+    // bracket is text and opens no pair (C2-I-087).
+    mark_end(s, lexer);
+    lexer->result_symbol = IN_FALLBACK;
+    return true;
   } else if (parse_span(s, lexer, valid_symbols, SQUARE_BRACKET_SPAN)) {
     return true;
   }

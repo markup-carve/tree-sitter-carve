@@ -10427,8 +10427,16 @@
           "name": "_square_bracket_span_mark_begin"
         },
         {
-          "type": "SYMBOL",
-          "name": "reference_label"
+          "type": "ALIAS",
+          "content": {
+            "type": "TOKEN",
+            "content": {
+              "type": "PATTERN",
+              "value": "([^\\]\\[\\\\\\r\\n]|\\\\[^\\r\\n])*([^\\]\\[\\\\\\r\\n \\t]|\\\\[^\\r\\n])([^\\]\\[\\\\\\r\\n]|\\\\[^\\r\\n])*"
+            }
+          },
+          "named": true,
+          "value": "reference_label"
         },
         {
           "type": "ALIAS",

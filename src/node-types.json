@@ -3612,11 +3612,6 @@
     }
   },
   {
-    "type": "reference_label",
-    "named": true,
-    "fields": {}
-  },
-  {
     "type": "region_marker",
     "named": true,
     "fields": {}
@@ -5111,6 +5106,10 @@
   },
   {
     "type": "raw_inline_marker_end",
+    "named": true
+  },
+  {
+    "type": "reference_label",
     "named": true
   },
   {
