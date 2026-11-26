@@ -2904,7 +2904,10 @@ module.exports = grammar({
     full_reference_link: ($) => seq(field("text", $.link_text), $._link_label),
     // Its text is its label, and an empty label is none (C2-I-079).
     collapsed_reference_link: ($) =>
-      seq(field("text", alias($._filled_link_text, $.link_text)), token.immediate("[]")),
+      seq(
+        field("text", alias($._filled_link_text, $.link_text)),
+        token.immediate("[]"),
+      ),
     inline_link: ($) =>
       seq(
         field("text", $.link_text),
