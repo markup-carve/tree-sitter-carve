@@ -17598,7 +17598,7 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
   // The scan read past exactly one space to a word: hand that space over.
   if (mid_line_start && !found && (s->read_mid_line || s->read_past_quote) && s->col_base == 0 &&
       s->host_advances == 1 &&
-      s->host_previous == ' ' && carve_is_alnum_ascii(lexer->lookahead)) {
+      s->host_previous == ' ' && (carve_is_alnum_ascii(lexer->lookahead) || lexer->lookahead == '#')) {
     uint16_t generation = s->parse_generation;
     tree_sitter_carve_external_scanner_deserialize(s, s->entry_state, s->entry_length);
     s->parse_generation = generation;
