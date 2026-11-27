@@ -1,0 +1,149 @@
+============================================================
+A footnote line block ends before an unowned heading (#767)
+============================================================
+
+[^n]: ::: |
+  a
+# h
+
+------------------------------------------------------------
+
+(document
+  (footnote
+    (footnote_marker_begin)
+    label: (reference_label)
+    (footnote_marker_end)
+    content: (footnote_content
+      (div
+        (div_marker_begin)
+        line_block_marker: (line_block_marker)
+        content: (content
+          (paragraph)))))
+  (section
+    heading: (heading
+      marker: (marker)
+      content: (content))))
+
+============================================================
+A footnote div ends before an unowned table (#767)
+============================================================
+
+[^n]: ::: x
+  a
+|x|
+
+------------------------------------------------------------
+
+(document
+  (footnote
+    (footnote_marker_begin)
+    label: (reference_label)
+    (footnote_marker_end)
+    content: (footnote_content
+      (div
+        (div_marker_begin)
+        type: (admonition_type)
+        content: (content
+          (paragraph)))))
+  (table
+    (table_row
+      (table_cell))))
+
+============================================================
+A quoted item line block ends before a quoted heading (#767)
+============================================================
+
+> - ::: |
+>   a
+> # h
+
+------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (div
+              (div_marker_begin)
+              line_block_marker: (line_block_marker)
+              content: (content
+                (paragraph
+                  (block_quote_marker)))))))
+      (block_quote_marker)
+      (heading
+        marker: (marker)
+        content: (content)))))
+
+============================================================
+A quoted item line block ends before a quoted table (#767)
+============================================================
+
+> - ::: |
+>   a
+> |x|
+
+------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (div
+              (div_marker_begin)
+              line_block_marker: (line_block_marker)
+              content: (content
+                (paragraph
+                  (block_quote_marker)))))))
+      (block_quote_marker)
+      (table
+        (table_row
+          (table_cell))))))
+
+============================================================
+Marked blank quote lines keep a reached item (#767)
+============================================================
+
+> - a
+>
+>
+>   b
+
+------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    content: (content
+      (list
+        (list_item
+          marker: (list_marker_dash)
+          content: (list_item_content
+            (paragraph)
+            (block_quote_marker)
+            (paragraph)))))))
+
+============================================================
+A refused bare dot stays in a marker-line quote (#767)
+============================================================
+
+- > . . a
+
+------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      marker: (list_marker_dash)
+      content: (list_item_content
+        (block_quote
+          (block_quote_marker)
+          content: (content
+            (paragraph)))))))
