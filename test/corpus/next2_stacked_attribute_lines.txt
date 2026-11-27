@@ -1,0 +1,278 @@
+================================================================================
+C2-B-092: stacked attribute lines in a quote
+================================================================================
+> {.a}
+> {.b}
+> para
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (block_attribute
+        (args
+          (class)))
+      (block_quote_marker)
+      (block_attribute
+        (args
+          (class)))
+      (block_quote_marker)
+      (paragraph))))
+
+================================================================================
+C2-B-092: stacked attribute lines in a list item
+================================================================================
+- {.a}
+  {.b}
+  para
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (block_attribute
+          (args
+            (class)))
+        (block_attribute
+          (args
+            (class)))
+        (paragraph)))))
+
+================================================================================
+C2-B-092: three stacked attribute lines in a quote
+================================================================================
+> {.a}
+> {#i}
+> {k=v}
+> para
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (block_attribute
+        (args
+          (class)))
+      (block_quote_marker)
+      (block_attribute
+        (args
+          (identifier)))
+      (block_quote_marker)
+      (block_attribute
+        (args
+          (key_value
+            (key)
+            (value))))
+      (block_quote_marker)
+      (paragraph))))
+
+================================================================================
+C2-B-092: three stacked attribute lines in a list item
+================================================================================
+- {.a}
+  {#i}
+  {k=v}
+  para
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (block_attribute
+          (args
+            (class)))
+        (block_attribute
+          (args
+            (identifier)))
+        (block_attribute
+          (args
+            (key_value
+              (key)
+              (value))))
+        (paragraph)))))
+
+================================================================================
+C2-B-092: stacked attribute lines in a quote in a list item
+================================================================================
+- > {.a}
+  > {.b}
+  > para
+
+--------------------------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (block_quote
+          (block_quote_marker)
+          (content
+            (block_attribute
+              (args
+                (class)))
+            (block_quote_marker)
+            (block_attribute
+              (args
+                (class)))
+            (block_quote_marker)
+            (paragraph)))))))
+
+================================================================================
+C2-B-092: stacked attribute lines in a list item in a quote
+================================================================================
+> - {.a}
+>   {.b}
+>   para
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (list
+        (list_item
+          (list_marker_dash)
+          (list_item_content
+            (block_attribute
+              (args
+                (class)))
+            (block_quote_marker)
+            (block_attribute
+              (args
+                (class)))
+            (block_quote_marker)
+            (paragraph)))))))
+
+================================================================================
+C2-B-092: stacked attribute lines in a nested quote
+================================================================================
+> > {.a}
+> > {.b}
+> > para
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (block_quote
+        (block_quote_marker)
+        (content
+          (block_attribute
+            (args
+              (class)))
+          (block_quote_marker)
+          (block_quote_marker)
+          (block_attribute
+            (args
+              (class)))
+          (block_quote_marker)
+          (block_quote_marker)
+          (paragraph))))))
+
+================================================================================
+C2-B-096: stacked attribute lines above a quoted block use are a paragraph
+================================================================================
+{$v}: X
+
+> {.a}
+> {.b}
+> {{ $v }}
+
+--------------------------------------------------------------------------------
+
+(document
+  (snippet_definition
+    (snippet_name)
+    (content))
+  (block_quote
+    (block_quote_marker)
+    (content
+      (paragraph
+        (block_quote_marker))
+      (block_quote_marker)
+      (snippet_use
+        (snippet_name)))))
+
+================================================================================
+C2-B-096: stacked attribute lines above a block use in an item are a paragraph
+================================================================================
+{$v}: X
+
+- {.a}
+  {.b}
+  {{ $v }}
+
+--------------------------------------------------------------------------------
+
+(document
+  (snippet_definition
+    (snippet_name)
+    (content))
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph)
+        (snippet_use
+          (snippet_name))))))
+
+================================================================================
+C2-B-096: stacked attribute lines above a block use in an item in a quote are a paragraph
+================================================================================
+{$v}: X
+
+> - {.a}
+>   {.b}
+>   {{ $v }}
+
+--------------------------------------------------------------------------------
+
+(document
+  (snippet_definition
+    (snippet_name)
+    (content))
+  (block_quote
+    (block_quote_marker)
+    (content
+      (list
+        (list_item
+          (list_marker_dash)
+          (list_item_content
+            (paragraph
+              (block_quote_marker))
+            (block_quote_marker)
+            (snippet_use
+              (snippet_name))))))))
+
+================================================================================
+C2-B-092: a refused run in an item in a quote is one paragraph
+================================================================================
+> - {.a}
+>   {.b}
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (list
+        (list_item
+          (list_marker_dash)
+          (list_item_content
+            (paragraph
+              (block_quote_marker))))))))
