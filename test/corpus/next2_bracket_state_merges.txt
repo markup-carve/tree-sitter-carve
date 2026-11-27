@@ -1,0 +1,13 @@
+============================================================
+Brackets in a multiline comment do not change the surviving link parse (#772)
+============================================================
+
+[{%[a][]
+%}
+
+------------------------------------------------------------
+
+(document
+  (paragraph
+    (collapsed_reference_link
+      text: (link_text))))

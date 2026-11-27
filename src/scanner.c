@@ -21581,7 +21581,11 @@ unsigned tree_sitter_carve_external_scanner_serialize(void *payload,
   // when the buffer cannot hold them.
   bool bounded = (s->bounded_kinds & s->no_closer_kinds) != 0;
   bool ahead = s->closer_ahead_kinds != 0 || bounded;
-  bool span_note = s->bracket_span_note;
+  // A probe that skipped an opaque atom containing `[` has a version-local
+  // view of that atom. Serializing its answer makes otherwise equal parse
+  // versions distinct and can select the wrong tree when they merge (#772).
+  bool span_note = s->bracket_span_note &&
+                   !(s->bracket_pair_span & BRACKET_NOTE_ATOM_OPEN);
   bool plain_note = span_note && s->plain_run_note;
   bool probe_note = s->note_probe_note[0] || s->note_probe_note[1] || s->plain_pair_note ||
                     s->close_none_ahead;
