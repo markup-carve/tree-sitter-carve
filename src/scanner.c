@@ -15264,6 +15264,9 @@ static bool plain_bracket_run_scan(Scanner *s, TSLexer *lexer, BracketProbe *pro
     lexer->result_symbol = LITERAL_RUN;
     return true;
   }
+  uint32_t current_depth = inline_depth(s);
+  if (current_depth >= MAX_NESTING_DEPTH) return false;
+  uint32_t room = MAX_NESTING_DEPTH - current_depth;
   if (s->after_closer_char == PLAIN_BRACKET_REMAINDER) {
     bool same_position = line_column(s, lexer) == s->after_closer_col;
     s->after_closer_char = 0;
@@ -15293,7 +15296,11 @@ static bool plain_bracket_run_scan(Scanner *s, TSLexer *lexer, BracketProbe *pro
     while (lexer->lookahead == ' ' || lexer->lookahead == '\t') advance(s, lexer);
   }
   if (prefix < 2) return false;
-  unsigned depth = prefix;
+  // All later openers in a run are text once the cap is reached. Keep one
+  // refused opener for the regular lexer and count only the closers that can
+  // belong to the surviving bracket entries.
+  bool capped_prefix = prefix > room;
+  unsigned depth = capped_prefix ? room + 1 : prefix;
   bool plain = true;
   bool punctuation = false;
   bool continued = false;
@@ -15349,10 +15356,16 @@ static bool plain_bracket_run_scan(Scanner *s, TSLexer *lexer, BracketProbe *pro
       advance(s, lexer);
       continue;
     }
-    if (c == '[') ++depth;
+    if (c == '[' && (!capped_prefix || depth < room + 1)) ++depth;
     if (c == ']') {
       --depth;
       advance(s, lexer);
+      if (capped_prefix && depth == 0) {
+        push_inline_flagged(s, LITERAL_BRACKET, 0, 0);
+        peek_inline(s)->literal_closes = room;
+        lexer->result_symbol = LITERAL_RUN;
+        return true;
+      }
       if (have_remainder_column && depth < first_line_depth &&
           (lexer->lookahead == '(' || lexer->lookahead == '[' || lexer->lookahead == '{')) return false;
       if (lexer->lookahead == '[') plain = false;
