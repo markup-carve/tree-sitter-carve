@@ -15,6 +15,7 @@ Carve syntax, including:
 - `$` plus backtick math spans, and `$$` plus backtick display math spans
 - `:name[content]` inline extensions, `@mentions`, `#tags`, and `:emoji:`
 - `%%` line comments, trailing inline `%%` comments, and `%%%` fenced comments
+- snippet definitions (`{$name}: value`) and snippet uses (`{{ $name }}`)
 - headings, lists, tables, fenced code, links, images, attributes, footnotes,
   captions, and divs
 
