@@ -880,6 +880,9 @@ typedef struct {
   uint16_t missing_closers;
   // Whether a caption may stand on this line (CAPTION_HOST_*). Serialized.
   uint8_t caption_gap;
+  // A one-line caption's caret column plus one, behind its quote marks; zero
+  // for none. Serialized, flagged by header bit 0x20.
+  uint16_t caption_caret;
   // A comment-only line follows the line end just emitted. Transient.
   bool caption_comment_ahead;
   // The current scan call started on a blank line. Transient.
@@ -4401,9 +4404,12 @@ static bool caption_line_ends_block(Scanner *s, BracketProbe *probe, uint16_t in
   // marker, which stands at the margin of those containers.
   // A table caption's caret may stand past that margin (`caption->data` is
   // its indentation plus two).
+  // So may a one-line caption's (`caption_caret` is its column plus one).
   Block *caption = find_block(s, TABLE_CAPTION);
-  bool short_of_caret = caption && caption->data >= 2 &&
-      content_column - quote_base <= (uint32_t)(caption->data - 2);
+  bool short_of_caret = caption ? caption->data >= 2 &&
+      content_column - quote_base <= (uint32_t)(caption->data - 2)
+      : (s->state & STATE_SINGLE_LINE_CAPTION) && s->caption_caret &&
+        content_column - quote_base < s->caption_caret;
   bool falls_short = !content_blank && !comment_line &&
       (seen < quotes || content_column <= caption_marker_column(s) || short_of_caret);
   // Past the marker only an interrupter ends it.
@@ -9117,6 +9123,10 @@ static bool parse_caption_begin(Scanner *s, TSLexer *lexer, const bool *valid_sy
     return false;
   }
   s->state |= STATE_SINGLE_LINE_CAPTION;
+  Block *quote = find_block(s, BLOCK_QUOTE);
+  uint32_t quote_base = quote ? quote->content_col : 0;
+  uint32_t caret = marker_column >= quote_base ? marker_column - quote_base + 1 : 0;
+  s->caption_caret = caret > UINT16_MAX ? UINT16_MAX : (uint16_t)caret;
   lexer->result_symbol = CAPTION_BEGIN;
   return true;
 }
@@ -13950,6 +13960,7 @@ static bool parse_newline(Scanner *s, TSLexer *lexer,
       s->caption_comment_ahead = caption_comment_line_ahead(s, lexer);
     }
     s->state &= ~STATE_SINGLE_LINE_CAPTION;
+    s->caption_caret = 0;
     clear_literal_brackets(s);
     lexer->result_symbol = NEWLINE;
     return true;
@@ -20169,6 +20180,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   if ((s->state & STATE_SINGLE_LINE_CAPTION) && at_line_start &&
       valid_symbols[CLOSE_PARAGRAPH] && !valid_symbols[ERROR]) {
     s->state &= ~STATE_SINGLE_LINE_CAPTION;
+    s->caption_caret = 0;
     clear_literal_brackets(s);
     lexer->result_symbol = CLOSE_PARAGRAPH;
     return true;
@@ -21043,6 +21055,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   // this function. Everything between there and here may have advanced.
   if (valid_symbols[EOF_OR_NEWLINE] && at_eof) {
     s->state &= ~STATE_SINGLE_LINE_CAPTION;
+    s->caption_caret = 0;
     clear_literal_brackets(s);
     lexer->result_symbol = EOF_OR_NEWLINE;
     return true;
@@ -21088,6 +21101,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
 /// that must be released first.
 static void init_scalars(Scanner *s) {
   s->caret_ordinary = 0;
+  s->caption_caret = 0;
   s->root_phantoms = 0;
   s->probe_footnotes = false;
   s->blocks_to_close = 0;
@@ -21256,6 +21270,7 @@ unsigned tree_sitter_carve_external_scanner_serialize(void *payload,
                         s->refused_plus_column;
   bool row_extension = s->attached_row_prefix != UINT8_MAX;
   bool chain_extension = s->chain_col != UINT8_MAX;
+  bool caret_extension = s->caption_caret != 0;
   // Trailing extension: k bytes, then k; flagged by header bit 0x10.
   unsigned phantom_pairs = 0;
   for (uint32_t i = 0; i < s->open_inline->size && i < UINT8_MAX; ++i)
@@ -21266,7 +21281,8 @@ unsigned tree_sitter_carve_external_scanner_serialize(void *payload,
   const size_t scalar_bytes = 19 + ext_bytes + (s->indent >= UINT8_MAX ? 2 : 0) +
                               (s->marker_end_col >= UINT8_MAX ? 2 : 0) +
                               (plus_extension ? 3 : 0) +
-                              (row_extension ? 1 : 0) + (chain_extension ? 1 : 0);
+                              (row_extension ? 1 : 0) + (chain_extension ? 1 : 0) +
+                              (caret_extension ? 2 : 0);
   const size_t block_count_bytes = 1;
   const size_t block_bytes = 4;
   const size_t inline_bytes = 3;
@@ -21307,7 +21323,8 @@ unsigned tree_sitter_carve_external_scanner_serialize(void *payload,
   // gap, and the high bit carries the box flag.
   buffer[size++] = (char)(s->table_attribute_pending |
                           (s->metadata_gap ? 0x04 : 0) | (s->past_opener ? 0x08 : 0) |
-                          (ext_bytes ? 0x10 : 0) | (s->task_box_next ? 0x80 : 0));
+                          (ext_bytes ? 0x10 : 0) | (caret_extension ? 0x20 : 0) |
+                          (s->task_box_next ? 0x80 : 0));
   buffer[size++] = (char)(s->state & 0xff);
   buffer[size++] = (char)((s->state >> 8) & 0xff);
   buffer[size++] = (char)(s->col_base & 0xff);
@@ -21374,7 +21391,8 @@ unsigned tree_sitter_carve_external_scanner_serialize(void *payload,
   bool notes = (s->no_closer_kinds || ahead || s->link_tail_open_line || span_note || probe_note) &&
                size + 4 + (ahead ? 2 : 0) + (bounded ? 2 : 0) + (span_note ? 6 : 0) + (plain_note ? 4 : 0) +
                    (probe_note ? 12 : 0) + (plus_extension ? 3 : 0) +
-                   (row_extension ? 1 : 0) + (chain_extension ? 1 : 0) + ext_bytes + 3 <=
+                   (row_extension ? 1 : 0) + (chain_extension ? 1 : 0) +
+                   (caret_extension ? 2 : 0) + ext_bytes + 3 <=
                    TREE_SITTER_SERIALIZATION_BUFFER_SIZE;
   if (notes) {
     uint16_t kinds = s->no_closer_kinds | (ahead ? 1u << 15 : 0) | (span_note ? 1u << 14 : 0) |
@@ -21425,6 +21443,10 @@ unsigned tree_sitter_carve_external_scanner_serialize(void *payload,
   }
   if (row_extension) buffer[size++] = (char)s->attached_row_prefix;
   if (chain_extension) buffer[size++] = (char)s->chain_col;
+  if (caret_extension) {
+    buffer[size++] = (char)(s->caption_caret & 0xff);
+    buffer[size++] = (char)(s->caption_caret >> 8);
+  }
   if (ext_bytes) {
     unsigned written = 0;
     for (uint32_t i = 0; i < s->open_inline->size && i < UINT8_MAX && written < phantom_pairs; ++i) {
@@ -21489,7 +21511,8 @@ void tree_sitter_carve_external_scanner_deserialize(void *payload, char *buffer,
     phantom_pairs = 0;
     read_wide_column(buffer, &head, length);
     read_wide_column(buffer, &head, length);
-    if (head < length && ((uint8_t)buffer[head] & 0x10)) {
+    uint8_t header = head < length ? (uint8_t)buffer[head] : 0;
+    if (header & 0x10) {
       uint8_t k = (uint8_t)buffer[length - 1];
       if (length < 18u + k) return;
       if (k >= 2) {
@@ -21499,6 +21522,11 @@ void tree_sitter_carve_external_scanner_deserialize(void *payload, char *buffer,
         phantom_pairs = (uint8_t)(k - 2) / 2;
       }
       length -= k + 1;
+    }
+    if (header & 0x20) {
+      if (length < 19) return;
+      s->caption_caret = (uint16_t)((uint8_t)buffer[length - 2] | (uint8_t)buffer[length - 1] << 8);
+      length -= 2;
     }
     if (notes & 32) {
       if (length < 18) return;

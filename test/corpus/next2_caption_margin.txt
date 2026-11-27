@@ -41,3 +41,193 @@ C2-B-234: a line past the caret column continues a table caption
       marker: (marker)
       content: (content))))
 
+============================================================
+C2-B-234: a line at the caret column ends a caption in a list item
+============================================================
+
+- | w | w |
+   ^ w
+   x
+
+------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (table
+          (table_row
+            (table_cell)
+            (table_cell)))
+        (caption
+          (caption_marker)
+          (caption_content))
+        (paragraph)))))
+
+============================================================
+C2-B-234: a line past the caret column continues a caption in a list item
+============================================================
+
+- | w | w |
+   ^ w
+    x
+
+------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (table
+          (table_row
+            (table_cell)
+            (table_cell)))
+        (caption
+          (caption_marker)
+          (caption_content))))))
+
+============================================================
+C2-B-234: a line at the caret column ends a caption in a footnote
+============================================================
+
+[^n]: | w | w |
+       ^ w
+       x
+
+------------------------------------------------------------
+
+(document
+  (footnote
+    (footnote_marker_begin)
+    (reference_label)
+    (footnote_marker_end)
+    (footnote_content
+      (table
+        (table_row
+          (table_cell)
+          (table_cell)))
+      (caption
+        (caption_marker)
+        (caption_content))
+      (paragraph))))
+
+============================================================
+C2-B-234: a line past the caret column continues a caption in a footnote
+============================================================
+
+[^n]: | w | w |
+       ^ w
+        x
+
+------------------------------------------------------------
+
+(document
+  (footnote
+    (footnote_marker_begin)
+    (reference_label)
+    (footnote_marker_end)
+    (footnote_content
+      (table
+        (table_row
+          (table_cell)
+          (table_cell)))
+      (caption
+        (caption_marker)
+        (caption_content)))))
+
+============================================================
+C2-B-234: a line at the caret column ends a caption in a quote
+============================================================
+
+> | w |
+>  ^ w
+>  x
+
+------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (table
+        (table_row
+          (table_cell)))
+      (block_quote_marker)
+      (caption
+        (caption_marker)
+        (caption_content))
+      (block_quote_marker)
+      (paragraph))))
+
+============================================================
+C2-B-234: a line past the caret column continues a caption in a quote
+============================================================
+
+> | w |
+>  ^ w
+>   x
+
+------------------------------------------------------------
+
+(document
+  (block_quote
+    (block_quote_marker)
+    (content
+      (table
+        (table_row
+          (table_cell)))
+      (block_quote_marker)
+      (caption
+        (caption_marker)
+        (caption_content
+          (block_quote_marker))))))
+
+============================================================
+C2-B-234: a line at the caret column ends an image caption in a list item
+============================================================
+
+- ![a](u)
+   ^ w
+   x
+
+------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (paragraph
+          (inline_image
+            (image_description)
+            (inline_link_destination)))
+        (caption
+          (caption_marker)
+          (caption_content))
+        (paragraph)))))
+
+============================================================
+C2-B-234: a second caption line at the caret column ends a caption in a list item
+============================================================
+
+- | w |
+    ^ w
+      v
+    x
+
+------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (table
+          (table_row
+            (table_cell)))
+        (caption
+          (caption_marker)
+          (caption_content))
+        (paragraph)))))
