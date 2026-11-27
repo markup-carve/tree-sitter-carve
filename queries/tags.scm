@@ -19,6 +19,9 @@
 (footnote
   label: (reference_label) @name) @definition.constant
 
+(snippet_definition
+  name: (snippet_name) @name) @definition.constant
+
 ; Collapsed references (`[ref][]`) are left out: their only text node keeps the
 ; brackets, so the name could never match the definition label.
 
@@ -30,3 +33,6 @@
 
 (footnote_reference
   (reference_label) @name) @reference.class
+
+(snippet_use
+  name: (snippet_name) @name) @reference.class

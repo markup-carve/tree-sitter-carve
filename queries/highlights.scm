@@ -220,6 +220,27 @@
 (include_option_separator) @punctuation.delimiter
 (include_option_value) @constant
 
+; Snippets (C2-B-236, C2-I-128, C2-B-237): the name is a variable, the markers
+; are punctuation. The definition's attribute parts take the attribute rules.
+(snippet_name) @variable
+
+(snippet_use
+  [
+    "{{"
+    "$"
+    "}}"
+  ] @punctuation.special)
+
+(snippet_definition
+  [
+    "{$"
+    "}"
+    "{"
+  ] @punctuation.special)
+
+(snippet_definition
+  ":" @punctuation.delimiter)
+
 (mention) @constant
 
 (tag) @tag
@@ -535,6 +556,8 @@
 [
   (paragraph)
   (table_cell)
+  (snippet_definition
+    value: (content))
   (comment_line)
   (trailing_comment)
   (fenced_comment_block)
@@ -558,6 +581,7 @@
   (identifier)
   (key_value)
   (frontmatter)
+  (snippet_name)
 ] @nospell
 
 (table

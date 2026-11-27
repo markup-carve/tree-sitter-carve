@@ -414,6 +414,10 @@
           "named": true
         },
         {
+          "type": "snippet_use",
+          "named": true
+        },
+        {
           "type": "span",
           "named": true
         },
@@ -700,6 +704,10 @@
         },
         {
           "type": "raw_inline",
+          "named": true
+        },
+        {
+          "type": "snippet_use",
           "named": true
         },
         {
@@ -1006,6 +1014,14 @@
           "named": true
         },
         {
+          "type": "snippet_definition",
+          "named": true
+        },
+        {
+          "type": "snippet_use",
+          "named": true
+        },
+        {
           "type": "span",
           "named": true
         },
@@ -1273,6 +1289,14 @@
         },
         {
           "type": "region_marker",
+          "named": true
+        },
+        {
+          "type": "snippet_definition",
+          "named": true
+        },
+        {
+          "type": "snippet_use",
           "named": true
         },
         {
@@ -1608,6 +1632,14 @@
           "named": true
         },
         {
+          "type": "snippet_definition",
+          "named": true
+        },
+        {
+          "type": "snippet_use",
+          "named": true
+        },
+        {
           "type": "table",
           "named": true
         },
@@ -1877,6 +1909,14 @@
         },
         {
           "type": "region_marker",
+          "named": true
+        },
+        {
+          "type": "snippet_definition",
+          "named": true
+        },
+        {
+          "type": "snippet_use",
           "named": true
         },
         {
@@ -2239,6 +2279,10 @@
         },
         {
           "type": "raw_inline",
+          "named": true
+        },
+        {
+          "type": "snippet_use",
           "named": true
         },
         {
@@ -2806,6 +2850,10 @@
           "named": true
         },
         {
+          "type": "snippet_use",
+          "named": true
+        },
+        {
           "type": "span",
           "named": true
         },
@@ -3102,6 +3150,14 @@
           "named": true
         },
         {
+          "type": "snippet_definition",
+          "named": true
+        },
+        {
+          "type": "snippet_use",
+          "named": true
+        },
+        {
           "type": "table",
           "named": true
         },
@@ -3198,6 +3254,14 @@
         },
         {
           "type": "region_marker",
+          "named": true
+        },
+        {
+          "type": "snippet_definition",
+          "named": true
+        },
+        {
+          "type": "snippet_use",
           "named": true
         },
         {
@@ -3444,6 +3508,10 @@
         },
         {
           "type": "raw_inline",
+          "named": true
+        },
+        {
+          "type": "snippet_use",
           "named": true
         },
         {
@@ -3743,6 +3811,14 @@
           "named": true
         },
         {
+          "type": "snippet_definition",
+          "named": true
+        },
+        {
+          "type": "snippet_use",
+          "named": true
+        },
+        {
           "type": "table",
           "named": true
         },
@@ -3751,6 +3827,58 @@
           "named": true
         }
       ]
+    }
+  },
+  {
+    "type": "snippet_definition",
+    "named": true,
+    "fields": {
+      "args": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "args",
+            "named": true
+          }
+        ]
+      },
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "snippet_name",
+            "named": true
+          }
+        ]
+      },
+      "value": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "content",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "snippet_use",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "snippet_name",
+            "named": true
+          }
+        ]
+      }
     }
   },
   {
@@ -4211,6 +4339,10 @@
           "named": true
         },
         {
+          "type": "snippet_use",
+          "named": true
+        },
+        {
           "type": "span",
           "named": true
         },
@@ -4518,6 +4650,10 @@
         },
         {
           "type": "raw_inline",
+          "named": true
+        },
+        {
+          "type": "snippet_use",
           "named": true
         },
         {
@@ -5125,6 +5261,10 @@
     "named": true
   },
   {
+    "type": "snippet_name",
+    "named": true
+  },
+  {
     "type": "strikethrough_end",
     "named": true
   },
@@ -5173,6 +5313,10 @@
     "named": false
   },
   {
+    "type": "{$",
+    "named": false
+  },
+  {
     "type": "{*",
     "named": false
   },
@@ -5218,6 +5362,10 @@
   },
   {
     "type": "}",
+    "named": false
+  },
+  {
+    "type": "}}",
     "named": false
   },
   {
