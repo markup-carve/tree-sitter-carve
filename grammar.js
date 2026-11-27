@@ -180,6 +180,7 @@ function inlineElement($, options) {
           // tree-sitter stores it as int16_t: 327 * ELEMENT_PRECEDENCE is the
           // ceiling, and scripts/parser-warnings.mjs fails the build past it.
           prec.dynamic(300 * ELEMENT_PRECEDENCE, $.include_directive),
+          $.snippet_use,
           prec.dynamic(
             ELEMENT_PRECEDENCE,
             seq($.mention, repeat($._glued_marker)),
@@ -221,6 +222,17 @@ function inlineElement($, options) {
 // The payload of an attribute block, shared by the inline spelling and the one
 // a table cell carries. A JS helper rather than a rule: the run may be empty,
 // and tree-sitter admits an empty match only inline.
+function snippetUse($, open) {
+  return seq(
+    alias(open, "{{"),
+    $._space_run,
+    "$",
+    field("name", $.snippet_name),
+    $._space_run,
+    "}}",
+  );
+}
+
 function attributeArgs($) {
   return optional(alias($._attribute_args, $.args));
 }
@@ -649,6 +661,8 @@ module.exports = grammar({
         $.block_attribute,
         $.callout_list,
         $._include_block,
+        $.snippet_definition,
+        $._snippet_block,
       ),
 
     // A directive alone on its line is a block of one line (C2-B-156); the
@@ -665,6 +679,36 @@ module.exports = grammar({
           choice($._newline, $._eof_or_newline),
         ),
       ),
+
+    // A use alone on its line (C2-B-237); the scanner tests the shape first.
+    _snippet_block: ($) =>
+      prec.dynamic(
+        300 * ELEMENT_PRECEDENCE,
+        seq(
+          alias($._snippet_block_use, $.snippet_use),
+          optional($._whitespace1),
+          choice($._newline, $._eof_or_newline),
+        ),
+      ),
+    _snippet_block_use: ($) => snippetUse($, $._snippet_block_begin),
+    snippet_use: ($) => snippetUse($, $._snippet_use_begin),
+    snippet_name: (_) => /[A-Za-z0-9_][A-Za-z0-9_-]*/,
+
+    // `{$name .c}{.d}: value` (C2-B-236). The scanner reads the line whole at
+    // `{$`; the value is one line of inline content.
+    snippet_definition: ($) =>
+      seq(
+        alias($._snippet_definition_begin, "{$"),
+        field("name", $.snippet_name),
+        field("args", attributeArgs($)),
+        "}",
+        repeat(seq("{", field("args", attributeArgs($)), "}")),
+        alias($._snippet_value_begin, ":"),
+        field("value", alias($._snippet_value, $.content)),
+        $._block_close,
+        optional($._eof_or_newline),
+      ),
+    _snippet_value: ($) => $._paragraph_content,
 
     // A heading ends at its newline and nothing folds into it (SINGLE-LINE
     // HEADINGS, carve#451): every following line, `#`-marked or not, begins
@@ -3793,5 +3837,9 @@ module.exports = grammar({
     $._footnote_label_mark_begin,
     $._link_text_mark_begin,
     $._link_label_start,
+    $._snippet_definition_begin,
+    $._snippet_value_begin,
+    $._snippet_block_begin,
+    $._snippet_use_begin,
   ],
 });

@@ -15,3 +15,9 @@
 
 (footnote_reference
   (reference_label) @local.reference)
+
+(snippet_definition
+  name: (snippet_name) @local.definition)
+
+(snippet_use
+  name: (snippet_name) @local.reference)

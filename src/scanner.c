@@ -355,10 +355,18 @@ typedef enum {
   // Zero width before a reference label that will match. See
   // `link_label_ahead`.
   LINK_LABEL_START,
+  // `{$` of a snippet definition line (C2-B-236), and the `: ` before its
+  // value, which opens a one-line HEADING block with `data` 0.
+  SNIPPET_DEFINITION_BEGIN,
+  SNIPPET_VALUE_BEGIN,
+  // `{{` of a snippet use alone on its line (C2-B-237) and of an inline one
+  // (C2-I-128).
+  SNIPPET_BLOCK_BEGIN,
+  SNIPPET_USE_BEGIN,
 } TokenType;
 
 // The size of `valid_symbols`, for the copies that edit one entry.
-#define EXTERNAL_TOKEN_COUNT (LINK_LABEL_START + 1)
+#define EXTERNAL_TOKEN_COUNT (SNIPPET_USE_BEGIN + 1)
 
 // The different blocks in Carve that we track,
 // in order to match or close them properly.
@@ -673,6 +681,9 @@ typedef struct {
   // Marker column plus one while a refused one-line paragraph is pending.
   uint8_t refused_plus_column;
   uint8_t table_attribute_pending;
+  // An attribute line with an id stands directly above: it refuses a snippet
+  // definition (C2-B-236). Serialized in bit 6 of the pending byte.
+  bool attribute_id_pending;
   // An ordered marker's required space ended at a `[` (C2-B-046).
   uint8_t task_box_next;
   // Did the last list marker scan read a bullet or an ordered value of 1?
@@ -897,6 +908,9 @@ typedef struct {
   // Read in the same scan call only.
   bool attribute_run_ends;
   bool attribute_saw_table;
+  // Items and ids read by the attribute scans of this call. Transient.
+  uint8_t attribute_items;
+  bool attribute_saw_id;
   char braced_probe_marker;
   bool braced_probe_raw_closer;
   // The braced probe read to the paragraph end, so its answer holds for every
@@ -1110,6 +1124,7 @@ static uint8_t scan_block_quote_markers(Scanner *s, TSLexer *lexer,
                                         bool *ending_newline);
 static TokenType scan_unordered_list_marker_token(Scanner *s, TSLexer *lexer);
 static bool scan_valid_inline_attribute(Scanner *s, TSLexer *lexer);
+static bool scan_inline_attribute_body(Scanner *s, TSLexer *lexer);
 static bool is_bare_delim_kind(int32_t c, InlineType *kind);
 static bool kind_open_in_scope(Scanner *s, InlineType type);
 static bool braced_same_kind_blocked(Scanner *s, InlineType type);
@@ -8858,12 +8873,28 @@ static bool include_name_char(int32_t c) {
 
 /// Is the rest of the line, past `{{`, one include directive (C2-B-201 to
 /// C2-B-204)? The lexer is scratch: the caller has marked the token end.
-static bool include_line_ahead(TSLexer *lexer, bool *code) {
+static bool snippet_name_start(int32_t c) {
+  return carve_is_alnum_ascii(c) || c == '_';
+}
+
+static bool snippet_name_char(int32_t c) {
+  return carve_is_alnum_ascii(c) || c == '_' || c == '-';
+}
+
+/// From just past `{{`: is this an include directive alone on its line, or a
+/// snippet use (C2-I-128)? A use is tested first and needs no line end;
+/// `*alone` says whether only spaces and tabs follow it (C2-B-237).
+static bool include_line_ahead(TSLexer *lexer, bool *code, bool *snippet,
+                               bool *alone) {
 #define AT_END (at_line_end(lexer) || lexer->eof(lexer))
   *code = false;
+  *snippet = false;
+  *alone = false;
   if (lexer->lookahead != ' ') return false;
   while (lexer->lookahead == ' ') lexer->advance(lexer, false);
   uint32_t length = 0;
+  // The unquoted path is `$` and a snippet name so far.
+  bool snippet_path = lexer->lookahead == '$';
   if (lexer->lookahead == '"') {
     lexer->advance(lexer, false);
     while (lexer->lookahead != '"') {
@@ -8889,13 +8920,27 @@ static bool include_line_ahead(TSLexer *lexer, bool *code) {
            lexer->lookahead != '#' && lexer->lookahead != '@' &&
            lexer->lookahead != '}' && lexer->lookahead != '"' &&
            lexer->lookahead != 0x201C) {
+      if (length == 1 ? !snippet_name_start(lexer->lookahead)
+                      : length > 1 && !snippet_name_char(lexer->lookahead)) {
+        snippet_path = false;
+      }
       lexer->advance(lexer, false);
       ++length;
     }
   }
   if (length == 0) return false;
+  if (length == 1) snippet_path = false;
   uint32_t spaces = 0;
   while (lexer->lookahead == ' ') { lexer->advance(lexer, false); ++spaces; }
+  if (snippet_path && spaces > 0 && lexer->lookahead == '}') {
+    lexer->advance(lexer, false);
+    if (lexer->lookahead != '}') return false;
+    lexer->advance(lexer, false);
+    *snippet = true;
+    while (lexer->lookahead == ' ' || lexer->lookahead == '\t') lexer->advance(lexer, false);
+    *alone = AT_END;
+    return false;
+  }
   if (lexer->lookahead == '#') {
     lexer->advance(lexer, false);
     if (!carve_is_alnum_ascii(lexer->lookahead) && lexer->lookahead != '_') return false;
@@ -8947,6 +8992,27 @@ static bool include_line_ahead(TSLexer *lexer, bool *code) {
   while (lexer->lookahead == ' ' || lexer->lookahead == '\t') lexer->advance(lexer, false);
   return AT_END;
 #undef AT_END
+}
+
+/// From just past `{{`: ` +$name +}}` (C2-I-128), read no further than the
+/// first character that does not fit.
+static bool snippet_use_ahead(TSLexer *lexer, bool *alone) {
+  *alone = false;
+  if (lexer->lookahead != ' ') return false;
+  while (lexer->lookahead == ' ') lexer->advance(lexer, false);
+  if (lexer->lookahead != '$') return false;
+  lexer->advance(lexer, false);
+  if (!snippet_name_start(lexer->lookahead)) return false;
+  while (snippet_name_char(lexer->lookahead)) lexer->advance(lexer, false);
+  if (lexer->lookahead != ' ') return false;
+  while (lexer->lookahead == ' ') lexer->advance(lexer, false);
+  if (lexer->lookahead != '}') return false;
+  lexer->advance(lexer, false);
+  if (lexer->lookahead != '}') return false;
+  lexer->advance(lexer, false);
+  while (lexer->lookahead == ' ' || lexer->lookahead == '\t') lexer->advance(lexer, false);
+  *alone = at_line_end(lexer) || lexer->eof(lexer);
+  return true;
 }
 
 static bool parse_heading(Scanner *s, TSLexer *lexer,
@@ -11315,6 +11381,40 @@ static bool finish_editorial_comment(Scanner *s, TSLexer *lexer, bool last_was_h
   return closed;
 }
 
+/// A snippet definition stands at column 0 outside every container (C2-B-236).
+static bool snippet_definition_at_root(Scanner *s, TSLexer *lexer) {
+  if (s->block_quote_level != 0 || line_column(s, lexer) != 0) return false;
+  for (uint32_t i = 0; i < s->open_blocks->size; ++i) {
+    if ((*array_get(s->open_blocks, i))->type != SECTION) return false;
+  }
+  return true;
+}
+
+/// From just past `{$`: a name, the marker's parts and glued blocks with no
+/// id, `:`, one space and a value that is not blank (C2-B-236).
+static bool snippet_definition_ahead(Scanner *s, TSLexer *lexer) {
+  if (!snippet_name_start(lexer->lookahead)) return false;
+  while (snippet_name_char(lexer->lookahead)) advance(s, lexer);
+  s->attribute_items = 0;
+  s->attribute_saw_id = false;
+  if (lexer->lookahead == ' ') {
+    if (!scan_inline_attribute_body(s, lexer) || s->attribute_items == 0) return false;
+  } else if (lexer->lookahead == '}') {
+    advance(s, lexer);
+  } else {
+    return false;
+  }
+  while (lexer->lookahead == '{') {
+    uint8_t items = s->attribute_items;
+    if (!scan_valid_inline_attribute(s, lexer) || s->attribute_items == items) return false;
+  }
+  if (s->attribute_saw_id || lexer->lookahead != ':') return false;
+  advance(s, lexer);
+  if (lexer->lookahead != ' ') return false;
+  while (lexer->lookahead == ' ' || lexer->lookahead == '\t') advance(s, lexer);
+  return !at_line_end(lexer) && !lexer->eof(lexer);
+}
+
 static bool parse_open_curly_bracket(Scanner *s, TSLexer *lexer,
                                      const bool *valid_symbols, bool *literal_curly) {
 
@@ -11338,12 +11438,42 @@ static bool parse_open_curly_bracket(Scanner *s, TSLexer *lexer,
   bool on_marker_line = block_attribute &&
       s->marker_end_col != 0 && line_column(s, lexer) >= s->marker_end_col;
   uint8_t quote_markers = s->block_quote_level;
+  bool definition_valid = valid_symbols[SNIPPET_DEFINITION_BEGIN] &&
+      !valid_symbols[ERROR] && !s->attribute_id_pending &&
+      snippet_definition_at_root(s, lexer);
   // Only consume the `{`, if successful.
   advance(s, lexer);
   mark_end(s, lexer);
   *literal_curly = false;
+  // `{$` opens no attribute and no comment, so a refused definition is text.
+  if (lexer->lookahead == '$') {
+    if (!definition_valid) return false;
+    advance(s, lexer);
+    mark_end(s, lexer);
+    if (!snippet_definition_ahead(s, lexer)) return false;
+    lexer->result_symbol = SNIPPET_DEFINITION_BEGIN;
+    return true;
+  }
   if (lexer->lookahead == '{') {
     advance(s, lexer);
+    bool snippet_valid = !valid_symbols[ERROR] &&
+        (valid_symbols[SNIPPET_USE_BEGIN] || valid_symbols[SNIPPET_BLOCK_BEGIN]);
+    bool include_valid = valid_symbols[INCLUDE_LINE_BEGIN] && !valid_symbols[ERROR];
+    bool directive_read = false;
+    // Where no include line can start, a use is read on its own. A refused
+    // one stopped at its first wrong character and read no `}}`, so the
+    // extension scan below goes on from there.
+    if (snippet_valid && !include_valid && lexer->lookahead == ' ') {
+      mark_end(s, lexer);
+      bool alone = false;
+      if (snippet_use_ahead(lexer, &alone)) {
+        lexer->result_symbol = alone && valid_symbols[SNIPPET_BLOCK_BEGIN]
+                                   ? SNIPPET_BLOCK_BEGIN : SNIPPET_USE_BEGIN;
+        return valid_symbols[lexer->result_symbol];
+      }
+      if (!find_inline(s, EXTENSION)) return false;
+      directive_read = true;
+    }
     if (find_inline(s, EXTENSION) && valid_symbols[LITERAL_RUN]) {
       while (!lexer->eof(lexer) && !extension_closes_here(s, lexer)) {
         if (lexer->lookahead == '}') {
@@ -11354,15 +11484,23 @@ static bool parse_open_curly_bracket(Scanner *s, TSLexer *lexer,
       lexer->result_symbol = LITERAL_RUN;
       return true;
     }
-    if (lexer->lookahead != ' ' && lexer->lookahead != '\t' && valid_symbols[LITERAL_RUN]) {
+    if (!directive_read && lexer->lookahead != ' ' && lexer->lookahead != '\t' &&
+        valid_symbols[LITERAL_RUN]) {
       lexer->result_symbol = LITERAL_RUN;
       return true;
     }
-    // A directive alone on its line is a block (C2-B-156).
-    if (valid_symbols[INCLUDE_LINE_BEGIN] && !valid_symbols[ERROR]) {
+    // A directive alone on its line is a block (C2-B-156); a use is tested
+    // first (C2-B-237).
+    if (include_valid) {
       mark_end(s, lexer);
-      bool code = false;
-      if (include_line_ahead(lexer, &code)) {
+      bool code = false, snippet = false, alone = false;
+      bool include_line = include_line_ahead(lexer, &code, &snippet, &alone);
+      if (snippet) {
+        lexer->result_symbol = alone && valid_symbols[SNIPPET_BLOCK_BEGIN]
+                                   ? SNIPPET_BLOCK_BEGIN : SNIPPET_USE_BEGIN;
+        return snippet_valid && valid_symbols[lexer->result_symbol];
+      }
+      if (include_line) {
         if (code) s->caption_gap = CAPTION_HOST_THIS_LINE;
         lexer->result_symbol = INCLUDE_LINE_BEGIN;
         return true;
@@ -11445,6 +11583,7 @@ static bool parse_open_curly_bracket(Scanner *s, TSLexer *lexer,
   // The attribute loop consumes a `#` before it can know its identifier fails.
   // Set where that happens, so `{#myid#}` is not read as an unclosed comment.
   bool last_was_hash = false;
+  bool line_id = false;
 
   // Inline, neither attribute symbol is on the table and only the comment
   // brought us here; without this the loop would run for every `{` in a
@@ -11474,6 +11613,7 @@ static bool parse_open_curly_bracket(Scanner *s, TSLexer *lexer,
       // Not an identifier either, so `{#id}` is off the table as well.
       return finish_editorial_comment(s, lexer, false, valid_symbols[LITERAL_RUN] && !valid_symbols[ERROR]);
     }
+    line_id = true;
     // The boundary every other item gets in the loop below: `{#a:b}` and
     // `{#a.c}` are not an id followed by a second item.
     if (!at_attribute_boundary(lexer)) {
@@ -11568,6 +11708,7 @@ static bool parse_open_curly_bracket(Scanner *s, TSLexer *lexer,
         // the closing brace opens another block rather than ending the run.
         s->attribute_block_line = true;
         s->attribute_saw_table = false;
+        s->attribute_saw_id = false;
         while (lexer->lookahead == '{') {
           if (!scan_valid_inline_attribute(s, lexer)) {
             s->attribute_block_line = false;
@@ -11590,6 +11731,7 @@ static bool parse_open_curly_bracket(Scanner *s, TSLexer *lexer,
           }
           lexer->result_symbol = BLOCK_ATTRIBUTE_BEGIN;
           if (has_table_flag) s->table_attribute_pending = 1;
+          if (line_id || s->attribute_saw_id) s->attribute_id_pending = true;
           return true;
         }
         // Refused at the end of its container, the run is a paragraph that
@@ -11626,6 +11768,7 @@ static bool parse_open_curly_bracket(Scanner *s, TSLexer *lexer,
         last_was_hash = true;
         goto no_attribute;
       }
+      line_id = true;
       has_item = true;
       break;
     case '%':
@@ -13745,7 +13888,8 @@ static bool emit_newline_inline(Scanner *s, TSLexer *lexer,
   // In a quote the column is read behind the marks (label_line_falls_short).
   // A comment-only line is not seen (C2-B-137); close_paragraph reads it.
   if (top && top->type == HEADING && count_blocks(s, BLOCK_QUOTE) == 0 &&
-      next_line_whitespace <= top->content_col && lexer->lookahead != '%') {
+      (top->data == 0 ||
+       (next_line_whitespace <= top->content_col && lexer->lookahead != '%'))) {
     return false;
   }
 
@@ -14947,6 +15091,7 @@ static bool scan_inline_attribute_body(Scanner *s, TSLexer *lexer) {
       if (!scan_explicit_identifier(s, lexer)) {
         return false;
       }
+      if (s->attribute_items < UINT8_MAX) ++s->attribute_items;
       // AN ITEM ENDS AT A BOUNDARY, the rule the language tag below already
       // applies: two attributes need a separator between them (PART 9 §15), so
       // `{#i.c}` and `{.sm:hover}` are not two items and the brace run is
@@ -14960,6 +15105,8 @@ static bool scan_inline_attribute_body(Scanner *s, TSLexer *lexer) {
       if (!scan_explicit_identifier(s, lexer) || !at_attribute_boundary(lexer)) {
         return false;
       }
+      s->attribute_saw_id = true;
+      if (s->attribute_items < UINT8_MAX) ++s->attribute_items;
       break;
     case ':': {
       // The language attribute. This function is what sets
@@ -14971,6 +15118,7 @@ static bool scan_inline_attribute_body(Scanner *s, TSLexer *lexer) {
       if (!scan_language_tag(s, lexer) || !at_attribute_boundary(lexer)) {
         return false;
       }
+      if (s->attribute_items < UINT8_MAX) ++s->attribute_items;
       break;
     }
     case '\r':
@@ -15012,6 +15160,7 @@ static bool scan_inline_attribute_body(Scanner *s, TSLexer *lexer) {
             lexer->lookahead == '\t' || at_line_end(lexer)) {
           if (s->attribute_block_line && is_table_key)
             s->attribute_saw_table = true;
+          if (s->attribute_items < UINT8_MAX) ++s->attribute_items;
           break;
         }
         return false;
@@ -15023,6 +15172,7 @@ static bool scan_inline_attribute_body(Scanner *s, TSLexer *lexer) {
       }
       if (s->attribute_block_line && is_table_key && empty_value)
         s->attribute_saw_table = true;
+      if (s->attribute_items < UINT8_MAX) ++s->attribute_items;
     }
     }
   }
@@ -18657,6 +18807,13 @@ bool tree_sitter_carve_external_scanner_scan(void *payload, TSLexer *lexer,
     return true;
   }
   if (s->note_here && !scan_right_behind(s, lexer, valid_symbols, &found, closer_char, closer_col)) return true;
+  if (found && s->attribute_id_pending) {
+    TokenType token = (TokenType)lexer->result_symbol;
+    if (token != BLOCK_ATTRIBUTE_BEGIN && token != NEWLINE && token != EOF_OR_NEWLINE &&
+        token != MID_LINE_SPACE) {
+      s->attribute_id_pending = false;
+    }
+  }
   if (found && s->table_attribute_pending) {
     TokenType token = (TokenType)lexer->result_symbol;
     if (token == BLOCK_CLOSE || token == DIV_END || token == LIST_ITEM_END) {
@@ -18898,6 +19055,19 @@ static bool caption_host_line_ahead(Scanner *s, TSLexer *lexer) {
 
 static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   s->plus_scan_spent = false;
+  // The line was read whole at `{$`. The value is one line of inline content,
+  // a heading of level 0 that no later line continues.
+  if (valid_symbols[SNIPPET_VALUE_BEGIN] && !valid_symbols[ERROR] &&
+      lexer->lookahead == ':') {
+    advance(s, lexer);
+    if (lexer->lookahead != ' ') return false;
+    advance(s, lexer);
+    mark_end(s, lexer);
+    push_block(s, HEADING, 0);
+    peek_block(s)->content_col = 0;
+    lexer->result_symbol = SNIPPET_VALUE_BEGIN;
+    return true;
+  }
   if (valid_symbols[FRONTMATTER_REST] && !valid_symbols[ERROR] &&
       !lexer->eof(lexer)) {
     while (!lexer->eof(lexer)) advance(s, lexer);
@@ -18941,6 +19111,8 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   s->caption_comment_ahead = false;
   s->attribute_block_line = false;
   s->attribute_saw_table = false;
+  s->attribute_items = 0;
+  s->attribute_saw_id = false;
   s->paragraph_markers_seen = 1;
   s->next_line_indent = -1;
   // Snapshot BEFORE any reader below runs, so a probe positioned late in this
@@ -20051,6 +20223,7 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   // repeated scanner calls tree-sitter makes at one position agree.
   if (at_line_start && is_newline) {
     s->state |= STATE_AFTER_BLANK_LINE;
+    s->attribute_id_pending = false;
     // The gap belongs to the host even when the blank line emits no line-end
     // token before the enclosing item's later close.
     s->caption_gap = CAPTION_HOST_NONE;
@@ -21123,6 +21296,7 @@ static void init_scalars(Scanner *s) {
   s->plus_decision = 0;
   s->refused_plus_column = 0;
   s->table_attribute_pending = 0;
+  s->attribute_id_pending = false;
   s->task_box_next = 0;
   s->attribute_saw_table = false;
   s->col_base = 0;
@@ -21324,6 +21498,7 @@ unsigned tree_sitter_carve_external_scanner_serialize(void *payload,
   buffer[size++] = (char)(s->table_attribute_pending |
                           (s->metadata_gap ? 0x04 : 0) | (s->past_opener ? 0x08 : 0) |
                           (ext_bytes ? 0x10 : 0) | (caret_extension ? 0x20 : 0) |
+                          (s->attribute_id_pending ? 0x40 : 0) |
                           (s->task_box_next ? 0x80 : 0));
   buffer[size++] = (char)(s->state & 0xff);
   buffer[size++] = (char)((s->state >> 8) & 0xff);
@@ -21609,6 +21784,7 @@ void tree_sitter_carve_external_scanner_deserialize(void *payload, char *buffer,
     s->table_attribute_pending = (uint8_t)buffer[size] & 0x03;
     s->metadata_gap = ((uint8_t)buffer[size] & 0x04) != 0;
     s->past_opener = ((uint8_t)buffer[size] & 0x08) != 0;
+    s->attribute_id_pending = ((uint8_t)buffer[size] & 0x40) != 0;
     s->task_box_next = ((uint8_t)buffer[size++] & 0x80) != 0;
     s->state = (uint16_t)(uint8_t)buffer[size++];
     s->state |= (uint16_t)(uint8_t)buffer[size++] << 8;
