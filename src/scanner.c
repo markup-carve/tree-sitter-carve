@@ -15928,6 +15928,13 @@ static bool scan_qualified_bracket_close(Scanner *s, BracketProbe *probe, Inline
         }
       }
     } else if (c == '[') {
+      // C2-I-118: a bracket beyond the open-entry cap is literal. A probe
+      // must count it the same way as the real parser or it will reject an
+      // outer span whose closer is still in reach.
+      if (inline_depth(s) + open.size >= MAX_NESTING_DEPTH) {
+        advance(s, lexer);
+        continue;
+      }
       uint32_t at = probe->position;
       advance(s, lexer);
       // Outside a note a caret pair is atomic, and one with no label opens no
