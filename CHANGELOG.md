@@ -6,14 +6,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-27
+
 ### Breaking
 
-- The grammar is Carve 0.2. The 0.2 grammar moved from `v2/` to the repository root (`grammar.js`, `src/`, `queries/`, `test/corpus/`) and replaced the Carve 0.1 grammar, its queries and its corpus. Every binding (C, Go, Node, Python, Rust, Swift, WASM) now loads the 0.2 grammar; use a 0.1.x release for Carve 0.1.
+- The grammar is Carve 0.2. The 0.2 grammar moved from `v2/` to the repository root (`grammar.js`, `src/`, `queries/`, `test/corpus/`) and replaced the Carve 0.1 grammar, its queries and its corpus. Every binding (C, Go, Node, Python, Rust, Swift, WASM) now loads the 0.2 grammar; use a 0.1.x release for Carve 0.1 (#727).
 - The grammar name is `carve` again (it was `carve2` under `v2/`), so the exported symbol is `tree_sitter_carve`. Editors that pinned `v2/` drop that path.
 
 ### Improvements
 
 - `queries/tags.scm` lists headings, ids, link and footnote definitions as symbols, and link, image and footnote references as references. `tree-sitter tags` and the syntax symbol pickers of Helix and Mitos read it.
+- Snippet definitions (`{$name}: value`) and snippet uses (`{{ $name }}`, inline or alone on a line) parse into `snippet_definition` and `snippet_use` nodes; the highlight, locals and tags queries capture them (#803, #802).
+- A table continuation row (`+` line) holds `table_cell` children and `|` tokens like a pipe row, and the table markers are highlighted (#689).
+- A cell's marker run (`|={> .x}`) parses into its parts, and the substitution arrow and closer and the inline note opener are named tokens the highlight query paints (#690).
+
+**Full Changelog**: https://github.com/markup-carve/tree-sitter-carve/compare/0.1.14...0.2.0
 
 ## [0.1.14] - 2026-11-12
 

@@ -15,3 +15,4 @@
 
 352: reverted before release by #360, so the pair nets to no change
 360: the revert of #352; the two diffs cancel on src/scanner.c, and the guard fixture landing with it is test-only
+800: fixes a 0.2 caption reading that no release shipped; the 0.2 grammar itself is new in 0.2.0 (Breaking, #727)
