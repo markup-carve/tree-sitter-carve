@@ -524,3 +524,65 @@ x
     (code_block_marker_begin)
     (code)
     (code_block_marker_end)))
+
+================================================================================
+C2-B-096: an attribute line above a block use is a paragraph (CC-2487, CC-2488)
+================================================================================
+{$v}: X
+
+{.k :en}
+{{ $v }}
+
+--------------------------------------------------------------------------------
+
+(document
+  (snippet_definition
+    (snippet_name)
+    (content))
+  (paragraph)
+  (snippet_use
+    (snippet_name)))
+
+================================================================================
+C2-B-096: the definition takes its attribute line and the use does not (CC-2489)
+================================================================================
+{.k}
+{$v}: X
+
+{.m}
+{{ $v }}
+
+--------------------------------------------------------------------------------
+
+(document
+  (block_attribute
+    (args
+      (class)))
+  (snippet_definition
+    (snippet_name)
+    (content))
+  (paragraph)
+  (snippet_use
+    (snippet_name)))
+
+================================================================================
+C2-B-096: an attribute line above a quoted block use is a paragraph (CC-2490)
+================================================================================
+{$v}: X
+
+> {.k}
+> {{ $v }}
+
+--------------------------------------------------------------------------------
+
+(document
+  (snippet_definition
+    (snippet_name)
+    (content))
+  (block_quote
+    (block_quote_marker)
+    (content
+      (paragraph)
+      (block_quote_marker)
+      (snippet_use
+        (snippet_name)))))

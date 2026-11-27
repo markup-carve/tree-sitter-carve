@@ -1125,6 +1125,7 @@ static uint8_t scan_block_quote_markers(Scanner *s, TSLexer *lexer,
 static TokenType scan_unordered_list_marker_token(Scanner *s, TSLexer *lexer);
 static bool scan_valid_inline_attribute(Scanner *s, TSLexer *lexer);
 static bool scan_inline_attribute_body(Scanner *s, TSLexer *lexer);
+static bool snippet_use_ahead(TSLexer *lexer, bool *alone);
 static bool is_bare_delim_kind(int32_t c, InlineType *kind);
 static bool kind_open_in_scope(Scanner *s, InlineType type);
 static bool braced_same_kind_blocked(Scanner *s, InlineType type);
@@ -6074,7 +6075,7 @@ typedef enum {
   RUN_LINE_ATTRIBUTE,
   RUN_LINE_COMMENT,
   RUN_LINE_ENDS_CONTAINER,
-  RUN_LINE_CAPTION,
+  RUN_LINE_UNATTRIBUTED,
   RUN_LINE_OTHER,
 } AttributeRunLine;
 
@@ -6125,11 +6126,18 @@ static AttributeRunLine attribute_run_line(Scanner *s, TSLexer *lexer) {
     if (lexer->lookahead != ' ') return RUN_LINE_OTHER;
     consume_whitespace(s, lexer);
     bool content = !at_line_end(lexer) && !lexer->eof(lexer);
-    return content ? RUN_LINE_CAPTION : RUN_LINE_OTHER;
+    return content ? RUN_LINE_UNATTRIBUTED : RUN_LINE_OTHER;
   }
   if (lexer->lookahead != '{') return RUN_LINE_OTHER;
+  advance(s, lexer);
+  if (lexer->lookahead == '{') {
+    advance(s, lexer);
+    bool alone = false;
+    return snippet_use_ahead(lexer, &alone) && alone ? RUN_LINE_UNATTRIBUTED
+                                                     : RUN_LINE_OTHER;
+  }
   s->attribute_block_line = true;
-  bool attribute = true;
+  bool attribute = scan_inline_attribute_body(s, lexer);
   while (attribute && lexer->lookahead == '{') {
     attribute = scan_valid_inline_attribute(s, lexer);
   }
@@ -6165,9 +6173,10 @@ static bool attribute_line_taken(Scanner *s, TSLexer *lexer) {
       if (after_comment) s->attribute_run_ends = !proven;
       break;
     }
-    // A caption takes no attribute line (C2-B-096), so the run is a closed
-    // paragraph above it, as at the end of its container.
-    if (line == RUN_LINE_ENDS_CONTAINER || line == RUN_LINE_CAPTION) {
+    // A caption and a block snippet use take no attribute line (C2-B-096),
+    // so the run is a closed paragraph above them, as at the end of its
+    // container.
+    if (line == RUN_LINE_ENDS_CONTAINER || line == RUN_LINE_UNATTRIBUTED) {
       s->attribute_run_ends = !proven;
       break;
     }
