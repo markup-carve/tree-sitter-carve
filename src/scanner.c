@@ -2474,11 +2474,13 @@ static bool close_list_nested_block_if_needed(Scanner *s, TSLexer *lexer,
   Block *top = peek_block(s);
   Block *list = find_list(s);
 
-  // An unclosed fence cannot carry a footnote body line that falls short of
-  // the note's marker. Close the fence first, then let FOOTNOTE_END read the
-  // same line in its enclosing context (C2-B-025).
+  // A child fence or div cannot carry a line that misses its footnote owner.
+  // Close it first, then let FOOTNOTE_END read the same line in the enclosing
+  // context (C2-B-025).
   Block *note = find_block(s, FOOTNOTE);
-  if (non_newline && top->type == CODE_BLOCK && note &&
+  if (non_newline &&
+      (top->type == CODE_BLOCK || top->type == DIV ||
+       top->type == FIGURE_GROUP) && note &&
       s->indent < note->data && !(s->state & STATE_LIST_CONTINUATION)) {
     lexer->result_symbol = BLOCK_CLOSE;
     remove_block(s);
@@ -4274,8 +4276,9 @@ static bool label_line_interrupts(Scanner *s, TSLexer *lexer) {
   for (int i = s->open_blocks->size - 1; i >= 0; --i) {
     Block *b = *array_get(s->open_blocks, i);
     if (b->type == LIST_DEFINITION && (b->flags & BLOCK_FLAG_DEFINITION_TERM)) continue;
-    // A div between the term and the item is the term's container.
-    if (b->type == DIV || b->type == FIGURE_GROUP) break;
+    // A quote or div between the label and an outer item is the label's
+    // container. An item outside it cannot interrupt this label.
+    if (b->type == BLOCK_QUOTE || b->type == DIV || b->type == FIGURE_GROUP) break;
     if (is_list(b->type) || b->type == FOOTNOTE) {
       item = b;
       break;
@@ -7205,7 +7208,8 @@ static bool ensure_list_open(Scanner *s, BlockType type, uint16_t indent,
 
 static bool handle_ordered_list_marker(Scanner *s, TSLexer *lexer,
                                        const bool *valid_symbols, TokenType marker,
-                                       bool after_marker, uint32_t start_at) {
+                                       bool after_marker, uint32_t start_at,
+                                       bool *has_content) {
   uint32_t column = marker != IGNORED && valid_symbols[marker] ? line_column(s, lexer) : UINT32_MAX;
   // `start_at` is in host advances, all on this line: the marker is on it.
   uint32_t moved = s->host_advances - start_at;
@@ -7231,6 +7235,7 @@ static bool handle_ordered_list_marker(Scanner *s, TSLexer *lexer,
     bool box = bracket && scan_task_list_box(s, lexer);
     // A content-less marker line is paragraph text, not a list.
     if (!bracket && !marker_line_has_content(s, lexer)) {
+      *has_content = false;
       return false;
     }
     // A marker where the previous marker on this line ended nests at its own
@@ -8340,16 +8345,23 @@ static bool parse_list_item_end(Scanner *s, TSLexer *lexer,
       }
 
       bool second_newline;
-      // A quote held by the document takes indentation before its mark on
-      // the line after the blank one too (PART 0 L2).
-      if (quote_chain_from(s, 1)) {
-        while (lexer->lookahead == ' ') {
-          advance(s, lexer);
-          ++lead_shift;
+      uint8_t second_block_quote_markers;
+      // A run of marked blank lines keeps the quote. Look through the run
+      // before deciding whether its next content line reaches the item.
+      do {
+        lead_shift = 0;
+        // A quote held by the document takes indentation before its mark on
+        // the line after the blank one too (PART 0 L2).
+        if (quote_chain_from(s, 1)) {
+          while (lexer->lookahead == ' ') {
+            advance(s, lexer);
+            ++lead_shift;
+          }
         }
-      }
-      uint8_t second_block_quote_markers =
-          scan_block_quote_markers(s, lexer, &second_newline);
+        second_block_quote_markers =
+            scan_block_quote_markers(s, lexer, &second_newline);
+      } while (second_newline && second_block_quote_markers == block_quotes &&
+               !lexer->eof(lexer));
 
       // A comment-only line closes no container, short of markers too
       // (C2-B-137): it stays in the item like a fully marked one.
@@ -13390,10 +13402,13 @@ static bool line_block_line_unowned(Scanner *s, TSLexer *lexer, bool marked) {
   Block *parent = *array_get(s->open_blocks, s->open_blocks->size - 2);
   if (parent->type == BLOCK_QUOTE) return !marked;
   uint32_t column = line_column(s, lexer);
-  // A list in a quote leaves its unowned lines to the quote's closing.
+  // Ownership is measured in the immediate parent, including a note or an
+  // item inside an outer quote. The quote alone cannot keep the line block.
+  if (parent->type == FOOTNOTE) return column < parent->data;
   if (is_list(parent->type)) {
-    return parent->content_col != 0 && column < parent->content_col &&
-           count_blocks(s, BLOCK_QUOTE) == 0;
+    return parent->content_col != 0 &&
+           column < (list_opened_in_quote(s, parent)
+               ? quoted_list_margin(s, parent) : list_item_margin(s, parent));
   }
   return false;
 }
@@ -13464,10 +13479,12 @@ static bool close_paragraph(Scanner *s, TSLexer *lexer) {
     }
     if (lexer->lookahead != ':' && line_block_line_unowned(s, lexer, marked)) {
       int32_t lead = lexer->lookahead;
-      if (lead == '>' || lead == '#') return line_block_stanza_ends(s, lexer);
-      if (lead == '{' || lead == '[' || lead == '*') {
+      bool ends;
+      if (lead == '>' || lead == '#') {
+        ends = line_block_stanza_ends(s, lexer);
+      } else if (lead == '{' || lead == '[' || lead == '*') {
         BracketProbe probe = bracket_probe_new(s, lexer);
-        bool ends = line_block_stanza_ends(s, &probe.lexer);
+        ends = line_block_stanza_ends(s, &probe.lexer);
         bracket_probe_rewind(&probe, 0);
         if (!ends) {
           s->line_block_lazy = true;
@@ -13475,11 +13492,16 @@ static bool close_paragraph(Scanner *s, TSLexer *lexer) {
           s->line_block_lazy = false;
         }
         array_delete(&probe.characters);
-        return ends;
+      } else {
+        s->line_block_lazy = true;
+        ends = close_paragraph_lazy_line(s, lexer);
+        s->line_block_lazy = false;
       }
-      s->line_block_lazy = true;
-      bool ends = close_paragraph_lazy_line(s, lexer);
-      s->line_block_lazy = false;
+      // The item is short of this quoted line, so its line block must close
+      // before the quote marker is offered as a continuation token.
+      Block *owner = *array_get(s->open_blocks, s->open_blocks->size - 2);
+      if (ends && is_list(owner->type) && list_opened_in_quote(s, owner))
+        s->state |= STATE_QUOTED_LINE_SHORT_OF_ITEM;
       return ends;
     }
     if (lexer->lookahead != ':') {
@@ -15263,6 +15285,9 @@ static bool plain_bracket_run_scan(Scanner *s, TSLexer *lexer, BracketProbe *pro
     lexer->result_symbol = LITERAL_RUN;
     return true;
   }
+  uint32_t current_depth = inline_depth(s);
+  if (current_depth >= MAX_NESTING_DEPTH) return false;
+  uint32_t room = MAX_NESTING_DEPTH - current_depth;
   if (s->after_closer_char == PLAIN_BRACKET_REMAINDER) {
     bool same_position = line_column(s, lexer) == s->after_closer_col;
     s->after_closer_char = 0;
@@ -15292,7 +15317,11 @@ static bool plain_bracket_run_scan(Scanner *s, TSLexer *lexer, BracketProbe *pro
     while (lexer->lookahead == ' ' || lexer->lookahead == '\t') advance(s, lexer);
   }
   if (prefix < 2) return false;
-  unsigned depth = prefix;
+  // All later openers in a run are text once the cap is reached. Keep one
+  // refused opener for the regular lexer and count only the closers that can
+  // belong to the surviving bracket entries.
+  bool capped_prefix = prefix > room;
+  unsigned depth = capped_prefix ? room + 1 : prefix;
   bool plain = true;
   bool punctuation = false;
   bool continued = false;
@@ -15348,10 +15377,16 @@ static bool plain_bracket_run_scan(Scanner *s, TSLexer *lexer, BracketProbe *pro
       advance(s, lexer);
       continue;
     }
-    if (c == '[') ++depth;
+    if (c == '[' && (!capped_prefix || depth < room + 1)) ++depth;
     if (c == ']') {
       --depth;
       advance(s, lexer);
+      if (capped_prefix && depth == 0) {
+        push_inline_flagged(s, LITERAL_BRACKET, 0, 0);
+        peek_inline(s)->literal_closes = room;
+        lexer->result_symbol = LITERAL_RUN;
+        return true;
+      }
       if (have_remainder_column && depth < first_line_depth &&
           (lexer->lookahead == '(' || lexer->lookahead == '[' || lexer->lookahead == '{')) return false;
       if (lexer->lookahead == '[') plain = false;
@@ -15927,6 +15962,13 @@ static bool scan_qualified_bracket_close(Scanner *s, BracketProbe *probe, Inline
         }
       }
     } else if (c == '[') {
+      // C2-I-118: a bracket beyond the open-entry cap is literal. A probe
+      // must count it the same way as the real parser or it will reject an
+      // outer span whose closer is still in reach.
+      if (inline_depth(s) + open.size >= MAX_NESTING_DEPTH) {
+        advance(s, lexer);
+        continue;
+      }
       uint32_t at = probe->position;
       advance(s, lexer);
       // Outside a note a caret pair is atomic, and one with no label opens no
@@ -21106,11 +21148,15 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
   uint32_t ordered_at = s->host_advances;
   TokenType ordered_list_marker =
       list_text_line(s) ? IGNORED : scan_ordered_list_marker_token(s, lexer);
+  bool ordered_has_content = true;
   if (ordered_list_marker != IGNORED &&
       handle_ordered_list_marker(s, lexer, valid_symbols, ordered_list_marker,
-                                 ordered_after_marker, ordered_at)) {
+                                 ordered_after_marker, ordered_at,
+                                 &ordered_has_content)) {
     return true;
   }
+  // A refused marker is text, so it cannot close a different list or quote.
+  if (!ordered_has_content) ordered_list_marker = IGNORED;
   // THE READER'S SECOND CHANCE FOR A WORD. At a line start the reader stands
   // aside for a word, which could be an ordered marker (`a)`, `iv.`). The probe
   // above has read that word and found no marker, so a delimiter right behind
@@ -21573,7 +21619,11 @@ unsigned tree_sitter_carve_external_scanner_serialize(void *payload,
   // when the buffer cannot hold them.
   bool bounded = (s->bounded_kinds & s->no_closer_kinds) != 0;
   bool ahead = s->closer_ahead_kinds != 0 || bounded;
-  bool span_note = s->bracket_span_note;
+  // A probe that skipped an opaque atom containing `[` has a version-local
+  // view of that atom. Serializing its answer makes otherwise equal parse
+  // versions distinct and can select the wrong tree when they merge (#772).
+  bool span_note = s->bracket_span_note &&
+                   !(s->bracket_pair_span & BRACKET_NOTE_ATOM_OPEN);
   bool plain_note = span_note && s->plain_run_note;
   bool probe_note = s->note_probe_note[0] || s->note_probe_note[1] || s->plain_pair_note ||
                     s->close_none_ahead;

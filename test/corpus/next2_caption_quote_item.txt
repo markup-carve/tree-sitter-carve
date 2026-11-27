@@ -1,0 +1,48 @@
+============================================================
+C2-B-234: a caption in a quote ignores an outer item marker
+============================================================
+
+- > | w |
+  > ^ w
+  >  - y
+
+------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (block_quote
+          (block_quote_marker)
+          (content
+            (table
+              (table_row
+                (table_cell)))
+            (block_quote_marker)
+            (caption
+              (caption_marker)
+              (caption_content
+                (block_quote_marker)))))))))
+
+============================================================
+C2-B-234: a heading in a quote ignores an outer item marker
+============================================================
+
+- > # h
+  >  - y
+
+------------------------------------------------------------
+
+(document
+  (list
+    (list_item
+      (list_marker_dash)
+      (list_item_content
+        (block_quote
+          (block_quote_marker)
+          (content
+            (heading
+              (marker)
+              (content
+                (block_quote_marker)))))))))
