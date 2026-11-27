@@ -4274,8 +4274,9 @@ static bool label_line_interrupts(Scanner *s, TSLexer *lexer) {
   for (int i = s->open_blocks->size - 1; i >= 0; --i) {
     Block *b = *array_get(s->open_blocks, i);
     if (b->type == LIST_DEFINITION && (b->flags & BLOCK_FLAG_DEFINITION_TERM)) continue;
-    // A div between the term and the item is the term's container.
-    if (b->type == DIV || b->type == FIGURE_GROUP) break;
+    // A quote or div between the label and an outer item is the label's
+    // container. An item outside it cannot interrupt this label.
+    if (b->type == BLOCK_QUOTE || b->type == DIV || b->type == FIGURE_GROUP) break;
     if (is_list(b->type) || b->type == FOOTNOTE) {
       item = b;
       break;
