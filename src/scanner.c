@@ -6114,6 +6114,9 @@ static AttributeRunLine attribute_run_line(Scanner *s, TSLexer *lexer) {
     quotes = scan_block_quote_markers(s, lexer, &ending);
     indent = 0;
   }
+  // The container checks below measure the line by its own marks; both
+  // callers restore the level.
+  s->block_quote_level = quotes;
   if (!ending) indent += consume_whitespace(s, lexer);
   if (ending || lexer->eof(lexer) || at_line_end(lexer)) return RUN_LINE_BLANK;
   if (quotes < count_blocks(s, BLOCK_QUOTE)) return RUN_LINE_ENDS_CONTAINER;
@@ -20105,9 +20108,11 @@ static bool scan(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
                        (valid_symbols[ERROR] || !find_block(s, TABLE_ROW)) &&
                        !known_mid_line && !(s->read_mid_line = line_column(s, lexer) != 0);
   // The rest of a refused attribute run behind its brace is text too, one atom
-  // (C2-I-035): a `#id` in it is no tag.
+  // (C2-I-035): a `#id` in it is no tag. Where a block attribute may still
+  // begin no paragraph is open, so the shared bit is `STATE_PROVEN_RUN`.
   if ((s->state & STATE_CLOSED_ATTRIBUTE_RUN) && !at_line_start && valid_symbols[LITERAL_RUN] &&
-      !valid_symbols[ERROR] && lexer->lookahead != ' ' && lexer->lookahead != '\t' &&
+      !valid_symbols[ERROR] && !valid_symbols[BLOCK_ATTRIBUTE_BEGIN] &&
+      lexer->lookahead != ' ' && lexer->lookahead != '\t' &&
       !at_line_end(lexer) && !lexer->eof(lexer)) {
     while (!at_line_end(lexer) && !lexer->eof(lexer)) {
       bool blank = lexer->lookahead == ' ' || lexer->lookahead == '\t';
